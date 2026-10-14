@@ -1,12 +1,13 @@
 """A decanting cradle's structure at its statics' force vectors: what the generic joint
 rules of :mod:`spiderpig.strength` can't see (design review round 1, 2026-10-14).
 
-:func:`spiderpig.cradle_report.statics` solves every joint's force *vector* per crank angle.
-The generic rules use only the largest magnitude: a link of three or more pins as a beam
-between its farthest two (``F L / 4``), a pillar as a beam between both frame plates. Those
-miss a bell crank's lever (B's b2 read 2.61 jammed where it is about 1.0), a cradle link's
-arms, and a pillar whose far plate can't hold it (B's inner bar O1-O2 held O2 only along
-itself: about 0.39 jammed, not 1.33). Here, from the vectors:
+:func:`spiderpig.cradle_report.statics_vectors` solves every joint's force *vector* per
+crank angle. The generic rules use only the largest magnitude: a link of three or more pins
+as a beam between its farthest two (``F L / 4``), a pillar as a beam between both frame
+plates. Those miss a bell crank's lever (B's b2 as an L read 2.61 jammed: it held 0.80), a
+cradle link's arms (B's b6 had only been rated in tension), and a pillar whose far plate
+can't hold it (B's inner bar O1-O2 held O2 only along itself: about 0.4 jammed, not 1.33).
+Here, from the vectors:
 
 * **Links in bending** (:func:`link_bending`): each link a plane frame of its chords
   (24 mm strips of its sheet, rigid at the joints), loaded at its pins by the statics'
@@ -31,9 +32,11 @@ itself: about 0.39 jammed, not 1.33). Here, from the vectors:
 * **The frame plates' members** (:func:`members`): each plate a plane frame of its members
   (the stand's pills, split where a post stands on one), loaded by the posts' feet (the
   outer plate: and by the gearbox at the crank, its bearing force and its torque) or their
-  ends (the inner plate); the outer plate pinned at its feet. Each member's in-plane stress
-  and, in compression, its Euler load out of the plane between its nodes (pinned ends, the
-  nodes held: :data:`MEMBER_K`).
+  ends (the inner plate); the outer plate standing on its feet. Each member's in-plane
+  stress and, in compression, its Euler load out of the plane between its nodes (pinned
+  ends, the nodes held across by the box: :data:`MEMBER_K`), or its tilt where a node isn't
+  (the gearbox's O: the other members there as cantilevers, ``k L``). The report adds each
+  plate where a post's end turns it out of its plane (``cradle_report.structure``).
 
 Everything takes the cases' force vectors, so a caller rates any crank torque (a clutch's
 cap) or any angles (the toggles the jam case leaves out: :func:`cradle_report.structure`).
@@ -51,8 +54,8 @@ import numpy as np
 E_ALU = 69000.0         # MPa: 5052, 6061 (7075's 71.7 taken as this: its frames' shares)
 E_STEEL = 200000.0      # MPa: the steel standoffs
 MEMBER_K = 1.0          # a frame member's effective length over its length, out of its plane:
-#                         pinned at both nodes, the nodes held by the box (its posts and the
-#                         gearbox's block)
+#                         pinned at both nodes, the nodes held across by the box (its posts,
+#                         its feet on the board)
 
 
 # -- a plane frame ---------------------------------------------------------------------

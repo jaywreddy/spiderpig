@@ -927,3 +927,89 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/cradle_pack.py`, `spiderpig/hardware/cradle_catalog.py`,
   `spiderpig/hardware/bom.py`, `viewer/src/decant/{motion,pour,diagram}.ts`,
   `tests/test_cradle.py`.
+
+### 2026-10-14: the cradles' structure, rated from the force vectors (design review round 1: structure and strength)
+
+- **What:** the review's linkage and laser-cut-parts reports
+  (`/root/scratch/decant/review5/r1/`) found the strength check blind where it mattered
+  most, and the bottles' centres of mass too far forward. Fixed, in this order:
+  - **The bottles' centres of mass** (`cradle.SIZES`): from a glass-shell-and-wine model
+    scaled to each empty mass, 31-36 % of the length up from the base. The 6 L
+    methuselah's is 390 mm from the mouth, not 331 (42 % from the base had been assumed).
+  - **The checks** (`spiderpig/cradle_structure.py`, `cradle_report.structure`, fed to
+    `strength.check` through the loads document): every link a plane frame of its chords
+    under the statics' force vectors (`cradle_report.statics_vectors`), rated at each
+    chord's end on the net section of its hole, and in Euler for a chord in compression;
+    the posts (pillars and columns) solved as one box with the inner plate rigid in its
+    plane and each end held by its plate's strips; the frame plates' members in-plane, in
+    Euler out of the plane, and where a node isn't held across (the gearbox's O), its
+    tilt. `link_rows`' `F L / 4` and the pillars' "between plates" stay for walkers.
+  - **B:** b2 a triangle (the chord P-K); b6 0.187 in with the chord X-Tf1, its rear arm
+    X-Tr1 40 mm wide and X-Y 32 mm (`config.PRODUCT_CHORD_R`); the inner plate a triangle
+    O1-O2-D1 and a leg D1-D2 on two columns; the outer plate's O2-O 64 mm wide; clevis
+    pins at K and J2 (P and J hardened pivot pins: no Chicago screw); the base board 10 mm
+    longer (694 mm).
+  - **A:** b2's E-Tr1 32 mm wide; a fifth column, D3, down the front leg; G-O 48 mm wide.
+  - **Both:** the columns 12 mm (NETRF12 on M6, `Stand.column_d`); the strength check's
+    holes the cut ones (`strength.cut_hole`: 8.2 mm, not 8.35).
+- **Why:**
+  - **Bending from `|r x F|`:** a link of three pins isn't a beam between its farthest two.
+    B's b2 is a bell crank on O2: the whole jammed cradle moment, 230 N·m, passes its
+    lever's root. Rated so, it held 0.80 at its pillar's hole, where the old rule read
+    2.61. b6's rear arm, a cantilever off X, held 0.32 in 0.125 in; it had only been rated
+    in net tension.
+  - **The box, not "between plates":** the inner plate is held in its plane by nothing but
+    the posts' bending. B's inner plate was the bar O1-O2 on its two pillars: it turns
+    about one and holds the other only along itself. Across it O2 was a cantilever off
+    the outer plate, about 0.4 jammed (the old rule: 1.33). A triangle and a leg on
+    columns make a box; then every post shares the net force the jam puts on the pivots
+    (about the rod's), and every post is rated, the columns too (never rated before). The
+    plates' strips hold a post's end far less than a clamp would, so the posts are solved
+    with each end's spring (`cradle_structure.plate_spring`) rather than assumed clamped or
+    pinned. A post's tapped ends are rated on the tube the tap leaves, the rest on the bar.
+  - **The frame members:** B's O2-O carries the rod's push back to the gearbox, 1.45 kN
+    jammed; 24 mm wide it buckled out of the plate at 0.72. A's front leg carries 2 kN from
+    D2 to its foot and buckled at 0.59. The gearbox's node O is held across the plate only
+    by its members, which the tilt check counts (B's rear leg had read 1.25).
+  - **The blocked cradle** (`cradle_report.blocked`) is a known limit, not designed for:
+    at 66 N·m against a block at the front tie, 72 mm from the mouth, B's J takes 6.6 kN
+    and O1 6.2 kN, its weakest part (the outer plate) 0.17; at the rear saddle, 0.73. A:
+    0.21 and 0.84. The use limits keep the decanter out of the cradle box's path; a torque
+    limiter at the hand is the cure, for the drive's next round.
+- **Numbers** (2026-10-14, `cradle_report.report`, a full 6 L walking, a 40 N push jammed):
+  - B: every row at jam SF 1.31 or more (pillars O1 and O2 1.31, b6 1.33, pin K 1.43,
+    b4 1.44, the outer plate's members 1.5); walking 3.85 or more. Its stack 84.23 mm a
+    side (79.68: the clevis pin at K takes a layer under b2, and b6 is thicker).
+  - A: every row at jam SF 1.61 or more (b2 1.61, pillar G 1.63, the crank's keyway 1.9,
+    the outer plate 2.01, column C2 2.17); walking 3.66 or more. Its stack unchanged, 65.53.
+  - Before (the old rules, the old centre of mass): B's least jam SF 1.33 (pillar O2), A's
+    1.7 (b2).
+- **Open, for the other streams** (the corrected centre of mass, not the structure):
+  - **The drive:** the crank's peak rose to 34.3 N·m on B (the NRV040 at SF 1.31) and
+    36.0 on A (1.25: under its 1.3 bar), and the worst turn to 25.4 N at the grip on both
+    (the bar was 25 N). The jam is fixed at 40 N at the grip, so a handle or a ratio that
+    eases the turn raises the jam with it: the 25 N bar, the gearbox, or a counterweight
+    is the drive's call. The tests carry the bars at 26 N and (A) 1.2 meanwhile, saying so.
+  - **The stand:** A tips at 23.3° (25.3° before; its test's bar is 15°, B's 25°); 20 mm
+    more of A's board would bring it past 25° again. B's board grew 10 mm to keep its bar.
+  - **The saddles:** the methuselah's centre now lies 10 mm behind the rear V's end (the
+    mounting review's B1); the text that says the rear V reaches behind it is theirs to fix.
+- **Not done:**
+  - **Fillets on the links and the crank plates** (the frames' grow-then-shrink closing):
+    a link's planner claims are pills on its joints, and a fillet's material lies outside
+    them; claiming it needs points fixed to a link (the topology has them only for the
+    crank: `Topology.add_crank_point`). B's b6 window is split by the chord X-Tf1 instead;
+    its corners stay sharp. The crank plates are the drive's (`handcrank.py`).
+  - **The passive side planned on its own** (about 35 mm thick instead of 84): written up
+    in DECANTER.md, B's stand; left for later.
+  - **J as a clevis pin:** its clip and end would stand in b6's layer, which its rear arm
+    sweeps right over J; the planner finds no plan. J stays a pivot pin.
+- **Tried and dropped:**
+  - **A column between O1 and D1** on B (a third, to share more): it stands in the lever
+    b2's sweep, and nothing plans.
+  - **Wider members round O2** to stiffen the post ends: the moment moves to the ends
+    rather than falling.
+- **Where:** `spiderpig/cradle_structure.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/strength.py`, `spiderpig/construction/cradle.py`,
+  `spiderpig/construction/plates.py`, `spiderpig/config.py`, `spiderpig/materials.py`,
+  `spiderpig/linkages/decanters.py`, `tests/test_cradle.py`.
