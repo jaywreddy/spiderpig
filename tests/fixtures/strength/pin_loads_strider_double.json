@@ -2556,11 +2556,11 @@
   "walk_torque_peak_nm": 0.1716,
   "walks": true
  },
- "engine_version": "0.1.0+2ee05f78651a",
+ "engine_version": "0.1.0+1b78f43cf7c4",
  "generator": "tests/test_strength.py::test_the_default_designs_own_loads",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-57da78af2074bc74"
+ "source_key": "gen-017a638fe2c38799"
 }
