@@ -1120,6 +1120,7 @@
     "section": {
      "a_shear_mm2": 23.366,
      "bearing_d": 6.0,
+     "modulus_mpa": 200000.0,
      "name": "6 mm 1018 steel standoff (as a 6 x 2.5 tube)",
      "yield_mpa": 220.0,
      "z_bend_mm3": 20.567
@@ -1295,6 +1296,7 @@
     "section": {
      "a_shear_mm2": 23.366,
      "bearing_d": 6.0,
+     "modulus_mpa": 200000.0,
      "name": "6 mm 1018 steel standoff (as a 6 x 2.5 tube)",
      "yield_mpa": 220.0,
      "z_bend_mm3": 20.567
@@ -1357,6 +1359,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -1411,6 +1414,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -1465,6 +1469,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -1519,6 +1524,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -1573,6 +1579,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -1627,6 +1634,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -1681,6 +1689,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -1735,6 +1744,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -1804,6 +1814,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -1873,6 +1884,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -1942,6 +1954,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2011,6 +2024,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2065,6 +2079,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2119,6 +2134,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2173,6 +2189,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2227,6 +2244,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2296,6 +2314,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2365,6 +2384,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2434,6 +2454,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2503,6 +2524,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2557,6 +2579,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2611,6 +2634,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2665,6 +2689,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2719,6 +2744,7 @@
     "section": {
      "a_shear_mm2": 5.498,
      "bearing_d": 4.0,
+     "modulus_mpa": 200000.0,
      "name": "chicago barrel 4 x 3 tube",
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
@@ -2730,11 +2756,11 @@
    }
   }
  },
- "engine_version": "0.1.0+cbc6db16875a",
+ "engine_version": "0.1.0+d3451bed7c34",
  "generator": "tests/test_strength.py::test_the_order_designs_meta_current[strider_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-50462f600833ae37"
+ "source_key": "gen-07b18de49a20ff11"
 }
