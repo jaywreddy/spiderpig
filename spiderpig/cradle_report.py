@@ -4,8 +4,12 @@ A cradle (:mod:`construction.cradle`) is judged here, not by the walking model o
 
 * **The swing**: the tilt range and how still the bottle's mouth stays
   (:meth:`linkage.Linkage.output_check`), each loop's transmission angles.
-* **The bottles** (:data:`construction.cradle.SIZES`): where each one's mouth sits off the
-  pivot in the saddles (:func:`construction.cradle.seat`).
+* **The bottles** (:data:`construction.cradle.SIZES`): each one's setting (the two V
+  blocks' rise, the base stop's place: :func:`construction.cradle.setting`) and where its
+  mouth sits off the pivot there (:func:`construction.cradle.seat`).
+* **The saddles** (:func:`saddles`): the loads on their printed parts and steel (the V
+  blocks, the thumbscrews, the post, the lip gauge, the base stop) and the stresses in
+  them, a sealed full bottle of each size at its own setting.
 * **The loads**: a quasi-static planar solve (:func:`statics`) of the side's bodies, the
   cradle box's mass and a **sealed full 6 L methuselah** (the worst a cradle carries: nothing
   pours out of it) on the cradle, gravity alone, at every crank angle: the crank's torque,
@@ -17,8 +21,9 @@ A cradle (:mod:`construction.cradle`) is judged here, not by the walking model o
 * **The hand**: the crank torque through the worm (its ratio, its static efficiency: the
   slow end of a hand's speed) at the handle's throw; turns per pour.
 * **The rod**: Euler buckling of the connecting rod at its largest compression.
-* **The stand**: the centre of mass of the cradle with each bottle, full and empty, over
-  the swing, against the feet (the base ties' line along x, the two outer plates across).
+* **The stand**: the centre of mass of the cradle with each bottle, full and empty, at its
+  own setting, over the swing, against the feet (the base ties' line along x, the two
+  outer plates across).
 * **Clashes**: every part against every other at angles across the swing
   (:func:`construction.contract.clashes`), the bottle and the decanter included.
 """
@@ -110,23 +115,15 @@ def part_mass_kg(config: BuildConfig, b) -> float:
     return mass_mod.part_props(b.placed_part()).volume * dens / 1e6
 
 
-def _adapted(name: str) -> bool:
-    """A bottle size's own adapter (its liners and collar: ``cradle.adapter``), not the
-    saddles' liners."""
-    return name.endswith("_collar") or any(name.endswith(f"_{z.key}_liner") for z in cr.SIZES)
-
-
-def masses(config: BuildConfig, mech, adapters: bool = True
-           ) -> tuple[dict[str, float], dict[str, np.ndarray]]:
+def masses(config: BuildConfig, mech) -> tuple[dict[str, float], dict[str, np.ndarray]]:
     """Per side body class (both sides' parts summed: the motion is planar), its mass (kg)
-    and first moment (kg mm, world XY) in the fabricated cradle ``mech``; ``adapters``
-    False leaves the bottle sizes' adapters out (the largest bottle lies in the bare
-    saddles: the drawn magnum's liners come out for it)."""
+    and first moment (kg mm, world XY) in the fabricated cradle ``mech`` (its V blocks at
+    the drawn bottle's setting, their lowest: the load case's)."""
     by = {b.name: b for b in mech.bodies}
     m_of: dict[str, float] = {}
     mom: dict[str, np.ndarray] = {}
     for b in mech.bodies:
-        if b.part is None or b.fab == "display" or (not adapters and _adapted(b.name)):
+        if b.part is None or b.fab == "display":
             continue
         cls = body_class(_host(b, by))
         m = part_mass_kg(config, b)
@@ -144,8 +141,7 @@ def planar_model(config: BuildConfig, mech, t_ref: float, bottle: cr.BottleSize 
                  ) -> tuple[list[Rigid], list[tuple[str, str, str]]]:
     """The moving bodies (:class:`Rigid`) and the joints ``(point, body, body-or-ground)``."""
     lk = config.lk
-    # (the bottle in its own adapters: the largest has none, and the drawn one's come out)
-    m_of, moments = masses(config, mech, adapters=bottle is None or any(cr.adapter(bottle)))
+    m_of, moments = masses(config, mech)
     pts = _world_joints(config, [t_ref])
     links = {b: js for b, (js, _) in lk.links.items()}
     links["conn"] = lk.crank
@@ -270,7 +266,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
         "worst_transmission_deg": round(min(min(s.angle_deg[0], 180 - s.angle_deg[1])
                                             for s in steps), 1),
     }
-    # the bottles in the saddles, each on its adapters: how far its mouth moves
+    # the bottles in the saddles, each at its own setting: how far its mouth moves
     out["bottles"] = []
     swing = math.radians(float(np.ptp(tilt)))
     for size in cr.SIZES:
@@ -280,7 +276,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                                [round(x0, 2), round(y0, 2)],
                                "mouth_wander_mm": round(2 * r * math.sin(swing / 2), 2),
                                "nose_up_deg": round(-math.degrees(slope), 2),
-                               "adapters_mm": [round(v, 1) for v in cr.adapter(size)],
+                               "setting_mm": _setting_row(size),
                                "full_kg": size.mass_full_kg})
 
     mech = fabricate(tmpl, config, 1.0, store=store)
@@ -347,6 +343,9 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                        "sf_jam": round(cap * 1000.0 / max(f_rod_jam * lever, 1e-9), 2)}
     out["stand"] = stability(config, mech, design, ts)
     out["strength"] = strength_check(config, mech, rows, peak)
+    moving = {*cr.REAR_MOVES, *cr.STOP_MOVES}
+    out["saddles"] = saddles(float(tilt.min()), float(tilt.max()), sum(
+        part_mass_kg(config, b) for b in mech.bodies if b.name in moving))
     if clash_angles:
         from spiderpig.construction.contract import clashes
 
@@ -358,6 +357,13 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
             found.extend(dict(c, crank_deg=round(math.degrees(t), 1)) for c in wheel_sweep(m))
         out["clashes"] = found
     return out
+
+
+def _setting_row(size: cr.BottleSize) -> list[float]:
+    """``size``'s setting (``construction.cradle.setting``): the front V block's rise, the
+    rear one's, the base stop's face along the axis from the mouth (mm)."""
+    s = cr.setting(size)
+    return [round(s.front, 2), round(s.rear, 2), round(s.stop, 1)]
 
 
 WINE_KG = {"standard": 0.75, "magnum": 1.5, "jeroboam": 3.0, "imperial": 6.0,
@@ -388,6 +394,9 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
     # every part's mass and centre: what stands, what turns with the box (about the mouth)
     still_m, still_c = 0.0, np.zeros(3)
     box_m, box_c = 0.0, np.zeros(3)
+    moves = {**dict.fromkeys(cr.FRONT_MOVES, "front"), **dict.fromkeys(cr.REAR_MOVES, "rear"),
+             **dict.fromkeys(cr.STOP_MOVES, "stop")}
+    moved_m: dict[str, float] = dict.fromkeys(("front", "rear", "stop"), 0.0)  # (it moves)
     for b in mech.bodies:
         if b.part is None or b.fab == "display":
             continue
@@ -396,10 +405,12 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
         if body_class(_host(b, by)) == link:
             box_m += m
             box_c += m * c
+            if b.name in moves:
+                moved_m[moves[b.name]] += m
         else:
             still_m += m
             still_c += m * c
-    box_rel = (box_c / box_m)[:2] - lip0 if box_m else np.zeros(2)
+    box_rel0 = (box_c / box_m)[:2] - lip0 if box_m else np.zeros(2)
     box_z = float(box_c[2] / box_m) if box_m else 0.0
     inset, pad = 25.0, 12.0                    # the feet (construction.cradle._base_plate)
     x_front = float(lip0[0]) + stand.base[0] + inset - pad
@@ -407,6 +418,13 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
     z_edge = cr.BASE_HALF - inset + pad
     rows = []
     for size in cr.SIZES:
+        # the box's centre with its V blocks and base stop at this bottle's setting
+        d = cr.offsets(size)
+        shift = (moved_m["front"] * np.array([0.0, d.front])
+                 + moved_m["rear"] * np.array([0.0, d.rear])
+                 + moved_m["stop"] * np.array([d.stop, d.rear])) / max(box_m, 1e-9)
+        box_rel = box_rel0 + np.array([math.cos(t0) * shift[0] - math.sin(t0) * shift[1],
+                                       math.sin(t0) * shift[0] + math.cos(t0) * shift[1]])
         y0, slope, x0 = cr.seat(size)
         com_cf = np.array([x0 + size.com_from_mouth * math.cos(slope),
                            y0 + size.com_from_mouth * math.sin(slope)])
@@ -448,6 +466,105 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
             "device_kg": round(still_m + box_m, 3),
             "cases": rows, "worst_margin_mm": min(r["margin_mm"] for r in rows),
             "worst_tip_deg": min(r["tip_deg"] for r in rows)}
+
+
+PLA_ALLOW = 10.0        # MPa: a printed PLA part under a load that stays (a quarter of its
+#                         ~40 MPa across its layers: it creeps, it doesn't break)
+STAINLESS_YIELD = 210.0     # MPa: the thumbscrews' 18-8, as annealed 304 (no class named)
+CORKSCREW_N = 13.0      # a corkscrew's push into the cork (the mechanical review: 6-13 N)
+LOCK_PRELOAD_N = 600.0  # the base stop's M5 lock, snug into its printed pilot (about 0.6 N·m)
+PLA_FRICTION = 0.3
+
+
+def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 0.0
+            ) -> dict:
+    """The saddles' loads and stresses, a sealed full bottle of each size at its own setting
+    over the swing (``rest_deg`` to ``full_deg``), its weight the worst way for each part:
+
+    * the rear V block on its tie rods (a 6 L methuselah's V blocks sit on them: its
+      bearing on the rods' seats);
+    * a V block hung on its thumbscrew (any thinner bottle's, the heaviest a 6 L set a hair
+      off the rods): the screw's load and its nut's bearing in the block, and the roll
+      couple of a load at the axis held by a screw at the block's end: the post (stiffer)
+      and the screw bend under it, shared by their stiffness;
+    * the V block itself, carried from that end;
+    * the base stop at rest (the bottle's weight down the axis and a corkscrew's push): its
+      gate's plate in bending between its ears, its lock's grip;
+    * the lip gauge at full tilt (the weight down the axis, no friction counted): its pad,
+      its bar and its arm in bending.
+
+    Each row: the load (N), the stress (MPa) and its limit (:data:`PLA_ALLOW` for a printed
+    part, the steel's yield), their ratio ``sf``. ``moving_kg``: what rides the rear V block
+    (itself, its liner, the base stop's rails and gate), hung with the bottle."""
+    g = G
+    w_max = max(z.mass_full_kg for z in cr.SIZES) * g
+    front, rear = cr.SADDLES
+    rows: list[dict] = []
+
+    def row(part: str, case: str, load: float, stress: float, limit: float) -> None:
+        rows.append({"part": part, "case": case, "load_n": round(load, 1),
+                     "stress_mpa": round(stress, 2), "limit_mpa": limit,
+                     "sf": round(limit / max(stress, 1e-9), 2)})
+
+    # the rear V block on its two rods (the 6 L, lying level): each seat a 9 mm wide arc
+    # over 24 mm of rod
+    seat_area = 2.0 * math.sqrt(cr.SEAT_R ** 2 - (cr.SEAT_R - cr.SEAT_DEPTH) ** 2) * 24.0
+    row("rear V block's seats on the tie rods", "a full 6 L methuselah, level", w_max,
+        w_max / 2 / seat_area, PLA_ALLOW)
+    # hung on its thumbscrew: the rear one carries what the rear V carries (all of it, its
+    # centre of mass within the rear V); the front one its share
+    xf, xr = sum(front.vee) / 2, sum(rear.vee) / 2
+    hung = (max(z.mass_full_kg for z in cr.SIZES) + moving_kg) * g
+    zg = cr.REAR_GUIDE[1]
+    af = cr.COUPLER[0]
+    face = 3 * math.sqrt(3) / 2 * (af / math.sqrt(3)) ** 2 - math.pi * 4.2 ** 2
+    row("rear thumbscrew's coupling nut on the V block", "a full 6 L, hung, level", hung,
+        hung / face, PLA_ALLOW)
+    couple = hung * zg                                        # N·mm, about the axis
+    post_i = math.pi * cr.POST_D ** 4 / 64
+    root = 8.0 - 1.22687 * 1.25                               # M8's minor diameter
+    screw_i = math.pi * root ** 4 / 64
+    share = post_i / (post_i + screw_i)
+    row("rear post (NETRF12, bending)", "the couple of a full 6 L hung at the screw",
+        couple * share / 1000, couple * share / (math.pi * cr.POST_D ** 3 / 32),
+        NETRF10_YIELD)
+    row("rear thumbscrew (M8, bending)", "its share of that couple",
+        couple * (1 - share) / 1000, couple * (1 - share) / (math.pi * root ** 3 / 32),
+        STAINLESS_YIELD)
+    # the V block at the post's boss: the post's share of the couple into its flats and
+    # the gusset under them
+    depth = cr.REAR_FLANGE[1] - cr.GUSSET[1]
+    row("rear V block at the post's boss", "the post's share of that couple",
+        couple * share / 1000, couple * share / (cr.GUSSET[0] * depth ** 2 / 6), PLA_ALLOW)
+    share_f = max(max((xr - z.com_from_mouth) / (xr - xf), 0.0) * z.mass_full_kg * g
+                  for z in cr.SIZES)
+    row("front thumbscrew's nut on the V block", "the heaviest front share, level", share_f,
+        share_f / (3 * math.sqrt(3) / 2 * (cr.M6_HEX[0] / math.sqrt(3)) ** 2
+                   - math.pi * 3.3 ** 2), PLA_ALLOW)
+    # the base stop at rest: down the axis, the gate's plate a beam between its ears
+    s_rest = math.sin(math.radians(-rest_deg))
+    push = w_max * s_rest + CORKSCREW_N
+    span = 2 * (cr.GROOVE[0] + cr.GROOVE[1]) / 2
+    height = cr.REAR_FLANGE[1] + 6.0 - cr.GATE_BOTTOM
+    row("base stop's gate (bending)", "a full 6 L at rest, a corkscrew's push", push,
+        push * span / 4 / (height * cr.GATE_T ** 2 / 6), PLA_ALLOW)
+    grip = 2 * PLA_FRICTION * LOCK_PRELOAD_N
+    rows.append({"part": "base stop's lock (its grip)", "case": "the same", "load_n":
+                 round(push, 1), "grip_n": grip, "sf": round(grip / push, 2),
+                 "backstop_mm": cr.SLOT[1] - cr.SLOT[0] - 2 * cr.TIE_HOLE / 2})
+    # the lip gauge at full tilt: the weight down the axis on its pad (on the rim's top)
+    pull = w_max * math.sin(math.radians(full_deg))
+    bottom, half = cr.GAUGE_PAD
+    rim = (bottom + max(z.r_neck for z in cr.SIZES)) / 2
+    y0, y1 = cr.GAUGE_BAR
+    row("lip gauge's pad (bending)", "a full 6 L at full tilt, no friction", pull,
+        pull * (y0 - rim) / ((2 * half) * 9.8 ** 2 / 6), PLA_ALLOW)
+    row("lip gauge's bar (bending)", "the same", pull,
+        pull * ((y0 + y1) / 2 - rim) / ((2 * half) * (y1 - y0) ** 2 / 6), PLA_ALLOW)
+    arm = cr.GAUGE_POST_X[1] + 0.5 - cr.GAUGE_CHEEK_X[0]
+    row("lip gauge's arm (bending)", "the same", pull,
+        pull * abs(cr.GAUGE_PIVOT[1]) / ((y1 - y0) * arm ** 2 / 6), PLA_ALLOW)
+    return {"rows": rows, "worst_sf": min(r["sf"] for r in rows)}
 
 
 def wheel_sweep(mech) -> list[dict]:
@@ -571,12 +688,12 @@ VERDICT = {
                        "cradle, hinged at the bottle's mouth. From 50° neck up (an opened "
                        "full bottle goes in) to 30° neck down, a 750 ml to a 6 L. Every check "
                        "passes with a full 6 L: the joints hold a forced crank (jam SF 1.6 at "
-                       "worst), the gearbox 1.33 x its rating, the stand tips past 25°."),
+                       "worst), the gearbox 1.44 x its rating, the stand tips past 25°."),
     "decanter_rcm": ("build", "To build too: an eight-bar double parallelogram turns the "
                      "cradle about a point with nothing there, so nothing stands at the "
                      "mouth; its pivots hang under the mouth, its crank behind. Every check "
                      "passes with a full 6 L: the joints hold a forced crank (jam SF 1.31 at "
-                     "worst), the gearbox 1.41 x its rating, the stand tips past 26°."),
+                     "worst), the gearbox 1.52 x its rating, the stand tips past 25°."),
 }
 """Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why."""
 
@@ -585,9 +702,11 @@ def motion(config: BuildConfig, n: int = 360) -> dict:
     """A cradle's swing over one crank turn, sampled as its bake's clip is (``n`` crank angles
     from 0, the clip's time over its length): every joint's path (mm, the linkage's plane),
     the bottle's tilt (degrees, neck down positive), the handle's turns from rest (the clip's
-    direction), how far the mouth wanders; the bodies' outlines, and a magnum and the
-    saddles in the cradle's frame (a point ``(x, y)`` there is at ``mouth + R(tilt) (x,
-    y)``), for the cradle page's diagram."""
+    direction), how far the mouth wanders; the bodies' outlines, the drawn bottle, every
+    bottle and the V blocks (at the drawn bottle's setting) in the cradle's frame (a point
+    ``(x, y)`` there is at ``mouth + R(tilt) (x, y)``), for the cradle page's diagram; each
+    bottle's setting (:func:`_setting_row`) and the parts a setting moves (``adjust``: the
+    page moves their nodes from the drawn bottle's setting to the one picked)."""
     if not is_cradle(config):
         raise ValueError(f"{config.linkage} is not a decanting cradle")
     lk = config.lk
@@ -610,7 +729,6 @@ def motion(config: BuildConfig, n: int = 360) -> dict:
         return ([(x0 + u * c - r * s, y0 + u * s + r * c) for u, r in prof]
                 + [(x0 + u * c + r * s, y0 + u * s - r * c) for u, r in reversed(prof)])
 
-    outline = outline_of(cr.MAGNUM)
     kind, why = VERDICT.get(lk.key, ("study", ""))
 
     def r2(a) -> list:
@@ -629,11 +747,15 @@ def motion(config: BuildConfig, n: int = 360) -> dict:
         "rest_deg": round(float(tilt[rest]), 1), "full_deg": round(float(tilt[full]), 1),
         "turns_to_full": round(float(turns[full]), 1), "ratio": ratio,
         "mouth_wander_mm": round(wander, 3),
-        "bottle": {"name": cr.MAGNUM.name, "outline": r2(outline)},
-        "bottles": [{"key": z.key, "name": z.name, "outline": r2(outline_of(z))}
-                    for z in cr.SIZES],
-        "saddles": [{"name": sd.name, "x": list(sd.x), "y": [sd.y0, sd.top]}
-                    for sd in cr.SADDLES],
+        "bottle": {"key": cr.SHOWN.key, "name": cr.SHOWN.name,
+                   "outline": r2(outline_of(cr.SHOWN)), "setting": _setting_row(cr.SHOWN)},
+        "bottles": [{"key": z.key, "name": z.name, "outline": r2(outline_of(z)),
+                     "setting": _setting_row(z)} for z in cr.SIZES],
+        "adjust": {"front": list(cr.FRONT_MOVES), "rear": list(cr.REAR_MOVES),
+                   "stop": list(cr.STOP_MOVES)},
+        "saddles": [{"name": sd.name, "x": list(sd.vee), "y": [sd.bottom, sd.top],
+                     "moves": key} for sd, key in zip(cr.SADDLES, ("front", "rear"),
+                                                    strict=True)],
         "ties": {k: list(v) for k, v in _ties_of().items()},
     }
 
@@ -670,11 +792,13 @@ def _surface_points(part, step: float = 5.0) -> np.ndarray:
 def room(config: BuildConfig, mech, n: int = 72) -> dict:
     """The room a vessel has under the mouth (``/api/cradle/{key}/room``, the cradle page's
     fit check): at each height over the table (every :data:`ROOM_BAND` mm up to the mouth),
-    the radius round the decanter's axis that no part of the cradle box, the bottle drawn
-    or a 6 L methuselah enters over the whole swing (``room``), and from the pour on (the
-    cradle past -20°, where an opened full bottle starts to pour: ``room_pouring``).
-    ``mech``: the cradle fabricated at crank angle 0. The side stacks stand outside the
-    bay (``construction.cradle.BAY``), so only the bay's parts count."""
+    the radius round the decanter's axis that no part of the cradle box or the bottle drawn
+    (a 6 L methuselah, the V blocks at their lowest) enters over the whole swing (``room``),
+    and from the pour on (the cradle past -20°, where an opened full bottle starts to pour:
+    ``room_pouring``). ``mech``: the cradle fabricated at crank angle 0. The side stacks
+    stand outside the bay (``construction.cradle.BAY``), so only the bay's parts count. A
+    thinner bottle's V blocks ride higher, away from the decanter at every tilt: the
+    drawn setting bounds them."""
     lip = np.asarray(mech.meta["cradle_lip"], float)
     axis_x = float(lip[0]) + cr.DECANTER_X
     table = float(lip[1]) - cr.LIP_HEIGHT
@@ -688,24 +812,9 @@ def room(config: BuildConfig, mech, n: int = 72) -> dict:
         if b.part is None or b.name.startswith(("L.", "R.")) or b.name.startswith("decanter"):
             continue
         p = _surface_points(b.placed_part())
-        # (the spare sizes' adapters lie on the table: only the drawn magnum's ride)
-        rides = b.name.startswith(_MOVING) and not _adapted(b.name)
-        (moving if rides or "magnum_liner" in b.name else fixed).append(p)
-    # a 6 L methuselah in the saddles too (the magnum is the bottle drawn)
-    y0, slope, x0 = cr.seat(cr.DESIGN)
-    c, s = math.cos(slope), math.sin(slope)
-    phi = np.linspace(0.0, 2.0 * math.pi, 36, endpoint=False)
-    big = []
-    for u, r in cr.DESIGN.profile():
-        cx = x0 + u * c - r * np.cos(phi) * s
-        cy = y0 + u * s + r * np.cos(phi) * c
-        big.append(np.stack([cx, cy, r * np.sin(phi)], 1))
-    jb = np.concatenate(big)
-    t0 = tilt[0]
-    jb_xy = lip + np.stack([np.cos(t0) * jb[:, 0] - np.sin(t0) * jb[:, 1],
-                            np.sin(t0) * jb[:, 0] + np.cos(t0) * jb[:, 1]], 1)
-    moving.append(np.column_stack([jb_xy, jb[:, 2]]))
+        (moving if b.name.startswith(_MOVING) else fixed).append(p)
     mv = np.concatenate(moving)
+    t0 = tilt[0]
     fx = np.concatenate(fixed) if fixed else np.zeros((0, 3))
     bands = np.arange(0.0, cr.LIP_HEIGHT + 1e-6, ROOM_BAND)
 

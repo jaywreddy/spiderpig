@@ -13,23 +13,20 @@ modules and its hand crank:
    one unit, the worm holding them as cranked;
 4. the hand crank off (its thumb screw).
 
-The other bottles' adapters and collars travel loose round them.
-
 **Flat** (:func:`pieces`: A, whose cradle link rides pillar G between its side's plates).
 The cradle comes apart where it is already fastened, with no new joint, in the order
 :func:`pieces` gives as its steps:
 
-1. the bottle adapters out of the saddles (every adapter travels loose);
-2. the hand crank off the gearbox's input shaft (its thumb screw);
-3. the cradle off the base board (the brackets' thumb nuts: the carriage bolts stay in the
+1. the hand crank off the gearbox's input shaft (its thumb screw);
+2. the cradle off the base board (the brackets' thumb nuts: the carriage bolts stay in the
    board);
-4. each side's inner plate off (its screws from the bay side, back in its holes);
-5. the cradle link's own joints with its side (``mech.connections``): a pivot pin's upper
+3. each side's inner plate off (its screws from the bay side, back in its holes);
+4. the cradle link's own joints with its side (``mech.connections``): a pivot pin's upper
    E-ring off (the pin stays in the side's links, the ring back on it for the trip), a
    clevis pin's clip out, or a Chicago screw out of its barrel (``chicago6``: it goes back
    into the barrel, which stays in the side's link), a pillar slid out of the link's bore;
    each side panel then lifts off, leaving the cradle box whole;
-6. the cradle box apart: the base stop and the light off their saddles, one cradle link
+5. the cradle box apart: the base stop and the light off their saddles, one cradle link
    off the tie rods (their screws), the saddles slid off the rods (their set screws), the
    other link off. Each tie rod travels with its two screws back in its ends, each cradle
    link with the loose spacers that sat over it.
@@ -143,10 +140,6 @@ def _join(xs: Sequence[str]) -> str:
     return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " and " + xs[-1]
 
 
-def _bottle_size(key: str) -> str:
-    return next((s.name for s in cr.SIZES if s.key == key), key)
-
-
 def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
            ) -> tuple[list[Piece], list[tuple[str, list[str]]]]:
     """The pieces the cradle comes apart into (the module's docstring) and the steps that
@@ -214,17 +207,9 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
                 put(panel[host], f"{panel[host].capitalize()} side panel", "panel", n)
         elif m := re.fullmatch(r"((?:base_|bay_)?tie_[A-Za-z0-9]+)(?:_screw[LR])?", n):
             put(m.group(1), f"Tie rod {m.group(1).removeprefix('tie_')}", "fill", n)
-        elif n in saddles or any(n == f"{sd}_liner" or n.startswith(f"{sd}_set_screw")
-                                 for sd in saddles):
+        elif any(n == sd or n.startswith(f"{sd}_") for sd in saddles):
             sd = next(sd for sd in saddles if n.startswith(sd))
             put(sd, f"{sd.replace('_', ' ').capitalize()} and its liner", "fill", n)
-        elif n.endswith(("_liner", "_collar")):
-            if m := re.fullmatch(r"(\w+_saddle)_(\w+)_liner", n):
-                label = (f"Adapter: {_bottle_size(m.group(2))}, "
-                         f"{m.group(1).replace('_', ' ')}")
-            else:
-                label = f"Collar: {_bottle_size(n.removesuffix('_collar'))}"
-            put(n, label, "fill", n)
         elif n.startswith("led"):
             put("light", "Light in its clip", "fill", n)
         elif n.startswith("base_stop"):
@@ -246,10 +231,6 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
         return next((z for n in names if (z := _size(parts[n].bom_key))), "")
 
     steps: list[tuple[str, list[str]]] = []
-    adapters = [k for k, pc in out.items() if pc.label.startswith(("Adapter", "Collar"))]
-    if adapters:
-        steps.append(("Bottle adapters: lift those in the saddles out. Every adapter and "
-                      "collar travels loose.", adapters))
     if "hand_crank" in out:
         steps.append((_hand_crank_step(out["hand_crank"].parts), ["hand_crank"]))
     if "base" in out:
@@ -414,8 +395,8 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, turns: flo
     the passive side panel (every part of that side but its cradle link, its brackets: it
     slides off the cradle link once the link's pins' clips are out); the drive side with the
     cradle box (both cradle links, the tie rods, the saddles and what is in them, the light,
-    the base stop: the worm holds it as it was cranked); the hand crank; the spare bottle
-    sizes' adapters and collars, loose. ``turns`` the pack pose's handle turns from rest,
+    the base stop: the worm holds it as it was cranked); the hand crank. ``turns`` the pack
+    pose's handle turns from rest,
     ``tilt`` the bottle's there (degrees); the rest as :func:`pieces`."""
     out: dict[str, Piece] = {}
 
@@ -425,13 +406,11 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, turns: flo
     crank_side = next((s for s in SIDES if f"{s}.conn" in parts), "L")
     other = next(s for s in SIDES if s != crank_side)
     through = _through_board(parts)
-    held_by = {a for a, _ in fastened}
     drive = ("drive", "Drive side with the cradle box", "panel")
     passive = ("passive", "Passive side panel", "panel")
     for n in sorted(parts):
         p = parts[n]
         s, stem = _side(n)
-        spare = re.fullmatch(r"(\w+_saddle)_(\w+)_liner", n)
         if s == crank_side and stem.startswith("handle"):
             put("hand_crank", "Hand crank", "fill", n)
         elif s:
@@ -442,12 +421,6 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, turns: flo
         elif n.startswith("foot_bracket"):
             host = _side(p.rigid_with or "")[0] or crank_side
             put(*(passive if host == other else drive), n)
-        elif (spare or n.endswith("_collar")) and n not in held_by:
-            # a spare size's adapter or collar (lying on the table): it travels loose
-            label = (f"Adapter: {_bottle_size(spare.group(2))}, "
-                     f"{spare.group(1).replace('_', ' ')}" if spare
-                     else f"Collar: {_bottle_size(n.removesuffix('_collar'))}")
-            put(n, label, "fill", n)
         else:
             put(*drive, n)
     if "passive" in out:
@@ -477,10 +450,6 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, turns: flo
                       ["passive", "drive"]))
     if "hand_crank" in out:
         steps.append((_hand_crank_step(out["hand_crank"].parts), ["hand_crank"]))
-    spares = [k for k, pc in out.items() if pc.label.startswith(("Adapter", "Collar"))]
-    if spares:
-        steps.append(("The other bottles' adapters and collars travel loose round the "
-                      "modules.", spares))
     for text, keys in steps:
         for k in keys:
             if k in out and not out[k].how:

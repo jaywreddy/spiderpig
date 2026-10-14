@@ -138,32 +138,37 @@ def test_the_worm_holds_and_every_bottle_lies_with_its_mouth_on_the_pivot():
     assert NRV040.ratio == 30
     assert [z.key for z in cr.SIZES] == ["standard", "magnum", "jeroboam", "imperial",
                                          "methuselah"]
-    # the saddles sized for the fattest neck and body, the longest bottle the base stop's
-    assert cr.DESIGN is cr.METHUSELAH
+    # the V blocks bottom out for the fattest neck and body (the load case, the bottle drawn)
+    assert cr.DESIGN is cr.METHUSELAH is cr.SHOWN
     assert all(cr.DESIGN.r >= z.r and cr.DESIGN.r_neck >= z.r_neck for z in cr.SIZES)
-    assert max(z.length for z in cr.SIZES) < cr.SPINE_END
-    for size in cr.SIZES:
-        assert cr.seat(size) == pytest.approx((0.0, 0.0, 0.0), abs=1e-9), size.name
-    # every bottle but the 6 L methuselah on its adapters, the longer necks in collars; a
-    # magnum straight in the 6 L's saddles would lie nose up, its mouth off the pivot
-    assert cr.adapter(cr.MAGNUM)[:2] == pytest.approx((8.5, 37.5))
-    assert cr.adapter(cr.METHUSELAH) == pytest.approx((0.0, 0.0, 43.0))
-    # the 6 L's centre of mass between the saddles: lying level or tipped, it bears on both
     front, rear = cr.SADDLES
     for size in cr.SIZES:
-        assert front.x[1] < size.com_from_mouth < rear.x[1], size.name
-    # the 750 ml: its neck short of the stop, so its front liner ends at its shoulder (the
-    # stop); the rear one closed behind its base, inside the rear saddle
-    a_f, a_r, collar = cr.adapter(cr.STANDARD)
-    assert collar < 0
-    bb = cr._adapter(front, a_f, cr.STANDARD).bounding_box()
-    assert pytest.approx(cr.STANDARD.neck) == bb.max.X
-    assert cr.STANDARD.length < rear.x[1]
-    shell = cr._adapter(rear, a_r, cr.STANDARD)
-    assert pytest.approx(rear.x[1]) == shell.bounding_box().max.X
-    y0, slope, x0 = cr.seat(cr.MAGNUM, adapted=False)
+        # set by its two diameters (a 90° V rises √2 x what it is thinner) and its length:
+        # its mouth on the pivot, its axis level, within each V block's travel
+        s = cr.setting(size)
+        assert (s.front, s.rear, s.stop) == pytest.approx((
+            (cr.DESIGN.r_neck - size.r_neck) * math.sqrt(2),
+            (cr.DESIGN.r - size.r) * math.sqrt(2), size.length + cr.STOP_GAP))
+        assert 0.0 <= s.front <= front.travel
+        assert 0.0 <= s.rear <= rear.travel
+        assert cr.STOP_RANGE[0] <= s.stop <= cr.STOP_RANGE[1]
+        assert cr.seat(size) == pytest.approx((0.0, 0.0, 0.0), abs=1e-9), size.name
+        # its centre of mass between the saddles: lying level or tipped, it bears on both
+        assert front.vee[1] < size.com_from_mouth < rear.vee[1], size.name
+    assert cr.setting(cr.METHUSELAH) == cr.Setting(0.0, 0.0, cr.METHUSELAH.length + 0.5)
+    # a magnum in the 6 L's setting would lie nose up, its mouth off the pivot
+    y0, slope, x0 = cr.seat(cr.MAGNUM, cr.setting(cr.DESIGN))
     assert math.degrees(-slope) > 5.0
     assert math.hypot(x0, y0) > 1.0
+    # a bottle the V blocks can't reach is refused, not drawn off the pivot
+    from dataclasses import replace
+
+    with pytest.raises(ValueError, match="rear_saddle's V block would rise"):
+        cr.setting(replace(cr.METHUSELAH, r=90.0))
+    with pytest.raises(ValueError, match="rear_saddle's V block would rise"):
+        cr.setting(replace(cr.STANDARD, r=30.0))
+    with pytest.raises(ValueError, match="base stop can't go"):
+        cr.setting(replace(cr.METHUSELAH, length=590.0))
 
 
 @pytest.mark.planner
@@ -457,9 +462,10 @@ def test_a_tie_rod_that_would_sweep_into_the_inner_plate_fails():
 @pytest.mark.construction
 @pytest.mark.parametrize("key", CRADLES)
 def test_the_whole_cradle_is_clash_free_over_the_swing(key):
-    """Both sides, the box, the stand on its base plate, the bottle and the decanter at
-    rest, at full tilt and across the turn: no two parts meet, the hand crank's sweep meets
-    nothing, and a 6 L methuselah in the saddles (its collar, no adapters) meets nothing."""
+    """Both sides, the box, the stand on its base plate, the bottle (a 6 L methuselah, the V
+    blocks at their lowest) and the decanter at rest, at full tilt and across the turn: no
+    two parts meet, the hand crank's sweep meets nothing, and every bottle size at its own
+    setting (its V blocks raised, its base stop moved) meets nothing, nor do they."""
     from spiderpig.construction.contract import bad_solids, clashes
     from spiderpig.cradle_report import wheel_sweep
     from spiderpig.fabricate import fabricate, template_for
@@ -473,11 +479,14 @@ def test_the_whole_cradle_is_clash_free_over_the_swing(key):
         mech = fabricate(tmpl, cfg, float(t))
         assert clashes(mech) == [], t
         assert wheel_sweep(mech) == [], t
-        assert cr.bottle_hits(mech) == [], t
+        for size in cr.SIZES:
+            assert cr.bottle_hits(mech, size) == [], (t, size.key)
     assert bad_solids(mech) == []
     names = {b.name for b in mech.bodies}
     assert {"L.gearbox", "bottle", "decanter", "led", "front_saddle", "rear_saddle",
-            "base_plate", "jeroboam_collar", "methuselah_collar"} <= names
+            "front_saddle_vee", "rear_saddle_vee", "front_saddle_gauge", "base_stop_gate",
+            "base_plate", *cr.FRONT_MOVES, *cr.REAR_MOVES, *cr.STOP_MOVES} <= names
+    assert not any(n.endswith("_collar") for n in names)
     assert not any(n.startswith("R.") and ("gearbox" in n or n == "R.b1") for n in names)
 
 
@@ -682,8 +691,9 @@ def test_every_printed_part_fits_a_print_bed_in_its_pose():
     cfg = BuildConfig(linkage="decanter_hinge", robot=False)
     mech = fabricate(template_for(cfg), cfg, 1.0)
     poses = mech.meta["print_poses"]
-    for name in ("front_saddle", "rear_saddle", "front_saddle_liner", "L.handle",
-                 "jeroboam_collar", "foot_boot_0"):
+    for name in ("front_saddle", "rear_saddle", "front_saddle_vee", "rear_saddle_vee",
+                 "front_saddle_liner", "front_saddle_knob", "front_saddle_gauge",
+                 "base_stop_rails", "base_stop_gate", "L.handle", "foot_boot_0"):
         assert name in poses, name
     for b in mech.bodies:
         if b.fab != "printed" or b.part is None:
@@ -716,6 +726,33 @@ def test_the_cradle_pages_swing_is_the_linkages(key):
         want = lip + np.array([math.cos(a) * cx - math.sin(a) * cy,
                                math.sin(a) * cx + math.cos(a) * cy])
         assert np.abs(np.asarray(m["points"][name][i]) - want).max() < 0.05, name
+    # every bottle with its setting (the drawn one's V blocks at their lowest), and the parts
+    # the page moves to it
+    assert m["bottle"]["key"] == cr.SHOWN.key
+    assert m["bottle"]["setting"] == [0.0, 0.0, cr.SHOWN.length + cr.STOP_GAP]
+    got = {b["key"]: b["setting"] for b in m["bottles"]}
+    assert got["standard"] == pytest.approx([12.73, 68.87, 300.5], abs=0.01)
+    assert set(m["adjust"]) == {"front", "rear", "stop"}
+    assert [s["moves"] for s in m["saddles"]] == ["front", "rear"]
+
+
+@pytest.mark.no_fabricate
+def test_the_saddles_hold_a_full_6_l():
+    """``cradle_report.saddles``: every printed part of the saddles, the lip gauge and the base
+    stop under its allowable at a full 6 L's worst (hung on its thumbscrew, leaning on the
+    gate at rest with a corkscrew's push, on the gauge at full tilt with no friction), the
+    post and the thumbscrew 3 x under their yield, the gate's lock gripping 3 x its load."""
+    from spiderpig.cradle_report import PLA_ALLOW, saddles
+
+    got = saddles(-50.0, 30.0, 0.75)
+    rows = {r["part"]: r for r in got["rows"]}
+    for r in got["rows"]:
+        if r.get("limit_mpa") == PLA_ALLOW:
+            assert r["stress_mpa"] <= PLA_ALLOW, r
+        else:
+            assert r["sf"] >= 3.0, r
+    assert rows["rear post (NETRF12, bending)"]["load_n"] > 10.0     # (N·m: the couple)
+    assert rows["base stop's lock (its grip)"]["backstop_mm"] < 10.0
 
 
 @pytest.mark.server
@@ -823,9 +860,9 @@ def test_the_packer_levels_drops_and_fills_in_order():
     assert order.relations(np.array([[[10, 70, 10], [50, 80, 50]]], float)) == ({0}, set())
 
 
-PACK_BOX = {"decanter_hinge": (665.0, 310.0, 590.0)}
-"""A's flat-pack box, outside (x, height, z; mm): at most (since the 6 L: its rear saddle and
-two rear liners, about 104 mm thick, lie over the panels)."""
+PACK_BOX = {"decanter_hinge": (705.0, 305.0, 610.0)}
+"""A's flat-pack box, outside (x, height, z; mm): at most (the base board's 684 x 584 mm since
+the stand's 2026-10-14 refit, the walls round it)."""
 MODULE_BOX = (30.0, 500.0, 600.0)
 """A cradle packed as modules (B): its box, outside, over its base board's length and width
 (x, z: the board lies at the bottom, the other pieces over it) at most 30 mm (its walls and

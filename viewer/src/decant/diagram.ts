@@ -1,7 +1,7 @@
 /**
  * The cradle page's mechanism diagram: one side of the linkage in its plane, as SVG, at
  * a clip fraction. The ground pivots, the crank, every link (the cradle link picked out),
- * the magnum and the saddles riding the cradle, the crankpin's circle, and the mouth: the
+ * the bottle and the V blocks riding the cradle, the crankpin's circle, and the mouth: the
  * point the whole swing turns about.
  */
 import {

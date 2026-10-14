@@ -850,3 +850,80 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/construction/handcrank.py`, `spiderpig/config.py`,
   `spiderpig/hardware/cradle_catalog.py`, `spiderpig/cradle_pack.py`,
   `spiderpig/cradle_report.py`, `viewer/src/decant/{pack,main}.ts`, `tests/test_cradle.py`.
+
+### 2026-10-14: the cradles' saddles adjust; the adapters go (user: "Two knobs plus the stop replace all the adapters")
+
+- **What:** the user's choice: "Each saddle's V rides up or down on a thumbscrew, with a
+  scale marked by bottle size. A flip-down lip gauge marks where the mouth goes, and the
+  existing base stop locks the bottle there. The top stays open, so bottles still lay in
+  from above." The 10 printed adapter liners and collars are gone
+  ([DECANTER.md](DECANTER.md), "The saddles, adjustable").
+  - **The saddles:** each is a carrier on its two tie rods and a V block that rides up and
+    down in it on a thumbscrew, with a scale beside it (`cradle.setting`, `cradle.SADDLES`).
+    - The front block slides in a box guide on an M6 screw: 15 mm of travel, the 6 L's neck
+      at the bottom and the 750 ml's 12.7 mm up.
+    - The rear block rides a NETRF12 post and an M8 lead screw: 72 mm of travel, 68.9 mm up
+      for a 750 ml.
+    - At a 6 L methuselah's setting both sit on their tie rods. The carriers' bottoms are
+      the old saddles', and `decanters.TIES` didn't move, so neither cradle re-plans.
+  - **The lip gauge** (`cradle._gauge`) flips down from the front carrier onto the top of the
+    mouth's rim and stays down while pouring: it is the forward stop.
+  - **The base stop** (`cradle._rails`, `cradle._gate`) is a gate on the rear V block's flats
+    and the rails behind it, clamped anywhere by an M5 in a slot. It serves every base from
+    285 to 576 mm, inside the rear V too.
+  - **The model** draws a 6 L methuselah (`cradle.SHOWN`), the V blocks at their lowest:
+    the envelope for the clashes, the room and the loads. `cradle.at_setting` sets it for
+    another bottle (`cradle.bottle_hits` checks every size), and the cradle page moves the
+    nodes (`motion`'s `bottles`, `adjust`).
+- **Why:**
+  - **The thumbscrew, not detents:** it is exact for any bottle and adds no depth. A 5 mm
+    detent pitch puts the mouth up to 0.8 mm off the pivot.
+  - **Not the tie rods in vertical slots:** the slot runs the whole travel under the rod, so
+    the rear block would hang 69 mm deeper, onto the decanter's axis at rest.
+  - **The gauge as the forward stop:** a lip over the base's heel can't hold a bottle
+    sliding toward its mouth, because the heel tapers toward the base. Only the shoulder
+    and the mouth's face face the mouth. A shoulder stop would be a third adjustment, 45 mm
+    along the axis, where the light stands. The gauge is on the pivot for any bottle, its
+    pad over the bore, the stream below it, its load along its hinge.
+  - **The 12 mm post:** the rear screw holds its block at one end, so a bottle's weight at
+    the axis rolls the block, about 11 N·m with a 6 L hung on the screw. On a NETRF10 post
+    that is yield SF 2.3; the NETRF12 gives 3.4. Gussets carry the couple into the block.
+- **Numbers** (2026-10-14):
+  - The saddles at a full 6 L's worst: printed parts at 0.2-5.4 MPa against a 10 MPa
+    allowable for a held load; the post 3.4 and the screw 6.0 x their yield; the gate's
+    lock grips 3.7 x its load.
+  - Clash-free over the swing at every size's setting, on A and B.
+  - The room is no smaller: 250 mm across up to 165 mm, 125 across above, the rim at most
+    380.
+  - The lowest point at rest is unmoved, 18.8 mm over the board (the rails' end).
+  - About USD 23 more bought per cradle (`hardware.cradle_catalog`, pages rendered
+    2026-10-13), the post most of it.
+- **Corrections to 2026-10-13's numbers:**
+  - **The load case kept the drawn magnum's adapter liners.** `cradle_report.masses` was
+    asked to leave the adapters out when `any(adapter(bottle))` was false. For the 6 L it
+    was `(0, 0, 43)`: its collar made it true, so the magnum's 1.25 kg of rear and front
+    liners stayed in the 6 L's load case. Without them the crank's peak is 31.3 N·m on A
+    (SF 1.44, was 1.33) and 29.5 on B (SF 1.52, was 1.41); 22.1 and 21.9 N at the grip.
+  - **The stand counted the spare adapters as its own weight.** The 4 collars and 8 spare
+    liners drawn on the table, about 3.8 kg of solid PLA on the frame, were in
+    `cradle_report.stability`'s standing mass. They lowered its centre of mass, so a full
+    6 L "tipped past 25°" (A 25.6°, B 26.0°). Without them: A 21.3°, B 20.0°, both over
+    the rear edge.
+    - The coordinator's call: grow the board, keep the bars. `cradle.BASE_HALF` 265 → 292
+      (584 mm across); the rear edge 440 → 482 mm behind the mouth on A, 466 → 524 on B.
+    - Now A tips at 25.3° (a 30.2 N push at the bottle's top), B at 25.8° (31.6 N).
+    - The room behind the base board: 100 mm (was 150: the base stop's rails reach 84 mm
+      past A's edge, 42 past B's).
+- **Tried and dropped:**
+  - **A two-rail cradle**, its rails' spacing set by one screw: the V opens instead of
+    rising, the rods guide it, and a fixed spine passes between the rails. But it isn't the
+    user's "V rides up or down", and it needs a left-hand thread or a rack.
+  - **Two screws per V linked by a belt in the carrier's floor:** no roll couple, but a
+    belt to tension in printed parts. The front ties sit 20 mm apart, too close for one
+    between them.
+  - **A shorter rear V with the 6 L's base carried by the stop:** a third support. Its
+    height decides how much the bottle tips, so the mouth leaves the pivot.
+- **Where:** `spiderpig/construction/cradle.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/cradle_pack.py`, `spiderpig/hardware/cradle_catalog.py`,
+  `spiderpig/hardware/bom.py`, `viewer/src/decant/{motion,pour,diagram}.ts`,
+  `tests/test_cradle.py`.
