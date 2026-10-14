@@ -338,6 +338,8 @@ class ServoSpec:
     rated_kgcm: float | None = None           # rated (continuous) torque, if published
     voltage: tuple[float, float] | None = None
     interface: str = ""
+    protocol: str = ""              # its bus's (actuators.controllers.PROTOCOLS): what a
+    #                                 controller must speak, what control.servos writes
     notes: str = ""
     sources: tuple[str, ...] = field(default_factory=tuple)
     # optional detail

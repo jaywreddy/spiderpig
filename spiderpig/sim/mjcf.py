@@ -677,11 +677,24 @@ DECK_FALLBACK_G = 113.0
 mass on the Strider double and the Klann quad: plate, rails, hardware, electronics)."""
 
 
+def kit_mass_g() -> float:
+    """The deck kit's catalogued electronics (g: :data:`actuators.controllers.DECK_KIT`'s
+    items with a ``mass_g``): what a bare deck's robot carries of its own (the role
+    ``controller`` none)."""
+    from spiderpig.actuators.controllers import DECK_KIT, get
+    from spiderpig.hardware.catalog import get as item
+
+    return sum(q * float(item(k).dims.get("mass_g", 0.0)) for k, q in get(DECK_KIT).bom)
+
+
 def payload_g(rm: RobotModel, params: SimParams) -> float:
     """The point mass the base carries: :attr:`SimParams.payload_g`, plus
-    :data:`DECK_FALLBACK_G` when the robot has no electronics deck."""
-    fitted = rm.meta.get("deck", {}).get("fitted", False)
-    return params.payload_g + (0.0 if fitted else DECK_FALLBACK_G)
+    :data:`DECK_FALLBACK_G` when the robot has no electronics deck, or :func:`kit_mass_g`
+    when its deck is bare (your own electronics, at the kit's mass)."""
+    deck = rm.meta.get("deck", {})
+    if not deck.get("fitted", False):
+        return params.payload_g + DECK_FALLBACK_G
+    return params.payload_g + (kit_mass_g() if deck.get("electronics") is False else 0.0)
 
 
 def _with_payload(mb: MjBody, grams: float, pos) -> tuple[float, np.ndarray, np.ndarray]:

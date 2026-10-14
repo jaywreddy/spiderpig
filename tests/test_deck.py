@@ -183,6 +183,59 @@ def test_the_bom_lists_the_deck(built):
         assert rows[key].pack_price_usd, key        # every one priced (2026-10-14)
 
 
+def test_the_deck_carries_the_controllers_kit(strider):
+    """The electronics the deck draws and lists are the role ``controller``'s deck kit
+    (:data:`actuators.controllers.DECK_KIT`), item for item: the walker's default."""
+    from collections import Counter
+
+    from spiderpig.actuators.controllers import DECK_KIT
+    from spiderpig.actuators.controllers import get as controller
+
+    cfg, mech = strider
+    ctl = controller(DECK_KIT)
+    assert cfg.role("controller") == DECK_KIT
+    assert ctl.mount == "deck"
+    assert ctl.drives == "bus_servo"
+    kit = dict(ctl.bom)
+    got = Counter(b.bom_key for b in mech.bodies if b.bom_key in kit)
+    for x in mech.bom_extras:
+        if x.key in kit:
+            got[x.key] += x.qty
+    assert dict(got) == kit
+
+
+@pytest.mark.slow
+def test_a_bare_deck_carries_no_electronics_and_still_goes_in(robot):
+    """The role ``controller`` none (your own electronics): the deck is the plate on its
+    rails, its wire and cable-tie slots and notches, nothing of the kit bought, and it still
+    clears the cycle and lowers straight in; the guide puts the bare plate on, no harness."""
+    from spiderpig.actuators.controllers import DECK_KIT
+    from spiderpig.actuators.controllers import get as controller
+    from spiderpig.construction.assembly import assembly_steps
+
+    cfg = BuildConfig(linkage="klann", module="quad", roles=(("controller", "none"),))
+    mech = cache.cached_robot(cfg, 1.0)
+    info = mech.meta["deck"]
+    assert info["fitted"]
+    assert info["electronics"] is False
+    names = {b.name for b in _deck(mech)}
+    assert "deck_plate" in names
+    assert not names & set(ELECTRONICS.values())
+    kit = dict(controller(DECK_KIT).bom)
+    assert not [b.name for b in mech.bodies if b.bom_key in kit]
+    assert not [x.key for x in mech.bom_extras if x.key in kit]
+    c = deck_mod.deck_clearance(mech)
+    assert c["ok"], c
+    full = robot("quad", 1.0)                     # the same robot with its kit
+    plate = next(b for b in mech.bodies if b.name == "deck_plate").part
+    kit_plate = next(b for b in full.bodies if b.name == "deck_plate").part
+    assert plate.volume > kit_plate.volume        # fewer holes: no board, strap, switch
+    _, design = cache.cached_design(cfg)
+    titles = [s.title for s in assembly_steps(mech, design)]
+    assert "Deck plate, on the bench" in titles
+    assert "Bus cables and harness" not in titles
+
+
 def test_the_deck_plate_is_on_the_dxf_sheets(strider):
     _, mech = strider
     sheets = pack(mech, (300.0, 300.0))
@@ -324,13 +377,17 @@ def test_the_battery_cradle_is_screwed_to_the_deck(strider):
 def test_no_deck_carries_its_mass_as_a_payload():
     from types import SimpleNamespace
 
-    from spiderpig.sim.mjcf import DECK_FALLBACK_G, SimParams, payload_g
+    from spiderpig.sim.mjcf import DECK_FALLBACK_G, SimParams, kit_mass_g, payload_g
 
     p = SimParams()
     assert p.payload_g == 0.0
     assert payload_g(SimpleNamespace(meta={"deck": {"fitted": True}}), p) == 0.0
     assert payload_g(SimpleNamespace(meta={"deck": {"fitted": False}}), p) == DECK_FALLBACK_G
     assert math.isclose(payload_g(SimpleNamespace(meta={}), p), DECK_FALLBACK_G)
+    # a bare deck (controller none): the kit's catalogued electronics ride as a payload
+    bare = SimpleNamespace(meta={"deck": {"fitted": True, "electronics": False}})
+    assert payload_g(bare, p) == pytest.approx(kit_mass_g())
+    assert 55.0 < kit_mass_g() < 70.0             # board, LiPo, charger, BMS, switch, nylon
 
 
 def test_the_deck_nuts_roof_is_nut_roof_thick():

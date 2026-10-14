@@ -12,7 +12,10 @@ fields (``field``): ``pillar``, ``pin``, ``crank``. Every later role lives in
 ``BuildConfig.roles`` (``(role, key)`` pairs, only those that differ from the role's
 default), applies to the linkage kinds it lists (``kinds``: required, so a new role never
 reaches the walkers by accident), and is written into a resolved spec for every design it
-applies to (a stored design never depends on a default that later moves).
+applies to (a stored design never depends on a default that later moves), but where its
+key is the role's ``implicit`` one: what the designs of a kind carried before the role
+reached it (the walkers' deck electronics, the role ``controller``), left out so their
+ids stay.
 
 A role filled once per design is ``per="design"``. One filled per drive or per joint
 (``"drive"``, ``"joint"``: an arm's transmission on each of its inputs) takes one key for
@@ -50,7 +53,10 @@ class Role:
     design, or per drive / joint (:data:`PER`). ``optional``: :data:`NONE` empties it.
     ``robot``: a part of the robot round the side, not of the side (an arm's turntable, its
     tool): the side's design ignores it (:meth:`config.BuildConfig.side_config`), so one
-    plan serves every choice of it."""
+    plan serves every choice of it. ``implicit``: the key designs carried, unnamed, before
+    the role reached their kind (a walker's deck electronics, before 2026-10-14): where it
+    is a design's default it isn't written into the resolved spec, so the designs stored
+    before keep their ids (and read back with it: never move that default)."""
 
     name: str
     title: str
@@ -62,6 +68,7 @@ class Role:
     optional: bool = False
     help: str = ""
     robot: bool = False
+    implicit: str = ""
 
     def __post_init__(self):
         if self.per not in PER:
@@ -181,7 +188,10 @@ register(Role("tool", "tool", "spiderpig.construction.tools:TOOLS", ("arm",),
               default="suction_cup", optional=True, robot=True,
               help="what the arm holds on its flange: a vacuum cup, fixed or on a wrist"))
 register(Role("controller", "controller", "spiderpig.actuators.controllers:CONTROLLERS",
-              ("arm",), default="skr_pico_pi_zero", optional=True, robot=True,
-              help="the electronics that drive the steppers and run Klipper: a board with "
-                   "its drivers, the host computer, the supply and the cables (none: your "
-                   "own board, its pins left to fill in the Klipper config)"))
+              ("walker", "arm"), default="spiderpig.actuators.controllers:default_key",
+              optional=True, robot=True, implicit="esp32_bus_servo",
+              help="the electronics that drive the motors: a walker's serial-bus servo "
+                   "board, battery and harness on its deck (esp32_bus_servo), an arm's "
+                   "stepper board running Klipper with its host computer, supply and cables "
+                   "(skr_pico_pi_zero); none: your own (a walker's deck bare, an arm's "
+                   "Klipper pins left to fill)"))

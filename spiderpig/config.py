@@ -491,13 +491,21 @@ class BuildConfig:
     def applied_roles(self) -> dict[str, str]:
         """Every :mod:`spiderpig.roles` role kept in ``roles`` that applies to this design,
         with the key that fills it (:data:`roles.NONE` for an emptied one), and every
-        per-slot key named: what the resolved spec writes in."""
+        per-slot key named: what the resolved spec writes in. A role filled by its
+        ``implicit`` key, its default here, is left out (:class:`roles.Role`: the designs
+        stored before it reached their kind keep their ids)."""
         from spiderpig import roles as rolemod
 
         kind = self.lk.kind
         named = dict(self.roles)
-        out = {r.name: named.get(r.name) or rolemod.default_key(r.name, self)
-               for r in rolemod.extra() if kind in r.kinds}
+        out = {}
+        for r in rolemod.extra():
+            if kind not in r.kinds:
+                continue
+            default = rolemod.default_key(r.name, self)
+            key = named.get(r.name) or default
+            if not (r.implicit and key == r.implicit == default):
+                out[r.name] = key
         out.update({q: k for q, k in named.items() if "@" in q})
         return out
 

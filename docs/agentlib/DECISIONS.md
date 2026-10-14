@@ -1107,3 +1107,39 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   parts, 187 before; 17 laser parts, 30 before; DXF sheets 4 -> 3, one of them now the
   base's 1/8 in 5052; BOM 54 lines, $477.75, $558.28 before; audit OK, 3 warnings).
   DESIGNS.md regenerated from it.
+
+### 2026-10-14: one controller role and one control surface for every robot (wave 1)
+
+- **The decision:** a walker's electronics are the role `controller`, the arm's role, not
+  catalog items the deck hard-wires; `spiderpig control` drives a walker's servos through
+  the arm's entry point. Toward the user's "one seamless repo", not two forked code paths.
+- **What a controller drives decides where it goes:** `Controller.drives` (`stepper` or
+  `bus_servo`) is matched to the design's motors (`controllers.motors_of`: the role
+  `servo`'s bus servos or the role `actuator`'s steppers), never to the kind's name. The
+  walker's set (the ESP32 servo driver, the 2S LiPo, charger, protection board, switch and
+  harness) is `esp32_bus_servo`, its parts the deck's bodies (`mount="deck"`,
+  `controllers.DECK_KIT`); `none` leaves the deck bare (the plate on its rails, its wire
+  and cable-tie slots; nothing of the kit bought; the guide's "Deck plate" step, no
+  harness; the sim carries the kit's 61 g for your own; an audit warning). A stepper board
+  on a walker, or the deck's board on an arm, is a `ConstructionError`.
+- **Mechanisms:** none carried electronics (no robot is made of one side), so the role
+  stays the walkers' and the arms'; `spiderpig control` still sets a mechanism's one servo
+  up (your own board).
+- **The ids stay:** a role reaching the walkers would have written `controller` into every
+  walker's resolved spec and moved every stored design's id. `roles.Role.implicit` names
+  what the designs carried before the role: where it is the default it isn't written
+  (`BuildConfig.applied_roles`), and it is pinned (never move a walker's default). The
+  resolved specs of the eight gate designs, a side, and an XL330 walker hash as at
+  `f3bd61b` (`design.spec_hash`, `side_hash`).
+- **The servos' setup** (`control.servos`): each crank's servo (a walker's `L` ID 1, `R`
+  ID 2), its legs' crank phases, the forward sense facing its horn (the mirrored sides
+  turn opposite ways: `sim.mjcf.crank_sign` and the sides' mirror), the zero (the first
+  crankpin's angle at crank angle 0) and `servos.json`: IDs, baud, speed mode, the torque
+  limit the joints are rated at, the protocol's register writes (Feetech STS, DYNAMIXEL
+  2.0), the sim's phase-lock gains. Zeroing is once per servo: its absolute encoder's
+  offset (`control.servos.zero_offset`; the STS's own middle calibration). Whether the
+  servo's positive speed is the forward sense is checked by a jog and kept as a `sign`.
+- **Found, not changed:** an XL330 or XL430 walker gets the deck's ESP32 board, which
+  speaks Feetech's protocol, not DYNAMIXEL's (as before this change: its BOM is the same);
+  `spiderpig control servo` says so (`controllers.protocol_note`). Changing its default
+  would move those designs' ids and BOMs: the user's call.

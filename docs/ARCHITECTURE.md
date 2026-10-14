@@ -116,7 +116,8 @@ at the result:
 - **an MCP server** that offers the same operations to AI agents speaking the Model
   Context Protocol.
 
-It does not write firmware or a gait controller for the servos. Its strength analysis is
+It writes the servos' setup (IDs, mode, torque limit, each crank's zero: `spiderpig
+control servo`), not firmware or a gait controller for them. Its strength analysis is
 of the joints and link plates only, at the design's own simulated loads (section 6.2); it
 does no finite-element analysis of the parts. It does not invent mechanisms: every
 linkage is a program in its catalog, and every part follows fixed construction rules.
@@ -1225,7 +1226,15 @@ its z band, and `deck_clearance` proves it over the whole cycle. The deck lowers
 down past the pillars' inner screw heads: `deck.path_notches` notches the plate round every
 static part in its way, `deck.nut_z` moves the deck screws and their nuts into the bay where a notch
 would leave a deck screw hole too little web, and `deck.deck_path` checks the way on the
-parts' geometry (`deck_clearance`'s `blocked`, an audit problem).
+parts' geometry (`deck_clearance`'s `blocked`, an audit problem). What it carries is the
+role `controller` (`actuators/controllers.py`, the same role as an arm's stepper board):
+a walker's default `esp32_bus_servo` is the deck's kit (`controllers.DECK_KIT`, its parts
+the deck's bodies, `Controller.mount`), and `none` (your own electronics) leaves the deck
+bare: the plate on its rails with its wire and cable-tie slots, nothing of the kit bought
+(`deck_parts`' `kit`, `meta["deck"]["electronics"]`; the sim carries the kit's catalogued
+mass for it, `sim.mjcf.kit_mass_g`). The role reached the walkers after their designs
+were stored, so its walker default is the role's `implicit` key: it is left out of their
+resolved specs and their ids stay (`roles.Role`, `BuildConfig.applied_roles`).
 
 The chassis and the deck sit outside both sides' stacks, so the planner never sees them;
 they are checked for collisions by intersecting solids at sampled crank angles (and the
@@ -1377,8 +1386,24 @@ robot is an entry rather than an edit across the stages:
   feet and tool) and assembles the robot round the fabricated side (`assemble_robot`).
   The robot-level roles (`roles.Role.robot`) are dropped from the side's config
   (`BuildConfig.side_config`), so one plan serves every turntable and tool.
-- **Control** (`spiderpig/control/`, `spiderpig control`): an arm driven by steppers on a
-  3D-printer board running Klipper. `control.arm.ArmModel` is the arm's forward and inverse
+- **Controllers** (role `controller`, `actuators/controllers.py`): the electronics that
+  drive a robot's motors, chosen by what they drive (`Controller.drives`, matched to the
+  design's motors by `controllers.motors_of`: the role `servo`'s bus servos or the role
+  `actuator`'s steppers, never the kind's name): a walker's serial-bus servo board and
+  battery on its deck (`esp32_bus_servo`), an arm's stepper board running Klipper
+  (`skr_pico_pi_zero`), or `none`. A board that can't drive the design's motors is a
+  `ConstructionError` (`construction.robot.controller_of`).
+- **Control** (`spiderpig/control/`, `spiderpig control`): one entry point for every
+  robot's motors, its actions by what drives the design. A crank's serial-bus servos
+  (`control.servos`): `axes` lists each crank's servo (a walker's `L` and `R`, bus IDs 1
+  and 2; a mechanism's one), its legs' crank phases and the sense, facing its horn, that
+  walks forward (mirrored sides turn opposite ways); `servo` writes `servos.json`: the
+  IDs, the bus's baud, the speed mode, the torque limit the joints are rated at
+  (`config.torque_limit_nm`), the protocol's registers (`control.servos.REGISTERS`:
+  Feetech STS, DYNAMIXEL 2.0) and the sim's phase-lock gains for the host; `homing`
+  zeroes each crank once (its absolute encoder's offset at the design's crank angle 0,
+  `control.servos.zero_offset`). An arm driven by steppers on a 3D-printer board running
+  Klipper: `control.arm.ArmModel` is the arm's forward and inverse
   kinematics in the URDF's `base_link` frame (the turntable's angle from the target's
   bearing, the planar inputs by bounded least squares from a searched start); each joint's
   angle maps to its motor's microsteps through its transmission's exact ratio and its
@@ -1977,6 +2002,7 @@ The command line predates the agent surface. `spiderpig <command>` dispatches to
 | `sim` | a MuJoCo run |
 | `tune` | search phases and parameters |
 | `report` | compare every linkage |
+| `control` | a robot's motors: an arm's kinematics and Klipper config, a walker's bus servos' setup and zeroes |
 | `mcp` | the MCP server |
 
 The commands that take a design share options: `--linkage` (Strider by default), `--module`
