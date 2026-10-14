@@ -496,7 +496,8 @@ class _Drive:
         planned = [t for _, t, r in self.order if r["key"] is not None]
         thinnest = min(planned, default=plan.top)
         live = [mm for mm in self.modes if mm not in self.gave_up]
-        out = [f"{plan.height:.2f} mm in {plan.top + 1} layers (heads {plan.heads})"]
+        out = [f"{plan.height:.2f} mm in {plan.top + 1} layers (heads {plan.heads})"
+               + (f", a standoff holding it {plan.hold:.2f} mm apart" if plan.hold else "")]
         if thinnest > spec.min_top and all((mm, t) in closed for mm in live
                                            for t in range(spec.min_top, thinnest)):
             n = sum(r["nodes"] for _, t, r in self.order if t < thinnest)
@@ -508,7 +509,7 @@ class _Drive:
             need = range(spec.min_top, plan.top + 1)
         else:
             need = [t for t in range(spec.min_top, spec.max_top + 1)
-                    if prob.size_lb(t) <= plan.height + HEIGHT_TOL]
+                    if prob.size_lb(t) <= plan.height + plan.hold + HEIGHT_TOL]
         open_ = sorted((t, mm) for mm in live for t in need if (mm, t) not in closed)
         why = sorted({("its budget" if not r["expired"] else
                        f"the {spec.max_seconds:g} CPU s deadline")

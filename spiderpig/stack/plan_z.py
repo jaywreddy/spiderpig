@@ -440,6 +440,13 @@ def _fits(shapes: list[Placed], sunk: AbstractSet[SunkKey], layout: Layout, spec
     return all(v <= thick.get(k, spec.pitch) + EPS_Z for k, v in want.items())
 
 
+def _held(claims: Iterable[Claim], layout: Layout) -> float:
+    """The most any claim's parts hold the stack apart beyond ``layout``'s z, mm
+    (:attr:`Claim.hold`)."""
+    return max((c.hold(layout) for c in claims  # pyright: ignore[reportOptionalCall]
+                if c.hold is not None), default=0.0)
+
+
 def _descend(claims: tuple[Claim, ...], spec: StackSpec, layers: Mapping[str, int], top: int,
              choices: Mapping[str, object], gaps: dict[int, float], thick: dict[int, float],
              shapes: list[Placed], sunk: AbstractSet[SunkKey], memo: dict | None,
@@ -450,10 +457,14 @@ def _descend(claims: tuple[Claim, ...], spec: StackSpec, layers: Mapping[str, in
     settling only grows a gap, so a gap a head needed at an earlier pass's z (a Chicago
     screw's shims, at another barrel) would otherwise stay taller than the plan needs. The
     plan's height is the objective (:meth:`StackProblem.solve`): the least z a layering
-    builds at, not the first. ``floor``: the least each gap a claim needed thickened may be
-    (:func:`_thicker_gaps` found it the least that builds)."""
+    builds at, not the first. A gap is lowered only where the stack really is lower: its z
+    with what a claim's parts then hold it apart beyond it (:func:`_held`: a standoff longer
+    than its column; the plates stand on it), which :func:`_take_up` then takes into a gap.
+    ``floor``: the least each gap a claim needed thickened may be (:func:`_thicker_gaps`
+    found it the least that builds)."""
     layout = Layout(layers, top, spec.pitch, choices, dict(gaps), dict(thick), final=True)
     floor = floor or {}
+    real = layout.height() + _held(claims, layout)
     for _ in range(4):
         moved = False
         for k in sorted(gaps):
@@ -472,9 +483,54 @@ def _descend(claims: tuple[Claim, ...], spec: StackSpec, layers: Mapping[str, in
                     got = _make_all(claims, trial, memo)
                 except PlanReject:
                     continue
-                if _fits(got, sunk, trial, spec, layers, thick):
+                if not _fits(got, sunk, trial, spec, layers, thick):
+                    continue
+                now = trial.height() + _held(claims, trial)
+                if now < real - EPS_Z:
+                    gaps, shapes, layout, real, moved = trial_gaps, got, trial, now, True
+                    break
+        if not moved:
+            break
+    return gaps, shapes, layout
+
+
+def _take_up(claims: tuple[Claim, ...], spec: StackSpec, layers: Mapping[str, int], top: int,
+             choices: Mapping[str, object], gaps: dict[int, float], thick: dict[int, float],
+             shapes: list[Placed], sunk: AbstractSet[SunkKey], memo: dict | None
+             ) -> tuple[dict[int, float], list[Placed], Layout]:
+    """Each claim's hold (:attr:`Claim.hold`: a standoff longer than its column) taken into a
+    clearance gap of the plan, the lowest that may grow by it and still builds with no
+    other claim's hold growing: the plan's z is then what its parts stand on, the stack as
+    tall as it really is (the plates stood on the standoff anyway) and the column's links
+    held, not loose. A hold no gap takes stays (the column's play,
+    :func:`construction.wobble.column_wobble`)."""
+    layout = Layout(layers, top, spec.pitch, choices, dict(gaps), dict(thick), final=True)
+    holds = [c for c in claims if c.hold is not None]
+    for _ in range(4):
+        held = [c.hold(layout) for c in holds]  # pyright: ignore[reportOptionalCall]
+        moved = False
+        for i, h in enumerate(held):
+            if h <= EPS_Z:
+                continue
+            bridged = plate_bridged(shapes)
+            for k in sorted(gaps):
+                g = next(iter(_gap_options(k, gaps[k] + h, spec, bridged)), None)
+                if g is None:
+                    continue
+                trial_gaps = {**gaps, k: g}
+                trial = Layout(layers, top, spec.pitch, choices, dict(trial_gaps), dict(thick),
+                               final=True)
+                try:
+                    got = _make_all(claims, trial, memo)
+                except PlanReject:
+                    continue
+                now = [c.hold(trial) for c in holds]  # pyright: ignore[reportOptionalCall]
+                if (now[i] < h - EPS_Z and _fits(got, sunk, trial, spec, layers, thick)
+                        and all(n <= o + EPS_Z for n, o in zip(now, held, strict=True))):
                     gaps, shapes, layout, moved = trial_gaps, got, trial, True
                     break
+            if moved:
+                break
         if not moved:
             break
     return gaps, shapes, layout
@@ -501,7 +557,8 @@ def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
     over a pin made to length, whose ends need far more than a pitch a layer leaves them),
     once more from the layering's least z (:func:`bound_layout`, with ``fixed``: the search's
     own). Every later pass at the plan's z; then each gap as thin as the plan still builds
-    at (:func:`_descend`)."""
+    at (:func:`_descend`), and a standoff longer than its column taken into a gap it crosses
+    (:func:`_take_up`)."""
     claims = tuple(claims)
     choices = dict(choices or {})
     layers = dict(layers)
@@ -573,6 +630,10 @@ def _settle_from(topo: Topology, claims: tuple[Claim, ...], spec: StackSpec,
         raise PlanReject("the clearance gaps and the claims made at their z don't settle")
     gaps, shapes, layout = _descend(claims, spec, layers, top, choices, gaps, thick, shapes,
                                     sunk, memo, floor)
+    gaps, shapes, layout = _take_up(claims, spec, layers, top, choices, gaps, thick, shapes,
+                                    sunk, memo)
+    hold = _held(claims, layout)
     placed = settle(shapes, sunk, layout)
     return StackPlan(spec, layers, top, topo, claims, tuple(placed), choices,
-                     gaps=dict(gaps), thick=dict(thick), sunk=frozenset(sunk))
+                     gaps=dict(gaps), thick=dict(thick), sunk=frozenset(sunk),
+                     hold=round(hold, 6))

@@ -366,6 +366,12 @@ class Claim:
     :func:`construction.pivots.common.sleeve_runs`). The objective's terms after the height
     and the route (:meth:`StackProblem.key`); only what can differ between plans of one
     design need be counted.
+
+    ``hold`` (optional): at a plan's z (a final layout), how far the group's stock parts
+    hold its faces apart beyond that z, in mm (a standoff pillar longer than its column: the
+    plates stand on it, its links loose by as much). The plan's z is lowered only while no
+    claim's hold grows (:func:`stack.plan_z._descend`): a z under what the parts stand on
+    isn't a lower stack.
     """
 
     owner: str
@@ -376,3 +382,4 @@ class Claim:
     early: Callable[[Layout], Iterable[Placed] | None] | None = None
     early_deps: frozenset[str] = frozenset()
     tally: Callable[[StackPlan], tuple[float, int]] | None = None
+    hold: Callable[[Layout], float] | None = None

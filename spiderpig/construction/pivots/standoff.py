@@ -431,6 +431,19 @@ class StandoffAxle:
 
         return any(fits(sp) for n in range(1, 4) for sp in itertools.combinations(cand, n))
 
+    def hold(self, links, top: int, anchored: tuple[bool, bool], layout, air) -> float:
+        """How far the column's stock standoff (at the plan's z, ``layout``) is longer than
+        its stack between its faces, mm (0: it fits, or is shorter, its shims taking the rest
+        up): the plates stand on it that far apart (:attr:`stack.Claim.hold`; the printed
+        rings :meth:`ring_fill` makes taller take some of it up, the plates still apart)."""
+        a, b = self.faces(links, top, anchored)
+        axle = self.column_axle(set(links), b, layout.pitch, a, layout, air)
+        if axle is None:
+            return 0.0
+        span = layout.z(b)[0] - layout.z(a)[1] - air(a + 1, b - 1)
+        length = axle.segment(span, b - 1 > a and b - 1 not in links)
+        return 0.0 if length is None else max(0.0, length - span)
+
     def admissible(self, lo: float, hi: float) -> bool:
         """Whether a column whose stack between its faces is ``lo`` to ``hi`` mm in the plans
         a search's layout can become may be filled: some stock length of this construction or

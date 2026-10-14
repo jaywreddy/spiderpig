@@ -278,6 +278,32 @@ class AxleGroup(Group):
                     out.append(Placed(k, Disc(ax, d.neck), g, f"{g} neck"))
             return out
 
+        holding = getattr(self.construction, "hold", None) if self.pillar else None
+
+        def hold(L: Layout) -> float:
+            """How far the pillar's stock standoff holds its faces apart beyond ``L``'s z
+            (the construction's ``hold``; ``L`` a plan's: :attr:`stack.Claim.hold`)."""
+            assert holding is not None
+            ms = sorted(L.layers[m] for m in members)
+            mset = set(ms)
+            own: dict[int, float] = {}
+            for m in members:
+                own[L.layers[m]] = max(own.get(L.layers[m], 0.0), link_t[m])
+            free: dict[int, float] = {}
+            for n, r in room.items():
+                free[L.layers[n]] = min(r, free.get(L.layers[n], np.inf))
+
+            def air(a: int, b: int) -> float:       # (make's)
+                return sum(max(0.0, L.t(k) - own.get(k, L.t(k) if full else ctx.pitch))
+                           for k in range(a, b + 1) if 0 < k < L.top)
+
+            def reaches(k0: int, k1: int) -> bool:  # (make's blocker: none)
+                return all(k in mset or free.get(k, np.inf) >= d.neck
+                           for k in range(k0, k1 + 1))
+
+            anchored = (reaches(1, ms[0] - 1), reaches(ms[-1] + 1, L.top - 1))
+            return holding(ms, L.top, anchored, L, air)
+
         def tally(plan) -> tuple[float, int]:
             """What the axle buys and prints at a plan's z (the construction's
             ``stock_keys`` at each one's unit price, its ``prints``): the planner's
@@ -293,7 +319,8 @@ class AxleGroup(Group):
             return usd, prints(self, view, col) if prints else 0
 
         return [Claim(g, frozenset(members) | frozenset(room), make, early=early,
-                      early_deps=frozenset(members), tally=tally)]
+                      early_deps=frozenset(members), tally=tally,
+                      hold=hold if holding is not None else None)]
 
     def realize(self, build: Build, done: Realized) -> Realized:
         return self.construction.realize(self, build)

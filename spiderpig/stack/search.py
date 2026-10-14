@@ -206,9 +206,11 @@ class StackProblem:
 
     def key(self, plan: StackPlan) -> tuple:
         """What the planner minimises, in order: the stack's height (frame plate to frame
-        plate, mm: what packs, what the pillars and the pins span), the crank route's cost
-        (its added features: :attr:`StackPlan.cost`), what the stock parts the plan chooses
-        cost (:attr:`StackPlan.usd`), the parts it prints (:attr:`StackPlan.printed`); then,
+        plate, mm: what packs, what the pillars and the pins span; with what a standoff
+        longer than its column still holds it apart, :attr:`StackPlan.hold`), the crank
+        route's cost (its added features: :attr:`StackPlan.cost`), what the stock parts the
+        plan chooses cost (:attr:`StackPlan.usd`), the parts it prints
+        (:attr:`StackPlan.printed`); then,
         so that equal plans tie the same way wherever they were found, the head placement
         (this problem's rank among the searched), the stack size, the layers and the
         route. ``spec.objective`` "layers" (the proxy the planner minimised before
@@ -218,10 +220,10 @@ class StackProblem:
         search such a size on for a lower one: :class:`_Search`)."""
         tie = (self.heads_rank, plan.top, tuple(sorted(plan.layers.items())),
                repr(sorted((k, repr(v)) for k, v in plan.choices.items())))
+        height = round(plan.height + plan.hold, 4)
         if self.spec.objective == "layers":
-            return (plan.top, plan.cost, round(plan.height, 4), round(plan.usd, 2),
-                    plan.printed, *tie)
-        return (round(plan.height, 4), plan.cost, round(plan.usd, 2), plan.printed, *tie)
+            return (plan.top, plan.cost, height, round(plan.usd, 2), plan.printed, *tie)
+        return (height, plan.cost, round(plan.usd, 2), plan.printed, *tie)
 
     def size_lb(self, top: int) -> float:
         """The least height any plan of ``top + 1`` layers can have: every layer at least its

@@ -159,6 +159,9 @@ class StackPlan:
     heads: str = "gap"                  # how the plan placed heads (StackSpec.heads)
     usd: float = 0.0                    # what its stock parts cost (the claims' ``tally``)
     printed: int = 0                    # the parts it prints (the claims' ``tally``)
+    hold: float = 0.0                   # how far a stock part still holds the stack apart
+    #                                     beyond its z, mm (a standoff longer than its column
+    #                                     where no gap took it: plan_z._take_up)
 
     @cached_property
     def layout(self) -> Layout:

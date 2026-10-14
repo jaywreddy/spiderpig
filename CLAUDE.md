@@ -79,13 +79,15 @@ robot; a mechanism's `single`, one side).
   `linkage.KLANN_QUAD`. `config.default_crank` / `default_crank_sheet` read them. The
   Chicago barrels a linkage stocks on a crank: `chicago.BARRELS` (the Strider's bolt crank),
   beside `MAX_BARREL`.
-- Heads: `StackSpec.heads` "best" (sunk first); a single-plate crank plans "gap_sink".
+- Heads: `StackSpec.heads` "best": both placements searched, sunk first on a tie
+  (`stack.plan_z.HEADS_ORDER`); a single-plate crank plans "gap_sink".
 - Numbers (layers, height, parts, cost, audit verdict): `docs/agentlib/DESIGNS.md`.
 
 ## Environment
 
 - `SPIDERPIG_STORE`: the project store (default `./.spiderpig`).
-- `SPIDERPIG_PLAN_SECONDS`: the planner's CPU budget (60; outside `engine_version`'s hash).
+- `SPIDERPIG_PLAN_SECONDS`: the planner's CPU budget, each job's (60; outside
+  `engine_version`'s hash).
 - `SPIDERPIG_WORKERS=0`: no worker processes (`spiderpig/workers.py`; the planner's too).
 - `SPIDERPIG_PLAN_WORKERS`: the planner's forked workers (`stack.drive.workers_for`; unset: up
   to `stack.drive.MAX_WORKERS`). The plan is the same with any number.
