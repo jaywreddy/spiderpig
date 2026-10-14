@@ -64,8 +64,12 @@ engine). It runs when
 
 - the PR carries the label `slow`: adding it starts a run at once (the workflow listens
   for `labeled`), and every push runs it again while the label stays (`gh pr edit N
-  --add-label slow`; remove the label to stop). Adding any label re-runs the cheap jobs
-  too: none of them is ever skipped, so a skipped check can't stand in for a failed one;
+  --add-label slow`). Removing the label starts nothing (`unlabeled` isn't a trigger): the
+  later pushes skip the slow tier, and a run already going goes on until it ends or is
+  cancelled (`gh run cancel RUN`). Adding any other label re-runs the cheap jobs too
+  (none of them is ever skipped, so a skipped check can't stand in for a failed one), in a
+  concurrency group of its own: it never cancels the in-flight run, slow tier and all, nor
+  starts the slow tier again;
 - or on a manual run of the workflow: Actions > CI > Run workflow on a branch, or
   `gh workflow run ci.yml --ref BRANCH` (every job, the slow tier among them).
 
@@ -77,7 +81,9 @@ the slow tests (`-m "slow and not e2e" -n 4`, with node and
 `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`), the browser tests (`mise run viewer-build`, Playwright's
 Chromium, `-m e2e`; `SPIDERPIG_SHOTS` screenshots kept as an artifact) and the identity
 gate as a determinism check: CI has no baseline, so it snapshots the tree twice, each in a
-fresh store, and `compare` must say identical. Each job keeps the fabrication cache under
+fresh store, and `compare` must say identical (and every design pass its audit: a first
+snapshot whose audit fails, exit 3, still goes on to the compare, then fails the job).
+Each job keeps the fabrication cache under
 its own key, starting from the quick job's entries for the same engine.
 
 `mise run doc-check` (`tests/doc_check.py`) resolves every backticked dotted name, path,
@@ -331,7 +337,8 @@ within 1e-9 relative / 1e-6 mm. Then every design's own audit (2026-10-14): a de
 audit has a problem is listed (`FAILS ITS AUDIT`) and the exit status is 3 where it would
 have been 0, unless `KNOWN_AUDIT_FAILURES` says why it fails (the demo `klann` quad's long
 pins, the user's call: a known failure is listed, and one that passes is reported for the
-table to lose it); `mise run gate -- audit DIR` checks a snapshot alone, and the slow
+table to lose it); with an identity difference too, `compare` exits 4 (order differs) or
+5 (DIFFERENT), so neither verdict hides the other (`identity_gate.exit_status`); `mise run gate -- audit DIR` checks a snapshot alone, and the slow
 `tests/test_gate_audits.py` runs the eight audits (a known failure a strict `xfail`).
 
 **Newest baseline** (wave 2, 2026-10-14): `~/.cache/spiderpig/gate/platform-78e35e8/`, from

@@ -142,20 +142,25 @@ story), now `platform-77c117c`, eight designs.
 | merge | kinds by capability (`Linkage.ranged` / walks), drives by role, one screw picker | done |
 
 **Open** (each with its DECISIONS.md entry):
-- **Precision and strength targets.** The arm's budget reports against
-  `precision.DEFAULT_TARGET_MM` and the strength check rates joints, but neither holds a
-  design to a stated target the audit fails on (an ISO 9283 repeatability for
-  `palletizer_reach`, a safety factor per joint kind); the budget's unverified figures (the
-  pairs' tilt, belt span stiffness, rotor inertias) want a hardware run (a dial
-  indicator) to replace them.
+- **Precision and strength targets.** Done in part (2026-10-14, DECISIONS.md): a spec's
+  `precision` section states targets for any linkage with an output (`rp_mm` and
+  `repeatability_mm` hard by default) and `verify` fails a hard one missed (`api.precision`,
+  `PrecisionReport`); a jam SF under 1 fails `verify` and the audit on a walker and an
+  arm, an arm's at its own static loads (`strength.arm_loads`). Left: a cranked
+  mechanism's joints aren't rated (its loads are what it drives); the audit (`spiderpig audit`, the
+  gate's) judges no precision target, only the joints; `palletizer_reach`'s RP is recorded
+  (the scorecard), not held to a stated number; one jam threshold for every joint kind, not
+  a safety factor per kind; and the budget's unverified figures (the pairs' tilt, belt span
+  stiffness, rotor inertias) want a hardware run (a dial indicator) to replace them.
 - **One MuJoCo emitter.** Done (2026-10-14, DECISIONS.md): `spiderpig/sim/mjcf.py` writes
   every kind's model over `kinematics.RobotTree`; `spiderpig sim` holds an arm at its pose.
   `verify("full")` holds a fixed design there too (`sim.holds`). Left: the live session
   (`/ws/sim`) is a walker's.
 - **Agent and viewer surfaces.** The viewer's precision overlay (the error budget over the
-  workspace) isn't drawn; the joint sliders were checked by tests, never in a browser here;
-  the API and the MCP have no operation for the arm's precision budget or its control
-  outputs (Klipper config, homing plan): `spiderpig precision` and `spiderpig control` only.
+  workspace) isn't drawn; the joint sliders were checked by tests, never in a browser here.
+  The precision budget is an API stage and an MCP tool (`api.precision`, a job), and a task
+  finds its candidates there (`api.candidates`); the control outputs (Klipper config,
+  homing plan, a walker's `servos.json`) are still `spiderpig control` only.
 - **The walkers' out-of-plane metric.** The arm's budget solves its links' out-of-plane
   bending through the loops (`precision.out_of_plane`); a walker's legs have no such number
   (wobble is the strength check's), so a thinner or acrylic link can't be judged on it.
