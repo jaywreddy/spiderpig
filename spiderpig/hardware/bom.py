@@ -235,14 +235,22 @@ def cutting_rows(made: list[MadeRow]) -> list[CutRow]:
     return sorted(out, key=lambda c: (c.service, c.sheet))
 
 
-def same_files(parts: list[Part], rel: float = 1e-5) -> list[Part]:
+CUT_TOL_CM = 0.002
+"""How far two rows' cut lengths may differ and still be one shape (cm, absolute):
+:func:`cut_length_cm` settles each to 0.001 cm, so a shape's congruent copies and mirrors
+can read one step apart (a rounding tie either side), which a relative 1e-5 split into
+two files for any cut under 100 cm."""
+
+
+def same_files(parts: list[Part], rel: float = 1e-5,
+               cut_tol: float = CUT_TOL_CM) -> list[Part]:
     """``parts`` (``(area cm^2, qty)``, or ``(area, qty, cut cm)``) with the rows of one
-    shape (their area and cut length within ``rel``) as one: the quantity a service's price
-    break sees is a file's, and a file is a shape (congruent parts and their mirrors), which
-    an ungrouped BOM (``group=False``) lists a row each; so its cutting costs what the
-    grouped BOM's does. Two shapes of nearly one area stay two files, as SendCutSend quotes
-    them (the Strider's b4 and b8, 8.66 and 8.65 cm^2: until 2026-10-14 ``rel`` was 1e-3 and
-    they were priced as one file of 8)."""
+    shape (their area within ``rel``, their cut length within ``cut_tol`` cm) as one: the
+    quantity a service's price break sees is a file's, and a file is a shape (congruent
+    parts and their mirrors), which an ungrouped BOM (``group=False``) lists a row each; so
+    its cutting costs what the grouped BOM's does. Two shapes of nearly one area stay two
+    files, as SendCutSend quotes them (the Strider's b4 and b8, 8.66 and 8.65 cm^2: until
+    2026-10-14 ``rel`` was 1e-3 and they were priced as one file of 8)."""
     def near(x: float, y: float) -> bool:
         return abs(x - y) <= rel * max(abs(y), 1.0)
 
@@ -250,7 +258,7 @@ def same_files(parts: list[Part], rel: float = 1e-5) -> list[Part]:
     for a, q, *rest in sorted(parts, key=lambda p: (p[0], *p[2:], p[1])):
         last = out[-1] if out else None
         if (last is not None and near(a, last[0])
-                and all(near(x, y) for x, y in zip(rest, last[2:], strict=True))):
+                and all(abs(x - y) <= cut_tol for x, y in zip(rest, last[2:], strict=True))):
             out[-1] = (last[0], last[1] + q, *last[2:])
         else:
             out.append((a, q, *rest))
