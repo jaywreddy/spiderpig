@@ -272,14 +272,20 @@ def _sliders_are(tune: dict, info: dict) -> None:
 
 
 def test_linkage_dropdown_switches_the_design(page: Page, viewer_server: str) -> None:
-    """The tune panel lists ``/api/linkages``' walkers; picking one rebuilds the sliders
-    from its parameters, limits the module dropdown to its modules and re-bakes the robot
-    with ``linkage=`` (Jansen's mirrored pair here), which then drives on Jansen's feet."""
+    """The tune panel's one linkage picker lists every linkage of ``/api/linkages``, grouped
+    by kind (an ``<optgroup>`` each); picking a walker rebuilds the sliders from its
+    parameters, limits the module dropdown to its modules and re-bakes the robot with
+    ``linkage=`` (Jansen's mirrored pair here), which then drives on Jansen's feet."""
     catalogue = _catalogue(viewer_server)
     _open(page, viewer_server, "tune=1&linkage=klann&module=double")
     page.wait_for_function("() => window.__viewer.drive.lastWalk !== null", timeout=60_000)
     tune = page.evaluate(TUNE_JS)
-    assert tune["linkages"] == [k for k, lk in catalogue.items() if lk["kind"] == "walker"]
+    kinds = list(dict.fromkeys(lk["kind"] for lk in catalogue.values()))
+    assert tune["linkages"] == [k for kind in kinds for k, lk in catalogue.items()
+                                if lk["kind"] == kind]
+    groups = page.evaluate("""() => Array.from(document.querySelectorAll('#tune-gui optgroup'))
+        .map((g) => g.label)""")
+    assert groups == [f"{kind}s" for kind in kinds]
     assert (tune["linkage"], tune["module"]) == ("klann", "double")
     _sliders_are(tune, catalogue["klann"])
 
@@ -297,6 +303,28 @@ def test_linkage_dropdown_switches_the_design(page: Page, viewer_server: str) ->
     feet = _js(page, "window.__viewer.walker.userData.drive.feet.map((f) => f.body)")
     assert feet == ["L.b6_leg0", "L.b6_leg1", "R.b6_leg0", "R.b6_leg1"]
     assert _js(page, "window.__viewer.drive.sim.state.feet.length") == 4
+
+
+def test_the_same_picker_loads_a_mechanism_and_the_view_picker_follows(
+        page: Page, viewer_server: str) -> None:
+    """A linkage with no feet picked in the same dropdown loads in its own default view, and
+    the view picker offers what it declares (``/api/modes``: a mechanism's one side)."""
+    catalogue = _catalogue(viewer_server)
+    key = "hoecken" if "hoecken" in catalogue else next(
+        k for k, lk in catalogue.items() if lk["feet"] == 0)
+    with urllib.request.urlopen(f"{viewer_server}/api/modes?linkage={key}") as r:
+        modes = json.load(r)
+    _open(page, viewer_server, "tune=1", driving=False)
+    page.wait_for_function("() => window.__viewer.drive.tuneGui.controllersRecursive()"
+                           ".some((c) => c.property === 'linkage')", timeout=60_000)
+    page.evaluate(SET_JS, ["linkage", key])
+    page.wait_for_function(
+        f"() => window.__viewer.mode === '{modes['default']}' && "
+        f"new URLSearchParams(location.search).get('linkage') === '{key}'",
+        timeout=BAKE_TIMEOUT_MS)
+    offered = page.evaluate("() => Array.from(document.getElementById('mode').options)"
+                            ".map((o) => o.value)")
+    assert offered == modes["modes"]
 
 
 def test_a_linkage_in_the_url_gets_its_own_default_module(page: Page,

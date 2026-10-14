@@ -159,7 +159,7 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 | `attach_build(design, mech, t)` | `BuildReport` | adopt a fabricated mechanism (a store, a test fixture) | 2 s |
 | `recheck(design, all_parts=False)` | `RecheckReport`: `edited`, `checked`, `contract`, `clashes`, `bad_solids`, `notes` (an edited part whose volume is still the build's: the cut missed it) | `contract.bad_solids`, `clashes`, edited parts inside their claims | 1-5 s |
 | `verify(design, level)` | `VerifyReport` (below) | quick: check + plan + walk + the output's precision without fabricating (a stored `precision` report when there is one); standard: + build, the whole precision budget, the joints' strength (every kind), contract at t = 0 and 3.2, clash and solids at the build's t, `verify_plan`, DXF pack, BOM; full: the audit's four contract angles, clashes at 1 and 4.38, and MuJoCo when it imports (its own rows: `sim.speed_mm_s` and `sim.stride_mm` measured over 4 s at the drives' full speed, beside the walk model's `motion.*` rows, `sim.stays_up`, `sim.torque`; a purchased model the mesher can't triangulate everywhere, the XL330's, meshes face by face as the bake does) | 1 s / 30-45 s / 85 s |
-| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest`, `warnings` (what the bake and the constructions warned about: a purchased model's faces the mesher skipped) | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf` as the packed sheets, `bom`; not `ORDER.md` or the per-part DXFs of `laser/parts/`, which only `spiderpig build` writes) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where; a recorded export of these formats or more into the same folder, its files all still there, is returned as is | 5-60 s (the BOM's grouping dominates) |
+| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest`, `warnings` (what the bake and the constructions warned about: a purchased model's faces the mesher skipped) | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf` as the packed sheets, `bom`) plus `glb` (the viewer bake), `mjcf` and an arm's `urdf`, and what a maker reads (`api.MAKE_FORMATS`, export formats only, never a spec's `outputs`): `guide` (`ASSEMBLY.pdf` and `ASSEMBLY.md`, `guide.make.build_guide`, cached beside the fabrication), `control` (`control/`: one dispatch on what drives the design, `control.files.write`: a crank's bus servos' `servos.json`, an arm's steppers' Klipper `printer.cfg`, and either's `HOMING.md`) and `order` (`ORDER.md` with the per-part DXFs of `laser/parts/` it uploads and the `print/` STLs it lists); always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where; a recorded export of these formats or more into the same folder, its files all still there, is returned as is | 5-60 s (the BOM's grouping dominates); `guide` a minute cold, seconds cached |
 | `load(id, store=PROJECT)` | `Design` | the recorded design (the id must hash to its record); reports load as the operations ask | ms |
 | `derive(design, patch)` | `Design` | `resolve(apply_patch(spec, patch))` with `derived_from` and the patch recorded | ms |
 | `compare(a, b)` | dict | the merge patch between two specs (and resolved specs), whether one derives from the other, every differing value per stage report | ms |
@@ -486,7 +486,9 @@ operations run in a worker thread, one at a time, so the loop keeps answering.
 | `spiderpig://designs/{id}/{stage}` | a stored stage as JSON (`build` is the manifest with part paths) |
 
 Prompts: `design(task)` (a task → candidates → resolve → check → plan → verify → export,
-for any kind of machine; it replaced the walker-only "design a walker" prompt on 2026-10-14),
+then `export(design, ['guide', 'control', 'order'])`: the assembly guide, the controller's
+files and the shopping list, for any kind of machine; it replaced the walker-only "design a
+walker" prompt on 2026-10-14),
 `diagnose(design)` (explain → recommend → derive), `iterate(design, metric)` (a
 derive / compare loop on one metric).
 
@@ -495,10 +497,33 @@ derive / compare loop on one metric).
 single takes ~0.7 s through the client once the engine is imported (~3 s of imports
 before that); `build` of the single as a job ~10 s including the worker's start.
 
+## The task flow from the command line
+
+The same flow as the MCP's `design` prompt, a design id carried from step to step:
+
+```bash
+spiderpig candidates task.json --measure 2      # ranked; the best resolved: "design <id>"
+spiderpig build <id> --out build/arm            # STEP/STL, prints, DXF, BOM, ORDER.md
+spiderpig export <id> --formats guide control order glb   # assemble, wire, buy; view it
+spiderpig guide <id>                            # ASSEMBLY.pdf alone
+spiderpig control files <id>                    # servos.json or printer.cfg, HOMING.md
+spiderpig precision <id>                        # the error budget at the output
+spiderpig view <id> --open
+```
+
+`spiderpig candidates TASK.json [--measure N] [--limit K] [--resolve K] [--store PATH]
+[--json]` is `api.candidates` (the task from a file, `-` for stdin): it prints the ranking
+and resolves the best `--resolve` (default 1) candidates' specs into the store, so each has
+a design id. `spiderpig build`, `guide`, `control`, `precision`, `export`, `view` and `sim`
+take that id as `DESIGN` (with `--store PATH`; `control` after its action) in place of the
+design options: the config as recorded (`stages.resolve.load_stored`), its spec's roles
+and every resolved value with it, and its plan from the store (`stages.planning.plan_stored`);
+`build`'s manifest names the design (another `--kerf` or `--sheet-size` makes it another).
+
 ## Export and sim from the command line
 
-`spiderpig export <design> [--formats step stl print dxf bom glb mjcf urdf] [--out DIR]
-[--store PATH] [--force]` is `api.export` on the command line: the stored design's files
+`spiderpig export <design> [--formats step stl print dxf bom glb mjcf urdf guide control
+order] [--out DIR] [--store PATH] [--force]` is `api.export` on the command line: the stored design's files
 (default: the spec's `outputs`) into its `exports/` in the store or `--out`, with
 `manifest.json`, and its `warnings` on stderr; given the build options instead of an id
 (`--linkage`, `--module`, `--pin`, ... as for `spiderpig build`) it resolves them into the
@@ -543,8 +568,9 @@ built can be looked at without a spec. What the page does with `?design=<id>`:
   (`server.app.modes_of`): its robot when it makes one (`config.robot_layout`: a walker's
   two sides, an arm on its turntable, labelled per layout), then one side of each of a
   walker's leg modules (their fixed ids, `klann`, `double`, ...) or its one `side` (an
-  arm's alone, a mechanism's); the page's view picker follows the linkage on screen, and
-  its machine picker lists every linkage without feet (arms and mechanisms).
+  arm's alone, a mechanism's); the page's one linkage picker lists every linkage of
+  `/api/linkages`, grouped by kind, and its view picker follows the linkage picked (one
+  with feet re-baked as a robot to drive, one without loaded in its own default view).
 - `GET /api/design/{id}` is the design's card from its `resolved.json`: `kind`,
   `linkage`, `module`, `sides`, `mode` (`robot`, or `side` for a one-sided design),
   `phases_deg`, `params` (the linkage's proportions), `servo`, and `glb`, the URL of

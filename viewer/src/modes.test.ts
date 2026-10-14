@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { machines, pickMode, withMode, type ModeCatalogue } from './modes';
+import {
+  groupSelect, linkageGroups, linkageOptions, pickMode, withMode, type ModeCatalogue,
+} from './modes';
 
 const walker: ModeCatalogue = {
   linkage: 'strider', kind: 'walker', default: 'robot',
@@ -38,14 +40,39 @@ describe('the mode picker follows the linkage', () => {
   });
 });
 
-describe('the machine picker', () => {
-  it('lists every linkage without feet, arms and mechanisms alike', () => {
-    const opts = machines([
-      { key: 'strider', name: 'Strider', kind: 'walker', feet: 1 },
-      { key: 'palletizer_reach', name: 'Palletizer', kind: 'arm', feet: 0 },
-      { key: 'crank_rocker', name: 'Crank-rocker', kind: 'mechanism', feet: 0 },
-    ]);
-    expect(Object.values(opts)).toEqual(['palletizer_reach', 'crank_rocker']);
-    expect(Object.keys(opts)).toEqual(['arm: Palletizer', 'mechanism: Crank-rocker']);
+describe('one linkage picker for every kind', () => {
+  const linkages = [
+    { key: 'strider', name: 'Strider', kind: 'walker' },
+    { key: 'crank_rocker', name: 'Crank-rocker', kind: 'mechanism' },
+    { key: 'klann', name: 'Klann', kind: 'walker' },
+    { key: 'palletizer_reach', name: 'Palletizer', kind: 'arm' },
+    { key: 'palletizer', name: 'Palletizer', kind: 'arm' },
+  ];
+
+  it('lists every linkage, grouped by kind in the order the server lists the kinds', () => {
+    const groups = linkageGroups(linkages);
+    expect(groups.map((g) => g.label)).toEqual(['walkers', 'mechanisms', 'arms']);
+    expect(groups[0]!.options).toEqual([['Strider', 'strider'], ['Klann', 'klann']]);
+    // a name two linkages share is told apart by its key
+    expect(groups[2]!.options.map((o) => o[0]))
+      .toEqual(['Palletizer (palletizer_reach)', 'Palletizer (palletizer)']);
+    const opts = linkageOptions(groups);
+    expect(Object.values(opts))
+      .toEqual(['strider', 'klann', 'crank_rocker', 'palletizer_reach', 'palletizer']);
+  });
+
+  it("wraps the dropdown's options in a group per kind, keeping their order", () => {
+    const groups = linkageGroups(linkages);
+    type Node = { label?: string; value?: string; kids: Node[]; append(...n: Node[]): void };
+    const node = (extra: Partial<Node> = {}): Node => {
+      const n: Node = { kids: [], append: (...k) => { n.kids.push(...k); }, ...extra };
+      return n;
+    };
+    const options = Object.values(linkageOptions(groups)).map((value) => node({ value }));
+    const select = { options, ownerDocument: { createElement: () => node() }, ...node() };
+    groupSelect(select as unknown as HTMLSelectElement, groups);
+    expect(select.kids.map((g) => g.label)).toEqual(['walkers', 'mechanisms', 'arms']);
+    expect(select.kids.flatMap((g) => g.kids.map((o) => o.value)))
+      .toEqual(options.map((o) => o.value));
   });
 });

@@ -421,11 +421,13 @@ def markdown(title: str, steps, types, counts_of, mech) -> str:
 
 def main(argv=None) -> int:
     from spiderpig.config import add_build_args, add_design_args, config_from_args
+    from spiderpig.stages.resolve import DESIGN_HELP
     from spiderpig.store import Store
 
     p = argparse.ArgumentParser(prog="spiderpig guide", description=(
         "The assembly guide: ASSEMBLY.pdf (numbered steps with pictures, the parts with "
         "their labels, print batches, bag labels) and ASSEMBLY.md, into --out."))
+    p.add_argument("design", nargs="?", metavar="DESIGN", help=DESIGN_HELP)
     add_design_args(p)
     add_build_args(p)
     p.add_argument("--out", type=Path, default=Path("build"), help="the folder (build)")
@@ -437,10 +439,22 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("fontTools").setLevel(logging.WARNING)
-    config = config_from_args(args)
     store = Store.of(args.store) if args.store else Store.default()
+    side = None
+    if args.design:         # a stored design: its config and plan as recorded
+        from spiderpig.stages.planning import plan_stored
+        from spiderpig.stages.resolve import load_stored
+
+        try:
+            design = load_stored(args.design, store)
+            side = plan_stored(design)
+        except (KeyError, ValueError) as e:
+            p.error(str(e))
+        config = design.config
+    else:
+        config = config_from_args(args)
     rep = build_guide(config, store, args.out, jobs=args.jobs, max_steps=args.steps,
-                      force=args.force)
+                      force=args.force, design=side)
     how = "from the cache" if rep.cached else f"{rep.drawn} pictures drawn"
     print(f"wrote {rep.pdf} and ASSEMBLY.md: {rep.pages} pages, {rep.steps} steps ({how}, "
           f"{rep.seconds.get('total', 0):.1f} s)")

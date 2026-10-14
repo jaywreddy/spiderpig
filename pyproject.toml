@@ -145,11 +145,12 @@ name = "layers"
 type = "layers"
 # The front-ends may start one another (the MCP's `view` tool runs the viewer's server:
 # `:`, not independent). The strength check rates the joints at the sim's loads, so it
-# sits over the sim.
+# sits over the sim. The controller's files (`spiderpig.control`) sit beside the guide,
+# under the API, which exports them (2026-10-14: `api.export(design, ["control"])`).
 layers = [
     "spiderpig.mcp : spiderpig.server : spiderpig.cli",
-    "spiderpig.api | spiderpig.control | spiderpig.pose",
-    "spiderpig.bake | spiderpig.build | spiderpig.strength | spiderpig.precision | spiderpig.guide",
+    "spiderpig.api | spiderpig.pose",
+    "spiderpig.bake | spiderpig.build | spiderpig.strength | spiderpig.precision | spiderpig.guide | spiderpig.control",
     "spiderpig.sim | spiderpig.stages | spiderpig.urdf",
     "spiderpig.fabricate",
     "spiderpig.construction",

@@ -5,116 +5,25 @@
 
 from __future__ import annotations
 
-import math
 from contextlib import contextmanager
 from pathlib import Path
 
-from spiderpig import linkage
-from spiderpig.config import (
-    BuildConfig,
-    ParamError,
-    removed_param,
-    robot_layout,
-)
-from spiderpig.construction.base import Params
-from spiderpig.design import (
-    Design,
-    engine_version,
-)
+from spiderpig.config import robot_layout
+from spiderpig.design import Design
 from spiderpig.failure import apply_patch, merge_patch
-from spiderpig.spec import (
-    FIT_FIELDS,
-    Spec,
-)
 from spiderpig.stages.records import EDITED_STAGES
+
+# load and the config of a recorded design sit a layer lower (stages.resolve: the CLIs
+# open a stored design by its id there); their names stay importable from here
+from spiderpig.stages.resolve import _config_from_resolved as _config_from_resolved
+from spiderpig.stages.resolve import _stored_roles as _stored_roles
+from spiderpig.stages.resolve import load as load
 from spiderpig.stages.resolve import resolve
 from spiderpig.store import PROJECT, Store, diff_json, report_doc
 
 # ---------------------------------------------------------------------------
-# resolve
+# The store: load (stages.resolve's), list, gc, compare, derive
 # ---------------------------------------------------------------------------
-
-
-def _stored_roles(cons: dict) -> tuple[tuple[str, str], ...]:
-    """The roles a resolved spec's ``constructions`` names beside its own keys; a key that is
-    neither its own nor a known role (or a known per-slot role's ``role@slot``) fails: a
-    stored design is rebuilt as recorded or not at all."""
-    from spiderpig import roles as rolemod
-
-    out = []
-    for q, key in cons.items():
-        if q in ("pillar", "pin", "crank", "heads"):
-            continue
-        name, slot = rolemod.split(q)
-        try:
-            role = rolemod.get(name)
-        except KeyError:
-            raise ParamError(f"this stored design names a construction role {q!r} the engine "
-                             f"no longer has (roles: {sorted(rolemod.ROLES)})") from None
-        if not role.stored_in_roles or (slot and role.per == "design"):
-            raise ParamError(f"this stored design's constructions.{q} isn't a role's key")
-        out.append((q, key))
-    return tuple(sorted(out))
-
-
-def _config_from_resolved(resolved: dict) -> BuildConfig:
-    """The config of a recorded design, from its resolved spec alone (every value written
-    in, so a default that moved since never changes a stored design)."""
-    lk = linkage.get(resolved["linkage"]["key"])
-    legs, mat, cons, fit = (resolved[k] for k in ("legs", "materials", "constructions", "fit"))
-    for name, value in fit.items():     # a removed Params field: only at its last default
-        if (gone := removed_param(name, value)) is not None:
-            raise ParamError(gone)
-    return BuildConfig(
-        # an arm's robot is its own key (legs.robot); a design stored before it was a side
-        linkage=lk.key, module=legs["module"], robot=bool(legs.get("robot", legs["sides"] == 2)),
-        phases=tuple(math.radians(p) for p in legs["phases_deg"]),
-        proportions=tuple(sorted(resolved["linkage"]["params"].items())),
-        sheet=mat["sheet"], thickness=mat.get("thickness_mm"), servo=mat["servo"],
-        frame_sheet=mat.get("frame_sheet") or mat["sheet"],
-        crank_sheet=mat.get("crank_sheet") or mat["sheet"],
-        link_sheets=tuple(sorted((mat.get("link_sheets") or {}).items())),
-        pillar=cons["pillar"], pin=cons["pin"], crank=cons["crank"],
-        heads=cons.get("heads") or "sink",
-        roles=_stored_roles(cons),
-        params=Params(**{k: fit[k] for k in FIT_FIELDS if k in fit}),
-    )
-
-
-# ---------------------------------------------------------------------------
-# The store: load, list, gc, compare, derive
-# ---------------------------------------------------------------------------
-
-
-def load(id: str, store: Store | str | Path | None = PROJECT) -> Design:
-    """The handle of a recorded design: its spec and resolved values from the store (the
-    id must hash to them), its config rebuilt from the resolved spec. Its stage reports
-    load as the operations ask for them; ``design.warnings`` says when the design was
-    recorded under another engine version (its stored plan is then re-verified, the other
-    stages recomputed). ``KeyError`` when the store has no such design."""
-    store = Store.of(store)
-    if store is None:
-        raise ValueError("load(id) needs a store")
-    rec = store.read_design(id)
-    if rec is None:
-        raise KeyError(f"no design {id!r} in {store.root}")
-    store.check_id(id, rec)
-    spec_doc = store.read_spec(id)
-    if spec_doc is None:
-        raise KeyError(f"design {id!r} in {store.root} has no spec.json")
-    resolved = rec["resolved"]
-    config = _config_from_resolved(resolved)    # first: a removed construction is a ParamError
-    spec = Spec.from_dict(spec_doc)
-    engine = engine_version()
-    design = Design(id, spec, resolved, config, engine, list(rec.get("warnings", [])),
-                    derived_from=rec.get("derived_from"), patch=rec.get("patch"),
-                    created_at=rec.get("created_at") or "")
-    if rec.get("engine_version") != engine:
-        design.warnings.append(f"recorded under engine {rec.get('engine_version')}, now "
-                               f"{engine}: the stored plan is re-verified before use, the other "
-                               "stages recomputed")
-    design.store = store
-    return design
 
 
 def list_designs(store: Store | str | Path | None = PROJECT) -> list[dict]:

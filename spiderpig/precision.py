@@ -927,9 +927,14 @@ def compare_options(config: BuildConfig) -> list[tuple[str, BuildConfig]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from spiderpig.stages.resolve import DESIGN_HELP
+
     ap = argparse.ArgumentParser(prog="spiderpig precision",
                                  description="the error budget at a design's output: joint "
                                              "play, the inputs' levers, tolerances, heat")
+    ap.add_argument("design", nargs="?", metavar="DESIGN", help=DESIGN_HELP)
+    ap.add_argument("--store", metavar="PATH",
+                    help="the store DESIGN is in (default: $SPIDERPIG_STORE, else ./.spiderpig)")
     add_design_args(ap)
     add_build_args(ap)
     ap.add_argument("--target", type=float, default=DEFAULT_TARGET_MM,
@@ -948,7 +953,18 @@ def main(argv: list[str] | None = None) -> int:
                     help="the same design with each pivot option (plain holes, ball pins, "
                          "ball pins and pillars), and an arm's with each transmission")
     args = ap.parse_args(argv)
-    config = config_from_args(args)
+    if args.design:         # a stored design: its config as recorded (its spec's roles)
+        from spiderpig.stages.planning import plan_stored
+        from spiderpig.stages.resolve import load_stored
+
+        try:
+            design = load_stored(args.design, args.store)
+            plan_stored(design)     # (its stored plan: the budget's fabrication reuses it)
+        except (KeyError, ValueError) as e:
+            ap.error(str(e))
+        config = design.config
+    else:
+        config = config_from_args(args)
     from dataclasses import replace
 
     if config.mirrored:

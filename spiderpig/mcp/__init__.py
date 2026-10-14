@@ -72,7 +72,8 @@ log = logging.getLogger("spiderpig.mcp")
 
 SERVER_NAME = "spiderpig"
 LEVELS = Literal["quick", "standard", "full"]
-FORMATS = Literal["step", "stl", "print", "dxf", "bom", "glb", "mjcf", "urdf"]
+FORMATS = Literal["step", "stl", "print", "dxf", "bom", "glb", "mjcf", "urdf",
+                  "guide", "control", "order"]       # api.formats_all() (a test holds them)
 DESIGN_STAGES = ("summary", "spec", "resolved", *STAGES, "log")
 STAGE_TOOL = {"check": "check", "plan": "plan", "walk": "walk", "precision": "precision",
               "build": "build",
@@ -84,7 +85,8 @@ INSTRUCTIONS = (
     "spiderpig compiles a Spec (a linkage, a leg module, materials, constructions and "
     "targets) into verified linkage geometry: walkers, cranked mechanisms and arms. Read the "
     "resource spiderpig://guide first: the passes, the Spec vocabulary, and the loops "
-    "(candidates(task) -> resolve(candidate.spec) -> check -> plan -> verify -> export; "
+    "(candidates(task) -> resolve(candidate.spec) -> check -> plan -> verify -> export, "
+    "then export's guide, control and order formats to assemble, wire and buy it; "
     "explain -> recommend -> derive). A task (spiderpig://schema/task: walk, place or trace "
     "and its numbers) names no linkage: candidates ranks the ones that can do it, each with "
     "a spec. Every tool returns {ok, failures, ...}; "
@@ -759,7 +761,12 @@ def _register_tools(server: MCPServer, state: State) -> None:
         """Write the files: ``step`` / ``stl`` (the whole machine), ``print`` (one STL per
         printed part + parts.csv), ``dxf`` (kerf-compensated sheets + parts.csv), ``bom``
         (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (MuJoCo, every kind's),
-        ``urdf`` (an arm's, for ROS); always
+        ``urdf`` (an arm's, for ROS); what a maker reads: ``guide`` (ASSEMBLY.pdf and
+        ASSEMBLY.md: the numbered steps, the part labels, the wiring), ``control`` (the
+        controller's files in ``control/``, by what drives the design: a crank's bus servos'
+        servos.json, an arm's steppers' Klipper printer.cfg, and HOMING.md), ``order``
+        (ORDER.md: a cart per vendor, an upload per cutting service with ``laser/parts/``,
+        the prints); always
         ``manifest.json``. Builds first if nothing is built. Returns the files' paths and
         the manifest. A long operation (a job when it outlasts ``wait_seconds``). An
         unknown format is refused by the input schema before the tool runs."""
@@ -946,7 +953,7 @@ def _json_card(fn, *args) -> str:
 def _register_prompts(server: MCPServer) -> None:
     @server.prompt(name="design", title="Design a machine for a task",
                    description="a task -> candidates -> resolve -> check -> plan -> verify -> "
-                               "export, for any kind of machine")
+                               "export -> guide, control and order, for any kind of machine")
     def design(task: str) -> str:
         return (
             f"Design a machine with spiderpig for this task: {task}\n\n"
@@ -972,10 +979,17 @@ def _register_prompts(server: MCPServer) -> None:
             "value, target, pass, tier, hard. A missed length: recommend(design) (a checked "
             "scale).\n"
             "7. Compare alternatives with compare(a, b); pick the best.\n"
-            "8. export(design, formats) and report the file paths and the manifest.\n"
+            "8. export(design, formats): the files to make it (step, print, dxf, bom; glb "
+            "to see it, mjcf to simulate it, urdf for an arm in ROS). Report the file paths "
+            "and the manifest.\n"
+            "9. export(design, ['guide', 'control', 'order']): the assembly guide "
+            "(ASSEMBLY.pdf and .md, the wiring with it), the controller's files (control/: "
+            "servos.json for bus servos, printer.cfg for steppers, and HOMING.md, whichever "
+            "the design's motors need) and ORDER.md (the carts and the cut uploads). "
+            "view(design) for the viewer's URL.\n"
             "Report the candidates considered and why the one chosen, the design id, the plan "
             "(layers, height, optimal), the verify verdict with each target's row and tier, "
-            "and what remains estimated."
+            "the files to make and run it, and what remains estimated."
         )
 
     @server.prompt(name="diagnose", title="Diagnose a failing design",

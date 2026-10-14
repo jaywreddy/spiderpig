@@ -199,7 +199,14 @@ def plan_config(config: BuildConfig, store: Store | str | Path | None = PROJECT)
     one side), the very design ``spiderpig export`` / ``view`` by the same options make:
     ``explain`` (one side) and ``audit`` / ``export`` / ``view`` (the robot) share it."""
     config = replace(config, robot=default_robot(config.linkage))
-    design = resolve(spec_of(config), store)
+    return plan_stored(resolve(spec_of(config), store))
+
+
+def plan_stored(design: Design) -> SideDesign:
+    """The planned side of ``design`` (a stored one: a CLI's ``DESIGN`` argument, its plan
+    reused from its store, re-made and verified), as :func:`plan_config` gives a config's:
+    :func:`fabricate.design_side` then answers with it for the design's config, and the
+    same errors."""
     rep = plan(design)
     if not rep.ok or design.side is None:
         msg = "\n  ".join(f.message for f in rep.failures[:1]) or "no plan"

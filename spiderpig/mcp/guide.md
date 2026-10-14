@@ -42,7 +42,7 @@ Current store: `<<STORE>>`. Engine: `<<ENGINE>>`.
 | precision | `precision(design)` | the error budget at the output (a mechanism's point, an arm's tool; a walker is skipped): `metrics` are the `precision.*` targets measured (the worst-case `repeatability_mm` bound, the `accuracy_mm` that calibrates out; an arm's ISO 9283 `rp_mm` / `rp_powerup_mm`, `out_of_plane_mm`, `payload_sag_mm`), `rows` their verdicts, `budget` every term (each joint's share, each input's lever and the resolution it needs, the drives), `text` the budget in prose | a mechanism's: 1 s; an arm's fabricates its side for the links' tilt (a job, ~40 s cold) |
 | build | `build(design)` | every part fabricated at crank angle `t`, inside its claims; masses, the envelope, one STEP per distinct part in the store | 8 s (a job) |
 | verify | `verify(design, level)` | pass/fail per requirement with an evidence tier: `quick` = check + plan + walk; `standard` adds the build, the contract at two crank angles, OCCT clashes and solids, the plan re-verified on fresh sampling, the DXF pack and the BOM; `full` adds two more contract angles, a second clash angle and a MuJoCo run; every kind's output precision (`quick`: what needs no fabrication, an arm's tilt-dependent rows at `standard`) and, after the build, its joints' strength (a walker's at its sim or family loads, an arm's at its static loads: operating and a crash at the drives' holding torque) | 1 s / 30-45 s / 85 s on the Klann quad; `quick` plans first, so its first run on another design can take a minute |
-| export | `export(design, formats)` | the files: `step`, `stl`, `print` (one STL per printed part), `dxf` (kerf-compensated sheets), `bom` (csv/md/json), `glb` (the viewer's animated bake), `mjcf` (MuJoCo: every kind's, one emitter), `urdf` (an arm's, for ROS); always `manifest.json` (not the shopping list `ORDER.md` or the per-part DXFs `laser/parts/`: `spiderpig build` writes those); an export that already wrote these formats (or more) into the folder is returned as is | 5-60 s (a job) |
+| export | `export(design, formats)` | the files: `step`, `stl`, `print` (one STL per printed part), `dxf` (kerf-compensated sheets), `bom` (csv/md/json), `glb` (the viewer's animated bake), `mjcf` (MuJoCo: every kind's, one emitter), `urdf` (an arm's, for ROS); and what a maker reads: `guide` (`ASSEMBLY.pdf` and `ASSEMBLY.md`: numbered steps with pictures, the part labels, the wiring), `control` (`control/`, by what drives the design: a crank's bus servos' `servos.json`, an arm's steppers' Klipper `printer.cfg`, and `HOMING.md`), `order` (`ORDER.md`: a cart per vendor, an upload per cutting service with its per-part DXFs in `laser/parts/`, the prints); always `manifest.json`; an export that already wrote these formats (or more) into the folder is returned as is | 5-60 s (a job); `guide` a minute cold |
 
 **The planner's clock.** A plan search is bounded by a 60 s wall-clock deadline and node
 budgets, never validity: a plan found late is returned with `optimal: false` and a
@@ -68,6 +68,13 @@ Read `ok` at every step. `resolve` returns the id every other tool takes. Stop a
 first `ok: false` and read `failures` (below). `verify` scores the soft targets and
 fails on any hard miss; `export` writes the files you asked for into the store's
 `exports/` (or `out_dir`) and returns their paths.
+
+**Make it**: `export(design, ["guide", "control", "order"])`: the assembly guide, the
+controller's files (whichever the design's motors need: you never name its kind) and the
+shopping list, beside the cut and print files. The same design id works from a shell:
+`spiderpig build|guide|precision <id>`, `spiderpig control files <id>`, `spiderpig export
+<id> --formats guide control order`, `spiderpig view <id>`; `spiderpig candidates
+task.json` is `candidates` there, and resolves the best one into the store.
 
 **Diagnose**: `explain → recommend → derive`. `explain` is every stage's verdict in
 prose (a recorded failure is printed, not searched for again). `recommend` is the
@@ -279,7 +286,7 @@ one side), drive mode, and the tune panel seeded with the design's linkage, modu
 phases and proportions; an arm's joint sliders pose it anywhere in its box. The page's
 view picker lists the modes the design's linkage declares (`/api/modes?linkage=`: a
 walker's robot and each module's side, an arm's robot on its turntable and its side, a
-mechanism's one side), and its machine picker every arm and mechanism. The server starts once per MCP server on a free port and is
+mechanism's one side), following its one linkage picker (every linkage, grouped by kind). The server starts once per MCP server on a free port and is
 reused; the first load of a design bakes it (seconds) unless `export` wrote its
 `glb`. The same page is `spiderpig view <design>` from a shell, and
 `spiderpig view --linkage klann --module quad --pin bolt` (the build options, as for

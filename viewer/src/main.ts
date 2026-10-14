@@ -76,7 +76,7 @@ const drive = createDrive({
   stage,
   loaded: () => loaded,
   loadRobot: (query) => loadMode('robot', query),
-  // a machine picked (an arm, a mechanism): its own views, its default one loaded
+  // a linkage with no feet picked (an arm, a mechanism): its own views, its default one loaded
   loadLinkage: async (key) => {
     const cat = await syncModes(key);
     const mode = cat ? cat.default : 'side';

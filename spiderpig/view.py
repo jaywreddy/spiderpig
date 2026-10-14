@@ -70,16 +70,10 @@ def viewer_built() -> Path | None:
 
 def load_design(design_id: str, store):
     """The recorded design (:func:`spiderpig.api.load`); ``KeyError`` names the store
-    and what it holds."""
-    from spiderpig import api
+    and what it holds (:func:`spiderpig.stages.resolve.load_stored`, every CLI's)."""
+    from spiderpig.stages.resolve import load_stored
 
-    try:
-        return api.load(design_id, store)
-    except KeyError:
-        ids = [c["id"] for c in api.list_designs(store)]
-        have = ", ".join(ids[-8:]) if ids else "nothing"
-        raise KeyError(f"no design {design_id!r} in {store.root.resolve()} (has: {have})"
-                       ) from None
+    return load_stored(design_id, store)
 
 
 def export_glb(design) -> Path:
