@@ -14,6 +14,7 @@ from spiderpig.config import (
     BuildConfig,
     ParamError,
     removed_param,
+    robot_layout,
 )
 from spiderpig.construction.base import Params
 from spiderpig.design import (
@@ -145,7 +146,7 @@ def derive(design: Design, patch: dict, store=PROJECT) -> Design:
         store = design.store
     spec = design.spec.to_dict()
     legs = design.resolved.get("legs", {})
-    if design.kind == "arm" and "robot" not in spec.get("legs", {}):
+    if robot_layout(design.lk) == "turret" and "robot" not in spec.get("legs", {}):
         # what the parent resolved to (a side, for an arm stored before legs.robot)
         spec.setdefault("legs", {})["robot"] = bool(legs.get("robot", legs.get("sides") == 2))
     return resolve(apply_patch(spec, patch), store, derived_from=design.id, patch=patch)

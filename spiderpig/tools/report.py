@@ -175,14 +175,14 @@ def main(argv=None) -> int:
     for key in keys:
         lk = linkage.get(key)
         row = describe(lk)
-        if lk.kind == "walker":
+        if lk.walks:
             row["foot"] = foot_path(lk)
         else:                       # a mechanism: its output's numbers, no feet, no walk
             row["output"] = output_numbers(lk)
         modules = [m for m in args.modules if m in lk.leg_modules]
         if not args.no_plan:
             row["plans"] = plans(key, modules)
-            if not args.no_walk and lk.kind == "walker":
+            if not args.no_walk and lk.walks:
                 row["walk"] = {m: walking(key, m) for m, r in row["plans"].items() if r["ok"]}
                 ok = {m: w for m, w in row["walk"].items()      # it has to go somewhere
                       if w["valid"] and w["stride_mm"] > MIN_STRIDE}

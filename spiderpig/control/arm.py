@@ -58,7 +58,7 @@ class ArmModel:
         from spiderpig.fabricate import design_side, template_for
 
         lk = config.lk
-        if lk.kind != "arm" or lk.output is None:
+        if not lk.ranged or lk.output is None:
             raise ValueError(f"{lk.key} is a {lk.kind}: control drives an arm's inputs")
         side = config.side_config()
         if design is None:

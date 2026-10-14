@@ -590,7 +590,7 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
     elif config.robot:                # (the side's design, given, stays: one module)
         config = config.side_config()
     clearances, notes = joint_clearances(config, design)
-    if lk.kind == "arm" and oop and wobble is None and design is None:
+    if lk.ranged and oop and wobble is None and design is None:
         wobble = _wobble(config)
     for (j, body), c in radial_by_link(config, wobble or {}).items():   # a link's own
         if (j, body) in clearances:
@@ -618,7 +618,7 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
     if inputs:
         notes.append("the drives' sag counts the payload only (the links' own weight is "
                      "constant: it calibrates out at a given pose)")
-    if lk.kind == "arm" and not inputs:
+    if lk.ranged and not inputs:
         notes.append("no transmission: the inputs' own backlash and resolution are not in "
                      "the budget (their levers say what they must be)")
     tilt = turret_acc = 0.0
@@ -630,9 +630,9 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
                 **need}
         notes += yaw_notes
     across = None
-    if lk.kind == "arm" and not oop:
+    if lk.ranged and not oop:
         notes.append("out of the plane: left out (the links' tilt is not in the budget)")
-    elif lk.kind == "arm":
+    elif lk.ranged:
         if wobble is None:
             notes.append("out of the plane: no wobble notes given (the side not fabricated): "
                          "the links' tilt is not in the budget")
@@ -645,7 +645,7 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
                          "offset across the stack, which turns tilt into a shift in the plane, "
                          "not counted); the turntable's tilt is its own row")
     stiff = None
-    if lk.kind == "arm" and oop:
+    if lk.ranged and oop:
         stiff = link_compliance(config, design, payload_g,
                                 _tool_drop(robot_cfg, design) if turret else 0.0)
         notes.append("the links' bending: a 3D frame of each link's section (width "
@@ -653,13 +653,13 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
                      "steel rods between layers, the frame plates and turntable rigid "
                      "(linkage.stiffness); the payload's sag at a given payload calibrates "
                      "out, a change of payload and a load across the plane do not")
-    ref = sensors.REFERENCES.get(robot_cfg.role("homing_reference")) if lk.kind == "arm" \
+    ref = sensors.REFERENCES.get(robot_cfg.role("homing_reference")) if lk.ranged \
         else None
     if ref is not None and ref.tool_mm is not None:    # every zero from the sheet
         inputs = {k: replace(b, homing_mm=ref.tool_mm) for k, b in inputs.items()}
         notes.append(f"homing: {ref.label} ({ref.source})")
     rp = None
-    if lk.kind == "arm" and oop:
+    if lk.ranged and oop:
         clamped = frozenset(radial_by_link(config, wobble or {}))
         rp = _iso(config, pm, inputs, lev, across, payload_g, clamped)
     return Precision(lk.key, layout(lk).output_point, target_mm, lev, need, pm, tol,
@@ -873,7 +873,7 @@ def compare_options(config: BuildConfig) -> list[tuple[str, BuildConfig]]:
     from spiderpig import roles as rolemod
 
     pivots = pivot_options(config)
-    if config.lk.kind != "arm":
+    if not config.lk.ranged:
         return pivots
     out = []
     for label, cfg in pivots:

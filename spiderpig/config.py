@@ -324,6 +324,12 @@ mirrored sides with the chassis between their servos; an arm's side standing on 
 (2026-10-12). A mechanism makes none: it is one side."""
 
 
+def robot_layout(lk: linkage.Linkage) -> str:
+    """The robot ``lk`` makes (:data:`ROBOT_LAYOUTS`), ``""`` for none: ``"turret"`` is the
+    one whose robot is a choice (``legs.robot``, the turntable), not a second side."""
+    return ROBOT_LAYOUTS.get(lk.kind, "")
+
+
 @dataclass(frozen=True)
 class BuildConfig:
     """What to build and how. Construction keys refer to :mod:`construction` registries."""
@@ -408,7 +414,7 @@ class BuildConfig:
         if self.servo not in servos.available():
             raise ParamError(f"unknown servo {self.servo!r}; have {servos.available()}")
         object.__setattr__(self, "phases", self._phases(lk))
-        if lk.kind == "arm" and (self.crank or self.phases is not None):
+        if lk.ranged and (self.crank or self.phases is not None):
             raise ParamError(f"{lk.key} is an arm: its inputs drive links, so it has no crank "
                              f"and no crank phases (crank {self.crank!r}, phases "
                              f"{self.phases})")

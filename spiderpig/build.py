@@ -480,7 +480,7 @@ def main(argv=None) -> int:
             mech.export_step(step_path)
         mech.export_stl(stl_path)
         print(f"wrote {step_path} and {stl_path}")
-        if config.lk.kind == "arm":         # the arm in ROS: its URDF (spiderpig.urdf)
+        if config.lk.ranged:               # the arm in ROS: its URDF (spiderpig.urdf)
             from spiderpig import urdf
 
             files = urdf.write(mech, config, 1.0, out / "urdf", args.name)

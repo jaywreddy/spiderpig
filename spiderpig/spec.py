@@ -40,6 +40,7 @@ from spiderpig.config import (
     removed_construction,
     removed_param,
     removed_role,
+    robot_layout,
 )
 from spiderpig.config import default_module as config_default_module
 from spiderpig.construction.base import Params
@@ -714,7 +715,7 @@ def validate(data: Mapping) -> list[SpecError]:
         mod = legs.get("module")
         if (isinstance(mod, str) and mod not in modules and lk is not None
                 and mod.strip().lower() not in WILDCARDS):
-            if lk.kind != "walker":         # one side, no legs: the walker's words don't apply
+            if not lk.walks:                # one side, no legs: the walker's words don't apply
                 v.err("legs.module", f"unknown value {mod!r}; {lk.key} is a {lk.kind}: its one "
                                      f"module is {', '.join(modules)} (one side, no legs; the leg "
                                      f"modules double, decker and quad are a walker's)",
@@ -747,13 +748,13 @@ def validate(data: Mapping) -> list[SpecError]:
         sides = v.number(legs.get("sides"), "legs.sides", integer=True)
         if sides is not None and int(sides) not in (1, 2):
             v.err("legs.sides", f"must be 1 (one side) or 2 (the robot), got {sides:g}", (1, 2))
-        elif sides == 2 and lk is not None and lk.kind != "walker":
+        elif sides == 2 and lk is not None and not lk.walks:
             v.err("legs.sides", f"{lk.key} is a {lk.kind}: one side only (it has no feet to "
                                 "walk on)", (1,))
         robot = legs.get("robot")
         if robot is not None and not isinstance(robot, bool):
             v.err("legs.robot", f"must be true or false, got {_kind(robot)}", (True, False))
-        elif robot is not None and lk is not None and lk.kind != "arm":
+        elif robot is not None and lk is not None and robot_layout(lk) != "turret":
             v.err("legs.robot", f"{lk.key} is a {lk.kind}: legs.robot is an arm's (its "
                                 "turntable); a walker's robot is legs.sides = 2", ())
 
