@@ -9,6 +9,7 @@ import asyncio
 import socket
 import threading
 import time
+from pathlib import Path
 from typing import ClassVar
 
 import pytest
@@ -275,6 +276,102 @@ def test_the_watchers_rebake_changes_the_sessions_state_on_the_loop(monkeypatch)
     loop_thread = asyncio.run(main())
     assert builds.cleared_on == [loop_thread]
     assert srv._SIM_GENERATION == 8
+
+
+# ---------------------------------------------------------------------------
+# The bake cache keyed on what shapes a bake, not the config alone
+# ---------------------------------------------------------------------------
+
+
+def test_a_bake_is_keyed_on_the_code_and_the_cad_state_not_the_config_alone(stored,
+                                                                            monkeypatch):
+    """A file under the same config but other code, another servo model or another bought
+    part's model in reach is another bake: the old one is never served for it."""
+    from spiderpig import fabcache
+
+    cfg = BuildConfig(linkage="hoecken", robot=False, proportions=(("unit", 16.5),))
+    first = srv._glb_path(cfg)
+    assert first.name.startswith(f"{cfg.key}-")
+    assert srv._glb_path(cfg) == first
+    assert srv._code_key().startswith("bake-")
+    baked: list[Path] = []
+
+    def bake(c):
+        path = srv._glb_path(c)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"glb")
+        baked.append(path)
+        return path
+
+    monkeypatch.setattr(srv, "_bake", bake)
+    monkeypatch.setattr(srv, "_BAKED", {})
+    assert srv._ensure_baked(cfg) == first
+    assert baked == [first]
+    assert srv._ensure_baked(cfg) == first
+    assert baked == [first]                            # served, not baked
+
+    changes = [
+        (srv, "_code_key", lambda: "bake-another-engine"),
+        (fabcache, "servo_state", lambda c: ("cad", (("sha", True),), ())),
+        (fabcache, "parts_cad_state", lambda c: (("bearing_mr84zz", ("cad", "abc")),)),
+    ]
+    seen = {first}
+    for module, name, fake in changes:
+        with monkeypatch.context() as m:
+            m.setattr(module, name, fake)
+            path = srv._ensure_baked(cfg)
+        assert path not in seen, name                  # a new key: a new bake
+        assert baked[-1] == path
+        seen.add(path)
+    assert srv._ensure_baked(cfg) == first
+    assert len(baked) == 1 + len(changes)
+
+
+def test_the_code_key_of_changed_sources_comes_from_a_fresh_process(monkeypatch):
+    """This process's key memo is its import's code: once the sources changed under it, the
+    key is computed in a worker (which imports the new code), once per sources' mtime."""
+    calls = []
+
+    class Done:
+        def __init__(self, v):
+            self.v = v
+
+        def result(self):
+            return self.v
+
+    monkeypatch.setattr(srv, "_CODE_KEYS", {})
+    monkeypatch.setattr(srv, "_stale_code", lambda: True)
+    monkeypatch.setattr(srv.workers, "submit",
+                        lambda fn, *a: calls.append(fn) or Done("bake-fresh"))
+    assert srv._code_key() == "bake-fresh"
+    assert srv._code_key() == "bake-fresh"
+    assert calls == [srv._code_key_job]
+
+
+def test_the_watcher_rebakes_a_default_only_when_its_key_moved(stored, monkeypatch):
+    cfg = BuildConfig()
+    old = srv._glb_path(cfg)
+    old.parent.mkdir(parents=True, exist_ok=True)
+    old.write_bytes(b"glb")
+    baked = []
+
+    def bake(c):
+        srv._glb_path(c).write_bytes(b"glb")
+        baked.append(c)
+
+    monkeypatch.setattr(srv, "_bake", bake)
+    monkeypatch.setattr(srv, "_BAKED", {old: cfg})
+    monkeypatch.setattr(srv, "_SIM_BUILDS", {})            # (the watcher's other work)
+    monkeypatch.setattr(srv, "_SIM_GENERATION", 0)
+    srv._rebake_all()                                  # an edit the bake doesn't reach
+    assert baked == []
+    assert {old: cfg} == srv._BAKED
+    monkeypatch.setattr(srv, "_code_key", lambda: "bake-edited")
+    srv._rebake_all()
+    new = srv._glb_path(cfg)
+    assert baked == [cfg]
+    assert {new: cfg} == srv._BAKED
+    assert new.is_file()
 
 
 # ---------------------------------------------------------------------------
