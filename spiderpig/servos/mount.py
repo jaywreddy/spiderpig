@@ -349,9 +349,9 @@ class ServoDrive(Group):
 
         out = []
         lk = getattr(ctx.config, "lk", None)
-        from spiderpig.config import ROBOT_LAYOUTS
+        from spiderpig.config import robot_layout
 
-        if lk is not None and ROBOT_LAYOUTS.get(lk.kind) != "mirrored_pair":
+        if lk is not None and robot_layout(lk) != "mirrored_pair":
             return out          # no chassis between two sides: a mechanism, an arm
         try:
             d = tie_dims(ctx)

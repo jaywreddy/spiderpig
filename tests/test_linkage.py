@@ -42,9 +42,9 @@ def test_capabilities_agree_with_the_kind(key):
     assert (lk.kind == "mechanism") == (not lk.ranged and not lk.walks)
 
 
-# the sites still comparing a kind to its name: the user-facing words and registries need
-# none (they key by kind or print it); these two are being rewritten on their own branch
-_KIND_TEST_ALLOWED = {"spiderpig/construction/__init__.py", "spiderpig/servos/mount.py"}
+# the sites still comparing a kind to its name: none (the user-facing words and registries
+# key by kind or print it; the drives go by the motor role that applies, 2026-10-14)
+_KIND_TEST_ALLOWED: set[str] = set()
 _KIND = r"[\"'](?:arm|walker|mechanism)[\"']"
 _KIND_TEST = re.compile(rf"\bkind\s*(?:==|!=)\s*{_KIND}|{_KIND}\s*(?:==|!=)\s*[\w.]*kind\b"
                         rf"|\bkind\s+(?:not\s+)?in\s*[(\[{{][^)\]}}]*{_KIND}")
