@@ -14,15 +14,18 @@ job's answer depends on nothing but the job, so it is the same whether it runs h
 a worker (:mod:`stack_pool`, forked: ``StackSpec.workers``, ``SPIDERPIG_PLAN_WORKERS``,
 none with ``SPIDERPIG_WORKERS=0``) and whenever it runs.
 
-1. **A first plan per head placement**, as the planner always looked for the thinnest:
-   short jobs (``quick_nodes``) from ``min_top`` up, jumping ahead in doubling steps past
-   sizes their budget leaves open, then back down the skipped sizes while they keep a
-   plan. The head placements go side by side; idle workers run the sizes each is likely
-   to ask next (a job asked twice runs once).
-2. **The proof**: the best of those plans bounds every other. Every size and placement
-   whose least height (:meth:`StackProblem.size_lb`) isn't over it, and whose short job
-   didn't search it to the end, gets a full job (``max_nodes``) with that plan to beat,
-   all at once.
+1. **A first plan**, as the planner always looked for the thinnest: short jobs
+   (``quick_nodes``, each stopping at its first plan: ``StackSpec.quick_first``) from
+   ``min_top`` up, every head placement side by side (and, with a hint, the plain search
+   and a leg at a time side by side), jumping ahead in doubling steps past sizes their
+   budget leaves open, then back down the skipped sizes while they keep a plan; an idle
+   worker runs the next size up (a job asked twice runs once).
+2. **The proof**: the best of those plans bounds every other. Every size and placement the
+   objective needs (on the height: each whose least height, :meth:`StackProblem.size_lb`,
+   isn't over the plan's; on "layers": the plan's size and every thinner one) and whose
+   short job didn't search it to the end gets a full job (``max_nodes``) with that plan to
+   beat, split into one part per layer its first link may take (``Job.at``: they cover the
+   size once each), all at once; the jobs no one needs then are stopped.
 3. **The answer**: the least key of every plan any job found, re-made here
    (:meth:`StackProblem.plan`, deterministic). It is optimal when every full job ran to
    the end (and no head placement gave up: :data:`stack.GIVE_UP`).
@@ -63,17 +66,14 @@ ten: five sizes, two head placements; the Strider double about twenty)."""
 @dataclass(frozen=True)
 class Job:
     """One stack size (``top``) searched with one head placement, ``budget`` nodes, a plan to
-    beat (``bound``: its key) and whether to stop at the first plan (``first``); ``extend``:
-    once it has found a plan, it goes on to that many nodes in all (a short job that plans
-    carries on to the end of the proof's budget, rather than a full job of that size
-    starting again from nothing)."""
+    beat (``bound``: its key), whether to stop at the first plan (``first``), the search's
+    strategy (``legs``) and the part of the size it covers (``at``)."""
 
     heads: str
     top: int
     budget: int
     bound: tuple | None = None
     first: bool = False
-    extend: int = 0
     legs: bool | None = None    # a leg at a time (True), not (False), else the plain search
     #                             then, where it finds nothing, a leg at a time
     at: int | None = None       # only the part of the size with its first link in this layer
@@ -97,8 +97,6 @@ def run_job(subs: Mapping[str, StackProblem], job: Job, deadline: Deadline) -> d
     if (job.legs is None and s.best is None and sub.hint and not s.done and not sub.gave_up
             and not deadline.expired):
         s.run(job.budget, True, deadline)
-    if s.best is not None and not s.done and s.nodes < job.extend and not deadline.expired:
-        s.run(job.extend - s.nodes, False, deadline)     # (the plain order to the end)
     b = s.best
     return {"best": None if b is None else (dict(b.layers), dict(b.choices), b.cost),
             "key": s.best_key, "done": s.done, "nodes": s.nodes,

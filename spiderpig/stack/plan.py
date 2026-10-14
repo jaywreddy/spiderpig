@@ -55,7 +55,7 @@ class StackSpec:
     far a search gets doesn't depend on what else the machine is doing (a 60 s wall-clock
     budget made the same design plan at load 3 and fail at load 25, measured). ``prove``
     (on by default): with it off the search stops at the thinnest stack its short jobs find
-    a plan in, and says no proof was asked. ``quick_first`` (off by default): a short job
+    a plan in, and says no proof was asked. ``quick_first`` (on by default): a short job
     stops at its first plan. ``symmetry`` (a prototype, off by default): a two-leg module
     whose leg swap is a symmetry of the problem (:mod:`stack_symmetry`) searches one of each
     mirror pair.

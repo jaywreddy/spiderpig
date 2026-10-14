@@ -917,15 +917,18 @@ nothing but the job, so the jobs run in forked workers (`spiderpig/stack_pool.py
 the planner's own process with the same answer. The search spends its effort in two steps:
 
 1. **A first plan.** From the thinnest size up, each size gets a short job per head
-   placement (1,500 nodes), side by side. Sizes the short jobs rule out are done; once a
-   size exhausts its short budget instead, the search jumps ahead in doubling steps until a
-   size has a plan, then goes back down the sizes it skipped. Idle workers run the sizes
-   the search is likely to ask next.
+   placement (1,500 nodes, stopping at its first plan: `StackSpec.quick_first`), side by
+   side, and for a multi-leg module the plain search and a leg at a time side by side too.
+   Sizes the short jobs rule out are done; once a size exhausts its short budget instead,
+   the search jumps ahead in doubling steps until a size has a plan, then goes back down
+   the sizes it skipped. An idle worker runs the next size up.
 2. **The proof.** The best plan so far bounds the rest. Every size and head placement the
    objective needs (on the height: each size whose least height isn't over the plan's; on
    `"layers"`: the plan's own size, for a cheaper route, and every thinner one) that no
    short job searched to the end gets a full job (`max_nodes`, 20,000 nodes; half for a
-   thinner size on `"layers"`), all at once.
+   thinner size on `"layers"`), split into one part per layer its first link may take
+   (`Job.at`: the parts cover the size once each), all at once; jobs no one needs any more
+   are stopped.
 
 The plan is the least key of everything the jobs found, re-made in the planner's process.
 It is optimal when every job the objective needs ran to the end. Each job has the CPU
