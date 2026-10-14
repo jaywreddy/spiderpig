@@ -269,6 +269,15 @@ its grip (B's 100 mm out, A's 105: ``construction.handcrank.HANDLE_RS``) through
 NRV040's 30:1 worm at a hand's speed (:func:`spiderpig.cradle_report.jam_nm`, which a test
 holds these to)."""
 
+PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 60.0, "decanter_rcm": 57.2}
+"""Per product linkage: the most its hand crank's slip clutch lets onto the crank, however
+hard the push (design review round 1, 2026-10-14): set to slip at
+``construction.handcrank.CLUTCH_SLIP_N`` at the grip (B's 100 mm out, A's 105), at the top of
+its ``CLUTCH_SCATTER``, through the NRV040's 30:1 worm at a hand's speed
+(``handcrank.clutch``, which a test holds these to). The crank torque to re-run a strength
+check at: unlike :data:`PRODUCT_JAM_NM`'s push, a bound (``cradle_report``'s ``jam_capped``
+rates it over the whole turn, the toggles included)."""
+
 
 def product_defaults(product: str) -> dict:
     """The fields a product sets where the config names the default (the sheets, the pin,

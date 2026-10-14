@@ -416,9 +416,10 @@ def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
     foot's oversize hole (the side settles where the linkage puts it), an 18-8 fender washer
     over the hole, an 18-8 M6 nut in a printed thumb knob, the knob clear of the bracket's
     upright and the upright's M5 screw head, a thread past the nut and the bolt's end in the
-    knob; the hand crank's hub an M3 thumb screw down to the input key, its head clear of
+    knob; the hand crank's hub an M3 thumb screw down to the input key through a brass
+    heat-set insert (round 1: a printed thread undone at every pack wears), its head clear of
     the hub."""
-    from spiderpig.construction.handcrank import HANDLE_THUMB, HandCrank
+    from spiderpig.construction.handcrank import HANDLE_THUMB, INSERT, HandCrank
 
     bracket, parts, _ = cr._bracket((0.0, 12.5), 0.0, 0.0, 1, 4.75)   # (its screw 12.5 up)
     by = {suffix: (part, key) for part, key, suffix in parts}
@@ -436,13 +437,116 @@ def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
     assert cr.BRACKET_HOLE - cr.CARRIAGE[0] >= 2.0                           # oversize
     assert cr.WASHER[1] / 2 - (cr.BRACKET_HOLE - cr.CARRIAGE[0]) / 2 > cr.BRACKET_HOLE / 2
     hc = HandCrank()
-    bodies = {b.name: b for b in hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame")}
+    got, _ = hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame")
+    bodies = {b.name: b for b in got}
     thumb = bodies["handle_thumb_screw"]
     assert thumb.bom_key == f"m3_thumb_screw_{HANDLE_THUMB[0]:g}"
-    inter = thumb.part & bodies["handle"].part
-    assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3
+    assert bodies["handle_insert"].bom_key == INSERT[2]
+    for part in ("handle", "handle_insert"):
+        inter = thumb.part & bodies[part].part
+        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3, part
     reach = thumb.part.bounding_box().max.Z
     assert reach > hc.box.crank_hub_r + HANDLE_THUMB[2]
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
+    """The hand crank's slip clutch (round 1's drive review: a 40 N push was no bound): its
+    arm turns on the hub's journal, three steel balls on springs and set screws in its boss
+    seated in the flange's conical seats; its parts meet nowhere, each ball sits in a seat,
+    the springs stay off solid as set, the set screws inside the boss; the cap it puts on the
+    crank is ``config.PRODUCT_CLUTCH_NM``'s; the cap and the journal's thumb screw keep the arm
+    on, so it comes off the input shaft whole; the grip is 60 mm long on a bolt's plain
+    shank."""
+    from spiderpig.config import PRODUCT_CLUTCH_NM
+    from spiderpig.construction.handcrank import (
+        CLUTCH,
+        CLUTCH_SPRING,
+        GRIP,
+        NRV040,
+        REACH,
+        HandCrank,
+        clutch,
+        clutch_climb,
+        handle_r,
+    )
+
+    for key in CRADLES:
+        cfg = BuildConfig(linkage=key, robot=False)
+        got = clutch(handle_r(cfg), NRV040.ratio, NRV040.eta_hand)
+        assert PRODUCT_CLUTCH_NM[key] == pytest.approx(got["crank_cap_nm"], abs=0.05)
+        assert got["slip_lo_nm"] < got["slip_nm"] < got["slip_hi_nm"]
+        # each spring as set: under its solid with room for the ball to climb out of its seat
+        _, free, rate, max_len, _, _ = CLUTCH_SPRING
+        assert free - got["spring_n"] / rate - clutch_climb() > max_len
+    hc = HandCrank()
+    parts, sweep = hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame", 100.0)
+    by = {b.name: b for b in parts}
+    for a, b in itertools.combinations(parts, 2):
+        inter = a.part & b.part
+        assert inter is None or sum(x.volume for x in inter.solids()) < 0.05, (a.name, b.name)
+    balls = [by[f"handle_ball{i}"] for i in range(CLUTCH["balls"])]
+    flange = (REACH - CLUTCH["boss_t"] - CLUTCH["gap"])          # the seats' face (x)
+    for ball in balls:
+        bb = ball.part.bounding_box()
+        assert flange - 1.0 > bb.min.X                             # down in its seat
+        assert math.hypot(bb.center().Y, bb.center().Z) == pytest.approx(CLUTCH["r"], abs=0.01)
+    for i in range(CLUTCH["balls"]):
+        assert by[f"handle_set_screw{i}"].part.bounding_box().max.X < REACH
+    grip = by["handle_grip"].part.bounding_box()
+    assert pytest.approx(GRIP[1], abs=0.01) == grip.size.X
+    assert by["handle_grip_pin"].bom_key.startswith("m8_hex_bolt_")
+    assert by["handle_grip_nut"].bom_key == "m8_nyloc_nut"
+    # the arm is held on the journal by the cap and its thumb screw (the crank comes off
+    # whole), and everything that turns is inside the sweep
+    assert by["handle_cap"].part.bounding_box().min.X >= REACH
+    assert max(s[2] for s in sweep) >= max(b.part.bounding_box().max.X for b in parts) - 1e-6
+    assert max(s[0] for s in sweep) >= 100.0 + GRIP[0] / 2
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_gearbox_stands_on_spacers_and_the_crank_block_on_shims():
+    """The riser (round 1's drive review, B1): four round spacers on the face screws, on the
+    gearbox's machined face, the plate over the spigot ring and the turning hub's end by
+    ``RISER_CLEAR`` whatever their unmeasured heights; the crank block's top plate seated on
+    the shaft's steel end over DIN 988 shims (M2: no printed sleeve in the clamp), the drawn
+    shim leaving room either way; the keyed plates on the key's straight flanks for any shim
+    the guide may call for; the shims bought fill any gap to it within a ring."""
+    from spiderpig.construction.handcrank import (
+        KEYED_PLATES,
+        NRV040,
+        RISER_CLEAR,
+        SHIM,
+        SPACER,
+        arm_z,
+        riser_for,
+        shims_for,
+    )
+
+    t, t_frame = 3.175, 4.75
+    a0, a1 = arm_z(0.0, t_frame, KEYED_PLATES * t)
+    r = riser_for(0.0, a0, a1, t, NRV040, t_frame)
+    assert r.spacer in SPACER[2]
+    assert r.face == pytest.approx(-r.spacer)
+    assert r.spacer - max(NRV040.spigot_h, NRV040.hub_out) >= RISER_CLEAR
+    assert NRV040.pcd / 2 - SPACER[0] / 2 >= NRV040.spigot_d / 2 + 1.0    # off the spigot
+    assert 0.3 <= r.shim <= r.shim_max - 0.3
+    k = (r.seat - a0) / t
+    assert k == pytest.approx(round(k))
+    assert round(k) > KEYED_PLATES
+    key_w, _, key_len = NRV040.shaft_key
+    for shim in (0.0, r.shim_max):
+        end = r.seat - shim
+        assert end - NRV040.key_short - key_w / 2 >= a1 - 0.2 - 1e-9
+        assert end - NRV040.key_short - key_len + key_w / 2 <= a0
+    assert r.shim_max <= SHIM[0] * SHIM[1]
+    # the rings to the one below the gap: the block a ring at most low, never high
+    t_shim = SHIM[0]
+    for gap in (0.0, 0.19, 0.2, r.shim, r.shim_max):
+        got = sum(shims_for(gap))
+        assert gap - t_shim < got <= gap + 1e-9
 
 
 @pytest.mark.construction
@@ -697,10 +801,30 @@ def test_the_cradle_stands_turns_easily_and_holds():
     assert crank["walk_sf"] >= 2.5
     assert crank["jam_sf"] >= 1.5
     assert r["drive"]["jam_hand_force_n"] == JAM_HAND_N
-    # every joint holds the jam; pin E, the M6 Chicago screw between the rod and the cradle
-    # link, least (it yields at about 1.3 x the jam's push: 54 N at the grip)
+    # every joint holds the jam (pin E, between the rod and the cradle link, a hardened
+    # steel pivot pin since 2026-10-13)
     jam = [x["jam_sf"] for x in rows if x["jam_sf"] is not None]
     assert min(jam) >= 1.3, [(x["joint"], x["jam_sf"]) for x in rows]
+    _holds_the_clutchs_cap(r)
+
+
+def _holds_the_clutchs_cap(r: dict) -> None:
+    """A report's drive at its clutch (``cradle_drive``): its least slip clears the worst
+    starting turn by the margin, its cap under the 40 N push's torque; every part holds the
+    cap at SF 1.3 or more 30° and more from the toggles, and the band round a toggle where
+    any falls under 1.3 narrower than the old case's 30° skip; the gearbox's and the keyed
+    plates' rows at the jams."""
+    clutch = r["drive"]["clutch"]
+    assert clutch["margin"] >= clutch["margin_floor"]
+    assert clutch["crank_cap_nm"] < r["drive"]["jam_torque_nm"]
+    capped = r["jam_capped"]
+    assert capped["crank_nm"] == clutch["crank_cap_nm"]
+    assert capped["away"][0] >= 1.3, capped["away"]
+    assert max(capped["holds_1p3_outside_deg"]) < 30.0, capped["holds_1p3_outside_deg"]
+    assert capped["by_band"][0]["band_deg"] == 0.0              # the whole turn rated
+    assert r["drive"]["gearbox_jam_x_rating"] > 1.0             # (reported, not a bar)
+    assert r["drive"]["keyway"]["four_plates_sf_cap"] >= 2.0
+    assert "This report:" in r["verdict"][1]
 
 
 @pytest.mark.slow
@@ -743,6 +867,7 @@ def test_b_stands_turns_easily_and_holds():
         assert "clevis" in x["section"], x
         assert x["jam_sf"] >= 2.0, x
         assert x["walk_sf"] >= 6.0, x
+    _holds_the_clutchs_cap(r)
 
 
 @pytest.mark.slow
@@ -1052,7 +1177,7 @@ moves the bound with it."""
 PACK_JOINTS = {"decanter_hinge": ("Pin E ", "pillar G"), "decanter_rcm": ("Pins X and Y ", None)}
 """Where each cradle link comes off its side: its pins and its pillar (the steps name them)."""
 MODULES = {"decanter_hinge": None,
-           "decanter_rcm": {"base", "drive", "passive", "hand_crank"}}
+           "decanter_rcm": {"base", "drive", "passive"}}
 """The pieces a cradle that packs as modules comes apart into (``cradle.PACK_POSES``),
 besides the spare bottles' adapters and collars; None: it packs flat."""
 
@@ -1068,9 +1193,9 @@ def test_the_cradle_packs_in_one_box(key):
     assembled boxes' corners moved); of two pieces over each other the lower one goes in
     first; the box no bigger than :data:`PACK_BOX` (modules: :data:`MODULE_BOX`, off the base
     board's size); the steps name where the cradle link comes
-    off its side. A packs flat, from crank angle 0. B packs as three modules and its hand crank
-    (:data:`MODULES`, the spare adapters loose), cranked first until the crank's arm lies
-    along its outer plate's rear leg (about 5 1/2 turns from rest, 31° neck up): there its
+    off its side. A packs flat, from crank angle 0. B packs as three modules, its hand crank
+    in its stow clips on the drive side (:data:`MODULES`), cranked first until the crank's
+    arm lies along its outer plate's rear leg (about 5 1/2 turns from rest, 31° neck up): there its
     passive side panel, its two clips out, comes straight off its cradle link's pins and
     meets nothing of the drive side or the cradle box (``slide_off``), where at rest the
     inner bar would meet the cradle link; the cradle is laid on its drive side first and the
@@ -1135,8 +1260,18 @@ def test_the_cradle_packs_in_one_box(key):
     assert {a for a, _ in mech.meta["fastened"] if a in shipped} <= drive
     assert {n for n in shipped if n.startswith("R.") and n != f"R.{link}"} <= passive
     assert {"R.pin_X_pin", "R.pin_X_clip", "R.pin_Y_clip", "R.frame_outer"} <= passive
-    assert set(by["hand_crank"]["parts"]) == {n for n in shipped if n.startswith("L.handle")}
-    assert "L.handle_thumb_screw" in by["hand_crank"]["parts"]
+    # the hand crank in its stow clips on the drive side (round 1's drive review): moved
+    # within the drive piece, clear of every other part of it
+    hand = {n for n in shipped if n.startswith("L.handle")}
+    assert hand | {"L.stow_clip_0", "L.stow_clip_1"} <= drive
+    assert hand <= set(by["drive"].get("part_matrix", {}))
+    stowed = np.asarray(mech.meta["stow_matrix"], float)
+    crank = [moved(shipped[n].placed_part(), Pose(stowed).to_location()) for n in hand]
+    for n in drive - hand:
+        part = shipped[n].placed_part()
+        for c in crank:
+            inter = c & part
+            assert inter is None or sum(x.volume for x in inter.solids()) < 1.0, n
     base = set(by["base"]["parts"])
     assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_nut1")} <= base
     assert {shipped[n].bom_key for n in base if n.startswith("foot_bracket")} == {
@@ -1147,7 +1282,8 @@ def test_the_cradle_packs_in_one_box(key):
     assert -44.0 < p["pose"]["tilt_deg"] < -20.0             # b6 clears; the box doesn't grow
     assert p["slide_off"] == {"hits": [], "clips_out": ["R.pin_X_clip", "R.pin_Y_clip"]}
     for words in ("rear leg", "about 5½ turns", "R-clip", "on its drive side",
-                  "lift it straight up", "thumb knobs", "thumb screw", "paint pen"):
+                  "lift it straight up", "thumb knobs", "thumb screw", "paint pen",
+                  "stow clips"):
         assert words in text, (words, p["steps"])
     assert text.index("on its drive side") < text.index("R-clip") < text.index(
         "lift it straight up")

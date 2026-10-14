@@ -3,10 +3,11 @@
 **As modules** (:func:`module_pieces`: B, ``construction.cradle.PACK_POSES``, the user's of
 2026-10-13). It is cranked to its pack pose first (:func:`pack_t`: the crank's arm along the
 drive side's outer plate's rear leg, a mark seen without counting turns), then comes apart
-by hand into three modules and its hand crank (``construction.cradle.module_steps``, round
-1's stand review):
+by hand into three modules (``construction.cradle.module_steps``, round 1's stand review):
 
-1. the hand crank off (its thumb screw): nothing turns without it;
+1. the hand crank off (its thumb screw) and into its stow clips on the drive side's outer
+   plate (``construction.cradle.STOWS``, round 1's drive review: it travels with the drive
+   side, moved there within that piece): nothing turns without it;
 2. the cradle off the base board (the brackets' thumb knobs: the carriage bolts stay in the
    board, the washers and knobs back on them), by its outer plates' top members;
 3. the cradle laid on its drive side (the gearbox down), on a towel;
@@ -400,8 +401,10 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
     panel (every part of that side but its cradle link, its brackets: it lifts off the
     cradle link's pins, the cradle lying on its drive side, once their clips are out); the
     drive side with the cradle box (both cradle links, the tie rods, the saddles and what is
-    in them, the light, the base stop: the worm holds it as it was cranked); the hand crank.
-    ``lk`` the cradle's linkage; the rest as :func:`pieces`."""
+    in them, the light, the base stop: the worm holds it as it was cranked) and the hand
+    crank in its stow clips (or a piece of its own where the cradle has none:
+    ``construction.cradle.STOWS``). ``lk`` the cradle's linkage; the rest as
+    :func:`pieces`."""
     out: dict[str, Piece] = {}
 
     def put(key: str, label: str, role: str, name: str) -> None:
@@ -412,10 +415,11 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
     through = _through_board(parts)
     drive = ("drive", "Drive side with the cradle box", "panel")
     passive = ("passive", "Passive side panel", "panel")
+    stows = lk.key in cr.STOWS          # its hand crank rides in clips on the drive side
     for n in sorted(parts):
         p = parts[n]
         s, stem = _side(n)
-        if s == crank_side and stem.startswith("handle"):
+        if s == crank_side and stem.startswith("handle") and not stows:
             put("hand_crank", "Hand crank", "fill", n)
         elif s:
             put(*(passive if s == other and stem != link else drive), n)
@@ -432,7 +436,8 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
                    for mine, o, j in ((a, b, ja), (b, a, jb))
                    if mine == f"{other}.{link}" and o in parts and not is_frame(o)})
     breakdown, reassembly = cr.module_steps(lk, pins)
-    frees = {"hand_crank": ["hand_crank"], "base": ["base"], "lift": ["passive", "drive"]}
+    frees = {"base": ["base"], "lift": ["passive", "drive"],
+             **({} if stows else {"hand_crank": ["hand_crank"]})}
     steps: list[tuple[str, list[str]]] = []
     for text, tag in breakdown:
         if tag == "base" and "base" in out:
@@ -1113,6 +1118,16 @@ def flat_pack(mech, lk, t: float = 0.0) -> dict:
     reassembly: list[str] = []
     if pose is not None:
         pcs, steps, reassembly = module_pieces(infos, mech.connections, link, lk, fastened)
+        stow = mech.meta.get("stow_matrix")
+        if stow is not None:            # the hand crank in its stow clips on the drive side
+            m = np.asarray(stow, float)
+            drive = next(pc for pc in pcs if pc.key == "drive")
+            for n in drive.parts:
+                if _side(n)[1].startswith("handle"):
+                    i = infos[n]
+                    infos[n] = PartInfo(n, i.fab, i.bom_key, i.rigid_with,
+                                        i.points @ m[:3, :3].T + m[:3, 3])
+                    drive.moved[n] = m
     else:
         pcs, steps = pieces(infos, mech.connections, link, fastened)
     # the parts that turn by any angle (the levelled pieces', the hanging links'): their

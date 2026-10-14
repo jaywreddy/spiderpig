@@ -505,3 +505,98 @@ register(
                      "spare only)"),),
          dims={"d": 7.0, "od": 14.0, "t": 0.8}),
 )
+
+
+# -- the drive's round 1 (design review round 1, 2026-10-14; construction.handcrank): the
+# riser's spacers, the seat's shims, the hand crank's slip clutch and grip pin. Pages rendered
+# 2026-10-14, saved under /root/.cache/spiderpig/tmp/r1drive/pages/ on the development box -----
+
+MCM_SPACERS = "https://www.mcmaster.com/products/unthreaded-spacers/screw-size~m6/" \
+              "aluminum-unthreaded-spacers-2~~/"
+M6_SPACERS_AL = {11.0: ("94669A348", 1.60, 1.36, 1.20), 12.0: ("94669A349", 1.62, 1.38, 1.22),
+                 13.0: ("94669A178", 1.21, 1.03, 0.91)}
+"""McMaster's aluminium unthreaded spacers for M6, 13 mm OD, 6.300 mm bore: length -> (part,
+USD each at 1-24, 25-99, 100 up) (the M6 aluminium listing rendered 2026-10-14)."""
+
+register(
+    *(Item(f"m6_spacer_al_{L:g}", f"Round spacer for M6, aluminium, 13 mm OD x 6.3 mm bore, "
+           f"{L:g} mm long", "spacer",
+           (Offer("McMaster-Carr", MCM + pn + "/", pn, price_usd=p1, verified=True,
+                  tiers=((1, p1), (25, p25), (100, p100)),
+                  note="aluminium unthreaded spacer for M6, 13 mm OD, ID 6.300 mm; the M6 "
+                       f"aluminium listing rendered 2026-10-14 ({MCM_SPACERS})"),),
+           dims={"od": 13.0, "id": 6.3, "length": L, "material": "aluminium"},
+           notes="The gearbox's riser (construction.handcrank.SPACER): one on each face screw, "
+                 "bearing on the machined output face outside its spigot ring. The guide's "
+                 "go/no-go swaps the drawn length for its neighbour.")
+      for L, (pn, p1, p25, p100) in M6_SPACERS_AL.items()),
+    Item("shim_din988_6x12_0p2", "DIN 988 shim ring 6 x 12 x 0.2 mm, A2 stainless, 8 pieces",
+         "washer",
+         (Offer("Accu", "https://accu-components.com/us/shim-washers/62878-HSHN-6-12-0-2-A2",
+                "HSHN-6-12-0.2-A2", pack_qty=8, price_usd=6.40, verified=True,
+                note="sold singly: 1 $1.88, 2 $1.25, 4 $0.95, 6 or more $0.80 each (eight: "
+                     "$6.40); page rendered 2026-10-14"),),
+         dims={"id": 6.0, "od": 12.0, "t": 0.2},
+         notes="Under the crank block's top plate on the output shaft's end "
+               "(construction.handcrank.SHIM): as many as the guide's go/no-go says, up to "
+               "1.6 mm."),
+    Item("steel_ball_6", "Steel ball 6 mm, 304 stainless, grade 100, 50 pieces", "misc",
+         (Offer("McMaster-Carr", MCM + "9291K77/", "9291K77", pack_qty=50, price_usd=7.89,
+                verified=True,
+                note="304 stainless, 6 mm +-0.0127, cold worked, Rockwell C25, grade 100 "
+                     "(ISO 3290); 50 a pack; the 6 mm steel balls listing rendered 2026-10-14 "
+                     "(https://www.mcmaster.com/products/steel-balls/diameter~6-mm/). Three are "
+                     "used: MISUMI sells 52100 balls singly (BLMJ6, USD 2.08 each by its price "
+                     "API, 2026-10-14; not a rendered page)"),),
+         dims={"d": 6.0, "material": "steel"},
+         notes="The hand crank's slip clutch's balls (construction.handcrank.CLUTCH)."),
+    Item("compression_spring_clutch", "Compression spring 0.24 in OD x 0.813 in, spring steel, "
+         "60 lbf/in, 5 pieces", "misc",
+         (Offer("McMaster-Carr", MCM + "9434K49/", "9434K49", pack_qty=5, price_usd=4.58,
+                verified=True,
+                note="spring steel, closed and ground ends: OD 0.24 in (6.1 mm), ID 0.156 in, "
+                     "wire 0.042 in (1.07 mm), 0.813 in (20.65 mm) long, 60 lbf/in (10.5 "
+                     "N/mm), 15 lbf (66.7 N) at 0.554 in (14.07 mm); 5 a pack; the 0.24 in OD "
+                     "compression springs listing rendered 2026-10-14 (https://www.mcmaster.com"
+                     "/products/compression-springs/od~0-24/compression-springs-1~~/)"),),
+         dims={"od": 6.1, "free": 20.65, "rate": 10.5, "wire": 1.07},
+         notes="Behind each clutch ball, set by an M8 set screw (construction.handcrank."
+               "CLUTCH_SPRING). Spring steel rusts wet: the clutch is dry inside its print."),
+    Item("m8_set_screw_8", "M8 x 8 socket set screw, cup point, 18-8", "fastener",
+         (Offer("Bolt Depot", BD + "8743", "8743", price_usd=0.21, verified=True,
+                tiers=((1, 0.21), (100, 0.1386)),
+                note="18-8 (A-2), M8 x 1.25 x 8, Allen, cup point (no 18-8 flat point listed); "
+                     "the M8 18-8 set screw list rendered 2026-10-14"),),
+         dims={"d": 8.0, "length": 8.0},
+         notes="Sets a clutch spring's preload: self-taps into a 6.9 mm printed pilot."),
+    Item("m3_heat_set_insert", "M3 heat-set threaded insert for plastic, brass, 5.7 mm long",
+         "insert",
+         (Offer("Accu", "https://accu-components.com/us/brass-threaded-inserts/"
+                "845137-HTBI-M3-BR", "HTBI-M3-BR", price_usd=2.35, verified=True,
+                tiers=((1, 2.35), (2, 1.68), (4, 1.36), (6, 1.20), (12, 1.09), (100, 0.69)),
+                note="brass, M3, 5.7-5.8 mm long, about 4.4 mm over the knurls, for a 4.0 mm "
+                     "hole (+0.1: a search snippet; the page shows the insert and its prices); "
+                     "sold singly; page rendered 2026-10-14"),),
+         dims={"d": 3.0, "length": 5.7, "hole": 4.0},
+         notes="The hand crank's hub (its thumb screw onto the input key) and its journal's "
+               "end (the arm's cap): brass threads where the crank comes off at every pack."),
+    Item("m8_hex_bolt_85", "M8 x 85 hex bolt, partially threaded, 18-8", "fastener",
+         (Offer("Bolt Depot", BD + "5826", "5826", price_usd=1.53, verified=True,
+                tiers=((1, 1.53), (100, 0.9736)),
+                note="18-8 (A-2), M8 x 1.25 x 85, 13 mm across flats, head 5.15-5.45, thread "
+                     "at least 22 mm; page rendered 2026-10-14"),),
+         dims={"d": 8.0, "length": 85.0, "thread": 22.0, "af": 13.0, "head_h": 5.3},
+         notes="The hand crank's grip pin: the printed grip spins on its plain shank "
+               "(round 1: it replaced a NETRF10 standoff and two button heads)."),
+    Item("m8_nyloc_nut", "M8 nylon-insert lock nut, 18-8", "nut",
+         (Offer("Bolt Depot", BD + "4797", "4797", price_usd=0.17, verified=True,
+                tiers=((1, 0.17), (100, 0.1187)),
+                note="18-8, M8 x 1.25, 13 mm across flats, 8 mm high; page rendered "
+                     "2026-10-14"),),
+         dims={"af": 13.0, "h": 8.0}),
+    Item("m8_washer", "M8 flat washer (DIN 125, 8.4 x 16 x 1.6), 18-8", "washer",
+         (Offer("Bolt Depot", BD + "4518", "4518", price_usd=0.08, verified=True,
+                tiers=((1, 0.08), (100, 0.0529)),
+                note="18-8, M8, 16 mm OD; page rendered 2026-10-14"),),
+         dims={"id": 8.4, "od": 16.0, "t": 1.6}),
+)

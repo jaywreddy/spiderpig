@@ -75,6 +75,7 @@ from spiderpig.construction.robot import prefixed
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import screw
 from spiderpig.mechanism import Body, Mechanism
+from spiderpig.servos.mount import to_location
 from spiderpig.shapes import Cut, Shape3D, cut_holes, difference, disc, moved, pill, union
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
 
@@ -1428,6 +1429,59 @@ CARRIAGE_HOLE = 6.7        # the board's hole for its square neck (6.48 across i
 #                            mm of birch each: a mallet, and split face veneers)
 
 
+def _stow_clip(at, u, face: float, half_w: float, t_frame: float, axis_out: float,
+               tube_r: float) -> Shape3D:
+    """A printed clip snapped round an outer plate's member (``half_w`` its half-width,
+    ``t_frame`` thick; ``face`` its outside, world z, the plate inboard of it), holding the
+    stowed hand crank's tube (``tube_r``) with its axis ``axis_out`` off the plate:
+    centred at ``at`` (world XY) on the member's line, ``u`` along it. Built with s along
+    the member, c across it and h out of the plate, then placed: a back on the plate's
+    outside, a wall past each edge with a lip under the plate's inside, a cradle the tube
+    snaps into from outside (its walls 5 mm past the axis)."""
+    length, wall, lip = STOW_CLIP
+    base = axis_out - tube_r - 1.0
+    c_out = half_w + 0.2 + wall
+    parts = [_box(-length / 2, length / 2, -c_out, c_out, 0.0, base),
+             _box(-length / 2, length / 2, -tube_r - 3.0, tube_r + 3.0, base - 0.01,
+                  axis_out + 5.0)]
+    for sgn in (-1.0, 1.0):
+        lo, hi = sorted((sgn * (half_w + 0.2), sgn * c_out))
+        parts.append(_box(-length / 2, length / 2, lo, hi, -(t_frame + 0.1 + lip), 0.0))
+        lo, hi = sorted((sgn * (half_w - lip), sgn * c_out))
+        parts.append(_box(-length / 2, length / 2, lo, hi, -(t_frame + 0.1 + lip),
+                          -(t_frame + 0.1)))
+    tube = Cylinder(tube_r + 0.3, length + 2.0, rotation=(0.0, 90.0, 0.0)).moved(
+        Location((0.0, 0.0, axis_out)))
+    clip = difference(union(parts), tube)
+    m = np.eye(4)                       # s -> u, c -> u's right in the plate, h -> -z (out)
+    m[:3, 0] = (u[0], u[1], 0.0)
+    m[:3, 1] = (u[1], -u[0], 0.0)
+    m[:3, 2] = (0.0, 0.0, -1.0)
+    m[:3, 3] = (float(at[0]), float(at[1]), face)
+    return moved(clip, to_location(m))
+
+
+def stow_matrix(u, origin, axis_z: float, handle: Mapping) -> np.ndarray:
+    """The 4 x 4 transform that takes the hand crank from its input shaft (``handle``: its
+    notes, ``construction.handcrank``: the shaft's end, its direction, its axis's z, world)
+    to its stow clips: its tube along ``u`` (world XY) with the shaft's end at ``origin``
+    and its axis at ``axis_z``, its arm down along the plate."""
+    d = np.asarray(handle["dir"], float)
+    a = math.atan2(d[1], d[0])
+    assembled = np.eye(4)
+    assembled[:2, :2] = [[math.cos(a), -math.sin(a)], [math.sin(a), math.cos(a)]]
+    assembled[:3, 3] = (*map(float, handle["end_xy"]), float(handle["axis_z"]))
+    down = np.array([u[1], -u[0]])
+    if down[1] > 0:
+        down = -down
+    ex = np.array([u[0], u[1], 0.0])
+    ey = np.array([-down[0], -down[1], 0.0])     # the arm (the handle's -y) points down
+    stowed = np.eye(4)
+    stowed[:3, 0], stowed[:3, 1], stowed[:3, 2] = ex, ey, np.cross(ex, ey)
+    stowed[:3, 3] = (float(origin[0]), float(origin[1]), axis_z)
+    return stowed @ np.linalg.inv(assembled)
+
+
 def _m5_length(grip: float) -> float:
     """The shortest stock M5 button head through ``grip`` mm with a turn of thread to spare."""
     return next(n for n in M5.lengths if n >= grip + 0.5)
@@ -1561,10 +1615,10 @@ STUDIES: dict[str, str] = {}
 """The cradles that are studies (their outputs say so): none since B was refined to build
 (2026-10-10, ``docs/agentlib/DECANTER.md``)."""
 
-DRIVE_PARTS = ("gearbox", "riser_disc", "crank_", "crankpin", "handle")
+DRIVE_PARTS = ("gearbox", "riser_spacer", "crank_", "crankpin", "handle")
 """The hand crank's parts by name (:mod:`construction.handcrank`): the drive side's only."""
 
-GROUPS = {"drive": ("gearbox", "riser_disc", "handle"), "crank": ("conn",),
+GROUPS = {"drive": ("gearbox", "riser_spacer", "handle", "stow_clip"), "crank": ("conn",),
           "box": ("tie_", "front_saddle", "rear_saddle", "led", "base_stop"),
           "stand": ("base_plate", "base_cleat", "jack_locator", "foot_")}
 """A cradle's parts its sides' plan doesn't name, by name: the gearbox and the hand crank,
@@ -1804,6 +1858,25 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                             sheet=BASE_SHEET, color=BOARD_COLOR)
                    for i, part in enumerate(_cleats([xy[0] for xy in feet_xy.values()], y_top,
                                                     face, sign, t_frame))]
+    # the hand crank's stow clips on the drive side's outer plate (STOWS) and where the
+    # crank goes in them (cradle_pack moves it there for the trip)
+    stow, stowed = STOWS.get(lk.key), None
+    hand = side.meta.get("hand_crank")
+    if stow is not None and hand:
+        a_xy, b_xy = (np.asarray(_node_xy(build.xy, lk, topo, stand, n), float)
+                      for n in stow.member)
+        u = (b_xy - a_xy) / float(np.linalg.norm(b_xy - a_xy))
+        face = -(z_mid - plan.z(0)[0])                 # the drive side's outer plate's outside
+        wide = getattr(stand, "wide", {})
+        half_w = wide.get(stow.member, wide.get(stow.member[::-1], stand.member_r))
+        from spiderpig.construction.handcrank import NRV040
+
+        for i, s_at in enumerate(stow.at):
+            extras.append(hardware(f"L.stow_clip_{i}", _stow_clip(
+                a_xy + u * s_at, u, face, half_w, t_frame, stow.axis_out, NRV040.crank_hub_r),
+                frame_host, fab="printed", color=KNOB_COLOR))
+        handle = dict(hand["handle"], axis_z=float(hand["handle"]["axis_z"]) - z_mid)
+        stowed = stow_matrix(u, a_xy + u * stow.hub_at, face - stow.axis_out, handle)
     plate_part, foot_xz = _base_plate(cf.lip, stand, y_top, base_holes, base_z(lk))
     extras.append(hardware("base_plate", plate_part, frame_host, fab="laser",
                            sheet=BASE_SHEET, color=BOARD_COLOR))
@@ -1833,6 +1906,8 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                 mid_plane=z_mid, bay_mm=BAY, lip_height_mm=LIP_HEIGHT,
                 tie_mm=tie_len, base_tie_mm=foot_len, bay_tie_mm=bay_len, fastened=fastened,
                 bottle=shown.name, cradle_linkage=lk.key)
+    if stowed is not None:
+        meta["stow_matrix"] = np.round(stowed, 6).tolist()
     return Mechanism(name=f"{side.name}_cradle", bodies=bodies + extras,
                      connections=connections, meta=meta,
                      bom_extras=list(side.bom_extras) + list(passive.bom_extras) + glue)
@@ -2013,7 +2088,9 @@ def assembly(view) -> list:
                       if any(j in js for b, (js, _) in lk.links.items() if b != link))
         breakdown, reassembly = module_steps(lk, pins)
         ops.append(Op(USE, (2,), (), "Taking it apart for the trip",
-                      "Three modules and the hand crank, no tool. "
+                      ("Three modules, no tool, the hand crank in its stow clips on the drive "
+                       "side. " if key in STOWS else "Three modules and the hand crank, no "
+                       "tool. ")
                       + " ".join(f"{i}. {text}" for i, (text, _) in
                                  enumerate(breakdown, 1)), "pack", count=False))
         ops.append(Op(USE, (3,), (), "Putting it back together",
@@ -2043,9 +2120,13 @@ USE_LIMITS = (
     "it, less than the 25 mm a finger needs (ISO 13854). A trapped finger: the worm holds "
     "whatever it has caught, so turn the handle back the way it came; never pull. When you "
     "leave it, take the handle off (its thumb screw): nothing turns without it. "
-    "Never force the handle: if it stiffens, stop and look (the drive holds a firm 40 N push "
-    "at the grip against a blocked cradle, no more; if it stays stiff after being forced, "
-    "look for a bent pin between the rod and the cradle link). Letting go stops the bottle, "
+    "Never force the handle: if it stiffens, stop and look. Its clutch clicks round past "
+    "about 31 N at the grip, so a hard push can't break the drive: a click means something is "
+    "in the way (with nothing in the way, a full 6 L started from a stop near level: turn "
+    "back a little and on, steadily). It doesn't protect what is caught: in the last two "
+    "handle turns before rest and before full tilt the cradle comes in with a force no clutch "
+    "bounds, so nothing may be under the cradle box or the bottle there. Letting go stops "
+    "the bottle, "
     "not the stream: the wine already over the lip runs on; to stop it, turn back about a "
     "turn. Check the lip gauge is down before the bottle passes level: with it up, a wet "
     "bottle slides forward at full tilt, its mouth off the pivot over the decanter. Uncork "
@@ -2086,6 +2167,32 @@ PACK_POSES: dict[str, PackPose] = {
 """The cradles that pack as modules (``cradle_pack.module_pieces``, the user's of
 2026-10-13), each one's pack pose (:func:`pack_pose`). A (not here) packs flat: its cradle
 link rides pillar G between its side's plates."""
+
+
+@dataclass(frozen=True)
+class Stow:
+    """Where a cradle that packs as modules stows its hand crank (:data:`STOWS`): two
+    printed clips (:func:`_stow_clip`) snapped round ``member`` of the drive side's outer
+    plate, on its outside, ``at`` mm from the member's first node along it; the crank's tube
+    in them, the input shaft's end of its hub ``hub_at`` from that node, its arm down along
+    the plate, its tube's axis ``axis_out`` off the plate (its clutch's flange clear)."""
+
+    member: tuple[str, str]
+    at: tuple[float, float]
+    hub_at: float
+    axis_out: float = 28.0
+
+
+STOWS: dict[str, Stow] = {
+    # B: on the strut O-O2, 109 to 298 mm forward of O: clear of the gearbox (53 mm round O)
+    # and, for the clips' lips over the plate's inside, of the crank's sweep in the head
+    # layer (103 mm round O)
+    "decanter_rcm": Stow(("O", "O2"), (140.0, 165.0), 130.0),
+}
+"""The cradles whose hand crank rides in a stow clip on the drive side for the trip (round
+1's drive review: B's "three modules and the crank" became three modules)."""
+STOW_CLIP = (20.0, 2.5, 1.5)    # a stow clip's length along its member, its wall, its lips'
+#                                 reach over the plate's inside (a snap round the member)
 
 
 def pack_pose(lk) -> tuple[float, float, float] | None:
@@ -2186,7 +2293,10 @@ def module_steps(lk, pins) -> tuple[list[tuple[str, str]], list[str]]:
          "passive side's cradle link clears that side's inner bar. The first time, mark the "
          f"pose for the way back with a paint pen: {pose.marks}.", "pose"),
         ("Hand crank: loosen its thumb screw by hand and pull it off the gearbox's input "
-         "shaft; the screw goes back into its hub. Nothing turns without it.", "hand_crank"),
+         "shaft; the screw goes back into its hub. Nothing turns without it."
+         + (" Snap its tube into the two stow clips on the drive side's outer plate, in "
+            "front of the gearbox, its arm down: it travels with the drive side."
+            if lk.key in STOWS else ""), "hand_crank"),
         ("Base board: undo the brackets' thumb knobs by hand and lift the cradle off by its "
          "two outer plates' top members, never by the cradle box (only the worm holds it). "
          "The carriage bolts stay in the board, their washers and knobs back on them.",
@@ -2222,7 +2332,8 @@ def module_steps(lk, pins) -> tuple[list[tuple[str, str]], list[str]]:
         "board: each rail between its two cleats, each bracket's foot over its carriage bolt "
         "(its hole is 2.5 mm oversize). The washers and the thumb knobs on: the drive side's "
         "snug by hand, the passive side's only started.",
-        "The hand crank on, its thumb screw onto the input shaft's key.",
+        ("The hand crank out of its stow clips and on" if lk.key in STOWS else
+         "The hand crank on") + ", its thumb screw onto the input shaft's key.",
         "Turn a whole pour and back to rest with the passive side's knobs loose: that side "
         "settles where the linkage puts it. Then snug them, at rest.",
         "The first build's checks again, the bottle out: turn a whole pour and back; both "
@@ -2285,7 +2396,7 @@ def print_poses(names, tilt: float) -> dict[str, list[tuple[str, float]]]:
     its side, the base stop's rails on their top and its gate on its face, the light's clip
     on its tube's foot (upright, round), the brackets on their L (its corner in every
     layer), the base board's thumb knobs on their tops, the feet as they stand, the hand
-    crank on its arm (its tube up)."""
+    crank's hub standing on its end (its tube up) and its arm, grip and cap on their outer faces."""
     t = -math.degrees(tilt)
     out: dict[str, list[tuple[str, float]]] = {}
     carriers = {s.name for s in SADDLES}
@@ -2306,6 +2417,8 @@ def print_poses(names, tilt: float) -> dict[str, list[tuple[str, float]]]:
             out[n] = [("X", -90.0)]          # on its top: the nut's pocket open upward
         elif n.startswith("foot_boot_"):
             out[n] = [("X", 90.0)]
-        elif n in ("L.handle", "L.handle_grip"):
-            out[n] = [("Y", 90.0)]           # (the input shaft along +x: the arm down)
+        elif n == "L.handle":               # its hub on the bed, the cone under the clutch's
+            out[n] = [("Y", -90.0)]          # flange, the seats up (the shaft along +x)
+        elif n in ("L.handle_arm", "L.handle_grip", "L.handle_cap"):
+            out[n] = [("Y", 90.0)]           # the arm's outer face on the bed
     return out

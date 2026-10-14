@@ -18,8 +18,13 @@ A cradle (:mod:`construction.cradle`) is judged here, not by the walking model o
   speed: :func:`jam_nm`), away from the crank-rocker's toggles (where nothing can bound
   it). The pins are rated by :mod:`spiderpig.strength` at these loads ("walk" the bottle's,
   "jam" the jam's).
+* **The clutch's cap** (:func:`clutch_case`): the most the hand crank's slip clutch lets
+  onto the crank, however hard the push (``config.PRODUCT_CLUTCH_NM``), on a blocked cradle
+  over the whole turn, the toggles included: each part's safety factor as the excluded
+  band round the toggles narrows to nothing, and where it falls under 1.3 and 1.
 * **The hand**: the crank torque through the worm (its ratio, its static efficiency: the
-  slow end of a hand's speed) at the handle's throw; turns per pour.
+  slow end of a hand's speed) at the handle's throw; turns per pour; the slip clutch's
+  setting against the worst starting turn; the gearbox and the keyed plates at the jams.
 * **The rod**: Euler buckling of the connecting rod at its largest compression.
 * **The stand**: the centre of mass of the cradle with each bottle, full and empty, at its
   own setting, over the swing, against the feet (the base ties' line along x, the two
@@ -45,6 +50,7 @@ from spiderpig.construction.handcrank import (
     WormBox,
     handle_r,
 )
+from spiderpig.cradle_drive import clutch_case, drive_limits, verdict
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware import mass as mass_mod
 from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, NETRF12_ID
@@ -310,6 +316,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     empty, _ = statics(config, rigid0, joints0, ts)
     out["drive"]["empty_handle_force_n"] = round(
         float(np.abs(empty).max()) / (box.ratio * box.eta_static) / (grip_r / 1000.0), 2)
+    out["drive"].update(drive_limits(box, grip_r, peak, handle))
     if out["drive"]["handle_force_n"] > WARN_HANDLE_N:
         out.setdefault("warnings", []).append(
             f"the handle needs {out['drive']['handle_force_n']} N at its grip at worst")
@@ -348,6 +355,12 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                        "sf_jam": round(cap * 1000.0 / max(f_rod_jam * lever, 1e-9), 2)}
     out["stand"] = stability(config, mech, design, ts)
     out["strength"] = strength_check(config, mech, rows, peak)
+    _, cap_f = statics(config, rigid, joints, ts, jam_nm=out["drive"]["clutch"]["crank_cap_nm"])
+    out["jam_capped"] = clutch_case(config, ts, tilt, joints, rows, out["strength"]["rows"],
+                                    cap_f, out["rod"], out["crankpin"],
+                                    out["drive"]["jam_torque_nm"],
+                                    out["drive"]["clutch"]["crank_cap_nm"])
+    out["verdict"] = verdict(lk.key, out)
     moving = {*cr.REAR_MOVES, *cr.STOP_MOVES}
     out["saddles"] = saddles(float(tilt.min()), float(tilt.max()), sum(
         part_mass_kg(config, b) for b in mech.bodies if b.name in moving))
@@ -599,9 +612,11 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
 
 
 def wheel_sweep(mech) -> list[dict]:
-    """What the hand crank's turning would hit: its tube about the input shaft, the disc its
-    hub's thumb screw sweeps, and the disc its arm and grip sweep, against every part but the
-    crank's own and the gearbox it rides (the crank is drawn at rest)."""
+    """What the hand crank's turning would hit: the solids of revolution its parts sweep
+    about the input shaft (``notes["hand_crank"]["handle"]["sweep"]``: its hub and tube, the
+    hub's thumb screw's head, the clutch's flange and boss, the disc its arm, grip and the
+    grip's bolt and nut sweep), against every part but the crank's own and the gearbox it
+    rides (the crank is drawn at rest)."""
     from build123d import Axis, Cylinder, Location
 
     w = (mech.meta.get("hand_crank") or {}).get("handle")
@@ -610,7 +625,6 @@ def wheel_sweep(mech) -> list[dict]:
     end, d = np.asarray(w["end_xy"], float), np.asarray(w["dir"], float)
     z = float(w["axis_z"]) - float(mech.meta.get("mid_plane", 0.0))
     a = math.degrees(math.atan2(d[1], d[0]))
-    reach, t_arm = float(w["reach_mm"]), float(w["arm_t_mm"])
 
     def cyl(r: float, t0: float, t1: float):
         # along +x from the shaft's end, then turned to the shaft's way (as it is built)
@@ -618,10 +632,10 @@ def wheel_sweep(mech) -> list[dict]:
             Location(((t0 + t1) / 2, 0.0, 0.0))).rotate(Axis.Z, a).moved(
             Location((float(end[0]), float(end[1]), z)))
 
-    sweep = cyl(float(w["hub_r_mm"]), -float(w.get("hub_len_mm", 0.0)), reach - t_arm) + cyl(
-        float(w["r_mm"]), reach - t_arm, reach + float(w["grip_len_mm"]))
-    if "thumb_r_mm" in w:               # the hub's thumb screw's head, turning with it
-        sweep = sweep + cyl(float(w["thumb_r_mm"]), *map(float, w["thumb_x_mm"]))
+    sweep = None
+    for r, t0, t1 in w["sweep"]:
+        c = cyl(float(r), float(t0), float(t1))
+        sweep = c if sweep is None else sweep + c
     out = []
     box = sweep.bounding_box()
     for b in mech.bodies:
@@ -684,8 +698,8 @@ def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float) -> dict:
                        "walk": {"n": r["bottle_n"], "patterns": None},
                        "jam": {"n": r["jam_n"], "patterns": None}})
     return {"source": "statics", "note": "a cradle's: a sealed full 6 L methuselah (walk), a firm "
-            f"push at the grip on a blocked cradle ({JAM_HAND_N:g} N: {jam_nm():g} N·m at "
-            "the crank, jam); cradle_report",
+            f"push at the grip on a blocked cradle ({JAM_HAND_N:g} N: "
+            f"{jam_nm(grip_r=handle_r(config)):g} N·m at the crank, jam); cradle_report",
             "walk_n": max((j["walk"]["n"] for j in joints), default=0.0),
             "jam_n": max((j["jam"]["n"] for j in joints), default=0.0), "joints": joints,
             "torque_limit_nm": jam_nm(grip_r=handle_r(config)),
@@ -718,15 +732,21 @@ VERDICT = {
     "decanter_hinge": ("build", "The one to build: a four-bar crank-rocker whose rocker is the "
                        "cradle, hinged at the bottle's mouth. From 50° neck up (an opened "
                        "full bottle goes in) to 30° neck down, a 750 ml to a 6 L. Every check "
-                       "passes with a full 6 L: the joints hold a forced crank (jam SF 1.6 at "
-                       "worst), the gearbox 1.44 x its rating, the stand tips past 25°."),
+                       "passes with a full 6 L: a slip clutch in the hand crank caps the "
+                       "crank's torque however hard the push, every joint holds that cap at "
+                       "SF 1.3 or more away from the ends of the swing, the gearbox carries "
+                       "the bottle within its rating, the stand tips past 25°."),
     "decanter_rcm": ("build", "To build too: an eight-bar double parallelogram turns the "
                      "cradle about a point with nothing there, so nothing stands at the "
                      "mouth; its pivots hang under the mouth, its crank behind. Every check "
-                     "passes with a full 6 L: the joints hold a forced crank (jam SF 1.31 at "
-                     "worst), the gearbox 1.52 x its rating, the stand tips past 25°."),
+                     "passes with a full 6 L: a slip clutch in the hand crank caps the "
+                     "crank's torque however hard the push, every joint holds that cap at SF "
+                     "1.3 or more away from the ends of the swing, the gearbox carries the "
+                     "bottle within its rating, the stand tips past 25°."),
 }
-"""Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why."""
+"""Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why: the
+bars ``tests/test_cradle.py`` holds, not a copied number; :func:`report`'s ``verdict`` adds its
+own numbers (:func:`cradle_drive.verdict`)."""
 
 
 def motion(config: BuildConfig, n: int = 360) -> dict:
