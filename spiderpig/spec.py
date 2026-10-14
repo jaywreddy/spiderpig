@@ -55,7 +55,7 @@ DEFAULT_OUTPUTS = ("step", "stl", "print", "dxf", "bom")
 WILDCARDS = frozenset({"any", "*", "?", ""})
 FIT_FIELDS = tuple(f.name for f in fields(Params))
 FIT_NONNEG = frozenset({"servo_screw_web_t"})   # 0 is a setting (keep every front screw)
-SECTIONS = ("motion", "size", "budget")
+SECTIONS = ("motion", "size", "budget", "precision")
 
 
 # ---------------------------------------------------------------------------
@@ -148,10 +148,29 @@ class TargetField:
     source: str
     tier: str
     doc: str
+    needs: str = ""      # a capability the linkage must have (:data:`CAPABILITIES`)
 
     @property
     def path(self) -> str:
         return f"{self.section}.{self.name}"
+
+    def applies(self, lk) -> bool:
+        """Can ``lk`` have this metric (its capability, :data:`CAPABILITIES`)?"""
+        return not self.needs or CAPABILITIES[self.needs][0](lk)
+
+
+CAPABILITIES = {
+    "output": (lambda lk: lk.output is not None,
+               "has an output (a mechanism's or an arm's point): precision is measured there",
+               "has feet, no output"),
+    "ranged": (lambda lk: lk.ranged,
+               "has inputs that turn over ranges (an arm's drives): its pins seat under "
+               "gravity, its links tilt out of the plane and bend under the payload",
+               "turns a crank through full turns (no ranged inputs: no ISO 9283 pose, no "
+               "payload on its drives)"),
+}
+"""A target field's ``needs``: the linkage's capability (``lk -> bool``), what it means,
+and what a linkage without it is instead (the refusal's words)."""
 
 
 def _fields(*rows: tuple) -> dict[str, TargetField]:
@@ -160,6 +179,7 @@ def _fields(*rows: tuple) -> dict[str, TargetField]:
 
 BOTH = ("walker", "mechanism", "arm")       # (every kind)
 WALKER, MECHANISM = ("walker",), ("mechanism", "arm")   # (what has feet; what has an output)
+ARM = ("arm",)                              # (what has ranged inputs)
 
 TARGET_FIELDS: dict[str, dict[str, TargetField]] = {
     "motion": _fields(
@@ -217,6 +237,28 @@ TARGET_FIELDS: dict[str, dict[str, TargetField]] = {
         ("sheets", "budget", BOTH, "sheets", True, "layout", "measured",
          "sheets of the stock the laser-cut parts pack onto"),
     ),
+    # the error budget at the output (spiderpig.precision): what a task asks of the placement
+    "precision": _fields(
+        ("repeatability_mm", "precision", MECHANISM, "mm", True, "precision", "estimated",
+         "the worst-case bound on the output's lost motion: every pin's clearance the same "
+         "way at the worst pose, the drives' backlash and homing, the turntable's tilt, the "
+         "links' rise out of the plane in quadrature (Precision.repeatability_mm)", "output"),
+        ("accuracy_mm", "precision", MECHANISM, "mm", False, "precision", "estimated",
+         "what is the same every time and calibrates out, added up: every hole off by its "
+         "laser tolerance, a 10 K swing over the reach, the turntable's and the drives' "
+         "systematic errors and a step of each drive (Precision.accuracy_mm)", "output"),
+        ("rp_mm", "precision", ARM, "mm", True, "precision", "estimated",
+         "ISO 9283 pose repeatability within a session: 30 cycles to each of 5 poses, mean + "
+         "3 sigma, gravity seating the pins (Monte Carlo, repeatability.iso_rp)", "ranged"),
+        ("rp_powerup_mm", "precision", ARM, "mm", False, "precision", "estimated",
+         "ISO 9283 RP across power-ups: every cycle re-homed (Rp.powerup_mm)", "ranged"),
+        ("out_of_plane_mm", "precision", ARM, "mm", False, "precision", "estimated",
+         "the tool's tip out of the plane in the links' tilt and end float, worst over the "
+         "box (precision.out_of_plane)", "ranged"),
+        ("payload_sag_mm", "precision", ARM, "mm", False, "precision", "estimated",
+         "the links bending under the payload at the tool, worst over the box (it calibrates "
+         "out at one payload; linkage.stiffness)", "ranged"),
+    ),
 }
 
 
@@ -230,6 +272,10 @@ _OUTPUT_METRICS: dict[str, tuple[str, ...]] = {}
 # the budget section's one plain number: what to allow, in all, for the items the catalog
 # doesn't price (they are otherwise left out of the total, which then can't confirm a max)
 ALLOWANCE = "allowance_usd"
+# the precision section's one plain number: the load at the output (g) that the budget's sag,
+# the ISO RP's gravity seating and the strength check's static loads assume
+PAYLOAD = "payload_g"
+PLAIN = {"budget": ALLOWANCE, "precision": PAYLOAD}
 
 
 def output_metrics(lk) -> tuple[str, ...]:
@@ -359,6 +405,8 @@ class Spec:
     budget: dict[str, Target] = field(default_factory=dict)
     outputs: tuple[str, ...] = DEFAULT_OUTPUTS
     allowance_usd: float | None = None      # ``budget.allowance_usd``: for the unpriced items
+    precision: dict[str, Target] = field(default_factory=dict)
+    payload_g: float | None = None          # ``precision.payload_g``: the load at the output
 
     @classmethod
     def from_dict(cls, data: Mapping) -> Spec:
@@ -385,6 +433,8 @@ class Spec:
                 out[section] = {k: t.to_dict() for k, t in targets.items()}
         if self.allowance_usd is not None:
             out.setdefault("budget", {})[ALLOWANCE] = self.allowance_usd
+        if self.payload_g is not None:
+            out.setdefault("precision", {})[PAYLOAD] = self.payload_g
         for name in ("materials", "constructions", "fit"):
             sub = _drop_none({f.name: getattr(getattr(self, name), f.name)
                               for f in fields(getattr(self, name))})
@@ -445,6 +495,9 @@ def _build(data: Mapping) -> Spec:
                 if k != ALLOWANCE},
         outputs=tuple(data.get("outputs") or DEFAULT_OUTPUTS),
         allowance_usd=_opt((data.get("budget") or {}).get(ALLOWANCE)),
+        precision={k: _target(v) for k, v in (data.get("precision") or {}).items()
+                   if k != PAYLOAD},
+        payload_g=_opt((data.get("precision") or {}).get(PAYLOAD)),
     )
 
 
@@ -605,16 +658,30 @@ class _Validator:
     def targets(self, v, section: str, kind: str | None,
                 lk: linkage.Linkage | None = None) -> None:
         table = TARGET_FIELDS[section]
-        allowed = [n for n, f in table.items() if kind is None or kind in f.kinds]
+        allowed = [n for n, f in table.items() if (kind is None or kind in f.kinds)
+                   and (lk is None or f.applies(lk))]
+        plain = PLAIN.get(section)
         if not isinstance(v, Mapping):
-            self.obj(v, section, allowed + ([ALLOWANCE] if section == "budget" else []))
+            self.obj(v, section, allowed + ([plain] if plain else []))
             return
         # a mechanism's output measures only some of the output metrics (a line has no
-        # dwell, a rocker no straightness): a target on one it lacks is refused here
-        has = output_metrics(lk) if lk is not None and lk.output is not None else None
+        # dwell, a rocker no straightness): a target on one it lacks is refused here (its
+        # output check is read only then: an arm's tour is a minute's)
+        has = (output_metrics(lk) if lk is not None and lk.output is not None
+               and section == "motion" and any(n in OUTPUT_TARGETS for n in v) else None)
         for name, t in v.items():
-            if section == "budget" and name == ALLOWANCE:
+            if plain is not None and name == plain:
+                if name == PAYLOAD and lk is not None and not CAPABILITIES["ranged"][0](lk):
+                    self.err(f"{section}.{name}", f"{lk.key} {CAPABILITIES['ranged'][2]}: a "
+                             "payload rides an arm's drives (its output's precision targets "
+                             "need none)", allowed)
+                    continue
                 self.number(t, f"{section}.{name}", nonneg=True)
+                continue
+            if name in table and lk is not None and not table[name].applies(lk):
+                need = CAPABILITIES[table[name].needs]       # what it can't have, and why
+                self.err(f"{section}.{name}", f"{lk.key} {need[2]}: {name} needs a linkage "
+                         f"that {need[1]}", allowed)
                 continue
             if name in allowed:
                 if (has is not None and section == "motion" and name in OUTPUT_TARGETS
@@ -643,8 +710,8 @@ class _Validator:
                 if near is not None and not name.split("_")[0].startswith(near.split("_")[0][:3]):
                     near = None
                 self.err(f"{section}.{name}", "unknown metric"
-                         + ("" if section != "budget" else f" (a plain number under budget is "
-                                                           f"{ALLOWANCE} only)"), allowed, near)
+                         + ("" if plain is None else f" (a plain number under {section} is "
+                                                     f"{plain} only)"), allowed, near)
 
 
 def _kind(v) -> str:
@@ -659,7 +726,7 @@ def validate(data: Mapping) -> list[SpecError]:
         return [SpecError("", f"a spec is an object, got {_kind(data)}")]
     # (obj returns a mapping as it is: top is data, its unknown fields reported)
     v.obj(data, "", ("version", "kind", "linkage", "legs", "motion", "size", "materials",
-                     "constructions", "fit", "budget", "outputs"))
+                     "constructions", "fit", "budget", "precision", "outputs"))
     top = data
     version = top.get("version", SPEC_VERSION)
     if str(version) != SPEC_VERSION:
@@ -891,6 +958,12 @@ def spec_schema() -> dict:
             "properties": {n: _target_schema(f) for n, f in table.items()}}
         for s, table in TARGET_FIELDS.items()
     }
+    sections["precision"]["properties"][PAYLOAD] = {
+        "type": "number", "minimum": 0,
+        "description": "the load at an arm's output in grams (default 50): what the payload "
+                       "sag, the ISO RP's gravity seating and the strength check's static "
+                       "loads assume",
+    }
     sections["budget"]["properties"][ALLOWANCE] = {
         "type": "number", "minimum": 0,
         "description": "USD allowed, in all, for the items the catalog doesn't price (they are "
@@ -981,6 +1054,7 @@ def spec_schema() -> dict:
             },
             "fit": {"type": "object", "additionalProperties": False, "properties": fit_props},
             "budget": sections["budget"],
+            "precision": sections["precision"],
             "outputs": {"type": "array", "items": {"enum": list(OUTPUTS)}, "uniqueItems": True,
                         "default": list(DEFAULT_OUTPUTS)},
         },

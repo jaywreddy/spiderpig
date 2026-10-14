@@ -54,12 +54,12 @@ from spiderpig.actuators import sensors
 from spiderpig.config import BuildConfig, add_build_args, add_design_args, config_from_args
 from spiderpig.linkage.constraints import gains, layout, sample_inputs
 from spiderpig.linkage.stiffness import Compliance, Rod, Section, compliance
-from spiderpig.repeatability import Rp, gravity_loads, iso_rp
+from spiderpig.repeatability import PAYLOAD_G, Rp, gravity_loads, iso_rp
 
 DEFAULT_TARGET_MM = 0.1     # the placement the report asks each input's resolution for
 DEFAULT_DT_K = 10.0         # the temperature swing the thermal row assumes (K)
 DEFAULT_HOLE_TOL_MM = 0.13  # a laser-cut hole's position tolerance (SendCutSend, about)
-DEFAULT_PAYLOAD_G = 50.0    # the load at the output the sag row assumes (a few glass slides)
+DEFAULT_PAYLOAD_G = PAYLOAD_G   # the load at the output the sag row assumes (a few slides)
 SLIDE_G = 5.0               # one glass microscope slide (75 x 25 x 1 mm soda-lime: 4.7 g)
 PAIR_TILT_K_PIN = 180e3     # N·mm/rad: a preloaded MR84 pair's moment stiffness, its balls'
 #                             Hertz contact at ~30 N (the review's, 180-430: the low one)
@@ -163,6 +163,32 @@ class Precision:
     def accuracy_links_mm(self) -> float:
         return self.plays.accuracy_mm
 
+    @property
+    def accuracy_mm(self) -> float:
+        """What is the same every time, added up (worst case): every hole off by its
+        tolerance, the temperature swing over the reach, the turntable's systematic error,
+        and each drive's systematic error and one step of its resolution. It calibrates
+        out; the spec's ``precision.accuracy_mm``."""
+        return (self.accuracy_links_mm + self.thermal_mm + self.turret_accuracy_mm
+                + sum(b.accuracy_mm + b.resolution_mm for b in self.inputs.values()))
+
+    def metrics(self) -> dict[str, float | None]:
+        """The spec's ``precision.*`` metrics this budget measured (``None``: unbounded, a
+        singular pose), keyed by the target's name: ``repeatability_mm`` and
+        ``accuracy_mm`` always; a ranged linkage's ``rp_mm``, ``rp_powerup_mm``,
+        ``out_of_plane_mm`` and ``payload_sag_mm`` when the budget counted them (the links'
+        tilt read from a fabricated side)."""
+        out = {"repeatability_mm": _num(self.repeatability_mm),
+               "accuracy_mm": _num(self.accuracy_mm)}
+        if self.rp is not None:
+            out["rp_mm"] = _num(self.rp.session_mm)
+            out["rp_powerup_mm"] = _num(self.rp.powerup_mm)
+        if self.oop is not None:
+            out["out_of_plane_mm"] = _num(self.oop.worst_mm)
+        if self.stiffness is not None:
+            out["payload_sag_mm"] = _num(self.stiffness.sag_mm)
+        return out
+
     def as_dict(self) -> dict:
         pm = self.plays
         return {"linkage": self.linkage, "output": self.output, "target_mm": self.target_mm,
@@ -177,6 +203,7 @@ class Precision:
                 "conditioning": _num(pm.conditioning, 1), "singular_poses": pm.singular,
                 "tolerance_mm_per_mm": _rounded(self.tolerance_mm_per_mm),
                 "accuracy_links_mm": _num(self.accuracy_links_mm),
+                "accuracy_mm": _num(self.accuracy_mm),
                 "hole_tol_mm": self.hole_tol_mm, "reach_mm": round(self.reach_mm, 2),
                 "thermal_mm": round(self.thermal_mm, 4), "dt_k": self.dt_k,
                 "payload_g": self.payload_g, "tilt_mm": _num(self.tilt_mm),
@@ -255,6 +282,8 @@ class Precision:
                    f"{self.accuracy_links_mm:.3f} mm (calibrates out)")
         out.append(f"  accuracy, {self.dt_k:g} K at {self.cte_um_per_m_k:g} um/m/K over "
                    f"{self.reach_mm:.0f} mm: {self.thermal_mm:.3f} mm")
+        out.append(f"  accuracy in all (these, the drives' systematic errors and a step "
+                   f"each, added): {self.accuracy_mm:.3f} mm")
         out += [f"  note: {n}" for n in self.notes]
         return out
 
@@ -739,10 +768,26 @@ def _wobble(config: BuildConfig) -> dict:
 
 def _tool_drop(config: BuildConfig, design) -> float:
     """How far the tool's tip hangs below the output point (mm; 0 without a tool)."""
+    _, tool = _turret_plans(config, design)
+    return tool.tool.drop() if tool is not None else 0.0
+
+
+_PLANS: dict = {}
+
+
+def _turret_plans(config: BuildConfig, design):
+    """``Turret().plans`` of the side's design for ``config`` (the turntable's and the
+    tool's), once per design: the budget reads them three times."""
     from spiderpig.construction.robot import Turret
 
-    _, tool = Turret().plans(_side_design(config, design), config)
-    return tool.tool.drop() if tool is not None else 0.0
+    d = _side_design(config, design)
+    key = (config, id(d))
+    hit = _PLANS.get(key)
+    if hit is None or hit[0] is not d:          # (the design held: its id isn't reused)
+        if len(_PLANS) >= 8:
+            _PLANS.clear()
+        hit = _PLANS[key] = (d, Turret().plans(d, config))
+    return hit[1]
 
 
 def _side_design(config: BuildConfig, design):
@@ -757,10 +802,7 @@ def _side_design(config: BuildConfig, design):
 def _yaw_lever(config: BuildConfig, design) -> float:
     """How far the output moves per radian of the turntable (mm/rad): its horizontal
     distance from the yaw axis, the most over the box."""
-    from spiderpig.construction.robot import Turret
-
-    d = _side_design(config, design)
-    tp, _ = Turret().plans(d, config)
+    tp, _ = _turret_plans(config, design)
     lk = config.lk
     pts = linkage.LegSolution(1, 0.0, config.values, lk.key).at(*lk.box(21))
     f = pts[layout(lk).output_point].reshape(-1, 2)
@@ -776,12 +818,11 @@ def turret_budget(config: BuildConfig, design, target_mm: float
     the bearings' middle), and its systematic error there (the drive's eccentricity over its
     pitch radius, the shaft's tilt in its collars). No sag: gravity has no moment about a
     vertical axis."""
-    from spiderpig.construction.robot import Turret
     from spiderpig.construction.rotary import AXIS_RUNOUT_MM, ECCENTRICITY_MM
     from spiderpig.hardware.catalog import get
 
     d = _side_design(config, design)
-    tp, tool = Turret().plans(d, config)
+    tp, tool = _turret_plans(config, d)
     t = tp.error_terms()
     lever = _yaw_lever(config, d)
     lk = config.lk

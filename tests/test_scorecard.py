@@ -55,6 +55,23 @@ def test_the_deltas():
     assert all(not k.startswith("loadavg.") for k, *_ in rows)
 
 
+def test_the_precision_section_reads_the_arms_rp(capsys):
+    """``spiderpig precision --json`` among its log lines: the approved arm's ISO RP."""
+    log = ('INFO planning\n{\n "iso_rp_session_mm": 0.042,\n "iso_rp_powerup_mm": 0.065,\n'
+           ' "repeatability_mm": 1.338,\n "inputs": {"q2": {"ratio": 5}}\n}\ndone\n')
+    nums = scorecard.precision_numbers(scorecard.json_block(log))
+    assert nums['rp_mm'] == 0.042
+    assert nums['rp_powerup_mm'] == 0.065
+    assert nums['repeatability_mm'] == 1.338
+    assert nums['out_of_plane_mm'] is None
+    assert scorecard.json_block("no json here") is None
+    assert "precision" in scorecard.DEFAULT_SECTIONS
+    card = {"precision": {"design": scorecard.ARM, "rc": 0, "wall_s": 50.0, **nums},
+            "loadavg": {"start": [1.0], "end": [1.0]}}
+    scorecard.print_table(card)
+    assert "ISO RP session / power-up (mm)  0.042 / 0.065" in capsys.readouterr().out
+
+
 def _subprocess_coverage(tmp_path, rcfile) -> float:
     """The coverage of ``spiderpig/tools/profiler.py`` from a ``coverage run`` whose program
     reaches the module only through a child Python (as ``spiderpig.workers`` jobs and the

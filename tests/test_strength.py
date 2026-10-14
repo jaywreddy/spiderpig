@@ -241,9 +241,10 @@ def test_verify_fails_an_overloaded_joint(monkeypatch):
 
     notes = {"pin:J4_leg0": note({"b3_leg0": 2, "b4_leg0": 6})}
     design = SimpleNamespace(mech=SimpleNamespace(meta={"wobble": notes}),
-                             config=BuildConfig(), store=None, kind="walker")
+                             config=BuildConfig(), store=None, kind="walker",
+                             spec=SimpleNamespace(payload_g=None))
 
-    def loads(config, store=None, override=None, sim=True):
+    def loads(config, store=None, override=None, sim=True, payload_g=None):
         assert sim == "cached"                                   # standard: no sim run
         out = strength.uniform_loads(1.0, 400.0, "override", "test")
         out["torque_limit_nm"] = 0.85
@@ -260,7 +261,7 @@ def test_verify_fails_an_overloaded_joint(monkeypatch):
     assert f.culprits[0]["fixes"]
     assert math.isfinite(f.numbers["sf_jam_min"])
 
-    def family(config, store=None, override=None, sim=True):
+    def family(config, store=None, override=None, sim=True, payload_g=None):
         out = strength.uniform_loads(1.0, 400.0, "fallback", "no sim")
         out["torque_limit_nm"] = 0.85
         return out

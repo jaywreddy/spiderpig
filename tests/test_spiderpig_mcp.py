@@ -30,8 +30,8 @@ KLANN_SINGLE_CFG = BuildConfig(linkage="klann", module="single",
 # the plan the heel's checked patch (its default unit, 10.5) has
 HEEL_DEFAULT = BuildConfig(linkage="trotbot_heel", module="single")
 TOOLS = {"list_linkages", "describe", "catalog", "resolve", "check", "plan", "explain",
-         "recommend", "walk", "build", "verify", "export", "compare", "derive", "get_design",
-         "list_designs", "gc", "get_job", "wait_job", "view"}
+         "recommend", "walk", "precision", "build", "verify", "export", "compare", "derive",
+         "get_design", "list_designs", "gc", "get_job", "wait_job", "view"}
 MUTATING = {"export", "gc", "view"}
 DIST = Path(__file__).resolve().parents[1] / "spiderpig" / "viewer" / "dist"
 needs_dist = pytest.mark.skipif(not (DIST / "index.html").is_file(),

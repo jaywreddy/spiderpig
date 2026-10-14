@@ -212,6 +212,24 @@ class VerifyOut(Result):
     job: NotRequired[JobOut]
 
 
+class PrecisionOut(Result):
+    """The error budget at the output: the ``precision.*`` metrics, each target's row, the
+    whole budget and its text; ``complete`` whether the links' tilt was counted;
+    ``skipped`` for a linkage without an output. A long operation (``job``)."""
+
+    design: NotRequired[str]
+    skipped: NotRequired[str | None]
+    complete: NotRequired[bool]
+    payload_g: NotRequired[float | None]
+    metrics: NotRequired[JSON]
+    budget: NotRequired[JSON]
+    text: NotRequired[list[str]]
+    rows: NotRequired[list[RowOut]]
+    notes: NotRequired[list[str]]
+    seconds: NotRequired[float]
+    job: NotRequired[JobOut]
+
+
 class ExportOut(Result):
     """The files written and the manifest; ``warnings`` is what the bake and the
     constructions warned about while writing (a purchased model's faces the mesher
@@ -297,6 +315,6 @@ class ViewOut(Result):
 __all__ = [
     "JSON", "BuildOut", "CatalogOut", "CheckOut", "CompareOut", "DescribeOut", "DesignOut",
     "DesignsOut", "ExplainOut", "ExportOut", "FailureOut", "GcOut", "JobOut", "JobResult",
-    "LinkagesOut", "PlanOut", "RecommendOut", "RecommendationOut", "Result", "RowOut",
-    "SpecErrorOut", "StageOut", "VerifyOut", "ViewOut", "WalkOut",
+    "LinkagesOut", "PlanOut", "PrecisionOut", "RecommendOut", "RecommendationOut", "Result",
+    "RowOut", "SpecErrorOut", "StageOut", "VerifyOut", "ViewOut", "WalkOut",
 ]

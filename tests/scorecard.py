@@ -6,7 +6,7 @@ away (``mise run scorecard``).
     python -m tests.scorecard --gate --full --audit   # the opt-in, heavy sections too
     python -m tests.scorecard --compare A.json B.json # the deltas between two scorecards
 
-Sections (``--only`` names them; the default runs the first four: ~7.5 min at load 15 on the
+Sections (``--only`` names them; the default runs the first five: ~7.5 min at load 15 on the
 20-core box, the roadmap's 6 min to be judged on a quiet one):
 
 - ``build``: ``spiderpig build --profile`` of the Strider double (the default design) into a
@@ -19,6 +19,10 @@ Sections (``--only`` names them; the default runs the first four: ~7.5 min at lo
 - ``quick``: the quick tier (``-m 'not slow and not e2e' -n 4``) with ``coverage.py`` over
   ``spiderpig/`` (pytest-cov, combined across the xdist workers; ``COVERAGE_CORE=sysmon``
   keeps the overhead small), its tests and its 10 slowest. ``--no-coverage`` times it bare.
+- ``precision``: the approved arm's (``palletizer_reach``) error budget, ``spiderpig precision
+  --json`` (its side fabricated for the links' tilt): the ISO 9283 RP within a session and
+  across power-ups (``precision.rp_mm`` in a spec), the worst-case repeatability bound, the
+  accuracy, the out-of-plane and the payload's sag, and the run's wall and CPU time.
 - ``static``: pyright's error count (``[tool.pyright]``, basic; also without the stub noise of
   the compiled OCP and mujoco), ruff's ``RUF`` findings (``--extend-select RUF``), each
   module over 800 lines (``spiderpig/**/*.py``, ``viewer/src/**/*.ts``), the product's lines,
@@ -56,8 +60,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = ROOT / "build" / "scorecard.json"
-SECTIONS = ("build", "tiers", "quick", "static", "gate", "full", "audit")
-DEFAULT_SECTIONS = ("build", "tiers", "quick", "static")
+SECTIONS = ("build", "tiers", "quick", "precision", "static", "gate", "full", "audit")
+DEFAULT_SECTIONS = ("build", "tiers", "quick", "precision", "static")
+ARM = "palletizer_reach"
+"""The approved arm (CLAUDE.md): the ``precision`` section's design."""
+PRECISION_KEYS = {"rp_mm": "iso_rp_session_mm", "rp_powerup_mm": "iso_rp_powerup_mm",
+                  "rp_any_direction_mm": "iso_rp_any_direction_mm",
+                  "repeatability_mm": "repeatability_mm", "accuracy_mm": "accuracy_mm",
+                  "out_of_plane_mm": "out_of_plane_mm", "payload_sag_mm": "payload_sag_mm"}
+"""The ``precision`` section's numbers <- ``Precision.as_dict``'s keys."""
 LARGE = 800
 """A module over this many lines is listed (``sizes.large``)."""
 
@@ -194,6 +205,38 @@ def section_quick(work: Path, coverage: bool, workers: int = 4) -> dict:
         out["coverage_lines"] = {"covered": totals["covered_lines"],
                                  "statements": totals["num_statements"]}
     return out
+
+
+def json_block(text: str) -> dict | None:
+    """The JSON document a command printed (``--json``: from a line ``{`` to the last line
+    ``}``) among its log lines, or None."""
+    lines = text.splitlines()
+    try:
+        a = lines.index("{")
+        b = len(lines) - 1 - lines[::-1].index("}")
+    except ValueError:
+        return None
+    try:
+        return json.loads("\n".join(lines[a:b + 1]))
+    except json.JSONDecodeError:
+        return None
+
+
+def precision_numbers(doc: dict | None) -> dict:
+    """:data:`PRECISION_KEYS` of a ``spiderpig precision --json`` document."""
+    doc = doc or {}
+    return {k: doc.get(src) for k, src in PRECISION_KEYS.items()}
+
+
+def section_precision(work: Path) -> dict:
+    """The approved arm's error budget (:mod:`spiderpig.precision`), out of the plane
+    included."""
+    log = work / "precision.log"
+    r = run([*_python(), "-m", "spiderpig.cli", "precision", "--linkage", ARM, "--json"],
+            env={"SPIDERPIG_OFFLINE": "1", "SPIDERPIG_STORE": str(work / "precision_store")},
+            log=log)
+    doc = json_block(log.read_text()) if log.exists() else None
+    return {**r, "design": ARM, **precision_numbers(doc)}
 
 
 def _pyright(work: Path) -> dict:
@@ -470,6 +513,10 @@ def print_table(card: dict) -> None:
         cov = f", coverage {q['coverage_pct']} %" if "coverage_pct" in q else ""
         rows.append(("quick tier", f"{q['wall_s']} s wall / {q['cpu_s']} CPU-s, "
                                    f"{q.get('tests', 0)} tests, rc {q['rc']}{cov}"))
+    if p := card.get("precision"):
+        rows.append((f"precision ({p['design']}): ISO RP session / power-up (mm)",
+                     f"{_fmt(p.get('rp_mm'))} / {_fmt(p.get('rp_powerup_mm'))}  (bound "
+                     f"{_fmt(p.get('repeatability_mm'))}, {p['wall_s']} s, rc {p['rc']})"))
     if s := card.get("static"):
         py = s["pyright"]
         rows.append(("pyright errors", f"{py.get('errors')} ({py.get('errors_excl_stub_noise')} "
@@ -557,6 +604,8 @@ def main(argv: list[str] | None = None) -> int:
                 card[name] = section_tiers(work)
             elif name == "quick":
                 card[name] = section_quick(work, not args.no_coverage)
+            elif name == "precision":
+                card[name] = section_precision(work)
             elif name == "static":
                 card[name] = section_static(work)
             elif name == "gate":

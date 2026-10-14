@@ -16,11 +16,12 @@ the target, whether it passed, and its ``tier``:
   before a build, the envelope before a build, ``speed_mm_s`` (the servo's
   no-load rpm), prices with unverified links.
 
-Levels: ``quick`` (check + plan + walk; ~1 s), ``standard`` (+ build, the
-contract at two crank angles, clashes and solids at the build's, the DXF
-pack, the BOM), ``full`` (the audit's four contract angles, clashes at two,
-and a MuJoCo run when ``mujoco`` imports: its speed is reported beside the
-walk model's, informational).
+Levels: ``quick`` (check + plan + walk, and the output's precision where it
+needs no fabrication; ~1 s), ``standard`` (+ build, the contract at two crank
+angles, clashes and solids at the build's, the DXF pack, the BOM, the whole
+precision budget and every kind's joint strength), ``full`` (the audit's four
+contract angles, clashes at two, and a walker's MuJoCo run when ``mujoco``
+imports: its speed is reported beside the walk model's, informational).
 
 A hard target's miss fails the report (``ok``); a soft miss lowers ``score``
 (the weighted mean over the soft targets of ``max(0, 1 - miss / |bound|)``).
@@ -303,6 +304,8 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     rows += wr.rows
 
     if level == "quick":
+        if pr.ok:
+            rows += _precision_rows(design, rep, level)
         _push(rows, _mass_estimate(design, wr))
         if pr.ok:
             rows += _envelope_estimate(design)
@@ -389,9 +392,9 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
 
     rows += _cut_rule_rows(br.cut_rules or api.cut_rules_of(mech, cfg.sheet), rep)
 
-    # -- joint strength -----------------------------------------------------------
-    if design.lk.walks:
-        rows += _strength_rows(design, rep, level)
+    # -- the output's precision, the joints' strength (every kind) -----------------
+    rows += _precision_rows(design, rep, level)
+    rows += _strength_rows(design, rep, level)
 
     # -- sim (full) --------------------------------------------------------------
     if level == "full" and design.lk.walks:
@@ -424,27 +427,62 @@ def _cut_rule_rows(m: dict, rep: VerifyReport) -> list[Row]:
     return rows
 
 
+def _precision_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
+    """The output's error budget against the spec's ``precision.*`` targets
+    (:func:`api.precision`; a walker has no output: none). At ``standard`` and ``full`` the
+    whole budget, stored (a ranged linkage's links' tilt from the build's wobble notes); at
+    ``quick`` the stored one when there is one, else the budget without fabricating: a
+    cranked mechanism's is whole, a ranged linkage's leaves out the links' tilt, so its
+    ``repeatability_mm``, ISO RP, out-of-plane and sag stay ``unverified`` until
+    ``standard``."""
+    from spiderpig.api import accuracy
+
+    if design.lk.output is None:
+        return []
+    if level != "quick":
+        pr = accuracy.precision(design)
+    else:
+        from spiderpig.api.reports import PrecisionReport
+
+        pr = api._cached(design, "precision", PrecisionReport)
+        if pr is None:
+            pr = (accuracy.precision(design) if not design.lk.ranged
+                  else accuracy.measure(design, planar=True))
+    if pr.failures:
+        rep.failures += [f for f in pr.failures if f not in rep.failures]
+        return [Row("precision.budget", "precision", pr.failures[0].code, None, False,
+                    "estimated", True, pr.failures[0].message.splitlines()[0])]
+    return list(pr.rows)
+
+
 def _strength_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
     """Every joint's safety factor at the design's loads (:func:`strength.check`): a
     joint under jam SF 1 fails (``strength`` / ``joint_overload``, the joint, its
-    numbers and fixes as culprits) when the loads are the design's own (simulated, or
-    given); one under the warning limits is a soft row. ``full`` simulates the loads
-    (cached per design); ``standard`` uses them when stored, else the family's, whose
-    verdict is an estimate: a soft row, no failure (``verify full`` decides)."""
+    numbers and fixes as culprits) when the loads are the design's own (simulated, given,
+    or a ranged linkage's static model: its weight and payload operating, a crash at the
+    drives' holding torque jammed); one under the warning limits is a soft row. A walker:
+    ``full`` simulates the loads (cached per design); ``standard`` uses them when stored,
+    else the family's, whose verdict is an estimate: a soft row, no failure (``verify
+    full`` decides). A cranked mechanism's loads are what it drives: not rated (said)."""
     from spiderpig import strength
 
     mech = design.mech
     assert mech is not None  # run after the build stage passed
     try:
         loads = strength.design_loads(design.config, design.store,
-                                      sim=True if level == "full" else "cached")
+                                      sim=True if level == "full" else "cached",
+                                      payload_g=design.spec.payload_g)
     except Exception as e:  # noqa: BLE001 - never fail verify over the loads themselves
         return [Row("strength.joints", "strength", None, None, True, "estimated", False,
                     f"no loads: {e}")]
+    if loads.get("source") == "none":
+        return [Row("strength.joints", "strength", None, None, True, "estimated", False,
+                    f"not rated: {loads.get('note', '')}")]
     st = strength.check(mech.meta.get("wobble") or {}, mech.meta, design.config, loads)
     tier = "measured" if loads.get("source") == "sim" else "estimated"
-    own = loads.get("source") in ("sim", "override")
-    sfs = [r["jam"]["safety"] for r in st["rows"] if r.get("jam")]
+    own = loads.get("source") in ("sim", "override", "static")
+    sfs = [r["jam"]["safety"] for r in st["rows"]
+           if r.get("jam") and r["jam"].get("safety") is not None]
     errors = [f for f in st["findings"] if f["level"] == "error"]
     warns = [f for f in st["findings"] if f["level"] == "warning"]
     if errors and own:
