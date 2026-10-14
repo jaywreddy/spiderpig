@@ -376,13 +376,13 @@ def test_a_stored_plan_keeps_the_budget_it_was_searched_under(tmp_path, design, 
     assert doc["budget_s"] == pr.budget_s
     assert doc["budget_recorded"] is True
 
-    doc["budget_s"] = 3600.0                         # searched under the gate's budget
+    doc["budget_s"] = other = pr.budget_s + 1234.0 if pr.budget_s else 1234.0  # another
     path.write_text(json.dumps(doc))
     solved = _count(monkeypatch, stages_planning, "design_side")
     got = api.plan(api.load(d.id, store))
     assert solved == []
-    assert (got.reused, got.layers, got.budget_s) == ("store", pr.layers, 3600.0)
-    assert any("3600 CPU-s planner budget" in w for w in got.warnings)
+    assert (got.reused, got.layers, got.budget_s) == ("store", pr.layers, other)
+    assert any(f"{other:g} CPU-s planner budget" in w for w in got.warnings)
 
     del doc["budget_s"]                              # a record from before it was kept
     path.write_text(json.dumps(doc))
