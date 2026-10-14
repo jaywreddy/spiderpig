@@ -9,10 +9,10 @@
    "5": 4.0,
    "6": 3.5,
    "7": 2.2,
-   "8": 3.0
+   "8": 2.9
   },
   "heads": "gap",
-  "height": 68.86399999999999,
+  "height": 68.764,
   "layers": {
    "b1_leg0": 4,
    "b1_leg1": 8,
@@ -52,11 +52,11 @@
   },
   "top": 13
  },
- "engine_version": "0.1.0+b266aedf3f13",
+ "engine_version": "0.1.0+87c31f12ee55",
  "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[strider-double]",
  "source": {
   "file": "tests/test_stack.py",
   "name": null
  },
- "source_key": "gen-0fcdb01c34d0422c"
+ "source_key": "gen-27f490d6a5e1c753"
 }

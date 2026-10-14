@@ -977,5 +977,5 @@ class _Search:
         except _Budget:
             pass
         finally:
-            self.undo(self.base)
+            self.undo(self.base or 0)       # (prepared: the fixed claims' mark)
         return self.done

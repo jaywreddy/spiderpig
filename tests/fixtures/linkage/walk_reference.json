@@ -2,7 +2,7 @@
  "data": {
   "config": "BuildConfig(linkage='klann', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
   "metrics": {
-   "bob_mm": 23.707766403957365,
+   "bob_mm": 23.70776640395735,
    "degenerate_fraction": 0.0,
    "direction": "+x",
    "drift_mm": 0.0,
@@ -18,7 +18,7 @@
    ],
    "foot_bob_mm": 15.797668636118388,
    "mean_contacts": 4.022222222222222,
-   "min_margin_mm": 52.81501683867799,
+   "min_margin_mm": 52.76514325286113,
    "pitch_deg": [
     -8.436210048144233,
     8.436210048144032
@@ -1533,7 +1533,7 @@
        -72.779192
       ]
      ],
-     "z": -96.0695
+     "z": -95.2445
     },
     {
      "body": "L.b4_leg1",
@@ -2981,7 +2981,7 @@
        -73.279464
       ]
      ],
-     "z": -96.0695
+     "z": -89.3695
     },
     {
      "body": "L.b4_leg2",
@@ -5877,7 +5877,7 @@
        -18.506195
       ]
      ],
-     "z": -56.1945
+     "z": -56.0945
     },
     {
      "body": "R.b4_leg0",
@@ -7325,7 +7325,7 @@
        -72.779192
       ]
      ],
-     "z": 96.0695
+     "z": 95.2445
     },
     {
      "body": "R.b4_leg1",
@@ -8773,7 +8773,7 @@
        -73.279464
       ]
      ],
-     "z": 96.0695
+     "z": 89.3695
     },
     {
      "body": "R.b4_leg2",
@@ -11669,7 +11669,7 @@
        -18.506195
       ]
      ],
-     "z": 56.1945
+     "z": 56.0945
     }
    ],
    "servo": {
@@ -11679,11 +11679,11 @@
    "theta_samples": 360
   }
  },
- "engine_version": "0.1.0+b266aedf3f13",
+ "engine_version": "0.1.0+87c31f12ee55",
  "generator": "tests/test_walk.py::test_walk_reference_fixture_is_current",
  "source": {
   "file": "tests/_linkage.py",
   "name": "walk_reference_doc"
  },
- "source_key": "gen-547faf0b98f8d8dd"
+ "source_key": "gen-c3a3440236adcd85"
 }

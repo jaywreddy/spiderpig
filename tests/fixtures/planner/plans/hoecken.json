@@ -2,11 +2,11 @@
  "data": {
   "gaps": {
    "1": 4.0,
-   "2": 1.8,
+   "2": 2.0,
    "3": 3.0
   },
   "heads": "gap",
-  "height": 27.864,
+  "height": 28.064,
   "layers": {
    "b1": 3,
    "b2": 2
@@ -27,11 +27,11 @@
   },
   "top": 6
  },
- "engine_version": "0.1.0+b266aedf3f13",
+ "engine_version": "0.1.0+87c31f12ee55",
  "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[hoecken]",
  "source": {
   "file": "tests/test_stack.py",
   "name": null
  },
- "source_key": "gen-0fcdb01c34d0422c"
+ "source_key": "gen-27f490d6a5e1c753"
 }
