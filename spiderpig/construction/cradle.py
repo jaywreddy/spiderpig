@@ -650,11 +650,18 @@ class CradleTies(Group):
         k = view.slot(view.z[link][0])
         if view.side == "R":
             return [Op(STACK, (k, 1), whole(link), "", "", "cradle_link")]
+        lk = view.ctx.config.lk
+        clipped = sorted(j for j in lk.links[link][0] if f"pin_{j}_clip" in view.z)
+        keep = (f" Before it goes on, pin{'s' if len(clipped) > 1 else ''} "
+                f"{' and '.join(clipped)}' TPU keeper (the ring printed in TPU over the link "
+                "the pin stands in) pushed down onto that link: firm, it grips the pin, and it "
+                "is what holds the pin in its link when the side lies down with its clip out "
+                "(the trip's breakdown; both sides' keepers)." if clipped else "")
         return [Op(STACK, (k, 0, "ties"), whole(link), "Cradle link and tie rods",
                    "The four tie rods onto the cradle link, an M5 button head "
                    "through the link from its leg side into each (threadlocker); the rods "
                    "stand up from its bay side. It goes onto the stack rods up, its bores "
-                   "down over the steel and the pins it rides.", "cradle_link",
+                   "down over the steel and the pins it rides." + keep, "cradle_link",
                    sub=True)]
 
     def motion(self, got: Realized) -> Motion:
@@ -1966,6 +1973,52 @@ def passive_side(side: Mechanism, design) -> Mechanism:
         c for c in side.connections if c[0][1] in names and c[1][1] in names])
 
 
+KEEPER = (7.6, 0.2)
+"""The keepers of the cradle link's quick-release pins (B's X and Y, both sides; the pack's
+turn 1, 2026-10-14): the printed ring each clevis pin's plan puts in the gap between its
+lowest link (b4, b5) and the cradle link, printed in TPU 95A with its bore (mm) under the
+8 mm pin, so it grips the pin (:func:`spiderpig.cradle_report.keepers`); and the least
+interference a print may come out with (mm, on the diameter: a printed hole runs small,
+and TPU's run smaller still). A side lying down with its pins' clips out holds them by
+their keepers: each pin's head is under its link with nothing under it, and a bare pin
+drops out. So the cradle box lifts off the drive side as it lies (:func:`module_steps`),
+and the passive panel lifts off with its pins and their keepers on them: no spacer is
+left loose on the cradle link."""
+KEEPER_COLOR = LINER_COLOR
+
+
+def keeper_names(side: Mechanism, lk) -> list[str]:
+    """The drive side ``side``'s gap rings (bare names) that are keepers (:data:`KEEPER`): on
+    each pin of the cradle link's with a clip (a quick-release clevis pin), every ring the
+    pin's plan puts in a gap between its links; none on a cradle without such pins (A). A
+    clipped pin with no ring is an error: nothing would hold it with its side down."""
+    import re
+
+    link = cradle_link(lk)
+    names = {b.name for b in side.bodies}
+    pins = sorted(j for j in lk.links[link][0]
+                  if any(j in js for b, (js, _) in lk.links.items() if b != link)
+                  and f"pin_{j}_clip" in names)
+    out = []
+    for j in pins:
+        rings = sorted(n for n in names if re.fullmatch(rf"pin_{re.escape(j)}_gap\d+_spacer", n))
+        if not rings:
+            raise ConstructionError(f"pin {j}: a quick-release pin with no ring in a gap to "
+                                    "keep it (construction.cradle.KEEPER)")
+        out += rings
+    return out
+
+
+def _keeper(part):
+    """A gap ring ``part`` (a side's frame, along z) as a keeper: its outline, its bore
+    :data:`KEEPER`'s."""
+    from spiderpig.shapes import ring
+
+    bb = part.bounding_box()
+    xy = ((bb.min.X + bb.max.X) / 2, (bb.min.Y + bb.max.Y) / 2)
+    return ring(xy, bb.max.X - bb.min.X, KEEPER[0], bb.min.Z, bb.max.Z)
+
+
 def _moved(part, dz: float, mirror: bool):
     if part is None:
         return None
@@ -2008,13 +2061,16 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
     cf = cradle_frame(design, side)
     z_mid = cf.z_mid
     passive = passive_side(side, design)
+    keepers = set(keeper_names(side, lk))
     bodies: list[Body] = []
     connections = []
     for s, mech in (("L", side), ("R", passive)):
         mirror = s == "R"
         bodies.extend(Body(
-            name=prefixed(b.name, s), part=_moved(b.part, -z_mid, mirror), joints=b.joints,
-            color=b.color, pose=b.pose, outline=b.outline,
+            name=prefixed(b.name, s),
+            part=_moved(_keeper(b.part) if b.name in keepers else b.part, -z_mid, mirror),
+            joints=b.joints, color=KEEPER_COLOR if b.name in keepers else b.color,
+            pose=b.pose, outline=b.outline,
             rigid_with=prefixed(b.rigid_with, s), fab=b.fab, bom_key=b.bom_key, sheet=b.sheet,
         ) for b in mech.bodies)
         connections += [((i, prefixed(pb, s), pj), (k, prefixed(cb, s), cj))
@@ -2233,7 +2289,8 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                 cradle_lip=[float(cf.lip[0]), float(cf.lip[1])], cradle_tilt=float(cf.tilt),
                 mid_plane=z_mid, bay_mm=BAY, lip_height_mm=LIP_HEIGHT,
                 tie_mm=tie_len, base_tie_mm=foot_len, bay_tie_mm=bay_len, fastened=fastened,
-                bottle=shown.name, cradle_linkage=lk.key)
+                bottle=shown.name, cradle_linkage=lk.key,
+                keepers=sorted(prefixed(n, s) for n in keepers for s in SIDES_LR))
     return Mechanism(name=f"{side.name}_cradle", bodies=bodies + extras,
                      connections=connections, meta=meta,
                      bom_extras=list(side.bom_extras) + list(passive.bom_extras) + glue)
@@ -2445,7 +2502,8 @@ def assembly(view) -> list:
                       if any(j in js for b, (js, _) in lk.links.items() if b != link))
         breakdown, reassembly = module_steps(lk, pins)
         ops.append(Op(USE, (2,), (), "Taking it apart for the trip",
-                      "Three modules and the hand crank, no tool. "
+                      "Four pieces and the hand crank, no tool: the base board, the two "
+                      "side panels and the cradle box. "
                       + " ".join(f"{i}. {text}" for i, (text, _) in
                                  enumerate(breakdown, 1)), "pack", count=False))
         ops.append(Op(USE, (3,), (), "Putting it back together",
@@ -2598,15 +2656,20 @@ def module_steps(lk, pins) -> tuple[list[tuple[str, str]], list[str]]:
     """How cradle ``lk`` (:data:`PACK_POSES`) comes apart into its modules and goes back
     together, for ``cradle_pack.module_pieces`` and the guide (:func:`assembly`): the
     breakdown's steps, each ``(text, tag)`` (tags ``pose``, ``hand_crank``, ``base``,
-    ``lay``, ``clips``, ``lift``: the pieces each frees), and the reassembly's texts.
-    ``pins``: the cradle link's pins on the passive side (B's X and Y).
+    ``lay``, ``clips``, ``lift``, ``box_clips``, ``box``: the pieces each frees), and the
+    reassembly's texts. ``pins``: the cradle link's pins on each side (B's X and Y).
 
     Laid on its drive side (the gearbox down), the passive side panel lifts straight up off
-    the pins, level, its links unable to swing. Standing, the 6.8 kg drive module tipped
-    onto its cradle box once the pins cleared, and the panel fell the other way (round 1's
-    stand review). Not on the passive side, as that review had it: each quick-release pin's
-    head is on its link's outer face (:mod:`construction.pivots.clevis`), so with that side
-    down and its clip out the pin drops out of its link, nothing under its head."""
+    the pins, level, its links unable to swing; then the cradle box lifts straight up off
+    the drive side's pins (the pack's turn 1, 2026-10-14: on its own the box packs in about
+    two thirds of the box it took on the drive side). Each pin of a side lying down is held
+    by its TPU keeper (:data:`KEEPER`): its head is on its link's outer face
+    (:mod:`construction.pivots.clevis`), under the link with nothing under it, and a bare pin
+    drops out once its clip is out. Standing, the 6.8 kg drive module tipped onto its cradle
+    box once the pins cleared, and the panel fell the other way (round 1's stand review);
+    the box can't slide off a side that stands on the board (its bolts and cleats hold the
+    side), and of the two sides only the drive side holds the box (the worm): the passive
+    side's links are free, so the passive panel comes off first."""
     pose = PACK_POSES[lk.key]
     got = pack_pose(lk)
     assert got is not None
@@ -2617,12 +2680,14 @@ def module_steps(lk, pins) -> tuple[list[tuple[str, str]], list[str]]:
     way = _arm_way(lk, turns)
     nudge = (f", then nudge {pose.nudge or 'its link'} until pin {pins[1]} drops into its"
              if len(pins) > 1 else "")
+    swing = (f", then turn the box about it and swing the drive side's {pose.nudge or 'link'} "
+             f"until pin {pins[1]} drops into its" if len(pins) > 1 else "")
     breakdown = [
         (f"Crank it to the pack pose: from rest (the bottle neck up, where the cradle stops "
          f"coming back), turn the handle the way that swings the crank's arm {way}, "
          f"{_turns_words(turns)} turns, until the arm lies along {pose.words} (seen from "
-         f"outside, the leg hides it). The bottle is then {abs(tilt):.0f}° neck up, and the "
-         "passive side's cradle link clears that side's inner bar. The first time, mark the "
+         f"outside, the leg hides it). The bottle is then {abs(tilt):.0f}° neck up, and each "
+         "side's cradle link clears that side's inner bar. The first time, mark the "
          f"pose for the way back with a paint pen: {pose.marks}.", "pose"),
         ("Hand crank: loosen its thumb screw by hand and pull it off the gearbox's input "
          "shaft; the screw goes back into its hub. Nothing turns without it.", "hand_crank"),
@@ -2635,28 +2700,38 @@ def module_steps(lk, pins) -> tuple[list[tuple[str, str]], list[str]]:
          "so, gravity runs along the pins: no link can swing.", "lay"),
         (f"{which} (the cradle link's, on the passive side): reach into the bay and pull "
          f"{each} by hand from under the passive side's cradle link. Each pin stays in the "
-         "panel's link, standing on its head.", "clips"),
+         "panel's link, standing on its head, its TPU keeper on it.", "clips"),
         ("Passive side panel: lift it straight up off the pins by its outer plate, level, "
-         "the pins coming with it, and hold it level. The printed spacer that sat on each "
-         "pin over the cradle link stays lying on the link: slip it back onto its pin's end "
-         "from below and push the pin's clip through its hole; then set the panel down any "
-         "way up. The drive side with the cradle box stays lying as it is, the worm holding "
-         "it: so it goes in the box.", "lift"),
+         "the pins and their keepers coming with it, and push each pin's clip back through "
+         "its hole; then set the panel down any way up. The drive side with the cradle box "
+         "stays lying as it is, the worm holding it.", "lift"),
+        (f"{which} on the drive side: pull {each} by hand, reaching in from the side "
+         "between the drive side's cradle link and its inner plate (the cradle box is open "
+         "at its sides). Each pin stays in its link: its head is under the link, and its TPU "
+         "keeper on the link holds it.", "box_clips"),
+        ("Cradle box: lift it straight up off the drive side's pins, level, by its top "
+         "cradle link and a tie rod (about 3 kg), and set it down as it was, on its other "
+         "cradle link. The pins and their keepers stay in the drive side's links: push each "
+         "pin's clip back through its hole. The drive side stays lying as it is (its link "
+         f"{pose.nudge or 'b5'} now turns free on its one pin, flat): so it goes in the box.",
+         "box"),
     ]
     reassembly = [
-        "Lay the drive side with the cradle box on its drive side on a folded towel, the "
-        "gearbox down, the passive cradle link up.",
+        f"Lay the drive side on its drive side on a folded towel, the gearbox down, its pins "
+        f"{names} standing in their links on their keepers, their clips out.",
+        "Lower the cradle box onto it, level, its knobs' side up (its other cradle link "
+        f"down): pin {pins[0]} into its hole first (look in from the side){swing} hole. Both "
+        "clips in, from the side, all the way.",
         f"Lay the passive side panel down on its outer plate, its pins {names} held in its "
         "links by their clips, and set the links to the pack pose by the paint marks: "
         f"{pose.marks}. A strip of masking tape across each pair of marks holds them while "
         "the panel turns over.",
-        "Turn the panel over and hold it level, its outer plate up: pull each pin's clip, "
-        "take its spacer off the pin's end and set the spacer over its hole in the cradle "
-        "link.",
-        f"Lower the panel level onto the cradle link: pin {pins[0]} through its spacer into "
-        f"its hole first (look in through the bay){nudge}. Peel the tape off.",
+        "Turn the panel over and hold it level, its outer plate up: pull each pin's clip; "
+        "each pin hangs in its link by its head, its keeper on it.",
+        f"Lower the panel level onto the cradle link: pin {pins[0]} into its hole first "
+        f"(look in through the bay){nudge}. Peel the tape off.",
         "Both R-clips in from under the cradle link, through the pins' holes, all the way: a "
-        "pin without its clip is held by nothing.",
+        "pin without its clip is held by its keeper's grip alone.",
         "Stand the cradle up by its two outer plates' top members and set it on the base "
         "board: each rail between its two cleats, each bracket's foot over its carriage bolt "
         "(its hole is 2.5 mm oversize). The washers and the thumb knobs on: the drive side's "
@@ -2668,7 +2743,7 @@ def module_steps(lk, pins) -> tuple[list[tuple[str, str]], list[str]]:
         "cradle links swing freely and the handle turns evenly with a fingertip, under "
         f"{EMPTY_GRIP_N:g} N at the grip, with no stiff spot (stiffer, the two sides fight "
         "each other: loosen the passive side's knobs and turn again). Then the rod's paper "
-        "check (the hand crank's step). Both clips in, the four knobs snug.",
+        "check (the hand crank's step). All four clips in, the four knobs snug.",
     ]
     return breakdown, reassembly
 

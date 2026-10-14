@@ -1,10 +1,11 @@
 """How a decanting cradle comes apart for transport, and how its pieces stack in a box.
 
 **As modules** (:func:`module_pieces`: B, ``construction.cradle.PACK_POSES``, the user's of
-2026-10-13). It is cranked to its pack pose first (:func:`pack_t`: the crank's arm along the
-drive side's outer plate's rear leg, a mark seen without counting turns), then comes apart
-by hand into three modules and its hand crank (``construction.cradle.module_steps``, round
-1's stand review):
+2026-10-13; the cradle box on its own since the pack's turn 1 of 2026-10-14). It is cranked
+to its pack pose first (:func:`pack_t`: the crank's arm along the drive side's outer plate's
+rear leg, a mark seen without counting turns), then comes apart by hand into the base
+board, the two side panels, the cradle box and its hand crank
+(``construction.cradle.module_steps``):
 
 1. the hand crank off (its thumb screw): nothing turns without it;
 2. the cradle off the base board (the brackets' thumb knobs: the carriage bolts stay in the
@@ -12,19 +13,23 @@ by hand into three modules and its hand crank (``construction.cradle.module_step
 3. the cradle laid on its drive side (the gearbox down), on a towel;
 4. the clips of the cradle link's pins on the passive side out from the bay (B's X and Y:
    quick-release clevis pins, :mod:`construction.pivots.clevis`; they go back in the pins'
-   holes, with the spacers that sat over the cradle link);
+   holes);
 5. the passive side panel lifted straight up off the pins, level, its pins with it (their
-   heads on its links' outer faces: on the passive side down they would drop out), its links
-   unable to swing (:func:`slide_hits` checks nothing is in the way of its move); the drive
-   side and the cradle box stay one unit, lying as they go in the box, the worm holding
-   them as cranked. (Standing, the drive module tipped onto its cradle box once the pins
-   cleared, and the panel fell the other way.)
+   heads on its links' outer faces, their TPU keepers on them), its links unable to swing
+   (:func:`slide_hits` checks nothing is in the way of its move);
+6. the drive side's two clips out, from the side;
+7. the cradle box lifted straight up off the drive side's pins, level: each pin stays in
+   its link, held by its keeper (``construction.cradle.KEEPER``: its head is under the
+   link with nothing under it, and a bare pin would drop out); the drive side lies as it
+   goes in the box, the worm holding its links as cranked. (Standing, the drive module
+   tipped onto its cradle box once the pins cleared, and the panel fell the other way.)
 
-It goes back together the other way (the payload's ``reassembly``): the drive module on its
-drive side, the passive panel's links set to the pose by paint marks (taped while it turns
-over), the panel lowered level onto the cradle link's holes, the clips in, the cradle stood
-up onto the board between its cleats, its passive side's knobs snugged last after a whole
-pour, the first build's checks again.
+It goes back together the other way (the payload's ``reassembly``): the drive side on its
+drive side, the cradle box lowered onto its pins (pin X, then the box turned about it and
+b5 swung until pin Y drops in), their clips in; the passive panel's links set to the pose by
+paint marks (taped while it turns over), the panel lowered level onto the cradle link's
+holes, the clips in, the cradle stood up onto the board between its cleats, its passive
+side's knobs snugged last after a whole pour, the first build's checks again.
 
 **Flat** (:func:`pieces`: A, whose cradle link rides pillar G between its side's plates).
 The cradle comes apart where it is already fastened, with no new joint, in the order
@@ -392,9 +397,12 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
     locator, its carriage bolts and their washers, nuts and thumb knobs); the passive side
     panel (every part of that side but its cradle link, its brackets: it lifts off the
     cradle link's pins, the cradle lying on its drive side, once their clips are out); the
-    drive side with the cradle box (both cradle links, the tie rods, the saddles and what is
-    in them, the light, the base stop: the worm holds it as it was cranked); the hand crank.
-    ``lk`` the cradle's linkage; the rest as :func:`pieces`."""
+    cradle box (both cradle links, the tie rods, the saddles and what is in them, the light,
+    the base stop: it lifts off the drive side's pins once their clips are out, each pin
+    held in its link by its keeper, ``construction.cradle.KEEPER``); the drive side panel
+    (the gearbox and every part of that side but its cradle link and the hand crank: the
+    worm holds its links as cranked, but its link b5, left on one pin, :func:`tuck`); the
+    hand crank. ``lk`` the cradle's linkage; the rest as :func:`pieces`."""
     out: dict[str, Piece] = {}
 
     def put(key: str, label: str, role: str, name: str) -> None:
@@ -403,29 +411,32 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
     crank_side = next((s for s in SIDES if f"{s}.conn" in parts), "L")
     other = next(s for s in SIDES if s != crank_side)
     through = _through_board(parts)
-    drive = ("drive", "Drive side with the cradle box", "panel")
+    drive = ("drive", "Drive side panel", "panel")
     passive = ("passive", "Passive side panel", "panel")
+    box = ("box", "Cradle box", "fill")
     for n in sorted(parts):
         p = parts[n]
         s, stem = _side(n)
         if s == crank_side and stem.startswith("handle"):
             put("hand_crank", "Hand crank", "fill", n)
         elif s:
-            put(*(passive if s == other and stem != link else drive), n)
+            put(*(box if stem == link else passive if s == other else drive), n)
         elif _board_part(n) or (n.startswith("foot_bracket") and _on_board(p, through)):
             put("base", "Base board", "base", n)
         elif n.startswith("foot_bracket"):
             host = _side(p.rigid_with or "")[0] or crank_side
             put(*(passive if host == other else drive), n)
         else:
-            put(*drive, n)
-    if "passive" in out:
-        _hanging(out, connections, link, other, "passive")
+            put(*box, n)
+    for s, key in ((other, "passive"), (crank_side, "drive")):
+        if key in out:
+            _hanging(out, connections, link, s, key)
     pins = sorted({j for (_, a, ja), (_, b, jb) in connections
                    for mine, o, j in ((a, b, ja), (b, a, jb))
                    if mine == f"{other}.{link}" and o in parts and not is_frame(o)})
     breakdown, reassembly = cr.module_steps(lk, pins)
-    frees = {"hand_crank": ["hand_crank"], "base": ["base"], "lift": ["passive", "drive"]}
+    frees = {"hand_crank": ["hand_crank"], "base": ["base"], "lift": ["passive"],
+             "box": ["box", "drive"]}
     steps: list[tuple[str, list[str]]] = []
     for text, tag in breakdown:
         if tag == "base" and "base" in out:
@@ -441,13 +452,15 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
     return list(out.values()), steps, reassembly
 
 
-def slide_hits(panel: dict, unit: dict, step: float = 0.5) -> list[tuple[str, str, float]]:
+def slide_hits(panel: dict, unit: dict, step: float = 0.5, way: float | None = None
+               ) -> list[tuple[str, str, float]]:
     """What side panel ``panel`` (each part's placed shape, by name) meets as it slides
-    straight off along z, away from the bay (its own side's way: the bay's middle is z 0),
-    against ``unit`` (the drive side and the cradle box): each (panel part, unit part, how far
-    it had slid, mm) at its first meeting. The panel goes in ``step`` mm steps (under the
-    thinnest part either way), each part only as far as it takes to pass every unit part in
-    its way (a box test first, then the solids')."""
+    straight off along z, away from the bay (its own side's way: the bay's middle is z 0;
+    ``way``, +1 or -1, another way: the cradle box lifting off the drive side), against
+    ``unit`` (what stays): each (panel part, unit part, how far it had slid, mm) at its first
+    meeting. The panel goes in ``step`` mm steps (under the thinnest part either way), each
+    part only as far as it takes to pass every unit part in its way (a box test first, then
+    the solids')."""
     from build123d import Location
 
     from spiderpig.shapes import moved
@@ -458,7 +471,8 @@ def slide_hits(panel: dict, unit: dict, step: float = 0.5) -> list[tuple[str, st
 
     pb = {n: box(sh) for n, sh in panel.items()}
     ub = {n: box(sh) for n, sh in unit.items()}
-    way = 1.0 if sum(b[0, 2] + b[1, 2] for b in pb.values()) > 0 else -1.0
+    if way is None:
+        way = 1.0 if sum(b[0, 2] + b[1, 2] for b in pb.values()) > 0 else -1.0
     hits = []
     for pn, sh in panel.items():
         a = pb[pn]
@@ -712,12 +726,24 @@ def gather(mech, lk, t: float = 0.0, config=None) -> dict:
         # the clips out are the cradle link's pins' (X and Y on B); a clevis pin inside the
         # side (B's K and J2) keeps its clip and slides off with the panel
         on_link = set(lk.links[cr.cradle_link(lk)][0])
-        out_ = sorted(n for n in by["passive"].parts if n.endswith("_clip")
-                      and n.rsplit(".pin_", 1)[-1].removesuffix("_clip") in on_link)
+
+        def clips(key: str) -> list[str]:
+            return sorted(n for n in by[key].parts if n.endswith("_clip")
+                          and n.rsplit(".pin_", 1)[-1].removesuffix("_clip") in on_link)
+
+        # the passive panel off the cradle box and the drive side (up, away from the bay),
+        # then the cradle box off the drive side (up: away from it)
+        out_ = clips("passive")
         panel = {n: placed[n] for n in by["passive"].parts if n not in out_}
-        unit = {n: placed[n] for n in by["drive"].parts}
-        out["slide_off"] = {"hits": [list(h) for h in slide_hits(panel, unit)],
-                            "clips_out": out_}
+        box = {n: placed[n] for n in by["box"].parts}
+        drive_out = clips("drive")
+        drive = {n: placed[n] for n in by["drive"].parts if n not in drive_out}
+        up = -1.0 if np.mean([placed[n].center().Z for n in drive]) > 0 else 1.0
+        out["slide_off"] = {"hits": [list(h) for h in slide_hits(panel, {**box, **drive})],
+                            "clips_out": out_,
+                            "box": {"hits": [list(h) for h in slide_hits(box, drive,
+                                                                         way=up)],
+                                    "clips_out": drive_out}}
     return out
 
 
@@ -784,7 +810,13 @@ def pack_items(inp: dict, splits: dict[str, Sequence[str]] | None = None
             pre = vp.rot_about("z", level([p for p, _ in ms], inp["tilt"]))
         faces = {}
         sides = [_side(n)[0] for n in pc.parts if _side(n)[0]]
-        if sides and pc.role != "base":
+        if set(sides) == set(SIDES) and any(n.startswith("tie_") for n in pc.parts):
+            # the cradle box on its own (B's): a cradle link each side, as it stands in use
+            drive_z = -1.0 if any(f"{s}.conn" in inp["parts"] for s in SIDES[:1]) else 1.0
+            faces = {"drive link": pre @ np.array([0.0, 0.0, drive_z]),
+                     "passive link": pre @ np.array([0.0, 0.0, -drive_z]),
+                     "bottom": np.array([0.0, -1.0, 0.0])}
+        elif sides and pc.role != "base":
             s = max(set(sides), key=lambda x: (sides.count(x), x))
             zs = np.concatenate([mesh[n][0][:, 2] for n in pc.parts if _side(n)[0] == s])
             out = np.array([0.0, 0.0, 1.0 if zs.mean() > 0 else -1.0])

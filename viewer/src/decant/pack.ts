@@ -1,8 +1,8 @@
 /**
  * The cradle's pack (``/api/cradle/{key}/pack``, ``spiderpig.cradle_pack``): each piece it
  * comes apart into (flat, A: the base plate, the side panels, the cradle links, the tie
- * rods, the saddles…; as modules, B: the base board, the passive side panel, the drive side
- * with the cradle box, the hand crank) flies from the assembled cradle into its place in the
+ * rods, the saddles…; as modules, B: the base board, the passive side panel, the cradle box,
+ * the drive side panel, the hand crank) flies from the assembled cradle into its place in the
  * box, one after another in the order they go in (bottom up), and the box fades in round
  * them. The transforms are in the baked model's own frame (the ``walker`` node's: x along
  * the linkage, y up, z across the bay), from each part's pose at the pack's pose (``pose``:

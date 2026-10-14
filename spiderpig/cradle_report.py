@@ -420,6 +420,9 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     moving = {*cr.REAR_MOVES, *cr.STOP_MOVES}
     out["saddles"] = saddles(float(tilt.min()), float(tilt.max()), sum(
         part_mass_kg(config, b) for b in mech.bodies if b.name in moving))
+    got = keepers(config, mech)
+    if got:
+        out["keepers"] = got
     if clash_angles:
         from spiderpig.construction.contract import clashes
 
@@ -580,6 +583,54 @@ LEAD_FRICTION = 0.08    # its bronze nut on the stainless screw, greased: the le
 KNOCK_N = 50.0          # a knock sideways on the rear knob (a hand, a bottle going in)
 BASE_RING = 10.0        # a bottle's base rests on a ring this far in from its body's radius
 HEEL = 10.0             # its body's last 10 mm, rounded into the base, rest on nothing
+
+
+TPU_E = 26.0            # MPa: TPU 95A's tensile modulus, the least published for it printed
+#                         (UltiMaker's TDS v5.00, ASTM D638: 26 MPa; its v2.01 of 2025-09-15,
+#                         ASTM D3039: 56-67 MPa by the print's orientation)
+TPU_NU = 0.45           # its Poisson's ratio (an elastomer: under 0.5)
+TPU_STEEL_FRICTION = 0.3    # a keeper's grip on a stainless pin: under the 0.5 of TPU on
+#                             aluminium and PLA dry (TPU_FRICTION), for an oiled pin
+KEEPER_LEAST_RATIO = 10.0   # the keepers' bar: the least grip over the pin's own weight
+
+
+def keepers(config: BuildConfig, mech) -> dict:
+    """The keepers on the cradle link's quick-release pins (``construction.cradle.KEEPER``,
+    ``mech.meta["keepers"]``; B's X and Y, both sides): each a TPU ring over the 8 mm pin,
+    its bore under the pin. Its grip is the friction of the pressure an interference fit
+    makes (Lamé, a ring on a rigid shaft: ``p = delta E / (d ((D^2 + d^2) / (D^2 - d^2) +
+    nu))``) over the bore's area, at the least interference a print may come out with and
+    the least published modulus (:data:`TPU_E`); against the pin's own weight, which is all
+    it holds (its side lying down, the clip out: the head is under the link). Its push on
+    by hand: the same at the bore's nominal interference. Empty for a cradle with none (A)."""
+    from spiderpig.construction.pivots.clevis import CLEVIS8
+
+    names = list(mech.meta.get("keepers") or [])
+    if not names:
+        return {}
+    by = {b.name: b for b in mech.bodies}
+    d = CLEVIS8.shaft.d
+
+    def normal(delta: float, e: float, od: float, h: float) -> float:
+        """The bore's normal force (N) at interference ``delta`` (mm, on the diameter)."""
+        p = delta * e / (d * ((od ** 2 + d ** 2) / (od ** 2 - d ** 2) + TPU_NU))
+        return p * math.pi * d * h
+
+    rows = []
+    for n in names:
+        bb = by[n].placed_part().bounding_box()
+        h = bb.size.Z
+        od = max(bb.size.X, bb.size.Y)
+        w = part_mass_kg(config, by[n.split("_gap")[0] + "_pin"]) * G
+        least = TPU_STEEL_FRICTION * normal(cr.KEEPER[1], TPU_E, od, h)
+        rows.append({"keeper": n, "od_mm": round(od, 2), "height_mm": round(h, 2),
+                     "pin_weight_n": round(w, 3), "grip_least_n": round(least, 2),
+                     "push_on_n": round(TPU_FRICTION * normal(d - cr.KEEPER[0], 67.0, od, h),
+                                        1),
+                     "ratio": round(least / max(w, 1e-9), 1)})
+    return {"bore_mm": cr.KEEPER[0], "pin_d_mm": d, "least_interference_mm": cr.KEEPER[1],
+            "tpu_e_mpa": TPU_E, "friction": TPU_STEEL_FRICTION, "rows": rows,
+            "least_ratio": min(r["ratio"] for r in rows), "bar": KEEPER_LEAST_RATIO}
 
 
 def balance(rest_deg: float = -50.0, full_deg: float = 30.0) -> dict:
