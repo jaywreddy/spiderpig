@@ -309,12 +309,16 @@ otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
 within 1e-9 relative / 1e-6 mm.
 
-**Baseline** (the robot-arm platform, `867ae7e`, 2026-10-14: the walkers as the integration
-branch's `next-320384d` left them, and the palletizer on its turret on ball-bearing
-pivots): `~/.cache/spiderpig/gate/platform-867ae7e/` on the development
-box (`/root/.cache/...`), one `<design>.json` per design, their logs and `snapshot.json`
-(commit, branch, time). Compare against it from any worktree whose `spiderpig/` should
-match its output: `mise run gate -- compare ~/.cache/spiderpig/gate/platform-867ae7e`. It differs
+**Baseline** (the merged walkers-and-arm platform, `77c117c`, 2026-10-14: eight designs, the
+user's approved arm `palletizer_reach` among them): `~/.cache/spiderpig/gate/platform-77c117c/`
+on the development box (`/root/.cache/...`), one `<design>.json` per design, their logs and
+`snapshot.json` (commit, branch, time; its walkers snapshotted at `982e67b`, which `77c117c`
+leaves alone). Compare against it from any worktree whose `spiderpig/` should match its
+output: `mise run gate -- compare ~/.cache/spiderpig/gate/platform-77c117c`. It differs from
+`platform-379ad7e` (kept) by every walker's spacers (stock tubes and shims, no printed
+ones) and honest BOM prices, `palletizer_turret` on the `mt4_compact` turret (the pruning),
+and `palletizer_reach`'s cut-rule fixes and `b4`'s hubs (DECISIONS.md 2026-10-14); from
+`platform-867ae7e` (kept) further by `palletizer_reach` gated. That one differs
 from `platform-7112cca` (kept) by the palletizer's tool holder (two cut plates, no print)
 and the controller's rows in its BOM (the part-count loops, 2026-10-13), the walkers
 identical; from `platform-a1d6e49` (kept) by the BOMs' prices and sources alone (the cost loop's

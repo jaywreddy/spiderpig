@@ -25,7 +25,7 @@ mise run test-viewer    # the viewer's tsc + vitest
 mise run test-quick # the quick tier: -m 'not slow and not e2e', xdist -n 4
 mise run test-fixtures  # rewrite the recorded fixtures (after an engine edit: they warn stale)
 mise run test       # pytest, serial (runs viewer-build first; -m e2e for browser tests)
-mise run gate -- compare ~/.cache/spiderpig/gate/platform-867ae7e   # parts/plans/BOM/DXF identity
+mise run gate -- compare ~/.cache/spiderpig/gate/platform-77c117c   # parts/plans/BOM/DXF identity
 mise run gate -- doc ~/.cache/spiderpig/gate/<baseline>        # regenerate DESIGNS.md
 mise run remote-test               # the full suite on the remote runner (may be down: AGENTS.md)
 mise run remote-audit              # the Strider's modules audited at once there
@@ -62,7 +62,9 @@ robot; a mechanism's `single`, one side).
 
 - `BuildConfig()` is `linkage.DEFAULT` (Strider) in its `default_module`, the double robot,
   on the STS3215 servo.
-- Constructions: `--pin chicago --pillar standoff --crank bolt` for a walker; an arm's
+- Constructions: `--pin chicago --pillar standoff --crank bolt` for a walker (their columns
+  stock tubes cut to length and DIN 988 shims, nothing printed: a construction's `spacers`,
+  `construction.pivots.common.Stock`); an arm's
   pivots are the ball bearings `--pin ball` / `--pillar ball_pillar` on 6.6 mm links
   (`config.DEFAULT_PIVOTS`, `KIND_FIT`; their McMaster models: `spiderpig cad`); the
   precision pivots `--pin ball_pair --pillar ball_pair_pillar` pair each bearing in a hub
@@ -274,7 +276,7 @@ both sides.
   a new construction adds one or gets generic steps. The hooks stay out of the fab key.
 - A group builds only inside its own claims; keep `check_side` at `[]`.
 - A change that alters parts: run the identity gate before and after (baseline
-  `platform-867ae7e`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
+  `platform-77c117c`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
   audit` green, and regenerate `docs/agentlib/DESIGNS.md` with a new baseline.
 - Docs: no layer counts or heights outside DESIGNS.md; a dated decision goes to
   DECISIONS.md, not here; `mise run doc-check -- --strict` must pass.
