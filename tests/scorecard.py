@@ -217,13 +217,18 @@ def _pyright(work: Path) -> dict:
         doc = json.loads(report.read_text())
     except json.JSONDecodeError:
         return {"error": f"pyright exited {p.returncode}: {p.stderr[-500:]}"}
-    errors = [d for d in doc["generalDiagnostics"] if d["severity"] == "error"]
+    from tests.pyright_baseline import errors_of
+
+    # the package's (the baseline's number); [tool.pyright] covers the tests too since
+    # 2026-10-14, counted apart (tests_errors)
+    errors = errors_of(doc, "package")
     by_rule: dict[str, int] = {}
     noise = 0
     for d in errors:
         by_rule[d.get("rule", "?")] = by_rule.get(d.get("rule", "?"), 0) + 1
         noise += _stub_noise(d)
     return {"errors": len(errors), "errors_excl_stub_noise": len(errors) - noise,
+            "tests_errors": len(errors_of(doc, "tests")),
             "stub_noise": noise, "warnings": doc["summary"]["warningCount"],
             "files": doc["summary"]["filesAnalyzed"], "version": doc.get("version"),
             "by_rule": dict(sorted(by_rule.items(), key=lambda kv: -kv[1])),
