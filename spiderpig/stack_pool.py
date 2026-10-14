@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import multiprocessing
+import os
 import traceback
 from multiprocessing.connection import Connection, wait
 from multiprocessing.process import BaseProcess
@@ -33,9 +34,14 @@ if TYPE_CHECKING:
 
 def _worker(subs: Mapping[str, StackProblem], conn: Connection, seconds: float) -> None:
     """A forked worker: job after job, each with ``seconds`` of this thread's CPU time, until
-    told to stop (``None``)."""
+    told to stop (``None``) or its planner is gone (killed: its siblings keep the pipe open,
+    so the worker watches its parent)."""
+    parent = os.getppid()
     try:
         while True:
+            while not conn.poll(1.0):
+                if os.getppid() != parent:
+                    return
             job = conn.recv()
             if job is None:
                 break
