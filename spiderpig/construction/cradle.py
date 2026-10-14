@@ -2080,7 +2080,7 @@ PACK_POSES: dict[str, PackPose] = {
     # had been 35° one way, 39° the other, and 44-47° for a rest called early)
     "decanter_rcm": PackPose(
         ("O", "Fr"), "the drive side's outer plate's rear leg, straight down from the gearbox",
-        "a line across the arm b3 and the inner bar by pillar O1, and one across the link b5 "
+        "a line across the arm b3 and the inner bar at its O1 end, and one across the link b5 "
         "and b3 by its pin J2", "b5"),
 }
 """The cradles that pack as modules (``cradle_pack.module_pieces``, the user's of

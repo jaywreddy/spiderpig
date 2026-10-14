@@ -534,7 +534,7 @@ about 206 L, where its flat pack was 112.
    - From 44° to 20° neck up the box doesn't grow: the board sets its length. At full tilt
      the cradle box stands up out of the side (a 259 L box).
    - The first time, mark the pose for the way back with a paint pen: a line across the arm
-     b3 and the inner bar by pillar O1, and one across b5 and b3 by J2.
+     b3 and the inner bar at its O1 end, and one across b5 and b3 by J2.
 2. Hand crank: loosen its thumb screw and pull it off. Nothing turns without it.
 3. Undo the four thumb knobs on the base board's bolts by hand and lift the cradle off the
    board by its two outer plates' top members (never by the cradle box: only the worm holds
