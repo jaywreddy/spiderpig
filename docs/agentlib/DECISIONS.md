@@ -1457,3 +1457,44 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   (167), 19 laser parts (17), BOM 71 lines $595.79 ($501.51; two DIN 988 6 x 12 shim
   thicknesses newly unpriced, not guessed), audit OK with 8 warnings (FAIL (2) before);
   `klann_quad` fails, known. DESIGNS.md regenerated from it.
+
+### 2026-10-14: one task and spec vocabulary for every kind; an arm traces a line (fix 3)
+
+- **The decision:** a task and a spec say the same thing the same way whatever the machine,
+  toward the user's "a seamless merge of capabilities, not two forking code paths".
+- **An arm takes a trace task.** `api.candidates` excluded a ranged linkage whenever a task
+  asked an output metric beside the stroke, and a straight `path_mm` always asks a
+  straightness, so no arm could ever trace a line. Now the task's path (else a line of its
+  stroke, tried at 0, 90, 45 and -45 deg) is solved point by point by the controller's own
+  inverse kinematics (`api.tasks.trace_path`: `control.arm.ArmModel.ik`, a waypoint every
+  5 mm as `control.host.line` moves, the joints linear between them, the inputs' ranges and
+  band held), the arm standing where the path fits in its plane (translated, not turned;
+  the placements deepest in its inputs' box tried first). The path reached is a `path_mm`
+  check and the stroke, `measured`; the tip's band across the line (the sag between
+  waypoints: 0.005 mm on a 100 mm line for `palletizer_reach`) is a `bound` on the
+  straightness until a precision budget adds twice its worst-case lost motion. A crank's
+  measures (`dwell_deg`, `swing_deg`, `on_line_fraction`, `rotation_deg`) still exclude an
+  arm. A bound's number no longer ranks as merit, and a bound met is "not ruled out", not
+  met, wherever it is (an arm's box-diagonal stroke too). For it the layers put `control`
+  under `api` (`pyproject.toml`: `control` imports nothing of the API's).
+- **`repeatability_mm` is the worst-case bound for every kind** (`precision.repeatability_mm`,
+  which every linkage with an output has): the guarantee, where ISO 9283 RP is a
+  Monte Carlo estimate of the scatter under one-sided approach, and an arm's only. An arm's
+  RP is shown beside it (`numbers.rp_mm`, the check's detail); a spec may still target
+  `precision.rp_mm`. The cost, the user's to weigh: the approved arm's bound is several
+  times its RP (`test_the_approved_arms_precision_is_a_stored_report`: RP under 0.1 mm,
+  the bound over it), so a 0.1 mm place task no longer passes it on its RP.
+- **One spec vocabulary:** `kind` is read from the linkage when not given (checked when it
+  is); `legs.robot` is every kind's robot (a walker's two sides, an arm's turret; a
+  mechanism's `false` only), `legs.sides` its older name, still read for a stored spec (a
+  walker's 2 is `robot: true`) and written into `robot` by `Spec.from_dict`; `spec_of`
+  writes `robot`. `design.resolved` keeps `legs.sides` (and an arm's `legs.robot`) as
+  before. `BuildConfig()`'s `robot` defaults to the linkage's kind's (`default_robot`), so
+  `BuildConfig(linkage="hoecken")` is its one side instead of an error.
+- **Every id kept:** on the eight gate designs, `config.key`, `spec_hash` and `side_hash`
+  are unchanged from specs written the old way (`spec_of` with `sides`, `kind` given, a
+  walker's `sides: 1`) and resolve to the same from the new (no `kind`, `legs.robot`).
+- **Bugs:** a precision metric a budget left unbounded (a singular pose) was skipped as
+  unmeasured; it is a miss. An obstacle replaced the task's whole `lift_mm` (its max, tol,
+  weight, hardness lost); it raises the min only. A walker's speed read `BuildConfig()`'s
+  servo, not the linkage's default (`config.role_field_default`).

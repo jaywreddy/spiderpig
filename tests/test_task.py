@@ -61,6 +61,10 @@ def test_a_bare_number_is_the_bound_the_task_means():
     needs = t.needs()
     assert (needs["stride_mm"].min, needs["stride_mm"].max) == (40.0, None)
     assert needs["lift_mm"].min == 15.0                      # the obstacle, as a lift
+    kept = Task.from_dict({"do": "walk", "obstacle_mm": 15,
+                           "lift_mm": {"min": 5, "max": 40, "weight": 2, "hard": True}})
+    lift = kept.needs()["lift_mm"]          # the user's lift whole, its min raised
+    assert (lift.min, lift.max, lift.weight, lift.hard) == (15.0, 40.0, 2.0, True)
     p = Task.from_dict(PLACE)
     assert p.needs()["repeatability_mm"].max == 0.1
     assert p.area() == (200.0, 150.0)
@@ -104,7 +108,7 @@ def test_place_finds_the_linkages_with_three_axes_and_says_why_the_rest_cant(mon
         assert "precision(design)" in checks["repeatability_mm"].source
         assert checks["area_mm"].tier == "bound"           # the bench is the plan's
         assert checks["area_mm"].ok in (None, False)       # a bound refutes, never confirms
-        assert c.spec["precision"]["rp_mm"] == {"max": 0.1}    # what an arm's maker quotes
+        assert c.spec["precision"] == {"repeatability_mm": {"max": 0.1}}    # every kind's
         assert validate(c.spec) == []
         assert c.numbers["yaw_deg"]
         assert c.numbers["axes"] == 3
@@ -113,23 +117,39 @@ def test_place_finds_the_linkages_with_three_axes_and_says_why_the_rest_cant(mon
 
 def test_a_stored_precision_report_is_read_and_ranks(monkeypatch, tmp_path):
     """A design of the candidate's spec in the store (other targets, the same machine)
-    lends its precision budget: the arm's ISO RP becomes the repeatability's value."""
+    lends its precision budget: the worst-case bound is the repeatability's value for
+    every kind, an arm's ISO RP shown beside it."""
     _cards(monkeypatch, {})
     d = api.resolve({"kind": "arm", "linkage": {"key": "palletizer_reach"},
                      "motion": {"transmission_angle_deg": {"min": 10}}}, tmp_path)
     assert d.store is not None
     d.store.write_report(d, "precision", PrecisionReport(
-        metrics={"rp_mm": 0.047, "repeatability_mm": 1.2, "accuracy_mm": 9.1}, complete=True))
+        metrics={"rp_mm": 0.047, "repeatability_mm": 0.08, "accuracy_mm": 9.1}, complete=True))
     rep = api.candidates(PLACE, tmp_path)
     best = rep.candidates[0]
     assert best.linkage == "palletizer_reach"
     assert best.design == d.id
     rp = next(k for k in best.checks if k.requirement == "repeatability_mm")
-    assert (rp.value, rp.ok) == (0.047, True)
+    assert (rp.value, rp.ok) == (0.08, True)
     assert d.id in rp.source
     assert "ISO 9283" in rp.detail
-    loose = api.candidates({**PLACE, "repeatability_mm": 0.01}, tmp_path)
+    assert best.numbers["rp_mm"] == 0.047
+    loose = api.candidates({**PLACE, "repeatability_mm": 0.05}, tmp_path)   # RP would meet
     assert next(c for c in loose.candidates if c.design == d.id).ok is False
+
+
+def test_an_unbounded_precision_metric_is_a_miss():
+    """A budget's metric held as None (unbounded at a singular pose) is a miss with that
+    reason, never "unmeasured"."""
+    task = Task.from_dict({"do": "trace", "stroke_mm": 10, "repeatability_mm": 0.5})
+    c = tasks.Candidate("hoecken", "Hoecken", "mechanism", "single")
+    tasks._precision(c, {"metrics": {"repeatability_mm": None, "accuracy_mm": 0.3}}, "x")
+    tasks._judge(c, task, {})
+    rep = next(k for k in c.checks if k.requirement == "repeatability_mm")
+    assert rep.ok is False
+    assert rep.value == math.inf
+    assert "singular" in rep.detail
+    assert c.ok is False
 
 
 def test_walk_ranks_the_modules_that_walk_and_scales_a_short_stride(monkeypatch):
@@ -176,15 +196,62 @@ def test_trace_matches_the_output_motion_and_its_metrics(monkeypatch):
                           "straightness_mm": 0.5}, None)
     lines = {k for k in linkage.available("mechanism")
              if getattr(linkage.get(k).output, "motion", "") == "line"}
-    assert {c.linkage for c in rep.candidates} == lines
+    arms = set(linkage.available("arm"))       # a line under control, its drives coordinated
+    assert {c.linkage for c in rep.candidates} == lines | arms
     why = {x["linkage"]: x["why"] for x in rep.excluded}
     assert "not a line" in why["crank_rocker"]
-    assert "under control" in why["palletizer"]        # an arm traces by its drives
-    assert all(c.ok for c in rep.candidates)
+    assert all(c.ok for c in rep.candidates if c.linkage in lines)
+    for c in rep.candidates:
+        if c.linkage in arms:                  # a 40 mm line traced by its inverse kinematics
+            checks = {k.requirement: k for k in c.checks}
+            assert checks["path_mm"].ok
+            assert checks["stroke_mm"].ok
+            assert checks["stroke_mm"].tier == "measured"
+            assert checks["straightness_mm"].tier == "bound"      # its lost motion adds
+            assert checks["straightness_mm"].ok is None
+            assert c.ok is None
+    dwell = api.candidates({"do": "trace", "dwell_deg": 30}, None)
+    assert "crank's turn" in {x["linkage"]: x["why"] for x in dwell.excluded}["palletizer"]
     arm = api.candidates({"do": "trace", "stroke_mm": 40}, None)
     reach = next(c for c in arm.candidates if c.linkage == "palletizer_reach")
-    assert next(k for k in reach.checks if k.requirement == "stroke_mm").tier == "bound"
+    assert next(k for k in reach.checks if k.requirement == "stroke_mm").tier == "measured"
     assert "motion" not in reach.spec          # an arm's stroke is its drives', no target
+    far = api.candidates({"do": "trace", "stroke_mm": 2000}, None)
+    reach = next(c for c in far.candidates if c.linkage == "palletizer_reach")
+    checks = {k.requirement: k for k in reach.checks}
+    assert checks["path_mm"].ok is False                      # no 2 m line in its box
+    assert checks["stroke_mm"].tier == "bound"
+    assert checks["stroke_mm"].ok is False                    # nor its box's diagonal
+
+
+def test_an_arm_traces_a_straight_path_by_its_inverse_kinematics():
+    """A straight ``path_mm`` asks for a line within tol_mm (a straightness): an arm takes
+    it, the controller's waypoints solved by ``ArmModel.ik`` wherever the path fits, the
+    tip's band across the line a bound until its precision budget adds the lost motion."""
+    task = Task.from_dict({"do": "trace", "path_mm": [[0, 0], [50, 0.2], [100, 0]],
+                           "tol_mm": 0.5})
+    assert "straightness_mm" in task.needs()
+    lk = linkage.get("palletizer_reach")
+    got = tasks.trace_path(lk, [[0, 0], [100, 0]])
+    assert got["ok"]
+    assert 0 <= got["chord_mm"] <= got["band_mm"] < 0.5
+    q = tasks.arm_model(lk).ik((100 + got["offset_mm"][0], 0.0, got["offset_mm"][1]))
+    assert lk.in_band(*(q[n] for n in lk.inputs))
+    c = tasks.Candidate(lk.key, lk.name, lk.kind, "single")
+    tasks._ranged_trace(c, lk, task, task.needs())
+    tasks._judge(c, task, {})
+    checks = {k.requirement: k for k in c.checks}
+    assert checks["path_mm"].ok
+    assert checks["straightness_mm"].value >= 0.2           # the path's own band in it
+    assert checks["straightness_mm"].ok is None             # a bound
+    tasks._precision(c, {"metrics": {"repeatability_mm": 0.1, "rp_mm": 0.03}}, "x")
+    tasks._judge(c, task, {})
+    checks = {k.requirement: k for k in c.checks}
+    assert checks["straightness_mm"].tier == "estimated"
+    assert checks["straightness_mm"].value == pytest.approx(c.numbers["path_band_mm"] + 0.2)
+    assert checks["straightness_mm"].ok
+    assert c.ok
+    assert not tasks.trace_path(lk, [[0, 0], [2000, 0]])["ok"]
 
 
 @pytest.mark.slow
@@ -198,6 +265,36 @@ def test_candidates_read_the_real_cards(tmp_path):
     assert trace.candidates[0].linkage == "hoecken"
     assert trace.candidates[0].ok
     assert "peaucellier_crank" in {c.linkage for c in trace.candidates}
+
+
+@pytest.mark.slow
+def test_measure_resolves_plans_and_budgets_a_mechanism(tmp_path):
+    """``measure=1`` on a trace task: the best candidate that passes the screen (the
+    Hoecken: the straightest line of the stroke) is resolved into the store, checked,
+    planned and its whole precision budget taken (a cranked mechanism's needs no
+    fabrication), so its repeatability is the stage's number, not unmeasured."""
+    from tests import _api
+
+    _api.seed(_api.HOECKEN_CFG)                 # (the plan from the test cache)
+    task = {"do": "trace", "motion": "line", "stroke_mm": 60, "straightness_mm": 0.5,
+            "repeatability_mm": 50.0}
+    screened = api.candidates(task, tmp_path)
+    assert screened.candidates[0].linkage == "hoecken"
+    assert next(k for k in screened.candidates[0].checks
+                if k.requirement == "repeatability_mm").ok is None          # unmeasured
+    rep = api.candidates(task, tmp_path, measure=1)
+    best = rep.candidates[0]
+    assert best.linkage == "hoecken"
+    assert best.design is not None
+    assert best.numbers["stack_mm"] > 0
+    rp = next(k for k in best.checks if k.requirement == "repeatability_mm")
+    assert rp.ok is True
+    assert rp.tier == "estimated"
+    assert f"precision of {best.design}" in rp.source
+    assert best.ok is True
+    assert sum(c.design is not None for c in rep.candidates) >= 1
+    again = api.candidates(task, tmp_path)             # the store lends it back, free
+    assert next(c for c in again.candidates if c.linkage == "hoecken").design == best.design
 
 
 def test_an_arm_that_never_reaches_the_bench_misses_the_area():

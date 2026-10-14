@@ -148,7 +148,10 @@ type = "layers"
 # sits over the sim.
 layers = [
     "spiderpig.mcp : spiderpig.server : spiderpig.cli",
-    "spiderpig.api | spiderpig.control | spiderpig.pose",
+    "spiderpig.api | spiderpig.pose",
+    # an arm's kinematics for control: the API's task screen traces a path with its inverse
+    # (api.tasks: one ArmModel for the controller and the candidates, 2026-10-14)
+    "spiderpig.control",
     "spiderpig.bake | spiderpig.build | spiderpig.strength | spiderpig.precision | spiderpig.guide",
     "spiderpig.sim | spiderpig.stages | spiderpig.urdf",
     "spiderpig.fabricate",
