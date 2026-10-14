@@ -108,7 +108,7 @@ def test_place_finds_the_linkages_with_three_axes_and_says_why_the_rest_cant(mon
         assert "precision(design)" in checks["repeatability_mm"].source
         assert checks["area_mm"].tier == "bound"           # the bench is the plan's
         assert checks["area_mm"].ok in (None, False)       # a bound refutes, never confirms
-        assert c.spec["precision"] == {"repeatability_mm": {"max": 0.1}}    # every kind's
+        assert c.spec["precision"] == {"rp_mm": {"max": 0.1}}    # a positioner's: ISO RP
         assert validate(c.spec) == []
         assert c.numbers["yaw_deg"]
         assert c.numbers["axes"] == 3
@@ -117,8 +117,8 @@ def test_place_finds_the_linkages_with_three_axes_and_says_why_the_rest_cant(mon
 
 def test_a_stored_precision_report_is_read_and_ranks(monkeypatch, tmp_path):
     """A design of the candidate's spec in the store (other targets, the same machine)
-    lends its precision budget: the worst-case bound is the repeatability's value for
-    every kind, an arm's ISO RP shown beside it."""
+    lends its precision budget: a positioner's repeatability is its ISO 9283 RP (the
+    user's measure of the arm, 2026-10-14), the worst-case bound shown beside it."""
     _cards(monkeypatch, {})
     d = api.resolve({"kind": "arm", "linkage": {"key": "palletizer_reach"},
                      "motion": {"transmission_angle_deg": {"min": 10}}}, tmp_path)
@@ -130,12 +130,13 @@ def test_a_stored_precision_report_is_read_and_ranks(monkeypatch, tmp_path):
     assert best.linkage == "palletizer_reach"
     assert best.design == d.id
     rp = next(k for k in best.checks if k.requirement == "repeatability_mm")
-    assert (rp.value, rp.ok) == (0.08, True)
+    assert (rp.value, rp.ok) == (0.047, True)
     assert d.id in rp.source
     assert "ISO 9283" in rp.detail
     assert best.numbers["rp_mm"] == 0.047
-    loose = api.candidates({**PLACE, "repeatability_mm": 0.05}, tmp_path)   # RP would meet
-    assert next(c for c in loose.candidates if c.design == d.id).ok is False
+    assert best.numbers["bound_mm"] == 0.08
+    tight = api.candidates({**PLACE, "repeatability_mm": 0.04}, tmp_path)   # RP misses
+    assert next(c for c in tight.candidates if c.design == d.id).ok is False
 
 
 def test_an_unbounded_precision_metric_is_a_miss():

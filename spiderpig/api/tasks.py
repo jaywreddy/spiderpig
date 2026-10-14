@@ -542,6 +542,8 @@ def _spec(c: Candidate, task: Task) -> dict:
         path = TASK_FIELDS[name].spec if name in TASK_FIELDS else f"motion.{name}"
         if not path:
             continue
+        if path == "precision.repeatability_mm" and TARGET_FIELDS["precision"]["rp_mm"].applies(lk):
+            path = "precision.rp_mm"         # a positioner's repeatability is ISO 9283 RP
         section, metric = path.split(".")
         tf = TARGET_FIELDS[section].get(metric)
         if tf is None or lk.kind not in tf.kinds or not tf.applies(lk):
@@ -624,29 +626,33 @@ def _read_stored(c: Candidate, st: Store, i: str) -> bool:
 
 
 def _precision(c: Candidate, prec: dict, src: str) -> None:
-    """A precision budget's numbers on the candidate: the task's repeatability is the
-    worst-case bound for every kind (``precision.repeatability_mm``; an arm's ISO 9283 RP
-    beside it, informational), its accuracy the budget's. A metric the budget holds as
+    """A precision budget's numbers on the candidate: the task's repeatability is ISO 9283
+    RP where the design has one (a positioner: ``precision.rp_mm``, the mean + 3 sigma a
+    maker quotes, the user's own measure of the arm, 2026-10-14), else the worst-case bound
+    (``precision.repeatability_mm``, which stays beside RP as information); its accuracy
+    the budget's. A metric the budget holds as
     ``None`` (unbounded: a singular pose) is a miss, never unmeasured. An arm's traced
     path's band gains twice the lost motion (either side of the line)."""
     m = prec["metrics"]
     lk = linkage.get(c.linkage)
     if m.get("rp_mm") is not None:
         c.numbers["rp_mm"] = round(float(m["rp_mm"]), 4)
+    if m.get("bound_mm") is None and m.get("repeatability_mm") is not None:
+        c.numbers["bound_mm"] = round(float(m["repeatability_mm"]), 4)
     for name in ("repeatability_mm", "accuracy_mm"):
         if name not in m:
             continue
-        v = m[name]
+        v = m["rp_mm"] if name == "repeatability_mm" and m.get("rp_mm") is not None else m[name]
         if v is None or not math.isfinite(float(v)):
             _need(c, name, math.inf, "estimated", f"{src} precision",
                   "unbounded: the joint system is singular at a pose of the budget's")
             continue
-        detail = ("the worst-case bound" + (f" (ISO 9283 RP, mean + 3 sigma: {m['rp_mm']} mm)"
-                                            if m.get("rp_mm") is not None else "")
-                  if name == "repeatability_mm" else "")
+        detail = ((f"ISO 9283 RP, mean + 3 sigma (the worst-case bound "
+                   f"{m['repeatability_mm']} mm beside it)" if m.get("rp_mm") is not None
+                   else "the worst-case bound") if name == "repeatability_mm" else "")
         _need(c, name, v, "estimated", f"{src} precision", detail)
-    rep = c.numbers.get("repeatability_mm")
-    band = c.numbers.get("path_band_mm")
+    rep = c.numbers.get("bound_mm", c.numbers.get("repeatability_mm"))   # (lost motion:
+    band = c.numbers.get("path_band_mm")                                  #  the bound)
     if (lk.ranged and band is not None and rep is not None and math.isfinite(rep)
             and "straightness_mm" in c.evidence):
         _need(c, "straightness_mm", band + 2 * rep, "estimated", f"{src} precision",

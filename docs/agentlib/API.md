@@ -39,7 +39,7 @@ raised to the obstacle)) is read by the checks.
 | `obstacle_mm` | walk | (plain) | `motion.lift_mm`, `motion.ground_clearance_mm` min |
 | `area_mm` `[w, d]`, `points_mm`, `height_mm` | place | (geometry) | - |
 | `payload_g` | place | (plain) | `precision.payload_g` (ranged inputs) |
-| `repeatability_mm`, `accuracy_mm` | place, trace | max | `precision.repeatability_mm` (every kind: the worst-case bound), `precision.accuracy_mm` |
+| `repeatability_mm`, `accuracy_mm` | place, trace | max | `precision.rp_mm` (ISO 9283 RP) where the design has one, a positioner; else `precision.repeatability_mm` (the worst-case bound); `precision.accuracy_mm` |
 | `motion`, `path_mm`, `tol_mm` | trace | (geometry) | - |
 | `stroke_mm`, `on_line_fraction`, `swing_deg`, `dwell_deg` / `straightness_mm`, `rotation_deg` | trace | min / max | `motion.*` (a cranked output's; an arm's stroke and straightness are its controller's, checked, no target) |
 | `cost_usd`, `mass_g` | every task | max | `budget.cost_usd`, `size.mass_g` |

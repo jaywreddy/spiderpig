@@ -73,9 +73,9 @@ TASK_FIELDS: dict[str, TaskField] = _f(
      "they fit, so their extent is the area (and z the height)"),
     ("payload_g", ("place",), "g", "plain", "the load at the tool", "precision.payload_g"),
     ("repeatability_mm", ("place", "trace"), "mm", "max",
-     "how close it returns to a taught point: the worst-case bound on the output's lost "
-     "motion, every kind's (precision.repeatability_mm; an arm's ISO 9283 RP, the mean + "
-     "3 sigma a maker quotes, is under it and shown beside it)",
+     "how close it returns to a taught point: ISO 9283 RP (the mean + 3 sigma a maker "
+     "quotes: precision.rp_mm) where the design has one, a positioner's; else the "
+     "worst-case bound on the output's lost motion (precision.repeatability_mm)",
      "precision.repeatability_mm"),
     ("accuracy_mm", ("place", "trace"), "mm", "max",
      "what calibrates out (holes off their drawing, heat, the drives' systematic errors)",

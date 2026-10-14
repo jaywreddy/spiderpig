@@ -1587,3 +1587,10 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   unmeasured; it is a miss. An obstacle replaced the task's whole `lift_mm` (its max, tol,
   weight, hardness lost); it raises the min only. A walker's speed read `BuildConfig()`'s
   servo, not the linkage's default (`config.role_field_default`).
+
+### 2026-10-14: a task's repeatability is ISO 9283 RP where the design has one (supersedes the "worst-case bound for every kind" bullet above)
+
+- **The rule:** a task's `repeatability_mm` targets ISO 9283 RP (`precision.rp_mm`, the mean + 3 sigma a maker quotes) wherever the design has one, i.e. a positioner with ranged inputs. Elsewhere it targets the worst-case bound (`precision.repeatability_mm`), which stays beside RP as information (`numbers.bound_mm`).
+- **Why:** the user's requirement for the arm was "ISO 9283 repeatability <= 0.1 mm". Holding it to the worst-case bound made the approved arm (RP 0.042 mm) fail a 0.1 mm placement task it meets.
+- **Straightness of a traced line** keeps the bound: twice the worst-case lost motion either side of the line, a guarantee rather than a scatter.
+- The choice is made by capability (whether the `rp_mm` target applies to the linkage), not by kind.
