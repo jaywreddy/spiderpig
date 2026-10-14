@@ -12,8 +12,10 @@ from tests import cache
 
 
 def _pair(**kw) -> BuildConfig:
+    """The palletizer's side on ball pairs with every link 3 mm acrylic (``link_sheets``
+    none: its own 5.4 mm links, since 2026-10-14, seat their pairs inside and take no hub)."""
     return BuildConfig(linkage="palletizer", robot=False, pin="ball_pair",
-                       pillar="ball_pair_pillar", **kw)
+                       pillar="ball_pair_pillar", link_sheets=(), **kw)
 
 
 def test_a_seat_pairs_in_a_thick_link_and_counts_a_single_bearings_play():

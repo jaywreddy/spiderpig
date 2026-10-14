@@ -1228,3 +1228,64 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   and single-bearing pins) fails at a crash: `pin:E` jam SF 0.44 and `link:b4` 0.48, with
   the fixes the approved arm already has (an aluminium `b4`, the `ball_pair` pins, the
   links adjacent). DESIGNS.md regenerated from it.
+
+### 2026-10-14: every design's defaults pass their audit; the controller follows the servo (wave 2)
+
+- **The decision:** the default build of every design the gate holds passes its own audit,
+  and a design's defaults follow what it is (its servo's protocol, its kind's roles), toward
+  the user's "one seamless repo".
+- **The plain `palletizer`** failed at a crash at the tool (`pin:E` jam SF 0.44, acrylic
+  `link:b4` 0.48). The approved arm's pivots are now every arm's (`config.DEFAULT_PIVOTS`:
+  `ball_pair` / `ball_pair_pillar`; `LINKAGE_PIVOTS` empty) and its links' sheets both
+  palletizers' (`materials.PALLETIZER_LINKS`): the audit OK, 8 warnings (the worst jam SF
+  pillar `O` 1.24, pin `E` 1.76). Its geometry, roles (gauge homing) and turret stay. The
+  approved arm is unchanged (config, ids, plan).
+- **Found on the way:** a drive hub's bolt heads were claimed in the layer past their link,
+  but bear on the link, so on a plan with a clearance gap there (the palletizer's new one)
+  they stood outside their claims (the contract, 26.8 mm³ each). They claim that gap too.
+- **The demo `klann` quad still fails** (`tests/gate/identity_gate.py`
+  `KNOWN_AUDIT_FAILURES`): pins `C`, `D`, `E` of two legs span 27-40 mm (jam SF 0.30-0.43 at
+  the family's 155 N; 0.71 on ground `ball_pair` pins). Tried, with the planner at 3600 s:
+  its barrels capped at 16, 20 or 23 mm (`chicago.MAX_BARREL`), every pin's links at most a
+  layer apart, the variants' 0, 0, 180, 180 phasing: no plan within the node budgets (the
+  crank's riders and the cantilever pillars `B` keep a leg's links far apart; capped at
+  14 mm with that phasing and ten times the budgets, none in 21 layers or fewer, proven; at
+  16 mm with ten times the budgets, stopped unfinished after an hour). A torque limit
+  can't fix it: its walking SF is 0.39. **Proposed, the user's call:** prune the demo
+  (superseded by `klann_lego`, the order design, and the diywalkers variants); it is the
+  family's measured loads (`strength.FALLBACK_PIN_LOADS`) and a test design in 44 test files
+  (72 files in all), so pruning it means moving those to a variant.
+- **The plain `palletizer`** is superseded by `palletizer_reach` too (the same links; a
+  shorter elbow crank and a box that doesn't reach the table). Pruning it would touch 10 test
+  files (`test_arm`, `test_band`, `test_control`, `test_pair`, `test_precision`,
+  `test_repeatability`, `test_stiffness`, `test_transmissions`, `test_turret`,
+  `viewer/src/arm.test.ts`) and the gate's `palletizer_turret`: proposed, not done.
+- **The gate checks the audits:** `compare` / `snapshot` list a design whose audit fails and
+  exit 3, unless `KNOWN_AUDIT_FAILURES` says why (one that passes is reported for the table
+  to lose it); `mise run gate -- audit DIR`; the slow `tests/test_gate_audits.py` runs the
+  eight audits (a known failure a strict `xfail`).
+- **The controller follows the servo** (`controllers.BUS_DEFAULTS`): an XL330 / XL430 walker
+  had the deck's ESP32 board, which speaks Feetech's protocol, not DYNAMIXEL's. It now gets
+  `u2d2_dynamixel`: ROBOTIS's U2D2 (USD 36.92) on its Power Hub Board Set (USD 21.85), both
+  from robotis.us's product pages read 2026-10-14 (no login, no bot check; both shown sold
+  out that day), bought as lines, the deck bare; your computer runs the walk over its USB,
+  your supply at the servo's voltage powers the bus. An STS3215 walker keeps the deck kit
+  (the role's `implicit` key): every STS3215 design's id is as it was; an XL walker's resolved
+  spec now names its controller, so its `spec_hash` moves (`side_hash` and `config.key`
+  don't).
+- **An arm doesn't carry a servo or a crank sheet** (`config.ROLE_FIELDS`): the roles
+  `servo` and `crank` aren't an arm's, so another servo or crank sheet is refused (a config,
+  a spec, a switch of linkage) and `spec_of` leaves them out. They are not dropped from the
+  key or the resolved spec: every stored arm's `config.key`, `spec_hash` and `side_hash`
+  hashes their defaults, so dropping them would move every arm's id (checked on the eight
+  gate designs: all unchanged by this part).
+- **One profiler:** the bake profiles with `spiderpig/tools/profiler.py`'s `Profiler`
+  (`bake._profiler`: title `bake`, total `bake_total`, logger `bake_gltf`), its copy gone; the
+  summary's text and the stage keys as they were.
+- **The gate** (`platform-78e35e8` against `platform-5396098`): the six walkers, the two
+  mechanisms and `palletizer_reach` identical; `palletizer_turret` different, as intended:
+  `ball_pair` pins and pillars, the 5.4 mm acrylic links and the 1/8 in 5052 `b4` (a fourth
+  DXF sheet), 16 layers 61.7 mm (46.1 before; heads in a 3.5 mm gap over layer 6), 201 parts
+  (167), 19 laser parts (17), BOM 71 lines $595.79 ($501.51; two DIN 988 6 x 12 shim
+  thicknesses newly unpriced, not guessed), audit OK with 8 warnings (FAIL (2) before);
+  `klann_quad` fails, known. DESIGNS.md regenerated from it.

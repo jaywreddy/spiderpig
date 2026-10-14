@@ -334,6 +334,11 @@ pins, the user's call: a known failure is listed, and one that passes is reporte
 table to lose it); `mise run gate -- audit DIR` checks a snapshot alone, and the slow
 `tests/test_gate_audits.py` runs the eight audits (a known failure a strict `xfail`).
 
+**Newest baseline** (wave 2, 2026-10-14): `~/.cache/spiderpig/gate/platform-78e35e8/`, from
+which DESIGNS.md is generated. It differs from `platform-5396098` (kept) by
+`palletizer_turret` alone: the approved arm's pivots and links' sheets, its audit passing
+(DECISIONS.md 2026-10-14, wave 2); the other seven identical.
+
 **Baseline** (the merged walkers-and-arm platform, `77c117c`, 2026-10-14: eight designs, the
 user's approved arm `palletizer_reach` among them): `~/.cache/spiderpig/gate/platform-77c117c/`
 on the development box (`/root/.cache/...`), one `<design>.json` per design, their logs and
