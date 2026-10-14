@@ -927,3 +927,69 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/cradle_pack.py`, `spiderpig/hardware/cradle_catalog.py`,
   `spiderpig/hardware/bom.py`, `viewer/src/decant/{motion,pour,diagram}.ts`,
   `tests/test_cradle.py`.
+
+### 2026-10-14: the cradles' saddles made to work (design review round 1, mounting)
+
+- **What:** the user's adjustable saddles kept (each V on a thumbscrew with a scale, the
+  lip gauge and the base stop set the bottle), fixed where review round 1 found them
+  failing ([DECANTER.md](DECANTER.md), "The saddles, adjustable"; the review
+  `/root/scratch/decant/review5/r1/mounting.md` and the stand's M5 on the development box).
+  - **The rear support runs to 600 mm.** The base stop's two rails, rising with the rear V
+    block, carry 45° flanges lined with TPU that continue its V; each rail's tongue sits in
+    a socket under the block's flats (`cradle._rails`, `cradle.FLANGE`, `cradle.SOCKET`).
+    `cradle_report.balance` checks every size at rest, level and full tilt.
+  - **The rear thumbscrew is a Tr8 x 8 lead screw** (9 turns, was 55), its bronze barrel
+    nut in the block, its clamping collar on a TPU brake washer in the carrier (the block's
+    load on it holds the screw: an 8 mm lead isn't self-locking). Its knob moved outboard to
+    |z| 110, over a tower whose arm holds the screw's top (`cradle._lead_screw`,
+    `cradle.REAR_LEAD`, `cradle.TOWER`).
+  - **The base stop sets by a scale, locks by hand:** a groove per bottle across the +z
+    flat and rail (a dot each per place), the gate's pointer on it; a knob on an M5 tap bolt
+    through its ear into a nut and washer in a T-slot (`cradle._gate`, `cradle.TSLOT`). The
+    43 printed pilots and the hex key are gone.
+  - **The lip gauge:** its bar beside the neck (a bottle lays in under nothing), two
+    knuckles either side of an 18.4 mm post on a through bolt (the push in bearing, its turn
+    on the pin), a lug that stops it at 70° open with its centre of mass inboard: it falls
+    back shut (`cradle._gauge`, `cradle.gauge_return`).
+  - **The liners are pegged** into their Vs (`cradle.PEG`); three named grooves in front
+    (`cradle.FRONT_GROUPS`), dots on every scale; drains in the front carrier; the V blocks
+    print standing; the rails print apart; grease on the thumbscrews (the BOM's notes).
+  - **The procedure:** set all three by their scales with the bottle out, lay it in onto
+    the gate with the gauge down; lift the gauge only to uncork.
+- **Why:**
+  - **A full 6 L tipped nose-up at rest (B1).** The gate pushes the base below the axis,
+    a couple that moves the saddles' reaction toward the base by its depth x tan 50°: at the
+    review's centre of mass (390 mm from the mouth for the methuselah, not the 331 of a
+    42 % guess) to 482 mm, past the rear V's end at 380. Lengthening the block would have
+    needed two prints; the rails already rise with it.
+  - **The coarse screw, not detents:** the mouth follows the rear V 0.25 mm per mm (the
+    front 1.25), so the rear's fine M8 thread bought nothing; pins in holes (the review's
+    S1) aren't the user's thumbscrew. The front keeps its self-locking M6.
+  - **A T-slot nut, not a ratchet:** set by the scale with the bottle out, the gate goes
+    exactly where it should (half a millimetre behind the base); a 2 mm ratchet would let
+    the bottle slide up to 2.5 mm onto the gauge mid-pour.
+  - **The gauge falls back** rather than staying up: left up, a wet 6 L slides about 45 mm
+    toward the decanter at full tilt (the review's M4).
+- **Numbers** (`cradle_report.saddles`, 2026-10-14):
+  - Every bottle's weight centres on its support by 62 mm or more (at rest, the
+    jeroboam's), against 102 mm past it for the methuselah before.
+  - Printed parts at 0.2-8.4 MPa against 10; the post 3.05 x its yield rolled with a 6 L
+    hung on the screw, 3.1 x at rest with a hung impériale (a row the review asked for,
+    m2); the lead screw 3.8 x at a 50 N knock (the M8 yielded at it); the brake 4.1 x the
+    screw's turn back; the lock's grip 3.1 x a 6 L's push at rest.
+  - Clash-free on A and B at rest, full tilt and mid-swing, every size at its setting.
+  - About USD 14.70 more bought per cradle (the lead screw, its nut and collar from
+    ServoCity, pages rendered 2026-10-14).
+- **Tried and dropped:**
+  - **The free lead screw guarded by a sleeve** (the review's M2 fix): the block's boss
+    rides up the screw, so a sleeve round it blocks the travel; the tower holds the screw's
+    top instead.
+  - **The gauge's return with its bar over the neck:** a bottle couldn't then lay in with
+    the gauge down, and holding it up while lowering a 6 L is the third hand again.
+  - **A boss bearing on the tower to take the post's pitch at rest:** with clearances, the
+    stiffer post takes it all; the post is rated for it instead.
+- **Not done (the review's):** the rails' length per bottle (m10), the light (m6, S4), the
+  tie rods (S5), a deeper post socket (m2).
+- **Where:** `spiderpig/construction/cradle.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/hardware/cradle_catalog.py`, `spiderpig/hardware/bom.py`,
+  `tests/test_cradle.py`.

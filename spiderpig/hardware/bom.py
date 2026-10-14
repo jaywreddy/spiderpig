@@ -835,16 +835,24 @@ takes a press with less creep and cracking than PLA (``construction.printed`` pr
 snap axles in PETG for the same strain); ``None`` here leaves it in the build's filament."""
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
-CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the V blocks' TPU liners and the feet"}
+CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer and the feet"}
 CRADLE_PRINT_NOTE = (
     "Print the saddles, their V blocks, the base stop and the brackets in PLA at 20 % infill "
-    "with 4 walls (the rear saddle's carrier stands 165 mm tall and the light's clip on its "
-    "tube's foot: a brim), the hand crank, the knobs, the lip gauge and the light's clip at "
-    "40 %, the crank's sleeve solid (the crank block clamps on it), the TPU parts at 15-20 %: "
-    "each STL is posed as it should print.")
+    "with 4 walls (the rear saddle's carrier stands 142 mm tall and the light's clip on its "
+    "tube's foot: a brim; support under the rear carrier's tower arm, the rear V block's "
+    "flats and bosses and the lip gauge's back knuckle), the hand crank, the knobs, the lip "
+    "gauge and the light's clip at 40 %, the crank's sleeve solid (the crank block clamps on "
+    "it), the TPU parts at 15-20 %: each STL is posed as it should print.")
 """A decanting cradle's (:mod:`construction.cradle`)."""
-# a foot's sock; a decanting cradle's liners, its collar, its base plate's feet
-_SOCK = re.compile(r"_sock$|_liner$|_collar$|foot_boot_")
+CRADLE_GREASE_NOTE = (
+    "Grease the saddles' thumbscrews as they go in (a dab of PTFE or lithium grease, not "
+    "bought: a shop supply): the front M6 (stainless in a stainless nut galls dry) and the "
+    "rear lead screw in its bronze nut; keep it off the rear screw's collar and its TPU brake "
+    "washer, whose grip holds the coarse screw from turning back.")
+"""A decanting cradle's (:mod:`construction.cradle`; review round 1, m9)."""
+# a foot's sock; a decanting cradle's liners, its collar, its lead screw's brake washer, its
+# base plate's feet
+_SOCK = re.compile(r"_sock$|_liner$|_collar$|_brake$|foot_boot_")
 _SLEEVE = re.compile(r"crank_pin_sleeve_(.+)$")
 
 
@@ -1240,7 +1248,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
         notes.append(f"Printed parts need about {total:.0f} g of filament at 100 % infill "
                      f"({each}); less with sparse infill.")
         if (mech.meta or {}).get("cradle"):
-            notes.append(CRADLE_PRINT_NOTE)
+            notes += [CRADLE_PRINT_NOTE, CRADLE_GREASE_NOTE]
     lines.extend(mech.bom_extras)
     lines, shim_notes = split_shims(lines, by_name, (mech.meta or {}).get("shim_stacks"))
     notes += shim_notes
