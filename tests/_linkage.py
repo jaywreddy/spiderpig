@@ -178,15 +178,16 @@ def use_live_foot_z(monkeypatch) -> None:
 
 REFERENCE_CONFIG = _klann("quad")
 """The demo Klann quad, the default design (the bolt crank, standoff pillars, Chicago pins):
-13 layers, the feet at z -96.1 / -49.4 / -56.2 mm (each side 0.228 mm farther from the
-mid-plane since the 0.063 in x 6 centre plates of 2026-10-08: -95.8 / -49.2 / -56.0
-before; the least margin 52.8 mm, 52.6 before). (The reference was the ``--crank
+13 layers, the feet at z -95.2 / -89.4 / -49.4 / -56.1 mm since the planner's lowest
+stack of 2026-10-14 (its other layering in 13 layers: the second leg's foot a layer from
+the first's; -96.1 / -96.1 / -49.4 / -56.2 before, the least margin 52.8 mm; each side
+0.228 mm farther from the mid-plane since the 0.063 in x 6 centre plates of 2026-10-08:
+-95.8 / -49.2 / -56.0 before them, 52.6 mm). (The reference was the ``--crank
 printed`` quad until 2026-10-07: 12 layers, the feet at -62 / -50 mm, a 50.0 mm least
 margin; the same stride, bob and pitch within their tolerances.)"""
 
 QUAD_REFERENCE = {
-    "foot_z": [-96.06949999999999, -96.06949999999999, -49.41949999999999,
-               -56.19449999999999],
+    "foot_z": [-95.24449999999999, -89.36949999999999, -49.4195, -56.0945],
     "contacts_135": [True, False, False, True] * 2,     # legs 0 and 3, both sides, at 135 deg
     "pitch_deg_max_abs": [8.4, 0.1],                     # [value, abs tolerance]
     "bob_mm": [24.0, 0.5],

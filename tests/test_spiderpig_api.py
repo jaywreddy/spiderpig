@@ -207,9 +207,10 @@ def test_check_plan_walk_on_the_default_quad(quad):
     # the round standoff); 74.289 with the hub chain capped (no screw over the hub plate);
     # 73.789 since a hex pin's upper stack uses the air over its plate (2026-10-05); 73.464
     # with the Chicago screws as bought (Harfington's 8.5 mm heads, 1 mm length steps);
-    # 72.989 with the simplified hardware (printed fills, M3 ties: 13 layers)
-    assert pr.height_mm == pytest.approx(72.989)
-    assert len(pr.gaps_mm) == 10      # (10 in the simplified hardware's 13-layer plan) the
+    # 72.989 with the simplified hardware (printed fills, M3 ties: 13 layers); 67.964 with
+    # the planner's sound search of 2026-10-14 (another layering in 13 layers, 9 gaps)
+    assert pr.height_mm == pytest.approx(67.964)
+    assert len(pr.gaps_mm) == 9       # (10 in the simplified hardware's 13-layer plan) the
     # hex crank's, hub chain capped (10 with the
     #                                   screw over the hub plate; the round standoff's: 11)
     assert pr.route == {"runs": [{"at": f"M_leg{k}", "lo": lo, "hi": lo}
@@ -237,7 +238,7 @@ def test_verify_quick_passes_with_tiers(quad):
     rows = {r.requirement: r for r in rep.rows}
     assert rows["program.loops_close"].tier == "proven"
     assert rows["program.loops_close"].passed
-    assert rows["size.stack_mm"].value == pytest.approx(72.989)     # the hex crank's
+    assert rows["size.stack_mm"].value == pytest.approx(67.964)     # the hex crank's
     assert rows["size.stack_mm"].tier == "proven"
     assert rows["motion.speed_mm_s"].tier == "estimated"
     assert rows["motion.stride_mm"].tier == "measured"
@@ -256,8 +257,8 @@ def test_a_hard_size_miss_fails_and_the_same_target_soft_only_lowers_the_score()
     row = next(r for r in rep.rows if r.requirement == "size.stack_mm")
     assert not row.passed
     assert row.hard
-    # the default quad's 13 layers, 72.989 mm (test_check_plan_walk_on_the_default_quad)
-    assert row.value == pytest.approx(72.989)
+    # the default quad's 13 layers, 67.964 mm (test_check_plan_walk_on_the_default_quad)
+    assert row.value == pytest.approx(67.964)
     assert row.target == "<= 60"
     assert rep.score == 1.0                        # the stride, the only soft target, is met
     soft = api.resolve({**KLANN_QUAD, "size": {"stack_mm": {"max": 60, "hard": False}},
@@ -267,9 +268,9 @@ def test_a_hard_size_miss_fails_and_the_same_target_soft_only_lowers_the_score()
     row = next(r for r in rep.rows if r.requirement == "size.stack_mm")
     assert not row.passed
     assert not row.hard
-    # (a max of 60, not 30: 72.989 against 30 is more than 100 % over, a score of 0)
-    assert row.score == pytest.approx(0.7835, abs=1e-4)   # 72.989 against 60: 1 - 12.989 / 60
-    assert rep.score == pytest.approx(0.8918, abs=1e-4)   # the mean of stride 1.0 and 0.7835
+    # (a max of 60, not 30: 67.964 against 30 is more than 100 % over, a score of 0)
+    assert row.score == pytest.approx(0.8673, abs=1e-4)   # 67.964 against 60: 1 - 7.964 / 60
+    assert rep.score == pytest.approx(0.9336, abs=1e-4)   # the mean of stride 1.0 and 0.8673
     assert hard.id != soft.id
 
 
@@ -376,9 +377,9 @@ def test_parts_expose_live_solids_and_recheck_passes():
     b1 = d.parts["L.b1"]
     assert b1.solid is mech.body("L.b1").part
     assert (b1.group, b1.side, b1.fab, b1.material) == ("links", "L", "laser", "sheet")
-    assert b1.layers == (6,)
+    assert b1.layers == (4,)         # (6 before the planner of 2026-10-14: 10 layers, now 8)
     assert not b1.edited
-    assert d.parts["R.b1"].layers == (6,)
+    assert d.parts["R.b1"].layers == (4,)
     assert d.parts["R.b1"].side == "R"
     assert d.parts["L.servo"].group == "drive"
     assert d.parts["L.servo"].mass_g == 55.0
@@ -535,7 +536,9 @@ def test_export_writes_what_the_cli_writes(tmp_path, monkeypatch):
             "bom.md", "bom.json", "manifest.json"} <= names
     manifest = json.loads((tmp_path / "manifest.json").read_text())
     assert manifest["design"] == d.id
-    assert manifest["plan"]["layers"] == 10          # the single-plate bolt crank's (keyed: 8)
+    # the single-plate bolt crank's (keyed: 8); 8 since the planner's sound search of
+    # 2026-10-14 (its short standoff columns were refused at a pitch a layer: 10)
+    assert manifest["plan"]["layers"] == 8
     assert manifest["bom"]["items"] > 0
     # the bolt crank's webs, standoff crankpin, screws, shims and stub, the standoff
     # pillars' segments, sleeves, screws and washers, the Chicago pins (keyed and printed:
@@ -547,7 +550,9 @@ def test_export_writes_what_the_cli_writes(tmp_path, monkeypatch):
     # 65 with the Chicago screws as bought (1 mm barrel steps: fewer shims)
     # 63: no printed lower spacer thinner than a print (bonded gaps, 2026-10-05)
     # 64: the cantilever pillar B's gap ring over its last link (W8 D2, 2026-10-07)
-    assert len(manifest["parts"]) == 64
+    # 56: 8 layers and one printed sleeve per run between an axle's retained parts
+    # (2026-10-14)
+    assert len(manifest["parts"]) == 56
     with pytest.raises(ValueError, match="unknown formats"):
         api.export(d, ["pdf"], tmp_path)
 
@@ -745,8 +750,8 @@ def test_a_thin_sheet_warns_and_the_pillar_names_the_least_pitch_with_a_checked_
     assert rec.patch == {"materials": {"thickness_mm": 3.0}}
     assert rec.changes == [{"name": "thickness_mm", "before": 2, "after": 3.0}]
     assert rec.why.startswith("a standoff pillar's end screw needs layers of at least 3 mm")
-    # the default Klann single's 10 layers, 37.639 mm (test_the_recommendation_says_...)
-    assert rec.verified.startswith("checked: the static stage passes, and it plans in 10 layers")
+    # the default Klann single's 8 layers, 35.039 mm (test_the_recommendation_says_...)
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in 8 layers")
     assert api.recommend(thin) == [rec]
     assert api.plan(thin).failures == cr.failures
     rep = api.verify(thin, "quick")
@@ -891,13 +896,14 @@ def test_the_recommendation_says_which_module_it_checked():
     # 36.839 with the hub chain capped (no screw over the hub plate, 2026-10-04); 37.439 since
     # the hex crank's gap rules of 2026-10-05 (another 10-layer layering found first); 37.839
     # with the Chicago screws as bought (Harfington's heads, 2026-10-05); 37.639 with the
-    # simplified hardware (its printed head spacers)
+    # simplified hardware (its printed head spacers); 35.039 in 8 with the planner's sound
+    # search (2026-10-14)
     assert text.startswith("checked: the static stage passes, and its single module plans in "
-                           "10 layers (37.639 mm); the quad module's own plan is not checked "
+                           "8 layers (35.039 mm); the quad module's own plan is not checked "
                            "here")
     assert "the planner's deadline is 60 s" in text
     assert rec._verify(BuildConfig(linkage="klann", module="single", robot=False), plan=False) \
-        == "checked: the static stage passes, and it plans in 10 layers (37.639 mm)"
+        == "checked: the static stage passes, and it plans in 8 layers (35.039 mm)"
 
 
 def test_a_parts_mass_and_volume_follow_its_edited_solid():
@@ -1067,14 +1073,14 @@ def test_a_proven_stack_miss_names_the_floor_and_advise_notes_it():
     row = next(r for r in api.verify(d, "quick").rows if r.requirement == "size.stack_mm")
     assert not row.passed                            # entry 11
     assert row.tier == "proven"
-    # the default quad's 13 layers, 72.989 mm, proven (test_check_plan_walk_on_the_default_quad)
-    assert row.detail.startswith("72.989 mm is proven the thinnest for klann's quad module "
+    # the default quad's 13 layers, 67.964 mm, proven (test_check_plan_walk_on_the_default_quad)
+    assert row.detail.startswith("67.964 mm is proven the thinnest for klann's quad module "
                                  "on 3 mm layers (13 layers")
     assert "no module of klann with fewer walks" in row.detail
     adv = api.advise(d)
     assert adv.stage == "target"
     assert adv.recommendations == []
-    assert adv.notes[0].startswith("size.stack_mm 72.989 vs <= 30: 72.989 mm is proven the "
+    assert adv.notes[0].startswith("size.stack_mm 67.964 vs <= 30: 67.964 mm is proven the "
                                    "thinnest")
 
 
