@@ -155,10 +155,12 @@ def test_the_worm_holds_and_every_bottle_lies_with_its_mouth_on_the_pivot():
         assert cr.STOP_RANGE[0] <= s.stop <= cr.STOP_RANGE[1]
         assert cr.seat(size) == pytest.approx((0.0, 0.0, 0.0), abs=1e-9), size.name
         # its centre of mass (the shell-and-wine model, design review round 1) behind the
-        # front V, 28-40 % of its length up from its base (a 6 L methuselah's, 390 mm from
-        # the mouth, lies 10 mm behind the rear V's end: the mounting review's B1)
+        # front V, 28-40 % of its length up from its base, and on the rear support (a 6 L
+        # methuselah's, 390 mm from the mouth, lies 10 mm behind the rear V's end, over the
+        # base stop's rails' flanges: the mounting review's B1)
         assert front.vee[1] < size.com_from_mouth, size.name
         assert 0.6 < size.com_from_mouth / size.length < 0.72, size.name
+        assert size.com_from_mouth < min(cr.FLANGE_END, size.length), size.name
     assert cr.setting(cr.METHUSELAH) == cr.Setting(0.0, 0.0, cr.METHUSELAH.length + 0.5)
     # a magnum in the 6 L's setting would lie nose up, its mouth off the pivot
     y0, slope, x0 = cr.seat(cr.MAGNUM, cr.setting(cr.DESIGN))
@@ -726,7 +728,9 @@ def test_the_whole_cradle_is_clash_free_over_the_swing(key):
     """Both sides, the box, the stand on its base plate, the bottle (a 6 L methuselah, the V
     blocks at their lowest) and the decanter at rest, at full tilt and across the turn: no
     two parts meet, the hand crank's sweep meets nothing, and every bottle size at its own
-    setting (its V blocks raised, its base stop moved) meets nothing, nor do they."""
+    setting (its V blocks raised, its base stop moved) meets nothing, nor do they; the base
+    stop never comes nearer the base board than a finger's 25 mm (ISO 13854: at rest, set
+    for a 6 L, its lowest)."""
     from spiderpig.construction.contract import bad_solids, clashes
     from spiderpig.cradle_report import wheel_sweep
     from spiderpig.fabricate import fabricate, template_for
@@ -740,6 +744,7 @@ def test_the_whole_cradle_is_clash_free_over_the_swing(key):
         mech = fabricate(tmpl, cfg, float(t))
         assert clashes(mech) == [], t
         assert wheel_sweep(mech) == [], t
+        assert cr.finger_gap(mech) >= cr.FINGER_GAP, t
         for size in cr.SIZES:
             assert cr.bottle_hits(mech, size) == [], (t, size.key)
     assert bad_solids(mech) == []
@@ -1038,7 +1043,10 @@ def test_every_printed_part_fits_a_print_bed_in_its_pose():
     poses = mech.meta["print_poses"]
     for name in ("front_saddle", "rear_saddle", "front_saddle_vee", "rear_saddle_vee",
                  "front_saddle_liner", "front_saddle_knob", "front_saddle_gauge",
-                 "base_stop_rails", "base_stop_gate", "L.handle", "foot_boot_0"):
+                 "rear_saddle_liner", "rear_saddle_knob", "rear_saddle_brake",
+                 "base_stop_rail0", "base_stop_rail1", "base_stop_rail0_liner",
+                 "base_stop_rail1_liner", "base_stop_gate", "base_stop_knob", "L.handle",
+                 "foot_boot_0"):
         assert name in poses, name
     for b in mech.bodies:
         if b.fab != "printed" or b.part is None:
@@ -1175,8 +1183,9 @@ def test_a_frame_plates_member_buckles_out_of_its_plane():
 def test_the_saddles_hold_a_full_6_l():
     """``cradle_report.saddles``: every printed part of the saddles, the lip gauge and the base
     stop under its allowable at a full 6 L's worst (hung on its thumbscrew, leaning on the
-    gate at rest with a corkscrew's push, on the gauge at full tilt with no friction), the
-    post and the thumbscrew 3 x under their yield, the gate's lock gripping 3 x its load."""
+    gate at rest with a corkscrew's push, on the gauge at full tilt with no friction, its
+    body on the rails' flanges), the post and the screws 3 x under their yield, the gate's
+    lock gripping and the lead screw's brake holding 3 x what they hold."""
     from spiderpig.cradle_report import PLA_ALLOW, saddles
 
     got = saddles(-50.0, 30.0, 0.75)
@@ -1187,7 +1196,37 @@ def test_the_saddles_hold_a_full_6_l():
         else:
             assert r["sf"] >= 3.0, r
     assert rows["rear post (NETRF12, bending)"]["load_n"] > 10.0     # (N·m: the couple)
-    assert rows["base stop's lock (its grip)"]["backstop_mm"] < 10.0
+    assert rows["rear post (NETRF12, bending at rest)"]["load_n"] > 10.0
+    for part in ("rear lead screw's brake (no turning back)", "base stop's lock (its grip)",
+                 "base stop's rails (bending at their sockets)", "lip gauge's post (bent and "
+                 "twisted)", "rear knob's tower (bending)", "base stop's T-slot lips (bending)"):
+        assert part in rows, part
+    assert got["balance"]["ok"]
+    assert got["gauge"]["falls_back"]
+
+
+@pytest.mark.no_fabricate
+def test_every_bottle_rests_on_both_saddles_at_rest_level_and_tipped():
+    """``cradle_report.balance`` (review round 1, B1): with its centre of mass where the shell
+    model puts it (a 6 L methuselah's 390 mm from the mouth), the gate's push under the axis
+    at rest and the gauge's over it at full tilt, each bottle's reaction centres inside its
+    support, the front V to the rear support's end (the rear V, then the rails' flanges), by
+    40 mm or more; without the flanges (the rear V's end at 380) the 6 L would lift its neck
+    off the front V at rest. The lip gauge, lifted to its stop, falls back shut."""
+    from spiderpig.cradle_report import balance
+
+    assert cr.METHUSELAH.com_from_mouth == 390.0
+    got = balance(-50.0, 30.0)
+    assert got["ok"]
+    assert got["worst_margin_mm"] >= 40.0
+    assert {r["case"] for r in got["rows"]} == {"rest", "level", "full"}
+    assert len(got["rows"]) == 3 * len(cr.SIZES)
+    rest = {r["bottle"]: r for r in got["rows"] if r["case"] == "rest"}
+    assert rest[cr.METHUSELAH.name]["centre_mm"] > cr.SADDLES[1].vee[1]     # (on the flanges)
+    g = cr.gauge_return()
+    assert g["falls_back"]
+    assert g["com_deg_open"] < 85.0
+    assert abs(g["stop_on_wall_mm"]) < 0.05
 
 
 @pytest.mark.server

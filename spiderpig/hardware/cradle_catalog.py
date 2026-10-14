@@ -36,6 +36,7 @@ the variant drawing ux1920_d02 fetched 2026-10-10): barrel 8 mm, heads 13.5 mm, 
 CHICAGO_M6_LENGTHS = tuple(float(L) for L in HARF_CHICAGO_M6)
 
 BD = "https://boltdepot.com/Product-Details?product="
+SERVOCITY = "https://www.servocity.com/"
 BD_NOTE = "18-8 (A-2); page rendered 2026-10-10 (WebFetch refused); sold singly"
 M6_BHCS_BD = {8: ("6642", 0.17, 11.27), 10: ("6643", 0.18, 12.06), 12: ("6644", 0.19, 12.84),
               16: ("6645", 0.20, 13.54), 20: ("6646", 0.23, None), 25: ("6647", 0.28, None),
@@ -297,23 +298,55 @@ register(
                 note="18-8, M6-1.0, DIN 934, 10 mm across flats, 4.7-5.0 high; page "
                      "rendered 2026-10-13"),),
          dims={"af": 10.0, "h": 5.0}),
-    Item("m8_tap_bolt_150", "M8 x 150 hex tap bolt, fully threaded, 18-8", "fastener",
-         (Offer("Bolt Depot", BD + "11110", "11110", price_usd=2.87, verified=True,
-                tiers=((1, 2.87), (25, 2.208), (250, 1.944)),
-                note="18-8 (A-2), M8-1.25 x 150, fully threaded, 13 mm across flats, head "
-                     "5.15-5.45 (no standard named: DIN 933's); the longest Bolt Depot "
-                     "stocks fully threaded; page rendered 2026-10-13"),),
-         dims={"d": 8.0, "length": 150.0, "af": 13.0, "head_h": 5.3},
-         notes="The rear saddle's thumbscrew: it stands in its carrier's blind bore, a "
-               "printed knob on its head, the coupling nut in the V block riding it."),
-    Item("m8_coupling_nut_24", "M8 coupling nut, 24 mm long (DIN 6334), 18-8", "nut",
-         (Offer("Bolt Depot", BD + "27224", "27224", price_usd=2.52, verified=True,
-                tiers=((1, 2.52), (10, 1.641), (100, 1.48)),
-                note="18-8, M8-1.25 x 24, 13 mm across flats, DIN 6334 (the only M8 length "
-                     "stocked); page rendered 2026-10-13"),),
-         dims={"af": 13.0, "h": 24.0},
-         notes="In the rear V block's boss: 24 mm of thread on the lead screw guides it as "
-               "well as lifting it."),
+    # the rear saddle's lead screw (construction.cradle: its V block rides it at 8 mm a turn;
+    # ServoCity pages rendered 2026-10-14, /root/scratch/decant/review5/r1_mounting/pages/ on
+    # the development box)
+    Item("lead_screw_8x8_150", "Lead screw, 8 mm, 8 mm lead (2 mm pitch, 4 starts), 150 mm, "
+         "stainless steel", "fastener",
+         (Offer("ServoCity", SERVOCITY + "3501-series-lead-screw-8mm-lead-4-start-150mm-length/",
+                "3501-0804-0150", price_usd=6.99, verified=True,
+                note="3501 Series lead screw: stainless steel, 8 mm, 2 mm pitch, 4 starts, "
+                     "150 mm, 46 g; page rendered 2026-10-14 (the common 3D printer T8 x 8; "
+                     "any 150 mm one with its nut fits)"),),
+         dims={"d": 8.0, "lead": 8.0, "pitch": 2.0, "starts": 4, "length": 150.0,
+               "root": 5.5},
+         notes="The rear saddle's thumbscrew: 9 turns over its V block's 72 mm. It isn't "
+               "self-locking: its clamping collar, on a TPU brake washer under the block's "
+               "load, holds it (cradle_report.saddles)."),
+    Item("lead_nut_8x8_barrel", "Lead screw barrel nut, 8 mm lead, 4 starts, 12 mm OD x 16 mm, "
+         "bronze", "nut",
+         (Offer("ServoCity", SERVOCITY + "3500-series-lead-screw-barrel-nut-8mm-lead-4-start-"
+                "12mm-od-16mm-length/", "3500-0804-1216", price_usd=4.99, verified=True,
+                note="3500 Series barrel nut: bronze, 2 mm pitch, 4 starts, 12 mm OD x 16 mm, "
+                     "10 g; page rendered 2026-10-14"),),
+         dims={"od": 12.0, "length": 16.0, "material": "brass"},
+         notes="In the rear V block's boss from below, an M3 set screw on it: the block bears "
+               "down on it."),
+    Item("lead_collar_8x8", "Lead screw clamping collar, 8 mm lead, 4 starts, 21 mm OD x 9 mm, "
+         "aluminium", "fastener",
+         (Offer("ServoCity", SERVOCITY + "3504-series-lead-screw-clamping-collar-8mm-lead-4-"
+                "start-21mm-od-9mm-length/", "3504-0804-2109", price_usd=6.99, verified=True,
+                note="3504 Series clamping collar: aluminium, clear anodized, its bore threaded "
+                     "to the lead screw, a pinch bolt; 21 mm OD x 9 mm, 8.2 g; page rendered "
+                     "2026-10-14"),),
+         dims={"od": 21.0, "length": 9.0},
+         notes="On the rear lead screw's foot in the carrier's pocket, on the TPU brake "
+               "washer: the block's load on it holds the coarse screw from turning back."),
+    *(Item(f"m5_tap_bolt_{n}", f"M5 x {n} hex tap bolt, fully threaded, 18-8", "fastener",
+           (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
+                  tiers=((1, each), (100, per100 / 100)),
+                  note="18-8 (A-2), M5-0.8, fully threaded, 8 mm across flats; the M5 tap "
+                       "bolt list page rendered 2026-10-14"),),
+           dims={"d": 5.0, "length": float(n), "af": 8.0, "head_h": 3.5})
+      for n, (pn, each, per100) in {25: ("5952", 0.22, 14.52),
+                                    40: ("5955", 0.34, 22.84)}.items()),
+    Item("m5_nylon_nut", "M5 nylon-insert lock nut (DIN 985), 18-8", "nut",
+         (Offer("Bolt Depot", BD + "4794", "4794", price_usd=0.09,
+                tiers=((1, 0.09), (100, 0.0554)), verified=True,
+                note="18-8, M5-0.8, nylon insert; listed with the M5 tap bolts, rendered "
+                     "2026-10-14"),),
+         dims={"af": 8.0, "h": 5.0},
+         notes="On the lip gauge's pin behind its back knuckle: snug, it stays where it's set."),
     # the M6 Chicago pins' washers' sizes: what their printed head spacers and gap rings are
     # drawn to (materials.WASHERS; they are printed, not bought)
     Item("ptfe_washer_8x14x0p5", "PTFE flat washer 8.2 x 14 x 0.5 mm", "washer",
