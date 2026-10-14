@@ -1123,7 +1123,8 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   harness; the sim carries the kit's 61 g for your own; an audit warning). A stepper board
   on a walker, or the deck's board on an arm, is a `ConstructionError`.
 - **Mechanisms:** none carried electronics (no robot is made of one side), so the role
-  stays the walkers' and the arms'; `spiderpig control` still sets a mechanism's one servo
+  stays the walkers' and the arms' (changed later the same day: fix round 2 gives a
+  mechanism the role too, its controller tied to having motors); `spiderpig control` still sets a mechanism's one servo
   up (your own board).
 - **The ids stay:** a role reaching the walkers would have written `controller` into every
   walker's resolved spec and moved every stored design's id. `roles.Role.implicit` names
@@ -1216,7 +1217,8 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   limit with a foot pinned: the same idea). These are the design's own loads, so a jam SF
   under 1 fails `verify` and the audit; the fix may be a lower run current. A link's hole is
   its pivot's bearing seat where it holds one (`strength.link_hole`; a plain pin's is the
-  6.35 mm it was). A cranked mechanism's loads are still what it drives: not rated (said).
+  6.35 mm it was). A cranked mechanism's loads are still what it drives: not rated (said; changed later
+  the same day: fix round 2 rates its jam at the servo's torque limit, `strength.crank_loads`).
   Walkers' numbers are unchanged.
 - **Found on the way:** an arm spec with any target validated in about a minute: the
   validator ran the arm's output check (its whole tour) for every section. It now runs only
@@ -1566,7 +1568,8 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   arm. A bound's number no longer ranks as merit, and a bound met is "not ruled out", not
   met, wherever it is (an arm's box-diagonal stroke too). For it the layers put `control`
   under `api` (`pyproject.toml`: `control` imports nothing of the API's).
-- **`repeatability_mm` is the worst-case bound for every kind** (`precision.repeatability_mm`,
+- **(Superseded by the next entry: a task's repeatability is ISO RP where the design has one.)**
+  **`repeatability_mm` is the worst-case bound for every kind** (`precision.repeatability_mm`,
   which every linkage with an output has): the guarantee, where ISO 9283 RP is a
   Monte Carlo estimate of the scatter under one-sided approach, and an arm's only. An arm's
   RP is shown beside it (`numbers.rp_mm`, the check's detail); a spec may still target
@@ -1590,10 +1593,19 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 
 ### 2026-10-14: a task's repeatability is ISO 9283 RP where the design has one (supersedes the "worst-case bound for every kind" bullet above)
 
-- **The rule:** a task's `repeatability_mm` targets ISO 9283 RP (`precision.rp_mm`, the mean + 3 sigma a maker quotes) wherever the design has one, i.e. a positioner with ranged inputs. Elsewhere it targets the worst-case bound (`precision.repeatability_mm`), which stays beside RP as information (`numbers.bound_mm`).
-- **Why:** the user's requirement for the arm was "ISO 9283 repeatability <= 0.1 mm". Holding it to the worst-case bound made the approved arm (RP 0.042 mm) fail a 0.1 mm placement task it meets.
-- **Straightness of a traced line** keeps the bound: twice the worst-case lost motion either side of the line, a guarantee rather than a scatter.
-- The choice is made by capability (whether the `rp_mm` target applies to the linkage), not by kind.
+- **The rule:** a task's `repeatability_mm` targets ISO 9283 RP (`precision.rp_mm`, the mean
+  plus 3 sigma a maker quotes) wherever the design has one, i.e. a positioner with ranged
+  inputs. Elsewhere it targets the worst-case bound (`precision.repeatability_mm`), which
+  stays beside RP as information (`numbers.bound_mm`).
+- **Why:** the user's requirement for the arm was "ISO 9283 repeatability <= 0.1 mm".
+  Holding it to the worst-case bound made the approved arm (RP 0.042 mm) fail a 0.1 mm
+  placement task it meets.
+- **Straightness of a traced line** keeps the bound: twice the worst-case lost motion either
+  side of the line, a guarantee rather than a scatter.
+- The choice is made by capability (whether the `rp_mm` target applies to the linkage), not
+  by kind.
+- **Gate:** no part, plan or BOM moves (a task's targets only); the baseline after the
+  round is `platform-9aae3e3`.
 
 ### 2026-10-14: one engine for every machine: controllers, strength, sim and exports by capability (fix round 2)
 

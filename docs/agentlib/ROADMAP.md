@@ -146,8 +146,9 @@ story), now `platform-77c117c`, eight designs.
   `precision` section states targets for any linkage with an output (`rp_mm` and
   `repeatability_mm` hard by default) and `verify` fails a hard one missed (`api.precision`,
   `PrecisionReport`); a jam SF under 1 fails `verify` and the audit on a walker and an
-  arm, an arm's at its own static loads (`strength.arm_loads`). Left: a cranked
-  mechanism's joints aren't rated (its loads are what it drives); the audit (`spiderpig audit`, the
+  arm, an arm's at its own static loads (`strength.arm_loads`), a cranked mechanism's at a
+  jam of its output, the servo at its torque limit (`strength.crank_loads`, each
+  mechanism's limit in `config.LINKAGE_TORQUE_LIMITS`). Left: the audit (`spiderpig audit`, the
   gate's) judges no precision target, only the joints; `palletizer_reach`'s RP is recorded
   (the scorecard), not held to a stated number; one jam threshold for every joint kind, not
   a safety factor per kind; and the budget's unverified figures (the pairs' tilt, belt span
@@ -159,8 +160,9 @@ story), now `platform-77c117c`, eight designs.
 - **Agent and viewer surfaces.** The viewer's precision overlay (the error budget over the
   workspace) isn't drawn; the joint sliders were checked by tests, never in a browser here.
   The precision budget is an API stage and an MCP tool (`api.precision`, a job), and a task
-  finds its candidates there (`api.candidates`); the control outputs (Klipper config,
-  homing plan, a walker's `servos.json`) are still `spiderpig control` only.
+  finds its candidates there (`api.candidates`, `spiderpig candidates`); the control files
+  (a servo design's `servos.json`, an arm's Klipper `printer.cfg`, either's homing), the
+  assembly guide and ORDER.md are export formats (`api.export`, the MCP's `export`).
 - **The walkers' out-of-plane metric.** The arm's budget solves its links' out-of-plane
   bending through the loops (`precision.out_of_plane`); a walker's legs have no such number
   (wobble is the strength check's), so a thinner or acrylic link can't be judged on it.

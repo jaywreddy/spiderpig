@@ -148,8 +148,10 @@ browser viewer for looking at the result; a design's id carries from one to anot
 - **the viewer**, one linkage picker over every kind, its views those the linkage declares.
 
 It writes the controller's files and the kinematics (`spiderpig control`), not firmware
-or a gait controller. Its strength analysis is of the joints and link plates only, at the
-design's own simulated loads (section 6.2); it does no finite-element analysis of the
+or a gait controller. Its strength analysis is of the joints and link plates only: a
+walker's at its own simulated loads (section 6.2), an arm's and a mechanism's at their own
+static loads (an arm's weight and payload and a crash of its tool; a mechanism's output
+jammed against its servo's torque limit); it does no finite-element analysis of the
 parts. It does not invent mechanisms: every linkage is a program in its catalog, and every
 part follows fixed construction rules.
 
