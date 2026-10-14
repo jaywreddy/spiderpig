@@ -23,9 +23,11 @@ none with ``SPIDERPIG_WORKERS=0``) and whenever it runs.
 2. **The proof**: the best of those plans bounds every other. Every size and placement the
    objective needs (on the height: each whose least height, :meth:`StackProblem.size_lb`,
    isn't over the plan's; on "layers": the plan's size and every thinner one) and whose
-   short job didn't search it to the end gets a full job (``max_nodes``) with that plan to
-   beat, split into one part per layer its first link may take (``Job.at``: they cover the
-   size once each), all at once; the jobs no one needs then are stopped.
+   short job didn't search it to the end gets a full job (``max_nodes``; a placement's
+   together no more than what its first step left of ``max_total_nodes``) with the best plan
+   so far to beat, split into parts (``Job.at``: they cover the size once each, its budget
+   shared), :data:`WAVE` sizes at a time from the thinnest (:meth:`_Drive._prove`); the jobs
+   no one needs then are stopped.
 3. **The answer**: the least key of every plan any job found, re-made here
    (:meth:`StackProblem.plan`, deterministic). It is optimal when every full job ran to
    the end (and no head placement gave up: :data:`stack.GIVE_UP`).
@@ -58,6 +60,14 @@ ENV_WORKERS = "SPIDERPIG_PLAN_WORKERS"
 """The planner's worker processes (unset: :data:`MAX_WORKERS`, or the cores if fewer; 0 or 1:
 none). ``SPIDERPIG_WORKERS=0`` turns them off too."""
 
+WAVE = 4
+"""Stack sizes the proof searches at a time, thinnest first (:meth:`_Drive._prove`): a fixed
+number, so which sizes it searches doesn't depend on the workers."""
+
+PARTS = 4
+"""The most parts a proof job splits into (:meth:`_Drive._split`): each its run of the first
+link's layers, its share of the job's budget."""
+
 MAX_WORKERS = 8
 """The most workers a plan forks by default: a module's jobs at once (B, a cradle, has about
 ten: five sizes, two head placements; the Strider double about twenty)."""
@@ -76,13 +86,14 @@ class Job:
     first: bool = False
     legs: bool | None = None    # a leg at a time (True), not (False), else the plain search
     #                             then, where it finds nothing, a leg at a time
-    at: int | None = None       # only the part of the size with its first link in this layer
+    at: tuple[int, ...] | None = None   # only the part with its first link in these layers
 
 
 def run_job(subs: Mapping[str, StackProblem], job: Job, deadline: Deadline) -> dict:
-    """Search ``job`` (its own :class:`_Search`, a leg at a time again when the plain search
-    found nothing and the problem has a hint), until its budget or ``deadline``: what it
-    found and what blocked it, as plain data (the same here and in a worker)."""
+    """Search ``job`` (its own :class:`_Search`; with ``Job.legs`` unset and a hint, the
+    plain search and then, where it found nothing, a leg at a time, half the budget each),
+    until its budget or ``deadline``: what it found and what blocked it, as plain data (the
+    same here and in a worker)."""
     sub = subs[job.heads]
     sub.blocked, sub._blocked_by = {}, {}
     sub.washer_misses, sub.gave_up, sub.found_any = 0, "", False
@@ -93,10 +104,12 @@ def run_job(subs: Mapping[str, StackProblem], job: Job, deadline: Deadline) -> d
         s.bound = job.bound[1]      # (objective "layers": a cheaper route in this size only)
     if job.at is not None:
         s.only(job.at)
-    s.run(job.budget, bool(job.legs), deadline)
-    if (job.legs is None and s.best is None and sub.hint and not s.done and not sub.gave_up
+    both = job.legs is None and bool(sub.hint)     # (the plain search, then a leg at a time:
+    #                                                 half the budget each)
+    s.run(job.budget // 2 if both else job.budget, bool(job.legs), deadline)
+    if (both and s.best is None and not s.done and not sub.gave_up
             and not deadline.expired):
-        s.run(job.budget, True, deadline)
+        s.run(job.budget - s.nodes, True, deadline)
     b = s.best
     return {"best": None if b is None else (dict(b.layers), dict(b.choices), b.cost),
             "key": s.best_key, "done": s.done, "nodes": s.nodes,
@@ -270,35 +283,46 @@ class _Drive:
         return [Job(m, top, spec.quick_nodes, None, spec.quick_first, legs=False),
                 Job(m, top, spec.quick_nodes, None, spec.quick_first, legs=True)]
 
+    def spent(self, m: str) -> int:
+        """The nodes placement ``m``'s jobs asked for so far have taken."""
+        return sum(r["nodes"] for mm, _, r in self.order if mm == m)
+
     def _split(self, job: Job) -> list[Job]:
-        """A full job as parts, one per layer its first link may take (``Job.at``): they
-        cover the size once each, and run side by side. A size that has none (its fixed
-        parts rule it out) stays one job."""
+        """A full job as up to :data:`PARTS` parts, each a run of the layers its first link
+        may take (``Job.at``), its budget shared among them: they cover the size once each,
+        and run side by side. A size with one layer or none stays one job."""
         s = _Search(self.subs[job.heads], job.top)
         layers = s.firsts()
         if len(layers) < 2:
             return [job]
-        return [replace(job, at=v) for v in layers]
+        n = min(PARTS, len(layers))
+        groups = [tuple(layers[i * len(layers) // n:(i + 1) * len(layers) // n])
+                  for i in range(n)]
+        each = max(1, -(-job.budget // n))      # (its budget, shared)
+        return [replace(job, at=g, budget=each) for g in groups]
 
     def _firsts(self) -> int | None:
         """The thinnest stack size a short job of any placement finds a plan in (``None``:
-        none, within ``max_total_nodes`` of short jobs): every size in turn while the short
+        none, within ``max_total_nodes`` of each placement's short jobs): every size in
+        turn while the short
         jobs rule them out; once one exhausts its budget instead, in doubling steps (a plan
         is then likely far thicker, and every size in between costs its whole budget), then,
         a plan found, back down the skipped sizes while they keep one. The placements go
         size by size together, so which sizes are searched depends on the jobs' answers
         alone."""
         spec = self.spec
-        spent = 0
+
+        def spent() -> int:
+            """The most nodes a placement's short jobs have taken (each has its budget)."""
+            return max((self.spent(m) for m in self.modes), default=0)
 
         def stop(rs: dict[str, dict]) -> bool:
-            return (spent >= spec.max_total_nodes or len(self.gave_up) == len(self.modes)
+            return (spent() >= spec.max_total_nodes or len(self.gave_up) == len(self.modes)
                     or any(r["expired"] for r in rs.values()))
 
         top, jump, found = spec.min_top, 0, None
         while True:
             rs = self._size(top)
-            spent += sum(r["nodes"] for r in rs.values())
             if any(r["best"] is not None for r in rs.values()):
                 found = top
                 break
@@ -310,22 +334,21 @@ class _Drive:
                 top, jump = min(top + (1 << jump), spec.max_top), jump + 1
         if found is not None:
             for top in range(found - 1, spec.min_top - 1, -1):
-                if any(top in self.tried[m] for m in self.modes) or spent >= spec.max_total_nodes:
+                if any(top in self.tried[m] for m in self.modes) or \
+                        spent() >= spec.max_total_nodes:
                     break
                 rs = self._size(top, up=False)
-                spent += sum(r["nodes"] for r in rs.values())
                 if all(r["best"] is None for r in rs.values()):
                     break
                 found = top
             return found
         for top in range(spec.min_top, spec.max_top + 1):
-            if (spent >= spec.max_total_nodes or len(self.gave_up) == len(self.modes)
+            if (spent() >= spec.max_total_nodes or len(self.gave_up) == len(self.modes)
                     or any(r["expired"] for _, _, r in self.order)):
                 break
             if all(top in self.tried[m] for m in self.modes if m not in self.gave_up):
                 continue
             rs = self._size(top)
-            spent += sum(r["nodes"] for r in rs.values())
             if any(r["best"] is not None for r in rs.values()):
                 return top
             if stop(rs):
@@ -354,41 +377,7 @@ class _Drive:
                             [self.sizes()], expired=any(r["expired"] for _, _, r in self.order))
         full: list[tuple[str, int, dict]] = []
         if spec.prove:
-            bound = best[0]
-            jobs = []
-            for m in self.modes:
-                if m in self.gave_up:
-                    continue
-                for top in range(spec.min_top, spec.max_top + 1):
-                    r = self.tried[m].get(top)
-                    if spec.objective == "layers":
-                        # (the proxy: no thinner size has a plan, the thinnest has no cheaper
-                        # route; a taller one is never better)
-                        if top > best[2]:
-                            break
-                        if r is None or not r["done"]:
-                            jobs.append(Job(m, top, spec.max_nodes if top == best[2]
-                                            else spec.max_nodes // 2,
-                                            bound if top == best[2] else None))
-                        continue
-                    if prob.size_lb(top) > bound[0] + HEIGHT_TOL:
-                        break           # (the least height grows with the size)
-                    if r is None or not r["done"]:
-                        jobs.append(Job(m, top, spec.proof_nodes or spec.max_nodes, bound))
-            jobs.sort(key=lambda j: (prob.size_lb(j.top), self.subs[j.heads].heads_rank, j.top))
-            parts = {job: self._split(job) for job in jobs}
-            self.runner.cancel([p for ps in parts.values() for p in ps])
-            for ps in parts.values():       # (a size guessed next that no one needs now: gone)
-                for p in ps:
-                    self.runner.submit(p)
-            for job, ps in parts.items():
-                r = combine([self.runner.result(p) for p in ps], cover=True)
-                full.append((job.heads, job.top, r))
-                self.order.append((job.heads, job.top, r))
-                if r["gave_up"]:
-                    self.gave_up.setdefault(job.heads, r["gave_up"])
-            best = self._best(self.order)
-            assert best is not None     # (the first plans are among them)
+            best = self._prove(best, full)
         self._merge_tally()
         key, m, top, r = best
         layers, choices, cost = r["best"]
@@ -403,6 +392,75 @@ class _Drive:
             log.warning("%s: %d plans came under their least height", prob.topo.name, bad)
         plan.optimal, plan.proof = self._proof(plan, m, full, found)
         return plan
+
+    def _needed(self, best: tuple) -> list[int]:
+        """The stack sizes the objective needs searched to prove ``best`` (its key first):
+        on "layers" every size up to its own; on the height every size whose least height
+        isn't over its height."""
+        spec, prob = self.spec, self.prob
+        if spec.objective == "layers":
+            return list(range(spec.min_top, best[2] + 1))
+        out = []
+        for top in range(spec.min_top, spec.max_top + 1):
+            if prob.size_lb(top) > best[0][0] + HEIGHT_TOL:
+                break               # (the least height grows with the size)
+            out.append(top)
+        return out
+
+    def _prove(self, best: tuple, full: list[tuple[str, int, dict]]) -> tuple:
+        """The proof: the sizes the objective needs (:meth:`_needed`) that no short job ran
+        to the end, :data:`WAVE` sizes at a time from the thinnest up, each size and
+        placement a full job against the best plan so far, its parts side by side
+        (:meth:`_split`). After each wave the best may be better: on "layers" a size with a
+        plan ends the proof (a taller one is never better), on the height the sizes still
+        needed are those under the new best. A placement's jobs share what its first step
+        left of ``max_total_nodes`` (its search's nodes in all, as they always were). The
+        waves are the same whatever the workers, and so is the answer."""
+        spec = self.spec
+        live = [m for m in self.modes if m not in self.gave_up]
+        todo = [t for t in self._needed(best)
+                if any(not (r := self.tried[m].get(t)) or not r["done"] for m in live)]
+        while todo:
+            wave, todo = todo[:WAVE], todo[WAVE:]
+            bound = best[0]
+            jobs = []
+            for m in live:
+                left = [t for t in [*wave, *todo]
+                        if not (r := self.tried[m].get(t)) or not r["done"]]
+                share = max(1, (spec.max_total_nodes - self.spent(m)) // max(len(left), 1))
+                for t in wave:
+                    if t not in left:
+                        continue
+                    if spec.objective == "layers":
+                        # (the thinner sizes: any plan; the plan's own: a cheaper route)
+                        nominal = spec.max_nodes if t == best[2] else spec.max_nodes // 2
+                        job = Job(m, t, min(nominal, share), bound if t == best[2] else None)
+                    else:
+                        job = Job(m, t, min(spec.proof_nodes or spec.max_nodes, share), bound)
+                    jobs.append(job)
+            parts = {job: self._split(job) for job in jobs}
+            self.runner.cancel([p for ps in parts.values() for p in ps])
+            for ps in parts.values():       # (a size guessed next that no one needs now: gone)
+                for p in ps:
+                    self.runner.submit(p)
+            for job, ps in parts.items():
+                r = combine([self.runner.result(p) for p in ps], cover=True)
+                full.append((job.heads, job.top, r))
+                self.order.append((job.heads, job.top, r))
+                if r["gave_up"]:
+                    self.gave_up.setdefault(job.heads, r["gave_up"])
+            got = self._best(self.order)
+            assert got is not None          # (the first plans are among them)
+            best = got
+            if spec.objective == "layers":
+                if any(r["key"] is not None for _, _, r in full[-len(jobs):]):
+                    break
+                todo = [t for t in todo if t <= best[2]]
+            else:
+                needed = set(self._needed(best))
+                todo = [t for t in todo if t in needed]
+            live = [m for m in live if m not in self.gave_up]
+        return best
 
     def _best(self, results: Iterable[tuple[str, int, dict]]
               ) -> tuple[tuple, str, int, dict] | None:

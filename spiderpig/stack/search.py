@@ -936,12 +936,13 @@ class _Search:
         into parts that cover it once each (:meth:`only`)."""
         return sorted(self.dom[self.first]) if self.prepare() else []
 
-    def only(self, layer: int) -> None:
-        """Search only the part of this size with its first link in ``layer``."""
+    def only(self, layers: Iterable[int]) -> None:
+        """Search only the part of this size with its first link in ``layers``."""
         if not self.prepare():
             return
+        keep = set(layers)
         for v in sorted(self.dom[self.first]):
-            if v != layer:
+            if v not in keep:
                 self.cut(self.first, v, frozenset())
         self.base = len(self.trail)
         if not self.dom[self.first]:

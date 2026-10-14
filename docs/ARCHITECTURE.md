@@ -928,9 +928,12 @@ the planner's own process with the same answer. The search spends its effort in 
    objective needs (on the height: each size whose least height isn't over the plan's; on
    `"layers"`: the plan's own size, for a cheaper route, and every thinner one) that no
    short job searched to the end gets a full job (`max_nodes`, 20,000 nodes; half for a
-   thinner size on `"layers"`), split into one part per layer its first link may take
-   (`Job.at`: the parts cover the size once each), all at once; jobs no one needs any more
-   are stopped.
+   thinner size on `"layers"`; a placement's together no more than what its first step
+   left of `max_total_nodes`, 60,000 nodes in all), split into up to four parts, each a run
+   of the layers its first link may take (`Job.at`: the parts cover the size once each, its
+   budget shared). The sizes go four at a time, thinnest first (`stack.drive.WAVE`), every
+   job of a wave at once; after each wave the best plan may be better, and on `"layers"` a
+   size with a plan ends the proof. Jobs no one needs any more are stopped.
 
 The plan is the least key of everything the jobs found, re-made in the planner's process.
 It is optimal when every job the objective needs ran to the end. Each job has the CPU
