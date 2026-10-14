@@ -192,7 +192,7 @@ the bake's (`bake._profiler`, logger `bake_gltf`) and `spiderpig build --profile
 Everything Python is the `spiderpig` package (`pyproject.toml`, hatchling; `uv sync`
 installs it editable). Engine layers, enforced by `lint-imports` (no exceptions): kinematics
 → linkage → stack → construction → fabricate → (sim | stages | urdf) → (bake | build | strength |
-precision | guide) → (api | control | pose) → (mcp | server | cli); `spec` and `task`
+precision | guide | control) → (api | pose) → (mcp | server | cli); `spec` and `task`
 sit under the pipeline, as the part registries do (`actuators`, `roles`, `fabmethods`).
 
 | path | role |
