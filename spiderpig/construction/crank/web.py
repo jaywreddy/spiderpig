@@ -194,28 +194,53 @@ class WebFitMixin:
         return replace(j, gap=round(max(0.0, j.gap - air), 3))
 
     def _web_span_ok(self, run: int, low: int, pitch: float, t: float) -> bool:
-        """Whether a chain whose webs are ``run`` layers apart takes a stock standoff at the
-        nominal z or up to an aluminium plate's thickness more (the exact z decides)."""
+        """:meth:`_span_ok`, remembered (every design's router table asks it, per span)."""
+        return _span_ok(self, run, low, round(pitch, 6), round(t, 6))
+
+    def _span_ok(self, run: int, low: int, pitch: float, t: float) -> bool:
+        """Whether a chain whose webs are ``run`` layers apart may take a stock standoff in
+        some plan: at its least z (every layer the pitch, no gap) or anywhere up to the most
+        the clearance gaps among and beside its run layers can add (``run + 1`` of them, each
+        up to :data:`stack.GAP_MAX`), in 0.1 mm steps. A search's rule, refused only where no
+        plan's z would fit (:class:`stack.Layout`); the exact z decides
+        (:meth:`chain_fit_web`)."""
+        from spiderpig.stack import GAP_MAX, GAP_STEP
+
         air = max(0.0, pitch - t)
+        steps = round((run + 1) * GAP_MAX / GAP_STEP) if run else 0
+        dzs = sorted({0.0, air, *(i * GAP_STEP for i in range(steps + 1))})
         if self.hex:
             # outer faces: the lower web on its layer's floor, the upper's top face, the run's
-            # layers between (and up to two clearance gaps the plan may put among them)
+            # layers between (and the clearance gaps the plan may put among them)
             span = max(pitch, t) + run * pitch + t
             # (two webs in adjacent layers: no gap between them, nothing short enough joins
             # them, as the screws into a 5-6 mm standoff's ends would meet)
+            most = max(self.hex_lengths()) + 2 * self.recess_max   # (no longer span fits)
             return any(self.fit_hex(span + dz, t, t) is not None
-                       for dz in ((0.0, 1.0, 1.6, 2.0, 2.6, 3.2) if run else (0.0,)))
-        for dz in (0.0, run * 0.175, run * 0.175 + 1.0, air):
-            if self.fit_web(run * pitch + dz, air, t, t) is not None:
-                return True
-        return False
+                       for dz in dzs if span + dz <= most + EPS)
+        most = max(sum(c) for c in _pin_lengths())                  # (no longer free fits)
+        return any(self.fit_web(run * pitch + dz, air, t, t) is not None
+                   for dz in dzs if run * pitch + dz <= most + EPS)
 
     def stub_layers_web(self, t0: float, pitch: float, t: float, most: int = 64
                         ) -> frozenset[int]:
         """The layers the first chain's lowest web may sit in: the stub standoff from its
-        underside down into the outer frame plate (screwed to it from above)."""
-        return frozenset(a for a in range(2, most)
-                         if self.stub_z(t0 + (a - 1) * pitch, t0, t) is not None)
+        underside down into the outer frame plate (screwed to it from above), in some plan:
+        the web's underside at its least z (every layer under it the pitch, no gap) or up to
+        the most the ``a`` clearance gaps under it can add, in 0.1 mm steps (a search's
+        rule: the plan's own z decides, :meth:`check_route`)."""
+        return _stub_layers(self, round(t0, 6), round(pitch, 6), round(t, 6), most)
+
+    def _stub_layers(self, t0: float, pitch: float, t: float, most: int) -> frozenset[int]:
+        from spiderpig.hardware.crank_catalog import M3_ROUND_STANDOFF_LENGTHS
+        from spiderpig.stack import GAP_MAX, GAP_STEP
+
+        # (a web higher than the longest stub reaches from the plate fits none)
+        reach = max(M3_ROUND_STANDOFF_LENGTHS) + t0 - self.stub_seat + EPS
+        return frozenset(a for a in range(2, most) if any(
+            self.stub_z(t0 + (a - 1) * pitch + i * GAP_STEP, t0, t) is not None
+            for i in range(round(a * GAP_MAX / GAP_STEP) + 1)
+            if t0 + (a - 1) * pitch + i * GAP_STEP <= reach))
 
     def horn_joint_web(self, ctx: Context, seg: float, spacer: float
                        ) -> tuple[Screw, float, float] | None:
@@ -327,3 +352,13 @@ class WebFitMixin:
     def horn_spacer(self, L: Layout, drive: DriveInterface, hub: int) -> float:
         """The printed horn spacer at the plan's z: over the hub plate up to the horn's face."""
         return L.z(L.top)[1] - L.z(hub)[1] - (drive.horn_face_depth - drive.spacer_t)
+
+
+@functools.lru_cache(maxsize=1 << 12)
+def _span_ok(c, run: int, low: int, pitch: float, t: float) -> bool:
+    return c._span_ok(run, low, pitch, t)
+
+
+@functools.lru_cache(maxsize=256)
+def _stub_layers(c, t0: float, pitch: float, t: float, most: int) -> frozenset[int]:
+    return c._stub_layers(t0, pitch, t, most)
