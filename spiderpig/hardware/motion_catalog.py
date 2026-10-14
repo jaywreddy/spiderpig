@@ -72,10 +72,20 @@ AMAZON: dict[str, Offer] = {
     "pulley_gt2_80t_8mm": _amazon("B0GW4H3ML4", 1, 8.59, "GT2 80 teeth, 8 mm bore, 6 mm "
                                   "belt, 1 pc: check its hub and drill and tap the four M3 "
                                   "holes on the 30 mm circle (this item's notes)"),
+    "pulley_gt2_60t_8mm": Offer("Amazon", "https://www.amazon.com/s?k=GT2+60+teeth+8mm+bore"
+                                "+pulley+6mm", price_usd=7.0,
+                                note="search: GT2 60 teeth, 8 mm bore, 6 mm belt; the price "
+                                     "an estimate (2026-10-14). A hubbed one: its hub cut off "
+                                     "(or a flat 'wheel' type), its four M3 holes drilled on "
+                                     "the 30 mm circle as the 80-tooth's"),
     gt2_loop(232): _amazon("B0FRFGBS6J", 5, 8.19, "MECCANIXITY GT2 6 mm closed loop 232 mm, "
                            "5 pcs"),
     gt2_loop(200): _amazon("B07V6N32B1", 10, 7.99, "3Dman GT2 6 mm closed loop 200 mm, "
                            "10 pcs"),
+    gt2_loop(158): Offer("Amazon", "https://www.amazon.com/s?k=GT2+closed+loop+158mm+6mm",
+                         pack_qty=5, price_usd=8.0,
+                         note="search: GT2 6 mm closed loop 158 mm (79 teeth), 5 pcs; the "
+                              "price an estimate (2026-10-14)"),
 }
 """The first (the BOM's) offer of the drive parts an arm buys, ahead of the item's own."""
 
@@ -102,9 +112,11 @@ PULLEYS = {
     "pulley_gt2_16t_5mm": (16, 5.0, 16.0, 7.0),
     "pulley_gt2_20t_5mm": (20, 5.0, 16.0, 7.0),
     "pulley_gt2_80t_8mm": (80, 8.0, 0.0, 0.0),
+    "pulley_gt2_60t_8mm": (60, 8.0, 0.0, 0.0),
 }
 """The GT2 pulleys the belt drive uses: the motors' (16 and 20 teeth, hubbed, 5 mm bore)
-and the joints' (80 teeth, a plate pulley bolted to its link)."""
+and the joints' (80 teeth, a plate pulley bolted to its link; 60 teeth for the compact
+turret's yaw, :data:`construction.rotary.PRESETS` ``mt4_compact``)."""
 
 for _key, (_z, _bore, _hub_d, _hub_l) in PULLEYS.items():
     _pd = pitch_d(_z)

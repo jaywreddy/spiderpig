@@ -159,6 +159,7 @@ class RotaryPreset:
     actuator: str
     sensor: str
     range_deg: tuple[float, float]
+    skin: bool = False     # a base_pair's round base wrapped in a stock tube (base_pair.SKIN)
 
     @property
     def parts(self) -> tuple[Support, Any, Any, Sensor | None]:
@@ -179,6 +180,9 @@ def yaw_transmission(key: str) -> Any:
     """The transmission ``key`` as the turntable's: the capstan on its large drum."""
     from spiderpig.construction.transmissions import TRANSMISSIONS
 
+    if key == "belt_60":        # the compact turret's: 16 to 60 teeth (3.75:1), a 158 loop
+        belt: Any = TRANSMISSIONS["belt"]
+        return replace(belt, key=key, large_key="pulley_gt2_60t_8mm")
     t: Any = TRANSMISSIONS[key]
     return replace(t, drum_r=YAW_DRUM_R) if key == "capstan" else t
 
@@ -199,6 +203,12 @@ PRESETS: dict[str, RotaryPreset] = {p.key: p for p in (
     RotaryPreset("mt4_base_stall", "mt4_base homed without a switch: the driver's stall on a "
                  "hard stop past the range's end (the camera then sets the zero)", "base_pair",
                  "belt", "nema17_17hs4401_x64", "hard_stop", (-120.0, 120.0)),
+    RotaryPreset("mt4_compact", "mt4_base_stall made small: GT2 16 to 60 teeth (3.75:1) on "
+                 "the 158 mm loop, the motor 38.5 mm from the axis, the base one round drum "
+                 "under a turntable as wide, wrapped in a black tube (the user's 'an elegant "
+                 "machine', 2026-10-14)",
+                 "base_pair", "belt_60", "nema17_17hs4401_x64", "hard_stop", (-120.0, 120.0),
+                 skin=True),
     RotaryPreset("capstan_precise", "cord capstan 11.6:1 on a preloaded 608 pair, an Omron "
                  "slot sensor, the driver at 1/64", "preloaded_pair", "capstan",
                  "nema17_17hs4401_x64", "ee_sx67", (-115.0, 115.0)),

@@ -139,6 +139,8 @@ class TurretPlan:
     spacing_mm: float = SPACING    # the support's bearings' centres apart
     keep_r: float = 0.0            # the arm's keep-out round the axis (0: none, the turntable
     #                                under everything of the side: the classic turret)
+    foot_l: float = 40.0           # the frame plates' feet's half length (FOOT_L; base_pair's
+    #                                base_pair.BASE_FOOT_L)
 
     def housing(self):
         """The milled bearing housing (two in the hub, the lower one turned over about x:
@@ -355,13 +357,21 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
     lo, hi = preset.range_deg
     travel = hi - lo
     loop = None
-    if key == "belt":
-        clear_r = (float(brg["flange_d"]) / 2 if support.key == "base_pair" else BOSS_R)
-        need = max(clear_r + half_diag + 1.0,
+    if key.startswith("belt"):
+        clear_r, reach_r = BOSS_R, half_diag
+        mesh = MIN_MESH
+        if support.key == "base_pair":      # the motor square to the arm: its flat face
+            #                                 clears the bearings' bodies and the collars
+            from spiderpig.construction.rotary.base_pair import YAW_MIN_MESH
+
+            clear_r = max(_od_b, float(get("collar_8mm").dims["od"])) / 2
+            reach_r = motor.frame / 2
+            mesh = YAW_MIN_MESH
+        need = max(clear_r + reach_r + 1.0,
                    (float(tr.big["flange_d"]) + float(tr.small["flange_d"])) / 2 + 2.0)
         fits = [(c, L) for L in _loops()
                 if (c := tr.centre_distance(L)) is not None and c >= need
-                and tr.teeth_in_mesh(c) >= MIN_MESH]
+                and tr.teeth_in_mesh(c) >= mesh - 1e-9]
         if not fits:
             raise ConstructionError("turret: no stock GT2 loop keeps the motor clear of the "
                                     "shaft's boss")
@@ -375,21 +385,17 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
 
     spacing_mm = SPACING
     keep_r = r_flag = 0.0
+    foot_l = FOOT_L
     bk = bracket_of(support.key)
     if support.key == "base_pair":          # the bearings in the base, the shaft turning
-        if key != "belt":
-            raise ConstructionError("turret: the base_pair support takes the belt")
+        if not key.startswith("belt"):
+            raise ConstructionError("turret: the base_pair support takes a belt")
         h, columns, spacing_mm, protrude = bp.heights(ctx, support, tr, motor)
+        foot_l = bp.BASE_FOOT_L
         front, r_flag = bp.keep_radius(ctx, tr, motor, c, faces, preset.sensor,
-                                       preset.range_deg)
-        h["front"] = front
-        keep_r = front + ctx.params.margin
-        depth_t, half_t = bp.tail(motor, c)
-        r_base = math.hypot(depth_t, half_t)
-        turn = max(abs(v) for v in preset.range_deg)
-        if turn + math.degrees(math.asin(min(1.0, half_t / keep_r))) > 175.0:
-            raise ConstructionError(f"turret: a {turn:.0f} deg yaw swings the arm's low links "
-                                    "over the base's tail")
+                                       preset.range_deg, foot_l)
+        h["front"] = r_base = bp.base_radius(front, c, motor, preset.skin)   # one round base
+        keep_r = r_base + ctx.params.margin
     else:
         columns = _stock_column(motor.length + MOTOR_GAP)
         h: dict[str, float] = {"bottom": 0.0}
@@ -457,8 +463,8 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
     # the brackets, clear of what stands outside each plate
     brackets: list[tuple[str, float]] = []
     for plate in ("outer", "inner"):
-        xs = [x_a + v for v in np.arange(-(FOOT_L - bk["w"] / 2 - 1),
-                                          FOOT_L - bk["w"] / 2 - 1 + 1e-9, 1.0)]
+        xs = [x_a + v for v in np.arange(-(foot_l - bk["w"] / 2 - 1),
+                                          foot_l - bk["w"] / 2 - 1 + 1e-9, 1.0)]
         ok = [float(x) for x in xs
               if _clear((float(x) - bk["w"] / 2 - 1, float(y_t),
                          float(x) + bk["w"] / 2 + 1, float(y_t) + bk["h"] + 1),
@@ -467,8 +473,15 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
             raise ConstructionError(f"turret: no room for two brackets outside the {plate} "
                                     f"frame plate's foot (the motors and sliders there "
                                     f"reach down to it)")
-        brackets += [(plate, float(min(ok))), (plate, float(max(ok)))]
-    hub_r = TIE_PCD[key] / 2 + SCREW_HOLE / 2 + 2 * t
+        pair = (min(ok), max(ok))
+        if support.key == "base_pair":      # a symmetric pair about the axis, if any fits
+            have = {round(x - x_a) for x in ok}
+            sym = [dd for dd in sorted(have, reverse=True)
+                   if dd > 0 and -dd in have and 2 * dd >= bk["w"] + 8]
+            if sym:
+                pair = (x_a - sym[0], x_a + sym[0])
+        brackets += [(plate, float(pair[0])), (plate, float(pair[1]))]
+    hub_r = TIE_PCD.get(key, TIE_PCD["belt"]) / 2 + SCREW_HOLE / 2 + 2 * t
     head_r = screw("shcs", "3").head_d / 2
     reach = bk["hole"]
     depth = (bk["d"] if support.key == "base_pair"
@@ -481,7 +494,7 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
                     for xx in (x - bk["w"] / 2, x + bk["w"] / 2)
                     for zz in (z0, z0 + sgn * depth)]
         screws_r.append(math.hypot(x - x_a, z0 + sgn * reach - z_a))
-    corners += [math.hypot(FOOT_L + FOOT_R, faces[pl] - z_a) for pl in faces]
+    corners += [math.hypot(foot_l + FOOT_R, faces[pl] - z_a) for pl in faces]
     r_table = max(max(corners) + 3.0, hub_r + 5.0)
     # the homing flag at the turntable's rim (its edge's place over the most radius), past
     # the drive and outside the brackets' screws under the turntable
@@ -492,6 +505,8 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
     if support.key == "base_pair" and preset.sensor == "hard_stop":    # a post, no board
         sensor_r = r_flag
         r_table = max(max(corners) + 3.0, sensor_r + 4.0)
+    if support.key == "base_pair":          # as wide as the round base: one drum
+        r_table = max(r_table, h["front"])
     elif support.key == "base_pair":        # the M2 flag outside the belt, nut under it
         sensor_r = max(r_flag, max(screws_r) + head_r + 1.0 + 5.5)
         r_table = max(max(corners) + 3.0, sensor_r + 4.0)
@@ -515,7 +530,7 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
             if low - protrude - 1.0 < y_t:        # (over the collar and nuts it stands)
                 y_t = low - protrude - 1.0
                 notes.append("the turntable stands lower for the tool passing over it")
-    if keep_r and r_table > h["front"] - 1.0 + 1e-6:
+    if keep_r and r_table > h["front"] + 1e-6:     # (as wide as it: one drum)
         raise ConstructionError(f"turret: the turntable's {r_table:.1f} mm passes the base's "
                                 f"front of {h['front']:.1f} mm")
     y_ground = y_t - h["table"]
@@ -525,7 +540,7 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
         notes.append(note)
     return TurretPlan(preset, x_a, z_a, y_t, y_ground, h, r_base, r_table, c, loop, travel,
                       (lo, hi), tuple(brackets), reach, faces, columns, hub_r, sensor_r,
-                      tuple(notes), mill, spacing_mm, keep_r)
+                      tuple(notes), mill, spacing_mm, keep_r, foot_l)
 
 
 def _loops():
@@ -555,7 +570,7 @@ class TurretFoot(Group):
         tp = self.tp
         out = Realized()
         r = build.ctx.params.frame_radius
-        ends = ((tp.x_a - FOOT_L, tp.y_t + FOOT_R), (tp.x_a + FOOT_L, tp.y_t + FOOT_R))
+        ends = ((tp.x_a - tp.foot_l, tp.y_t + FOOT_R), (tp.x_a + tp.foot_l, tp.y_t + FOOT_R))
         for key, plate in ((FRAME_OUTER, "outer"), (FRAME_INNER, "inner")):
             out.pad(key, ends[0], ends[1], FOOT_R)
             for ax in build.ctx.topo.axes_of("frame"):

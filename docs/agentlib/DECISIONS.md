@@ -1008,3 +1008,25 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   630.13 with the electronics (about 515 without them, was 524.58), 287 bought pieces, 17
   cut parts, none printed; 16 layers (60.5 mm); ISO RP 0.047 mm in a session, 0.075
   across power-ups.
+
+### 2026-10-14: a smaller base, for looks (the user's "make the plate smaller", turns 1-3)
+
+- **Ask:** a more elegant machine, not a cheaper one. The `mt4_base_stall` base was a
+  174 x 144 mm D-shaped plate with a tail for the yaw motor, and the turntable sat
+  inside its outline.
+- **Taken:** the preset `mt4_compact` (`construction.rotary.PRESETS`):
+  - **Turn 1:** a round base. The motor sits as close as the belt allows, with
+    `base_pair.base_radius` at the motor's flat face, not its half diagonal.
+  - **Turn 2:** the yaw through 16 to 60 teeth on a 158 mm loop
+    (`yaw_transmission("belt_60")`: 3.75:1, the motor at 38.4 mm, 64.8 mm on the 80-tooth
+    loop), at least `YAW_MIN_MESH` teeth in mesh. The turntable is flush with the base's
+    rim, and the brackets are a symmetric pair.
+  - **Turn 3:** a black acrylic tube skin (`tube_acrylic_black_140`, `base_pair.SKIN`)
+    round the two base plates, so the base reads as one Ø142 mm drum. The outer columns
+    sit inside the tube's bore.
+- **Cost:** about USD 19 more (the tube; the base study had found compaction saves about
+  10 at most). The yaw is 0.56x as stiff at 3.75:1, and ISO RP is unchanged (0.047 mm in
+  a session, 0.075 across power-ups).
+- **Open:** the tube needs vent holes, a cable notch, and side access to tension the belt.
+  The 60-tooth pulley and the 158 mm loop are priced as estimates. `palletizer_turret`
+  keeps `belt_preload` (the gate is identical).

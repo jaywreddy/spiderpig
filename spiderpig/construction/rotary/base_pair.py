@@ -83,6 +83,13 @@ LIFT_WASHER = "shim_din988_3x6_t0p5"   # the stacks under the turntable at its f
 #                                 0.45-0.55 mm would tilt it: round 2's review)
 CENTRE_SHIM = "shim_8x12x0p5"   # and a stack on the shaft under its centre, where the M4
 #                                 clamp pulls it down
+BASE_FOOT_L = 25.0              # the side's feet's half length on the turntable (the
+#                                 classic's 40: a smaller turntable, the user's "make the
+#                                 plate smaller... an elegant machine", 2026-10-14)
+YAW_MIN_MESH = 5.0              # teeth in mesh on the yaw's 16-tooth pulley: 5 (Gates' 6 is
+#                                 for full rated load; the turntable's is light): the 200 mm
+#                                 loop, the motor 17 mm nearer the axis
+BASE_RIM = 4.0                  # the round base past the yaw motor's far corners
 CENTRE_R = 18.0                 # three more columns round the bearings: they close the
 #                                 preload's loop by the axis, the acrylic plates' bending
 #                                 out of it (round 2's review)
@@ -206,43 +213,66 @@ def board_outer(r_flag: float) -> float:
 
 
 def keep_radius(ctx: Context, tr, motor, c: float, faces: dict[str, float],
-                sensor: str = "optical_flag", range_deg: tuple[float, float] = (-120.0, 120.0)
-                ) -> tuple[float, float]:
+                sensor: str = "optical_flag", range_deg: tuple[float, float] = (-120.0, 120.0),
+                foot_l: float = BASE_FOOT_L) -> tuple[float, float]:
     """``(front, r_flag)``: the base's round front's radius (the turntable under the feet's
     brackets, the flag, the endstop's board), which the side's links over it must clear, and
     the flag's radius (:func:`flag_radius`, with the brackets' screws' farthest bound; a
     hard stop's: :func:`stop_radius`, no board)."""
-    from .turret import FOOT_L, FOOT_R
+    from .turret import FOOT_R
 
     bk = STOCK_BRACKET
     half = (faces["inner"] - faces["outer"]) / 2
-    feet = math.hypot(FOOT_L + FOOT_R, half + bk["d"]) + 3.0
+    feet = math.hypot(foot_l + FOOT_R, half + bk["d"]) + 3.0
     if sensor == "hard_stop":
         r_flag = stop_radius(tr, c, range_deg)
         return max(feet, r_flag + 4.0) + 1.0, r_flag
-    screws_r = math.hypot(FOOT_L - bk["w"] / 2 - 1.0, half + bk["hole"])
+    screws_r = math.hypot(foot_l - bk["w"] / 2 - 1.0, half + bk["hole"])
     r_flag = flag_radius(tr, c, screws_r)
     table = max(feet, r_flag + 4.0)
     return max(table, board_outer(r_flag)) + 1.0, r_flag
 
 
-def tail(motor, c: float) -> tuple[float, float]:
-    """The base's tail behind the axis round the yaw motor and the back columns: ``(depth
-    behind the axis, half width)``."""
-    back = motor.frame / 2 + COL_GAP + HEX_R
-    return c + back + HEX_R + TAIL_EDGE, back + HEX_R + TAIL_EDGE
+SKIN = "tube_acrylic_black_140"   # the skin round the base (a stock tube cut to length)
+SKIN_LIP = 1.0                  # the plates past the skin's outside
+
+
+def skin_radii() -> tuple[float, float]:
+    """The skin tube's ``(inner, outer)`` radius."""
+    from spiderpig.hardware.catalog import get
+
+    d = get(SKIN).dims
+    return float(d["id"]) / 2, float(d["od"]) / 2
+
+
+def base_radius(front: float, c: float, motor, skin: bool = False) -> float:
+    """The round base's radius: the turntable's keep-out (``front``), and the yaw motor
+    behind the axis (its far corners, and its slots' travel) inside it by :data:`BASE_RIM`
+    (or inside the skin tube's bore, the plates :data:`SKIN_LIP` past its outside): one
+    disc under the turntable, concentric (the user's, 2026-10-14: no tail)."""
+    motor_r = math.hypot(c + motor.frame / 2 + 2.0, motor.frame / 2)
+    if skin:
+        ri, ro = skin_radii()
+        if motor_r + 1.0 > ri:
+            raise ConstructionError(f"turret: the yaw motor's corner ({motor_r:.1f} mm) "
+                                    f"passes the skin's bore ({ri:.1f} mm)")
+        return max(front, ro + SKIN_LIP)
+    return max(front, motor_r + BASE_RIM)
+
+
+OUTER_COLUMNS = (45.0, -45.0, 135.0, -135.0)     # deg: square to the arm, clear of the motor
 
 
 def columns_xy(tp, motor) -> list[tuple[float, float]]:
-    """The seven columns (the turret's frame): two in the base's round front at 45 deg, two
-    behind the motor, three round the bearings at :data:`CENTRE_R` (the acrylic plates held
-    flat by the axis, where the wave washer's preload bears)."""
-    r = tp.h["front"] - HEX_R - TAIL_EDGE
-    back = motor.frame / 2 + COL_GAP + HEX_R
-    front = [(r * math.cos(a), r * math.sin(a)) for a in (math.radians(45), math.radians(-45))]
+    """The seven columns (the turret's frame): four on a circle near the round base's rim
+    (:data:`OUTER_COLUMNS`), three round the bearings at :data:`CENTRE_R` (the acrylic plate
+    held flat by the axis, where the wave washer's preload bears)."""
+    r = (skin_radii()[0] if tp.preset.skin else tp.h["front"]) - HEX_R - TAIL_EDGE
+    outer = [(r * math.cos(math.radians(a)), r * math.sin(math.radians(a)))
+             for a in OUTER_COLUMNS]
     centre = [(CENTRE_R * math.cos(math.radians(a)), CENTRE_R * math.sin(math.radians(a)))
               for a in (0.0, 120.0, 240.0)]
-    return front + [(-(tp.c + back), s * back) for s in (1, -1)] + centre
+    return outer + centre
 
 
 def table_reach(design, tool_plan, x_a: float, y_ground: float, keep_r: float
@@ -359,7 +389,6 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
         if inside_poly(cxy, corners) or min(point_seg(cxy, corners[i], corners[(i + 1) % 4])
                                             for i in range(4)) < HEX_R + 1.0:
             raise ConstructionError("turret: a base column meets the yaw motor")
-    depth, half_w = tail(motor, tp.c)
     front = h["front"]
 
     # the endstop and its flag (or a hard stop: a post and a screw)
@@ -398,22 +427,24 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
         if flen is None or h["table"] - flen > body_top - 2.0:
             raise ConstructionError("turret: no stock M2 screw hangs into the endstop's slot")
 
-    # the base
-    tail_box = ((-depth / 2, 0.0), (depth, 2 * half_w))
-
+    # the base: one disc, concentric with the turntable
     def outline(z0, z1):
-        return union([disc(o, front, z0, z1), box(tail_box[0], (*tail_box[1], z1 - z0), z0)])
+        return disc(o, front, z0, z1)
 
     lo_r, hi_r = h.get("reach_lo", math.nan), h.get("reach_hi", math.nan)
     col_cuts = [Cut(c, 4.4) for c in cols]
     b0, b1 = h["bp_bot"], h["bp_top"]
-    r_b = front - 6.0
-    bench = [(r_b, 0.0), (r_b * math.cos(math.radians(110)), r_b * math.sin(math.radians(110))),
-             (r_b * math.cos(math.radians(110)), -r_b * math.sin(math.radians(110))),
-             (-depth + 6.0, 0.0)]
+    r_b = (skin_radii()[0] - 5.0 if tp.preset.skin else front - 6.0)   # three: a
+    #                                                 kinematic mount on the bench
+    bench = [(r_b * math.cos(math.radians(a)), r_b * math.sin(math.radians(a)))
+             for a in (0.0, 90.0, -90.0)]
     add("base_bottom", cut_holes(outline(b0, b1), [Cut(o, 22.0 + 0.2), *col_cuts,
                                                    *(Cut(xy, 4.4) for xy in bench)], b0, b1),
         fab="laser", color=PLATE_COLOR, sheet=BOTTOM_SHEET)
+    if tp.preset.skin:      # the skin: cut 0.5 mm short (the columns carry the load)
+        ri, ro = skin_radii()
+        add("base_skin", ring(o, 2 * ro, 2 * ri, b1, h["bt_bot"] - 0.5), fab="purchased",
+            bom_key=SKIN, color="#1c1c1c")
     for i, xy in enumerate(bench):                  # screwed to the bench on spacers
         add(f"base_spacer{i}", ring(xy, 8.0, 4.2, 0.0, b0), fab="purchased",
             bom_key="m4_spacer_6", color="#3a3a3a")
