@@ -137,6 +137,12 @@ class Pool(Here):
             self.results[job] = out
         self._dispatch()
 
+    def here(self, job: Job) -> dict:
+        """``job``'s answer: a worker's where one has it (it ran ahead), else run here."""
+        if job in self.sent or job in self.queue:
+            return self.result(job)
+        return Here.result(self, job)
+
     def result(self, job: Job) -> dict:
         self.submit(job, front=True)
         while job not in self.results:

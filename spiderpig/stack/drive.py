@@ -70,8 +70,9 @@ PARTS = 4
 link's layers, its share of the job's budget."""
 
 DEAR = 200
-"""Nodes over which a stack size's short jobs count as dear (:meth:`_Drive._size`): idle
-workers then run the size the search likely asks next."""
+"""Nodes over which a stack size's short jobs count as dear (:meth:`_Drive._size`): the next
+size's then run side by side in the workers, and idle workers run the size the search likely
+asks next; before, the short jobs run here, one at a time."""
 
 MAX_WORKERS = 8
 """The most workers a plan forks by default: a module's jobs at once (B, a cradle, has about
@@ -182,6 +183,10 @@ class Here:
             got = self.results[job] = run_job(self.subs, job, Deadline(self.seconds))
         return got
 
+    def here(self, job: Job) -> dict:
+        """``job``'s answer, run in this process if no one has run it."""
+        return Here.result(self, job)
+
     def wait_any(self, jobs: list[Job]) -> None:
         if not any(j in self.results for j in jobs):
             self.result(jobs[0])
@@ -192,10 +197,8 @@ class Here:
 
 def workers_for(spec) -> int:
     """How many worker processes a plan may fork: none with ``SPIDERPIG_WORKERS=0``, else
-    ``spec.workers``, else :data:`ENV_WORKERS`, else :data:`MAX_WORKERS`, as many as the
-    machine has idle cores (its cores less its load average, two at least: a busy machine's
-    cores are no faster for more processes, and every worker warms its own caches). The plan
-    is the same with any number."""
+    ``spec.workers``, else :data:`ENV_WORKERS`, else :data:`MAX_WORKERS` (or the cores). The
+    plan is the same with any number."""
     if os.environ.get("SPIDERPIG_WORKERS") == "0":
         return 1
     if spec.workers is not None:
@@ -203,12 +206,7 @@ def workers_for(spec) -> int:
     raw = os.environ.get(ENV_WORKERS)
     if raw not in (None, ""):
         return max(1, int(raw))
-    cores = os.cpu_count() or 1
-    try:
-        idle = int(cores - os.getloadavg()[0])
-    except OSError:                 # (no load average on this platform)
-        idle = cores
-    return max(min(2, cores), min(cores, MAX_WORKERS, idle))
+    return max(1, min(os.cpu_count() or 1, MAX_WORKERS))
 
 
 def solve(prob: StackProblem) -> StackPlan:
@@ -274,23 +272,27 @@ class _Drive:
         modes = [m for m in self.modes if m not in self.gave_up]
         jobs = {m: self._quick(m, top) for m in modes}
         # (sizes get dear once the last one took more than a few hundred nodes or was left
-        # open: then the next size ahead too)
+        # open: then the jobs side by side in the workers, and the next size ahead; before,
+        # here, one at a time, as one search would run them: a worker's start costs more)
         last = [r for m in modes if (r := self.tried[m].get(top - 1)) is not None]
-        dear = any(r["nodes"] > DEAR or not r["done"] for r in last)
-        for js in jobs.values():
-            for job in js:
-                self.runner.submit(job, front=True)
-        if dear and ahead is not None and ahead != top and spec.min_top <= ahead <= spec.max_top:
-            nxt = [job for m in modes if ahead not in self.tried[m]
-                   for job in self._quick(m, ahead)]
-            for job in nxt[:self.runner.free()]:
-                self.runner.submit(job)
+        dear = not last or any(r["nodes"] > DEAR or not r["done"] for r in last)
+        dear = dear and top > spec.min_top
+        result = self.runner.result if dear else self.runner.here
+        if dear:
+            for js in jobs.values():
+                for job in js:
+                    self.runner.submit(job, front=True)
+            if ahead is not None and ahead != top and spec.min_top <= ahead <= spec.max_top:
+                nxt = [job for m in modes if ahead not in self.tried[m]
+                       for job in self._quick(m, ahead)]
+                for job in nxt[:self.runner.free()]:
+                    self.runner.submit(job)
         out = {}
         for m, js in jobs.items():
-            first = self.runner.result(js[0])
+            first = result(js[0])
             if len(js) > 1 and first["best"] is None and not first["done"] \
                     and not first["gave_up"] and not first["expired"]:
-                first = combine([first, self.runner.result(js[1])], cover=False)
+                first = combine([first, result(js[1])], cover=False)
             else:
                 self.runner.drop(js[1:])    # (its answer isn't read: no need to finish it)
             out[m] = self._take(m, top, first)

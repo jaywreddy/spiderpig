@@ -25,7 +25,7 @@ mise run test-viewer    # the viewer's tsc + vitest
 mise run test-quick # the quick tier: -m 'not slow and not e2e', xdist -n 4
 mise run test-fixtures  # rewrite the recorded fixtures (after an engine edit: they warn stale)
 mise run test       # pytest, serial (runs viewer-build first; -m e2e for browser tests)
-mise run gate -- compare ~/.cache/spiderpig/gate/next-320384d   # parts/plans/BOM/DXF identity
+mise run gate -- compare ~/.cache/spiderpig/gate/planner-9da0548   # parts/plans/BOM/DXF identity
 mise run gate -- doc ~/.cache/spiderpig/gate/<baseline>        # regenerate DESIGNS.md
 mise run remote-test               # the full suite on the remote runner (may be down: AGENTS.md)
 mise run remote-audit              # the Strider's modules audited at once there
@@ -90,7 +90,7 @@ robot; a mechanism's `single`, one side).
   `engine_version`'s hash).
 - `SPIDERPIG_WORKERS=0`: no worker processes (`spiderpig/workers.py`; the planner's too).
 - `SPIDERPIG_PLAN_WORKERS`: the planner's forked workers (`stack.drive.workers_for`; unset: up
-  to `stack.drive.MAX_WORKERS`). The plan is the same with any number.
+  to `stack.drive.MAX_WORKERS`; one under xdist). The plan is the same with any number.
 - `SPIDERPIG_FAB_CACHE=off`: no product fabrication cache (`spiderpig/fabcache.py`,
   `<store>/fab/`, keyed by `spiderpig/keys.py`'s code closure, the plan and the servo model).
 - `SPIDERPIG_OCCT_THREADS`: OCCT's pool per process (`workers.occt_threads`; unset: every
@@ -252,7 +252,8 @@ proof, a full job for every size the objective needs (on the height, each whose 
 as a sub-check, backjumping, learned nogoods, branch and bound (`_Search.lb_height`). The
 search's z is a bound of every plan (`stack.bound_layout`): a claim refuses a search's layout
 only on a bound valid for every completion (`Layout.t_hi`, `span_hi`). Then the exact route
-(`CrankRouter.route`, `JointRules`), the plan's z (`finalize`) and `verify_plan`. Budgets
+(`CrankRouter.route`, `JointRules`), the plan's z (`finalize`: its gaps as low as it builds,
+not under what a standoff holds it at, `Claim.hold`) and `verify_plan`. Budgets
 (`StackSpec.quick_nodes`, `max_nodes`, `max_total_nodes`, `max_seconds` per job) bound effort,
 never validity: a plan found unproven says so (`StackPlan.optimal`, `proof`). Sizes up to
 `StackSpec.max_top`. `tests/brute.py` is the independent brute force (`brute.lowest`).
@@ -272,7 +273,7 @@ both sides.
   a new construction adds one or gets generic steps. The hooks stay out of the fab key.
 - A group builds only inside its own claims; keep `check_side` at `[]`.
 - A change that alters parts: run the identity gate before and after (baseline
-  `next-320384d`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
+  `planner-9da0548`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
   audit` green, and regenerate `docs/agentlib/DESIGNS.md` with a new baseline.
 - Docs: no layer counts or heights outside DESIGNS.md; a dated decision goes to
   DECISIONS.md, not here; `mise run doc-check -- --strict` must pass.
