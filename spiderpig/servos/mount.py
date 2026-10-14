@@ -51,12 +51,12 @@ from spiderpig.construction.base import (
     hardware,
 )
 from spiderpig.hardware.fasteners import SIZES, Screw, parse, screw, screw_solid
+from spiderpig.servos import MIN_SPACER
 from spiderpig.servos.model import cad_state, cut_each, horn_part, servo_part
 from spiderpig.servos.spec import MountHole, ServoSpec
 from spiderpig.shapes import Cut, Rect, Shape3D, disc, moved
 from spiderpig.stack import Claim, Disc, Layout, Placed
 
-MIN_SPACER = 1.0          # thinnest printed horn spacer worth making (mm)
 RELIEF_CUT_GROW = 0.0     # a front relief's cut-out past its rectangle, per side (mm): none
 #                           since the assembly audit of 2026-10-04 (0.25 before): the STS3215's
 #                           panel rectangle already holds both models ([SO] |y| <= 7.0,
@@ -349,8 +349,10 @@ class ServoDrive(Group):
 
         out = []
         lk = getattr(ctx.config, "lk", None)
-        if lk is not None and lk.kind != "walker":
-            return out          # a mechanism is one side: no chassis
+        from spiderpig.config import ROBOT_LAYOUTS
+
+        if lk is not None and ROBOT_LAYOUTS.get(lk.kind) != "mirrored_pair":
+            return out          # no chassis between two sides: a mechanism, an arm
         try:
             d = tie_dims(ctx)
             for i, xy in enumerate(tie_points_ctx(ctx)):
