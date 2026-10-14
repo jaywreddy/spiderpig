@@ -19,7 +19,9 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { Stage } from '../scene';
 import type { LoadedScene } from '../loader';
-import { fractionAtTurns, turnsAt, type CradleMotion } from './motion';
+import {
+  adjustShift, fractionAtTurns, saddleAt, settingOffsets, turnsAt, type CradleMotion, type Setting,
+} from './motion';
 import {
   bestRiser, bottleInside, fitsRoom, heightFor, keptFromRest, levelFor, nominalVolume, radiusAt,
   startingFill, surfaceRuns, ML, type Profile, type Room,
@@ -38,9 +40,11 @@ interface PourMotion extends CradleMotion {
   room?: [number, number][];
   /** the room once the cradle is past -20° (the pour), the same form */
   room_pouring?: [number, number][];
-  /** every bottle size the cradle takes (the 750 ml, the magnum, the 3 L, the two 6 L) */
-  bottles?: { key: string; name: string; outline: [number, number][] }[];
 }
+
+/** A mesh a bottle's setting moves (``motion.adjust``): its geometry as baked, its group, and
+ * the cradle's frame at clip time 0 in its own (a setting's shift there, in its geometry). */
+interface Adjusted { mesh: THREE.Mesh; base: THREE.BufferGeometry; group: 'front' | 'rear' | 'stop'; inMesh: THREE.Matrix3 }
 
 /** The label's size line for a bottle's name ("1.5 L Bordeaux magnum": MAGNUM · 1,5 L). */
 function sizeLine(name: string): string {
@@ -61,7 +65,8 @@ export interface Pour {
   setRoom(room: [number, number][], pouring: [number, number][]): void;
   /** Show or hide the vessel, the wine and the stream (the flat pack hides them). */
   setVisible(v: boolean): void;
-  /** Put another bottle size in the cradle (``motion.bottles``' ``key``). */
+  /** Put another bottle size in the cradle (``motion.bottles``' ``key``): its V blocks and its
+   * base stop move to its setting. */
   setBottle(key: string): void;
 }
 
@@ -326,6 +331,9 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
   let loaded: LoadedScene | null = null;
   let motion: PourMotion | null = null;
   let frame: THREE.Group | null = null;            // the cradle frame, riding the bottle node
+  let adjusted: Adjusted[] = [];                    // the V blocks' and the base stop's meshes
+  let drawn: Setting | undefined;                   // the setting the model is drawn at
+  let baseSaddles: CradleMotion['saddles'] = [];
   let wineBody: THREE.Mesh | null = null, wineTop: THREE.Mesh | null = null;
   let inside: Profile = [], wineProfile: Profile = [], mouthOuter = 15;
   let fill = 0, kept: Float64Array = new Float64Array(0);
@@ -626,16 +634,32 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     bottle.material = hidden;                    // drawn again below, as glass round the wine
     bottle.castShadow = false;
 
+    // the meshes a bottle's setting moves, and the cradle's frame in each (at clip time 0)
+    adjusted = [];
+    drawn = m.bottle.setting;
+    baseSaddles = m.saddles.map((sd) => ({ ...sd }));
+    for (const group of ['front', 'rear', 'stop'] as const) {
+      for (const n of m.adjust?.[group] ?? []) {
+        l.root.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(n))?.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          const inMesh = new THREE.Matrix3().setFromMatrix4(mesh.matrixWorld.clone().invert().multiply(inWorld));
+          adjusted.push({ mesh, base: mesh.geometry, group, inMesh });
+        });
+      }
+    }
+
     bottlePick.replaceChildren();
-    for (const b of (m as PourMotion).bottles ?? []) {
+    for (const b of m.bottles ?? []) {
       const o = el('option', '', b.name);
       o.value = b.key;
       bottlePick.appendChild(o);
     }
     bottleRow.hidden = !bottlePick.options.length;
-    const wanted = (m as PourMotion).bottles?.find((b) => b.key === params.get('bottle'));
-    if (wanted) m.bottle = { name: wanted.name, outline: wanted.outline };
-    bottlePick.value = (m as PourMotion).bottles?.find((b) => b.name === m.bottle.name)?.key ?? '';
+    const wanted = m.bottles?.find((b) => b.key === params.get('bottle'));
+    if (wanted) m.bottle = { ...wanted };
+    bottlePick.value = m.bottles?.find((b) => b.name === m.bottle.name)?.key ?? '';
+    applySetting(m.bottle.setting);
     buildBottle(m);
 
     // the vessel: under the mouth (posed at full tilt), on the table
@@ -683,6 +707,8 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     }
     if (!loaded) return;
     // the rest goes with the scene (``teardown`` disposes everything under its root)
+    for (const a of adjusted) if (a.mesh.geometry !== a.base) a.mesh.geometry.dispose();
+    adjusted = [];
     loaded = null; motion = null; frame = null; wineBody = null; wineTop = null;
     stand = null; vesselWine = null; stream = null; gapLine = null;
   }
@@ -740,19 +766,29 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     const tilts: number[] = [];
     for (let k = 0; k < m.n; k++) tilts.push(m.tilt_deg[(m.rest + k) % m.n]!);
     kept = keptFromRest(inside, tilts, fill);
-    // the magnum's adapter liners only under a magnum
-    const magnum = m.bottle.name.toLowerCase().includes('magnum');
-    for (const n of ['front_saddle_magnum_liner', 'rear_saddle_magnum_liner']) {
-      const o = loaded?.root.getObjectByName(n);
-      if (o) o.visible = magnum;
+  }
+
+  /** The V blocks and the base stop moved to setting ``to`` (from the one the model is drawn
+   * at), and the diagram's saddles with them. */
+  function applySetting(to: Setting | undefined): void {
+    if (!motion) return;
+    const o = settingOffsets(drawn, to);
+    for (const a of adjusted) {
+      if (a.mesh.geometry !== a.base) a.mesh.geometry.dispose();
+      const [dx, dy] = adjustShift(a.group, o);
+      if (!dx && !dy) { a.mesh.geometry = a.base; continue; }
+      const v = new THREE.Vector3(dx, dy, 0).applyMatrix3(a.inMesh);
+      a.mesh.geometry = a.base.clone().translate(v.x, v.y, v.z);
     }
+    motion.saddles = baseSaddles.map((sd) => saddleAt(sd, o));
   }
 
   /** Swap the bottle in the cradle (``key`` one of ``motion.bottles``). */
   function setBottle(key: string): void {
     const b = motion?.bottles?.find((x) => x.key === key);
     if (!motion || !b) return;
-    motion.bottle = { name: b.name, outline: b.outline };
+    motion.bottle = { ...b };
+    applySetting(b.setting);
     buildBottle(motion);
     pose(lastF);
     onChange();

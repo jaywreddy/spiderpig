@@ -3,16 +3,15 @@
 **What comes apart** (:func:`pieces`). The cradle comes apart where it is already fastened,
 with no new joint, in the order :func:`pieces` gives as its steps:
 
-1. the bottle adapters out of the saddles (every adapter travels loose);
-2. the hand crank off the gearbox's input shaft (its set screw);
-3. the cradle off the base board (the brackets' nuts: the carriage bolts stay in the board);
-4. each side's inner plate off (its screws from the bay side, back in its holes);
-5. the cradle link's own joints with its side (``mech.connections``): a pivot pin's upper
+1. the hand crank off the gearbox's input shaft (its set screw);
+2. the cradle off the base board (the brackets' nuts: the carriage bolts stay in the board);
+3. each side's inner plate off (its screws from the bay side, back in its holes);
+4. the cradle link's own joints with its side (``mech.connections``): a pivot pin's upper
    E-ring off (the pin stays in the side's links, the ring back on it for the trip), or a
    Chicago screw out of its barrel (``chicago6``: it goes back into the barrel, which stays
    in the side's link), a pillar slid out of the link's bore; each side panel then lifts
    off, leaving the cradle box whole;
-6. the cradle box apart: the base stop and the light off their saddles, one cradle link
+5. the cradle box apart: the base stop and the light off their saddles, one cradle link
    off the tie rods (their screws), the saddles slid off the rods (their set screws), the
    other link off. Each tie rod travels with its two screws back in its ends, each cradle
    link with the loose spacers that sat over it.
@@ -125,10 +124,6 @@ def _join(xs: Sequence[str]) -> str:
     return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " and " + xs[-1]
 
 
-def _bottle_size(key: str) -> str:
-    return next((s.name for s in cr.SIZES if s.key == key), key)
-
-
 def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
            ) -> tuple[list[Piece], list[tuple[str, list[str]]]]:
     """The pieces the cradle comes apart into (the module's docstring) and the steps that
@@ -205,17 +200,9 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
                 put(panel[host], f"{panel[host].capitalize()} side panel", "panel", n)
         elif m := re.fullmatch(r"((?:base_|bay_)?tie_[A-Za-z0-9]+)(?:_screw[LR])?", n):
             put(m.group(1), f"Tie rod {m.group(1).removeprefix('tie_')}", "fill", n)
-        elif n in saddles or any(n == f"{sd}_liner" or n.startswith(f"{sd}_set_screw")
-                                 for sd in saddles):
+        elif any(n == sd or n.startswith(f"{sd}_") for sd in saddles):
             sd = next(sd for sd in saddles if n.startswith(sd))
             put(sd, f"{sd.replace('_', ' ').capitalize()} and its liner", "fill", n)
-        elif n.endswith(("_liner", "_collar")):
-            if m := re.fullmatch(r"(\w+_saddle)_(\w+)_liner", n):
-                label = (f"Adapter: {_bottle_size(m.group(2))}, "
-                         f"{m.group(1).replace('_', ' ')}")
-            else:
-                label = f"Collar: {_bottle_size(n.removesuffix('_collar'))}"
-            put(n, label, "fill", n)
         elif n.startswith("led"):
             put("light", "Light in its clip", "fill", n)
         elif n.startswith("base_stop"):
@@ -248,10 +235,6 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
         return f"{n} {what}s" if n != 1 else f"its {what}"
 
     steps: list[tuple[str, list[str]]] = []
-    adapters = [k for k, pc in out.items() if pc.label.startswith(("Adapter", "Collar"))]
-    if adapters:
-        steps.append(("Bottle adapters: lift those in the saddles out. Every adapter and "
-                      "collar travels loose.", adapters))
     if "hand_crank" in out:
         sets = [n for n in out["hand_crank"].parts if "set_screw" in n]
         steps.append((f"Hand crank: loosen {screws(len(sets), 'set screw')} and pull it off "

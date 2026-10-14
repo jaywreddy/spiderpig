@@ -33,9 +33,42 @@ export interface CradleMotion {
   turns_to_full: number;
   ratio: number;
   mouth_wander_mm: number;
-  bottle: { name: string; outline: XY[] };
-  saddles: { name: string; x: [number, number]; y: [number, number] }[];
+  /** the bottle the model draws (its V blocks at its setting) */
+  bottle: { key?: string; name: string; outline: XY[]; setting?: Setting };
+  /** every bottle the cradle takes, each with its setting */
+  bottles?: { key: string; name: string; outline: XY[]; setting?: Setting }[];
+  /** the model's nodes a setting moves: with the front V block, with the rear one, with the
+   * rear one and along the axis (the base stop's gate) */
+  adjust?: { front: string[]; rear: string[]; stop: string[] };
+  /** the V blocks (cradle frame, at the drawn bottle's setting) */
+  saddles: { name: string; x: [number, number]; y: [number, number]; moves?: 'front' | 'rear' }[];
   ties: Record<string, XY>;
+}
+
+/** A bottle's setting (``cradle_report._setting_row``, mm): the front V block's rise over its
+ * lowest, the rear one's, the base stop's face along the axis from the mouth. */
+export type Setting = readonly [number, number, number];
+
+/** How far each adjustable part moves going from setting ``from`` to ``to``. */
+export interface Offsets { front: number; rear: number; stop: number }
+
+export function settingOffsets(from: Setting | undefined, to: Setting | undefined): Offsets {
+  if (!from || !to) return { front: 0, rear: 0, stop: 0 };
+  return { front: to[0] - from[0], rear: to[1] - from[1], stop: to[2] - from[2] };
+}
+
+/** A moved part's shift in the cradle's frame, ``[along the axis, up]``: a V block's straight
+ * up; the base stop's gate up with the rear one and along to its place. */
+export function adjustShift(group: 'front' | 'rear' | 'stop', o: Offsets): XY {
+  if (group === 'front') return [0, o.front];
+  if (group === 'rear') return [0, o.rear];
+  return [o.stop, o.rear];
+}
+
+/** A V block's outline set ``o`` from the drawn bottle's setting. */
+export function saddleAt(s: CradleMotion['saddles'][number], o: Offsets): CradleMotion['saddles'][number] {
+  const dy = s.moves === 'front' ? o.front : s.moves === 'rear' ? o.rear : 0;
+  return { ...s, y: [s.y[0] + dy, s.y[1] + dy] };
 }
 
 /** The two samples around clip fraction ``f`` and the weight of the second. */

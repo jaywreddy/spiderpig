@@ -57,16 +57,18 @@ NETRF10_THREAD = 10.0       # its M5 taps' depth (M x 2)
 NETRF10_TIERS: tuple[tuple[float, tuple[tuple[int, float], ...]], ...] = (
     (50.0, ((1, 13.46), (5, 9.76), (10, 4.91))),
     (100.0, ((1, 13.77), (5, 9.98), (10, 5.02))),
-    (150.0, ((1, 14.08),)),
+    (150.0, ((1, 14.08), (5, 10.20), (10, 5.13))),
     (200.4, ((1, 14.38), (5, 10.42), (10, 5.24))),
     (300.0, ((1, 15.30), (5, 11.08), (10, 5.57))),
     (600.0, ((1, 15.60),)),
 )
 """USD each by quantity of one length, per length band (up to the band's length): NETRF10-45,
--58, -160, -175, -200 and -255 pages rendered 2026-10-10 with their quantity tables; the band
-edges and the 100-150 and 300-600 bands' unit prices from MISUMI's price API (unverified).
-The discount is per part number: five of a length cost less than four."""
-NETRF10_SEEN: tuple[float, ...] = (45.0, 55.5, 58.0, 160.0, 175.0, 200.0, 255.0, 260.0)
+-58, -160, -175, -200 and -255 pages rendered 2026-10-10 with their quantity tables, the
+100-150 band's from the NETRF10-125, -128 and -130 pages rendered 2026-10-13 (the rear
+saddle's post); the band edges and the 300-600 band's unit price from MISUMI's price API
+(unverified). The discount is per part number: five of a length cost less than four."""
+NETRF10_SEEN: tuple[float, ...] = (45.0, 55.5, 58.0, 125.0, 128.0, 130.0, 160.0, 175.0,
+                                   200.0, 255.0, 260.0)
 
 
 NETRF12_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(250, 1001))
@@ -77,11 +79,16 @@ NETRF12_THREAD = 12.0       # its M6 taps' depth (M x 2)
 NETRF12_TIERS: tuple[tuple[float, tuple[tuple[int, float], ...]], ...] = (
     (50.0, ((1, 15.62), (5, 11.37), (10, 5.74))),
     (100.0, ((1, 16.30), (5, 11.86), (10, 5.99))),
+    (130.0, ((1, 16.98), (5, 12.36), (10, 6.24), (20, 6.08))),
 )
 """USD each by quantity of one length, per length band: NETRF12-30 and NETRF12-65 pages
 rendered 2026-10-13 with their quantity tables (the sourcing study
-``/root/scratch/decant/six/sourcing.md``)."""
-NETRF12_SEEN: tuple[float, ...] = (30.0, 65.0)
+``/root/scratch/decant/six/sourcing.md``); NETRF12-125, -128 and -130 the same day (the rear
+saddle's post: :data:`NETRF12_POST_MAX`)."""
+NETRF12_SEEN: tuple[float, ...] = (30.0, 65.0, 125.0, 128.0, 130.0)
+NETRF12_POST_MAX = 130.0
+"""The longest NETRF12 priced: the rear saddle's post (the pillars stay within
+:data:`NETRF12_LENGTHS`)."""
 
 
 def netrf12(length: float) -> str:
@@ -115,7 +122,7 @@ def _netrf12_of(key: str) -> Item | None:
     except ValueError:
         return None
     L = n / 10
-    if not 250 <= n <= 1000 or f"pillar_shaft_12_m6_{L:g}" != key:
+    if not 250 <= n <= round(NETRF12_POST_MAX * 10) or f"pillar_shaft_12_m6_{L:g}" != key:
         return None
     return _netrf12_item(L)
 
@@ -270,6 +277,39 @@ register(
          dims={"id": 5.3, "od": 15.0, "t": 1.2},
          notes="Under a standoff pillar's end screw outside a frame plate, as the walkers' "
                "DIN 9021 (the only 18-8 M5 wide washer Bolt Depot lists)."),
+    # the saddles' thumbscrews (construction.cradle: each V block rides up and down on one;
+    # pages rendered 2026-10-13, the sourcing in /root/scratch/decant/saddles/sourcing/)
+    Item("m6_tap_bolt_60", "M6 x 60 hex tap bolt, fully threaded, 18-8", "fastener",
+         (Offer("Bolt Depot", BD + "5973", "5973", price_usd=0.60, verified=True,
+                tiers=((1, 0.60), (100, 0.3991)),
+                note="18-8 (A-2), M6-1.0 x 60, fully threaded, 10 mm across flats, head "
+                     "3.85-4.15 (no standard named: DIN 933's); page rendered 2026-10-13"),),
+         dims={"d": 6.0, "length": 60.0, "af": 10.0, "head_h": 4.0},
+         notes="The front saddle's thumbscrew: it stands in its carrier's blind bore, a "
+               "printed knob on its head, its nut in the V block."),
+    Item("m6_nut", "M6 hex nut (DIN 934), 18-8", "nut",
+         (Offer("Bolt Depot", BD + "4776", "4776", price_usd=0.11, verified=True,
+                tiers=((1, 0.11), (100, 0.0647)),
+                note="18-8, M6-1.0, DIN 934, 10 mm across flats, 4.7-5.0 high; page "
+                     "rendered 2026-10-13"),),
+         dims={"af": 10.0, "h": 5.0}),
+    Item("m8_tap_bolt_150", "M8 x 150 hex tap bolt, fully threaded, 18-8", "fastener",
+         (Offer("Bolt Depot", BD + "11110", "11110", price_usd=2.87, verified=True,
+                tiers=((1, 2.87), (25, 2.208), (250, 1.944)),
+                note="18-8 (A-2), M8-1.25 x 150, fully threaded, 13 mm across flats, head "
+                     "5.15-5.45 (no standard named: DIN 933's); the longest Bolt Depot "
+                     "stocks fully threaded; page rendered 2026-10-13"),),
+         dims={"d": 8.0, "length": 150.0, "af": 13.0, "head_h": 5.3},
+         notes="The rear saddle's thumbscrew: it stands in its carrier's blind bore, a "
+               "printed knob on its head, the coupling nut in the V block riding it."),
+    Item("m8_coupling_nut_24", "M8 coupling nut, 24 mm long (DIN 6334), 18-8", "nut",
+         (Offer("Bolt Depot", BD + "27224", "27224", price_usd=2.52, verified=True,
+                tiers=((1, 2.52), (10, 1.641), (100, 1.48)),
+                note="18-8, M8-1.25 x 24, 13 mm across flats, DIN 6334 (the only M8 length "
+                     "stocked); page rendered 2026-10-13"),),
+         dims={"af": 13.0, "h": 24.0},
+         notes="In the rear V block's boss: 24 mm of thread on the lead screw guides it as "
+               "well as lifting it."),
     # the M6 Chicago pins' washers' sizes: what their printed head spacers and gap rings are
     # drawn to (materials.WASHERS; they are printed, not bought)
     Item("ptfe_washer_8x14x0p5", "PTFE flat washer 8.2 x 14 x 0.5 mm", "washer",

@@ -835,13 +835,13 @@ takes a press with less creep and cracking than PLA (``construction.printed`` pr
 snap axles in PETG for the same strain); ``None`` here leaves it in the build's filament."""
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
-CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, adapters, collar and feet"}
+CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the V blocks' TPU liners and the feet"}
 CRADLE_PRINT_NOTE = (
-    "Print the saddles, the base stop and the brackets in PLA at 20 % infill with 4 walls (the "
-    "saddles are 154 mm towers and the light's clip stands on its tube's foot: a brim), the "
-    "hand crank and the light's clip at 40 %, the crank's sleeve solid (the crank block clamps "
-    "on it), the TPU parts at 15-20 %: each STL is posed as it should print. A sparse-infill "
-    "rear adapter is about a third of its 100 % grams.")
+    "Print the saddles, their V blocks, the base stop and the brackets in PLA at 20 % infill "
+    "with 4 walls (the rear saddle's carrier stands 165 mm tall and the light's clip on its "
+    "tube's foot: a brim), the hand crank, the knobs, the lip gauge and the light's clip at "
+    "40 %, the crank's sleeve solid (the crank block clamps on it), the TPU parts at 15-20 %: "
+    "each STL is posed as it should print.")
 """A decanting cradle's (:mod:`construction.cradle`)."""
 # a foot's sock; a decanting cradle's liners, its collar, its base plate's feet
 _SOCK = re.compile(r"_sock$|_liner$|_collar$|foot_boot_")

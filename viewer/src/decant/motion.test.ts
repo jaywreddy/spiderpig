@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bracket, fractionAtTurns, phaseAt, pointAt, swingBounds, tiltAt, tiltWords, toPlane,
-  turnsAt, type CradleMotion,
+  adjustShift, bracket, fractionAtTurns, phaseAt, pointAt, saddleAt, settingOffsets, swingBounds,
+  tiltAt, tiltWords, toPlane, turnsAt, type CradleMotion,
 } from './motion';
 
 /** A toy cradle: 4 samples, its tilt -20, 0, 40, 0; rest at 0, full tilt at 2. */
@@ -65,6 +65,22 @@ describe('the cradle page\'s swing', () => {
     expect(b.x0).toBeLessThanOrEqual(-10);
     expect(b.x1).toBeGreaterThanOrEqual(200);
     expect(b.y0).toBeLessThan(40);             // the saddle hangs under the mouth
+  });
+
+  it('moves the V blocks and the base stop from the drawn bottle\'s setting to another', () => {
+    // the 6 L drawn (its V blocks at their lowest), a 750 ml picked
+    const o = settingOffsets([0, 0, 571.5], [12.73, 68.87, 300.5]);
+    expect(o.front).toBeCloseTo(12.73);
+    expect(o.rear).toBeCloseTo(68.87);
+    expect(o.stop).toBeCloseTo(-271);
+    expect(adjustShift('front', o)).toEqual([0, o.front]);
+    expect(adjustShift('rear', o)).toEqual([0, o.rear]);
+    expect(adjustShift('stop', o)).toEqual([o.stop, o.rear]);   // up with the rear V, along
+    expect(settingOffsets(undefined, [1, 2, 3])).toEqual({ front: 0, rear: 0, stop: 0 });
+    const rear = saddleAt({ name: 'r', x: [255, 380], y: [-131, -55], moves: 'rear' }, o);
+    expect(rear.y[0]).toBeCloseTo(-131 + 68.87);
+    expect(rear.x).toEqual([255, 380]);
+    expect(saddleAt({ name: 's', x: [0, 1], y: [0, 1] }, o).y).toEqual([0, 1]);
   });
 
   it('says the tilt in words', () => {
