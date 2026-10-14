@@ -982,6 +982,15 @@ def pack(items: Sequence[tuple[str, str, Sequence[np.ndarray]]], tilt: float = 0
     g0, _ = fresh()
     arrange(g0.top, list(range(len(turns))), [])
     arrangements.sort(key=lambda a: a[0])
+    # the lowest arrangement of each order the panels go in first, then the rest: the few
+    # filled (ARRANGEMENTS) differ in what lies under what, not in a turn or a cell of one
+    # (a panel a hair thicker or thinner reordered near-ties, and its box grew 26 mm)
+    firsts: dict[tuple[str, ...], int] = {}
+    for i, (_, done) in enumerate(arrangements):
+        firsts.setdefault(tuple(k for k, _, _ in done), i)
+    lead = sorted(firsts.values())
+    arrangements = ([arrangements[i] for i in lead]
+                    + [a for i, a in enumerate(arrangements) if i not in set(lead)])
     best: tuple[float, _Order] | None = None
     tried: set[tuple] = set()
     for under, done in arrangements:
