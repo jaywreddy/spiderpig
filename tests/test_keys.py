@@ -69,9 +69,8 @@ EDITS = [
      '"""The shopping list of a build: carts per vendor, uploads per service, prints."""',
      '"""The shopping list."""\n    _ = 1', False, False),
     ("the parts' grouping (BOM)", "spiderpig.hardware.bom",
-     "def group_made(bodies, method: str, specs: dict | None = None) -> list[MadeGroup]:",
-     "def group_made(bodies, method: str, specs: dict | None = None, _x=1) -> "
-     "list[MadeGroup]:", False, False),
+     "def group_made(bodies, method: str) -> list[MadeGroup]:",
+     "def group_made(bodies, method: str, _x=1) -> list[MadeGroup]:", False, False),
     ("a new linkage file (the registry auto-imports it)", "spiderpig.linkages.zz_new",
      None, "X = 1\n", True, True),
     ("a module that patches the planner when imported", "spiderpig.zz_patch",
