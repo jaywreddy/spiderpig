@@ -70,7 +70,7 @@ from spiderpig.construction.base import (
 )
 from spiderpig.construction.plates import FramePlates, boss_web
 from spiderpig.construction.robot import prefixed
-from spiderpig.hardware.fasteners import screw
+from spiderpig.hardware.fasteners import Screw, screw
 from spiderpig.mechanism import Body, Mechanism
 from spiderpig.shapes import Cut, Shape3D, cut_holes, difference, disc, moved, pill, union
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
@@ -139,15 +139,15 @@ class BottleSize:
 
 
 STANDARD = BottleSize("standard", "750 ml Bordeaux", 300.0, 38.3, 15.0, 80.0, 115.0,
-                      1.3, 174.0)
+                      1.3, 191.0)
 MAGNUM = BottleSize("magnum", "1.5 L Bordeaux magnum", 356.0, 49.5, 15.5, 85.0, 150.0,
-                    2.6, 205.0)
+                    2.6, 230.0)
 JEROBOAM = BottleSize("jeroboam", "3 L Champagne jeroboam", 470.0, 70.5, 19.0, 105.0, 190.0,
-                      5.9, 265.0)
+                      5.9, 325.0)
 IMPERIAL = BottleSize("imperial", "6 L Bordeaux impériale", 493.0, 82.3, 23.5, 115.0, 195.0,
-                      9.1, 286.0)
+                      9.1, 319.0)
 METHUSELAH = BottleSize("methuselah", "6 L Champagne methuselah", 571.0, 87.0, 24.0, 128.0,
-                        231.0, 11.1, 331.0)
+                        231.0, 11.1, 390.0)
 SIZES = (STANDARD, MAGNUM, JEROBOAM, IMPERIAL, METHUSELAH)
 """What the cradle is built for (``docs/agentlib/DECANTER.md``, Requirements): a standard
 750 ml Bordeaux (the Bordelaise moulds run about 295-310 x 74-77 mm; its neck to the
@@ -157,10 +157,22 @@ two 6 L shapes (2026-10-13, the user's "both"): a Bordeaux impériale (Saverglas
 Bordelaise Tradition 600 cl, ref. 0714: 492.8 mm tall, 164.5 mm at the shoulder, 156.5 at
 the base, 3.12 kg empty; univerre's NGBD06QFR 493.1 x 164.4, 2.95 kg) and a Champagne
 methuselah, the largest and heaviest (Saverglass Standard 600 cl, ref. 1742: 571 mm tall,
-174 mm at the shoulder, 170 at the base, 5.13 kg empty). Full mass and centre of mass
-estimated (glass plus 0.75, 1.5, 3 or 6 kg of wine, the centre about 42 % of the length
-from the base); the 6 L necks (radius, length to the shoulder) are estimates scaled from
-the jeroboam's (no maker draws them): the front knob is set to the neck in hand."""
+174 mm at the shoulder, 170 at the base, 5.13 kg empty). Full mass: the glass plus 0.75,
+1.5, 3 or 6 kg of wine (``cradle_report.WINE_KG``). The 6 L necks (radius, length to the
+shoulder) are estimates scaled from the jeroboam's (no maker draws them): the front knob is
+set to the neck in hand.
+
+The centre of mass, full (``com_from_mouth``; design review round 1, 2026-10-14: it had been
+42 % of the length from the base, too far forward), from a model of each bottle: a glass
+shell over its :meth:`BottleSize.profile`, the neck's wall 1.5 x the body's and the base 3 x
+thick under a punt (a cone 0.8 r across and 0.35 r deep), the wall's thickness solved so the
+glass weighs the bottle's empty mass (2.5 g/cm³: 2.9 mm for the 750 ml to 6.3 mm for the
+methuselah), and the wine (0.995 g/cm³) filled from the base, upright and sealed (the
+headspace in the neck), to its volume. It puts a full bottle's centre 31-36 % of its length
+up from the base: a 750 ml's about 11 cm up its 30 cm, the usual figure. Along the axis from
+the mouth: 191, 230, 325, 319 and 390 mm (the magnum's and the impériale's wine fills the
+whole of their drawn outline: there the wine's centre is the inside's). Weigh a bottle on a
+knife edge to refine one."""
 
 
 @dataclass(frozen=True)
@@ -271,6 +283,10 @@ class Stand:
     base_ties: tuple[str, ...] = ()
     bay_ties: tuple[str, ...] = ()
     member_r: float = 12.0
+    wide: Mapping[tuple[str, str], float] = field(default_factory=dict)  # a member's own
+    #                                 radius, where it is wider than ``member_r``
+    column_d: float = TIE_D     # the columns' standoffs: 10 mm (NETRF10, M5) or 12 (NETRF12,
+    #                             M6: :func:`column_parts`)
     base: tuple[float, float] = (-200.0, 482.0)    # the base board's front and rear edges
     fillet_r: float = 20.0      # the plates' inside corners rounded this much (their joints
 #                                 read as one shape, not crossed bars)
@@ -307,33 +323,54 @@ STANDS: dict[str, Stand] = {
         # mouth 460 over the table) the feet: in front of the decanter, under O, at the rear
         nodes={"Ff": (-150.0, _FOOT_Y), "Fm": (140.0, _FOOT_Y), "Fr": (380.0, _FOOT_Y),
                "C1": (-24.0, 20.0), "C2": (-24.0, -22.0),
-               # on the front leg G-Ff, the inner plate's leg over it down to 300 mm over
-               # the table (a decanter wider than the bay passes under it)
+               # on the front leg G-Ff, the inner plate's leg over it down to about 200 mm
+               # over the table: its lowest column D3 halves the outer leg's free length (design
+               # review round 1, 2026-10-14: the leg takes 2 kN jammed, and from D2 to the
+               # foot it buckled out of the plate at 0.6)
                **{n: (-150.0 * f, (_FOOT_Y - 0.0) * f) for n, f in (("D1", 0.175),
-                                                                     ("D2", 0.36))}},
+                                                                     ("D2", 0.36),
+                                                                     ("D3", 0.68))}},
         outer=(("G", "Ff"), ("G", "O"), ("Ff", "O"), ("O", "Fm"), ("O", "Fr"),
                ("Ff", "Fm"), ("Fm", "Fr"), ("G", "C1"), ("G", "C2"), ("C1", "C2"),
                ("C2", "D1")),
         inner=(("G", "C1"), ("G", "C2"), ("C1", "C2"), ("C2", "D1"), ("D1", "D2"),
-               ("G", "D1")),
-        columns=("C1", "C2", "D1", "D2"),
+               ("G", "D1"), ("D2", "D3")),
+        columns=("C1", "C2", "D1", "D2", "D3"),
         feet=("Ff", "Fm", "Fr"),
+        # the strut from the hinge back to the gearbox, 48 mm wide: the gearbox's node O
+        # leans on it across the plate (the legs from O buckled sideways at walking SF 3.0)
+        wide={("G", "O"): 24.0},
+        column_d=12.0,
         base=(-200.0, 482.0),
     ),
     # B: the arms' pivots O1, O2 hang straight under the mouth, the crank O 366 behind it
     # and low (its handle behind everything). The outer plate is two triangles on the
     # pivots' bar, O1-O over O2-O, a front leg from O2, a rear leg straight down from O and
-    # a rail. The inner plate is the bar O1-O2: the tie rods pass behind it (the rear ones
-    # never further round than 72° down, the bar at 90.5°) and the front ones above it.
-    # Nothing crosses the bay: the decanter stands under the mouth, between the bars. The
-    # base board ends 158 mm behind O (a full 6 L tips over its rear edge past 25°).
+    # a rail; O2-O, the strut that takes the rod's push back to the gearbox, is 64 mm wide
+    # (1.45 kN jammed; at 24 mm it buckled out of the plate at 0.7, and the gearbox's node O
+    # leans on it across the plate). The inner plate is the bar O1-O2, a triangle
+    # O1-O2-D1 off it and a leg D1-D2 down over the outer plate's front leg, on two 12 mm
+    # columns (design review round 1, 2026-10-14: the bar alone held its pillars only along
+    # itself, so across it O2 was a cantilever, jam SF 0.4; now each side is a box from the
+    # pivots down, as A's is; a column between O1 and D1 would stand in the lever b2's
+    # sweep). The tie rods pass behind it (the rear ones never further round than 72° down,
+    # the bar at 90.5°, the triangle and the leg in front of it) and the front ones above
+    # it. Nothing crosses the bay: the decanter stands under the mouth, between the bars.
     "decanter_rcm": Stand(
-        nodes={"Ff": (-110.0, _FOOT_Y), "Fr": (386.0, _FOOT_Y)},
+        nodes={"Ff": (-110.0, _FOOT_Y), "Fr": (386.0, _FOOT_Y),
+               # on the front leg O2-Ff, 60 and 150 mm down it from O2 (O2 is (-2.7, -307))
+               **{n: (-2.7 + (-110.0 + 2.7) * f, -307.0 + (_FOOT_Y + 307.0) * f)
+                  for n, f in (("D1", 0.25), ("D2", 0.6))}},
         outer=(("O1", "O2"), ("O2", "Ff"), ("O2", "O"), ("O1", "O"), ("O", "Fr"),
                ("Ff", "Fr"), ("O2", "Fr")),
-        inner=(("O1", "O2"),),
+        inner=(("O1", "O2"), ("O2", "D1"), ("O1", "D1"), ("D1", "D2")),
+        columns=("D1", "D2"),
         feet=("Ff", "Fr"),
-        base=(-160.0, 524.0),
+        wide={("O2", "O"): 32.0},
+        column_d=12.0,
+        # (the corrected centre of mass, design review round 1, 2026-10-14: a full 6 L
+        # tipped over the rear edge at 24.4°; 10 mm more board, past 25° again)
+        base=(-160.0, 534.0),
     ),
 }
 
@@ -420,7 +457,7 @@ class CradleStand(Group):
         stand = stand_of(ctx.config.lk)
         bay = {pts[n] for n in stand.bay_ties}
         feet = {pts[n] for n in stand.feet}
-        r = TIE_D / 2 + 0.3
+        r = column_parts(stand).d / 2 + 0.3
         head = M5.head_d / 2 + 0.3
         nut = M5_NUT[0] / math.sqrt(3) + 0.3
 
@@ -459,7 +496,7 @@ class CradleStand(Group):
 
         for key, members in ((FRAME_OUTER, stand.outer), (FRAME_INNER, stand.inner)):
             for a, b in members:
-                out.pad(key, xy(a), xy(b), stand.member_r)
+                out.pad(key, xy(a), xy(b), stand.wide.get((a, b), stand.member_r))
         frame = topo.frame_bodies[0]
         hole = TIE_HOLE
         z0, z1 = build.z(0)[1], build.z(build.top)[0]      # between the plates
@@ -467,17 +504,20 @@ class CradleStand(Group):
             out.cut(FRAME_OUTER, Cut(xy(n), hole))
         for n in stand.bay_ties:
             out.cut(FRAME_INNER, Cut(xy(n), hole))
+        col = column_parts(stand)
         for n in stand.columns:
             p = xy(n)
-            out.cut(FRAME_OUTER, Cut(p, hole))
-            out.cut(FRAME_INNER, Cut(p, hole))
-            out.bodies.append(hardware(f"stand_column_{n}", _tie(p, z0, z1), frame,
-                                       fab="purchased", bom_key=_standoff(z1 - z0),
+            out.cut(FRAME_OUTER, Cut(p, col.hole))
+            out.cut(FRAME_INNER, Cut(p, col.hole))
+            out.bodies.append(hardware(f"stand_column_{n}", _tie(p, z0, z1, col.d, col.thread),
+                                       frame, fab="purchased", bom_key=col.key(z1 - z0),
                                        color=TIE_COLOR))
             for side, z in ((-1, build.z(0)[0]), (1, build.z(build.top)[1])):
                 out.bodies.append(hardware(f"stand_column_{n}_screw{'io'[side > 0]}",
-                                           _screw(p, z, side), frame, fab="purchased",
-                                           bom_key=M5.key(TIE_SCREW), color=TIE_COLOR))
+                                           _screw(p, z, side, col.screw_len, col.screw),
+                                           frame, fab="purchased",
+                                           bom_key=col.screw.key(col.screw_len),
+                                           color=TIE_COLOR))
         out.notes["stand"] = {"columns": list(stand.columns), "feet": list(stand.feet),
                               "base_ties": list(stand.base_ties),
                               "bay_ties": list(stand.bay_ties), "column_mm": round(z1 - z0, 2)}
@@ -765,19 +805,45 @@ def _standoff12(length: float) -> str:
     return netrf12(round(length, 1))
 
 
-def _tie(xy, z0: float, z1: float) -> Shape3D:
-    """A 10 mm steel standoff from z0 to z1, its ends tapped (modelled as M5 holes)."""
-    return difference(disc(xy, TIE_D / 2, z0, z1),
-                      *[disc(xy, 2.5, a, b)
-                        for a, b in ((z0 - 1, z0 + TIE_THREAD), (z1 - TIE_THREAD, z1 + 1))])
+def _tie(xy, z0: float, z1: float, d: float = TIE_D, thread: float = TIE_THREAD) -> Shape3D:
+    """A steel standoff (``d``, 10 mm: a NETRF10) from z0 to z1, its ends tapped (modelled
+    as holes the screw's size, ``thread`` deep: M5 in a 10 mm, M6 in a 12 mm)."""
+    tap = 2.5 if d <= TIE_D else 3.0
+    return difference(disc(xy, d / 2, z0, z1),
+                      *[disc(xy, tap, a, b)
+                        for a, b in ((z0 - 1, z0 + thread), (z1 - thread, z1 + 1))])
 
 
-def _screw(xy, face: float, side: int, length: float = TIE_SCREW) -> Shape3D:
-    """An M5 button head bearing on ``face``, its head on the ``side`` (+1 over it, -1
-    under it) and its shank into the standoff beyond."""
-    head = disc(xy, M5.head_d / 2, *sorted((face, face + side * M5.head_h)))
-    shank = disc(xy, M5.shank_d / 2, *sorted((face, face - side * length)))
+def _screw(xy, face: float, side: int, length: float = TIE_SCREW, s=M5) -> Shape3D:
+    """A button head (``s``: M5) bearing on ``face``, its head on the ``side`` (+1 over it,
+    -1 under it) and its shank into the standoff beyond."""
+    head = disc(xy, s.head_d / 2, *sorted((face, face + side * s.head_h)))
+    shank = disc(xy, s.shank_d / 2, *sorted((face, face - side * length)))
     return union([head, shank])
+
+
+@dataclass(frozen=True)
+class ColumnParts:
+    """A stand column's bought parts (:attr:`Stand.column_d`): its standoff's diameter and
+    tapped depth, the button heads through the plates (size, length, the plates' hole) and
+    the standoff's catalog key for a length."""
+
+    d: float
+    thread: float
+    screw: Screw
+    screw_len: float
+    hole: float
+
+    def key(self, length: float) -> str:
+        return _standoff12(length) if self.d > TIE_D else _standoff(length)
+
+
+def column_parts(stand: Stand) -> ColumnParts:
+    """:class:`ColumnParts` of ``stand``'s columns: a NETRF10 on M5 x 12 button heads in
+    5.5 mm holes, or a NETRF12 (12 mm, M6 x 12 deep each end) on M6 x 12 in 6.6 mm."""
+    if stand.column_d > TIE_D:
+        return ColumnParts(12.0, 12.0, M6, 12.0, 6.6)
+    return ColumnParts(TIE_D, TIE_THREAD, M5, TIE_SCREW, TIE_HOLE)
 
 
 def _place(part, lip, tilt: float, z: float = 0.0):

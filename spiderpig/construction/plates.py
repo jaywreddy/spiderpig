@@ -138,6 +138,16 @@ def foot_links(topo, lk) -> list[tuple[str, str, str]]:
     return out
 
 
+def _chord_r(ctx: Context, link: str, a: str, b: str) -> float:
+    """A link chord's half-width: a product's own (:func:`config.chord_r`), else
+    ``Params.link_radius``."""
+    if not getattr(getattr(ctx.config, "lk", None), "product", ""):
+        return ctx.params.link_radius
+    from spiderpig.config import chord_r
+
+    return chord_r(ctx.config, link, a, b)
+
+
 RIDER_BOSS_T = 1.0      # a metal link keeps this many x its thickness round its crank bore
 
 
@@ -181,7 +191,8 @@ class LinkPlates(Group):
 
         def make(link: str, segs):
             def f(L: Layout):
-                out = [Placed(L.layers[link], Pill(a, b, r), link, link) for a, b in segs]
+                out = [Placed(L.layers[link], Pill(a, b, _chord_r(ctx, link, a, b)), link,
+                              link) for a, b in segs]
                 if link in bosses:      # its end grown round the crank bore
                     at, rb = bosses[link]
                     out.append(Placed(L.layers[link], Disc(at, rb), link, f"{link} boss"))
@@ -237,7 +248,8 @@ class LinkPlates(Group):
                 out.notes.setdefault("feet", {})[name] = {
                     "sock": "TPU 95A", "wall_mm": SOCK_T, "point": feet[name][0]}
             boss = bosses.get(name)
-            part = plate([(build.xy(a), build.xy(b), r) for a, b in segs], z0, z1, cuts,
+            part = plate([(build.xy(a), build.xy(b), _chord_r(ctx, name, a, b))
+                          for a, b in segs], z0, z1, cuts,
                          discs=[(build.xy(boss[0]), boss[1])] if boss else ())
             out.bodies.append(hardware(name, part, name, fab="laser",
                                        sheet=ctx.sheet("link", name)))
