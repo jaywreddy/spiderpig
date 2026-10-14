@@ -113,7 +113,7 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
         # else the pivots' heads sunk with the crank's in gaps (stack.HEADS_ORDER)
         heads = "gap_sink"
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin, heads=heads,
-                     **plate_z(ctx))
+                     adjacent=adjacent_pins(groups, config), **plate_z(ctx))
     if deadline is not None:
         spec = replace(spec, max_seconds=min(spec.max_seconds, deadline.remaining))
     crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
@@ -122,6 +122,17 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
     problem = StackProblem(topo, claims, spec, router, side_clearances(ctx, groups),
                            hint=_leg_hint(config, deadline) if hint else None)
     return ctx, groups, problem
+
+
+def adjacent_pins(groups: list, config: BuildConfig) -> tuple:
+    """The pins whose links stack side by side (:data:`config.PIN_STACKS`, per linkage;
+    :func:`construction.axle.side_by_side`): each such pin's links and the layers they may
+    span, as many as it has links (:attr:`stack.StackSpec.adjacent`)."""
+    from spiderpig.construction.axle import side_by_side
+
+    axes = [g.axis for g in groups if getattr(g, "axis", None) is not None]
+    return tuple(sorted((tuple(sorted(ax.members)), len(ax.members)) for ax in axes
+                        if side_by_side(config, ax)))
 
 
 def plate_z(ctx: Context) -> dict:

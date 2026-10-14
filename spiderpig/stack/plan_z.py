@@ -438,6 +438,17 @@ def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
             shapes = _make_all(claims, layout, memo)
     else:
         raise PlanReject("the clearance gaps and the claims made at their z don't settle")
+    # a pin whose links stack side by side (StackSpec.adjacent): no clearance gap between
+    # two of them (another pin's head there would lengthen its span as a layer does)
+    for members, most in spec.adjacent:
+        ks = sorted(layers[m] for m in members if m in layers)
+        if ks and ks[-1] - ks[0] + 1 > most:
+            raise PlanReject(f"the links of the pin of {', '.join(members)} span layers "
+                             f"{ks[0]}..{ks[-1]}, more than {most}")
+        for a, b in itertools.pairwise(ks):
+            if b == a + 1 and gaps.get(a):
+                raise PlanReject(f"a clearance gap over layer {a} parts the links of the pin "
+                                 f"of {', '.join(members)}")
     placed = settle(shapes, sunk, layout)
     return StackPlan(spec, layers, top, topo, claims, tuple(placed), choices,
                      gaps=dict(gaps), thick=dict(thick), sunk=frozenset(sunk))

@@ -88,6 +88,11 @@ class StackSpec:
     # router's (and :data:`GAP_GROUPS`') still in their gaps. :attr:`StackPlan.heads` says
     # which ("sink" or "gap").
     heads: str = "best"
+    # Pins whose links stack in consecutive layers, nothing between them (no ring, no
+    # clearance gap): each a pin's links and the most layers they may span (its link count:
+    # side by side); empty, no such rule. A decanting cradle's (``config.PIN_STACKS``): the
+    # pin's span, the arm its jam bends it over, is then its links alone.
+    adjacent: tuple[tuple[tuple[str, ...], int], ...] = ()
 
 
 def thread_time() -> float:

@@ -63,6 +63,18 @@ def full_rings(ctx: Context) -> bool:
     return cfg is not None and bool(cfg.lk.product)
 
 
+def side_by_side(config, axis: Axis) -> bool:
+    """Whether ``axis`` is a pin whose links stack side by side, in consecutive layers with
+    nothing between them (``config.PIN_STACKS``, per linkage; :attr:`stack.StackSpec.adjacent`
+    holds the planner to it)."""
+    if config is None or axis.kind != "pin" or len(axis.members) < 2:
+        return False
+    from spiderpig.config import PIN_STACKS
+
+    want = PIN_STACKS.get(config.linkage, ())
+    return "*" in want or axis.name in want
+
+
 def default_ends(d: AxleDims, pillar: bool, anchored: tuple[bool, bool]) -> tuple[
         tuple[End, ...], tuple[End, ...]]:
     """What an axle without an ``ends`` hook claims beyond its retained stack: a head below
@@ -130,6 +142,7 @@ class AxleGroup(Group):
         ends = getattr(self.construction, "ends", None)
         link_t = {m: ctx.sheet_t("link", m) for m in members}
         full = full_rings(ctx)
+        tight = side_by_side(ctx.config, self.axis)
 
         def make(L: Layout):
             ms = sorted(L.layers[m] for m in members)
@@ -141,8 +154,16 @@ class AxleGroup(Group):
             def air(a: int, b: int) -> float:
                 """What the plan's z leaves free in layers ``a``..``b`` around this axle's
                 own parts (its links and its default-sheet rings, in layers an aluminium
-                plate elsewhere made thicker): its stack closes it up."""
+                plate elsewhere made thicker): its stack closes it up. In the search's
+                nominal z (every layer a pitch) a pin whose links stack side by side
+                (:func:`side_by_side`) counts them at their sheets' thickness instead
+                (negative air): two 0.190 in links are a 9.65 mm column, which a pivot pin
+                made to length (10 mm at least) spans, not 6.35 mm, which would leave it
+                3.4 mm of take-up it doesn't have and its end too tall for any slot."""
                 if not L.final:
+                    if tight:
+                        return -sum(max(0.0, own[k] - L.t(k)) for k in range(a, b + 1)
+                                    if k in own)
                     return 0.0
                 return sum(max(0.0, L.t(k) - own.get(k, L.t(k) if full else ctx.pitch))
                            for k in range(a, b + 1) if 0 < k < L.top)

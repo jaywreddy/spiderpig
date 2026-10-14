@@ -186,6 +186,27 @@ def test_a_cradle_side_plans_with_its_link_under_the_inner_plate(key):
     assert plan.height < HEIGHT[key]     # each side; the bay between them is cradle.BAY
 
 
+@pytest.mark.slow
+@pytest.mark.planner
+@pytest.mark.usefixtures("fresh_plan_memo")
+def test_bs_j_and_j2_plan_side_by_side_when_asked(monkeypatch):
+    """``config.PIN_STACKS`` (the role ``pin_stack`` of the arm's tree, 2026-10-14): B's J and
+    J2 are the pins whose links can stack side by side, nothing between them (b2 and b3 then
+    part, b3 under b4 and b5); its default (none) plans as before."""
+    from spiderpig import config
+    from spiderpig.fabricate import design_side, template_for
+
+    monkeypatch.setitem(config.PIN_STACKS, "decanter_rcm", ("J", "J2"))
+    cfg = BuildConfig(linkage="decanter_rcm", robot=False)
+    plan = design_side(template_for(cfg), cfg).plan
+    assert plan.optimal, plan.proof
+    assert sorted(plan.spec.adjacent) == [(("b3", "b4"), 2), (("b3", "b5"), 2)]
+    for a, b in (("b3", "b4"), ("b3", "b5")):
+        assert plan.layers[b] == plan.layers[a] + 1
+        assert not plan.gaps.get(plan.layers[a])
+    assert plan.height < HEIGHT["decanter_rcm"]
+
+
 @pytest.mark.planner
 @pytest.mark.usefixtures("fresh_plan_memo")
 def test_a_thicker_link_sheet_plans_too():

@@ -257,6 +257,12 @@ each side, take a quick-release clevis pin (``clevis8``, 2026-10-13: the passive
 slides off its cradle link once their two clips are out, ``cradle_pack``); its rod's pin P
 and its arm's K take the steel, as A's one pin E does."""
 
+PIN_STACKS: dict[str, tuple[str, ...]] = {}
+"""Per linkage: the pins whose links stack side by side, in consecutive layers with nothing
+between them (:attr:`stack.StackSpec.adjacent`, :func:`fabricate.adjacent_pins`; ``"*"``:
+every pin). Empty for every linkage but these: a walker's pins span what the planner
+gives them."""
+
 PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 """Per product: the default sheet (the layer pitch, the printed rings' and the order's
 material) when the config names the default (:data:`SHEET`): a decanting cradle is all
