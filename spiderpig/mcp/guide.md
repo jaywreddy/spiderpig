@@ -123,9 +123,9 @@ A task is a JSON object (`spiderpig://schema/task`): `do` (`walk`, `place` or `t
 and its numbers. A bare number is the bound the task means (a stride's least, a
 repeatability's most); a target object `{min, max, value, tol, hard}` says it exactly. The
 numbers that are Spec targets become the candidate's spec targets (`repeatability_mm` is
-the worst-case `precision.repeatability_mm` for every kind; an arm's ISO 9283 RP, what a
-maker quotes and smaller, is shown beside it as `numbers.rp_mm`, and a spec may target
-`precision.rp_mm` itself); the task's own geometry (`area_mm`, `points_mm`, `height_mm`,
+ISO 9283 RP, `precision.rp_mm`, what a maker quotes, where the design has one (a
+positioner), else the worst-case `precision.repeatability_mm`, which stays beside RP as
+`numbers.bound_mm`); the task's own geometry (`area_mm`, `points_mm`, `height_mm`,
 `path_mm` (`[x, y]` in the output's plane), `obstacle_mm` (raises a `lift_mm`'s min, the
 rest of it kept)) is read by the checks.
 
