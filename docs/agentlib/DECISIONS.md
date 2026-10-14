@@ -1076,3 +1076,147 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/cradle_report.py`, `spiderpig/hardware/bom.py`, `spiderpig/hardware/order.py`,
   `spiderpig/hardware/cradle_catalog.py`, `viewer/src/decant/{pour,pack,main}.ts`,
   `tests/test_cradle.py`.
+
+### 2026-10-14: the cradles' drive (design review round 1)
+
+- **What:** the fixes to round 1's drive review (`/root/scratch/decant/review5/r1/drive.md`),
+  both cradles ([DECANTER.md](DECANTER.md): "The drive", "Loads and checks", "Flat pack",
+  "Building one").
+  - **The riser is four round spacers** (B1): 12 mm aluminium spacers for M6 (McMaster
+    94669A349, 13 mm OD) on the face screws, bearing on the gearbox's machined output face
+    (`handcrank.SPACER`, `riser_for`). The three 0.125 in discs were bored to the output
+    hub's drawn 30 mm on the spigot ring's assumed 2.5 mm: two unpublished housing
+    dimensions met at zero margin, and a hub standing proud would have been braked by the
+    screws' preload and lifted the block into the rod. Now the spigot ring and the hub's
+    end stand 9.5 mm under the plate whatever their heights; only the machined face is in
+    the stack-up. The screws are the same M6 x 25 (8.25 mm into the face).
+  - **The crank block sits on the shaft's steel end** (M2): its top plate on 0.2 mm DIN 988
+    shim rings (Accu, eight bought, `handcrank.SHIM`), the end screw through both into the
+    shaft's tap with 243 at 8 N·m. The printed sleeve is gone: at 3 N·m its 0.05 mm of
+    creep would have taken the preload, and a re-torque only reset it.
+  - **The go/no-go** (the guide's riser step): with the gearbox on its spacers under the
+    plate, the shaft's end over the plate's inner face is 28.75 mm drawn and the block's top
+    plate sits at 29.22, so the shims are the difference in whole rings (two drawn). Over
+    29.22: 13 mm spacers; under 27.62 (the keyed plates' straight flanks): 11 mm. The
+    shims hold a hub up to 0.5 mm prouder or 1.1 mm lower than drawn; the other lengths
+    another millimetre either way.
+  - **A slip clutch in the hand crank** (M1, `handcrank.clutch`, `CLUTCH`): the crank is two
+    printed parts, the hub and its tube keyed on the input shaft and the arm on the tube's
+    journal, coupled by three 6 mm steel balls (McMaster 9291K77) on springs (McMaster
+    9434K49) and M8 cup-point set screws (Bolt Depot 8743), pressed into six 90° conical
+    seats in the tube's flange. Set on the bench with a luggage scale to click round at 31.5
+    N at the grip (`CLUTCH_SLIP_N`), ±10 % once set, so at most 57.2 N·m on B's crank and
+    60.0 on A's (`config.PRODUCT_CLUTCH_NM`) through the worm at a hand's speed, however
+    hard anyone pushes. The arm is held on the journal by a printed cap and a second M3
+    thumb screw: the crank comes off the shaft whole.
+  - **A clutch-capped jam case** (`cradle_drive.clutch_case`, the report's `jam_capped`):
+    the cap on a blocked cradle at every crank angle, the toggles included, each part's
+    jam row scaled to its load per angle; per excluded band (0 to 30°) each part's least
+    safety factor, and the band within which each falls under 1.3 and under 1. The report
+    also rates the gearbox at both jams and the keyway one plate and four
+    (`cradle_drive.drive_limits`), and its `verdict` carries its own numbers.
+  - **Cheapened** (round 1's "simplify"): the block's tie, a NETRF10 and two M5s, is an M6 x
+    30 button head through every plate into a DIN 439 thin nut under the lowest, 243
+    (`handcrank.TIE_NUT`): a nyloc (6 mm with its washer and the bolt's end past it) doesn't
+    fit the 7 mm head layer, and over the block it would raise the rod. The grip pin, a
+    NETRF10 and two M5s, is an M8 x 85 partially threaded hex bolt (Bolt Depot 5826), its
+    plain shank under the grip, a nyloc on the arm's inner face; a shoulder screw cost
+    USD 5.66 (McMaster 92981A753). The NRV040 stays at 30:1.
+  - **The minors:** the keyed plates' slots cut at the key's 6.0 mm and filed together on
+    the key, the block built and tied on the bench first; the grip 60 x 24 mm (was a 25 mm
+    knob); the hub 21 mm on the shaft, printed solid, its bore 11.1 reamed to 11; an M3
+    heat-set insert (Accu HTBI-M3-BR) under the thumb screw and the input key glued in;
+    B's crank stows in two printed clips snapped onto its outer plate's strut O-O2
+    (`cradle.STOWS`, `_stow_clip`, `stow_matrix`: B packs as three modules,
+    `cradle_pack` moves the crank there within the drive piece); the guide's run-in and
+    wipe, the crankpin greased, the worm's 10-minute creep test and the O-ring's drag,
+    where to stand; the 4 x 4 x 16 key (it said 3 x 3); `VERDICT`'s numbers gone (the
+    tests' bars instead, the report's own numbers in its `verdict`); A's loads note at its
+    own 69.3 N·m; DECANTER.md's crankpin lever 9.5 mm.
+- **Why the slip clutch is back** (2026-10-13 dropped it: "it still lets 1.6 x the peak
+  through, so the parts need upgrading anyway"): the point is a true bound, not a lower
+  number. The 40 N push the parts were rated at is no bound (a hand on a crank that feels
+  stuck pushes 60-150 N); the clutch's cap is, and the parts already hold it.
+  - **Sized:** its least slip, 28.4 N at the grip, is 1.1 x a sealed full 6 L's worst
+    starting turn (the worm's static efficiency) with the corrected centres of mass (25.4 N
+    on either cradle: the structure round's), running it is 1.36 x; the cap is then 0.87 x
+    the old 40 N push's torque. A lower slip would ratchet starting a full 6 L near level.
+  - **Where it doesn't help:** within ±26° of crank of B's rest (the last 4.6° of tilt, 2.2
+    handle turns) and ±16° of its full tilt, some part falls under 1.3 at the cap; within
+    ±20° and ±12° pillar O2 yields and then the rod buckles (elastically). A: ±20° and ±9°.
+    Round a toggle the rod's force goes as the cap over the sine of the crank's angle to the
+    rod: no torque bounds it. Only clearance protects there (the use limits), or a
+    force limiter in the rod (not done).
+  - **The ball detent over a friction clutch:** its slip depends on the seats' angle and the
+    springs, not on a friction coefficient that greasing or a humid day can halve; its set
+    screws let it be set to a scale reading; a printed detent's ±25 % becomes ±10 % once set.
+- **Numbers** (this branch, before the structure round's centres of mass; B, A):
+
+  | | before | after |
+  |---|---|---|
+  | gearbox SF walking | 1.52, 1.44 | the same (1.31 and 1.25 with the corrected centres of mass) |
+  | grip at the worst start | 21.9, 22.1 N | the same (25.4 N corrected) |
+  | crank torque bound | none (66, 69.3 N·m at a 40 N push) | 57.2, 60.0 N·m at the clutch's slip |
+  | gearbox at the jam | unreported (1.47, 1.54 x) | 1.27, 1.33 x its 45 N·m at the cap |
+  | jam SF, 30° and more from the toggles | B O2 1.33; A 1.6 | B O2 1.48; A 1.85 (the crankpin) |
+  | in the toggle zones | not rated | B at ±20°: O2 0.99, rod 1.22; ±10°: 0.50, 0.63; ±5°: 0.24, 0.31 |
+  | keyway | 2.0 at 66 N·m (four, as if they all bore) | 2.3 x the cap filed together; one plate 0.58 |
+  | the riser | 3 discs on an assumed 2.5 mm spigot | 4 spacers on the machined face, 9.5 mm clear |
+  | the block's clamp | a PLA sleeve at 3 N·m | steel and aluminium, 8 N·m |
+
+- **The pack:** B's box is 702 x 604 x 514 mm, 218 L (it was 485 tall, 206 L, with the
+  crank loose: the passive panel had nested on the drive side's outer face beside the
+  gearbox; a stowed crank anywhere on that face costs the same, so `cradle.STOWS` empty is
+  the way back). A's flat pack is 698 x 321 x 602 (305 tall before): the clutch's crank is
+  189 x 135 x 52 mm where the old one was 123 x 118 x 28.
+- **Cost** (B, the BOM's estimate): USD 633.53, from 659.05 (purchases 388.12 from 382.23,
+  cutting 245.41 from 276.82); A likewise less its stow clips. The drive's new lines: the
+  spacers 6.48, the shims 6.40, the clutch 16.54 (balls 7.89 for a pack of 50, three used:
+  MISUMI sells 52100 balls singly at 2.08 by its price API; springs 4.58 for five; set
+  screws 0.63; an insert and a thumb screw), the grip's bolt, nut and washers 1.94, the
+  tie's bolt and nut 0.45. Gone: three riser discs (about 31 of cutting), two NETRF10s
+  (26.92) and their four M5s and two washers.
+- **The landed cost of the gearbox** (pages of 2026-10-14): TRM4401_0 USD 62.90 and the shaft
+  TRM4006_0 6.15, both made in China (HTS 8483.40.50.10 and 8483.10.50.00). Since 2025-05-02
+  Phidgets collects US duties, tariffs and brokerage at checkout through UPS Global Checkout,
+  with a fee of its own. The duty is 40 % on the gearbox (2.5 % + 25 % Section 301 + 12.5 %
+  since 2026-07) and 50 % on the shaft: USD 28.24; no de minimis. Goods and duty USD 97.29;
+  UPS shipping, the brokerage and the checkout fee show only at checkout (the cart wasn't
+  run): about USD 135-165 landed on assumed shipping (25-45) and fees (10-20). Not in the
+  BOM's total.
+- **Proposed, not built: a counterbalance** (the coordinator's lever). A gas spring on a
+  second crank on the output shaft's far end, outboard of the gearbox: from far off, a
+  near-constant force on a pin b from O puts a sine torque on the crank, which is the
+  crank-rocker's gravity torque's first harmonic (it changes sign only at the toggles).
+  Fitted to every bottle, sealed full, and the empty cradle at once (the corrected centres
+  of mass; `/root/.cache/spiderpig/tmp/r1drive/cbal2.py`):
+
+  | | B | A |
+  |---|---|---|
+  | worst crank torque, walking | 34.0 -> 15.6 N·m | 36.0 -> 16.9 N·m |
+  | gearbox SF | 1.33 -> 2.89 | 1.25 -> 2.66 |
+  | grip at the worst start | 25.1 -> 11.5 N | 25.4 -> 11.9 N |
+  | the clutch it would allow (set 1.1 x over it) | cap 57.2 -> about 26 N·m | 60.0 -> about 28 N·m |
+  | the sine it takes | 19.3 N·m at 324° | 20.0 N·m at 246° |
+
+  - **Parts** (pages of 2026-10-14): Phidgets' double output shaft TRM4007_0, USD 6.85 (19
+    mm, 39 mm past each snap ring: replaces the single 6.15 one, the same 50 % duty);
+    McMaster's gas spring 4138T131, USD 28.36 (396 N extended, 512 N compressed, 100 mm
+    stroke, 276 mm long, ball sockets and studs included); a keyed 6061 lever 50 mm to its
+    stud (two laser-cut plates) and a bracket from the outer plate out past the gearbox to
+    the anchor (laser-cut, unpriced: SendCutSend quotes at upload). About USD 35 bought and
+    two cut parts. (A long extension spring can't do it: McMaster's 400-500 N springs are
+    2.8-4 N/mm, so their force swings with the stroke; 9654K709 holds 507 N at USD 10.14.)
+  - **Against:** a second exposed crank and 400 N of stored spring by the hand crank, a
+    stiff bracket cantilevered 100 mm out from a truss plate (the structure round found
+    the drive side soft across), the overbalanced empty cradle (15.6 N·m the other way: the
+    worm holds it, but a cradle without a bottle drives toward full tilt), and the gas
+    spring's fade over years. Not simple, so a proposal: the numbers say it would halve
+    the walking peak, the grip and the gearbox's load and let the clutch slip at about 14
+    N. The jam would then be the lower cap plus the spring's residual, not the cap alone.
+- **Not done:** a force limiter in the rod (the only cure for the toggle zones); a guard
+  (the user's call of 2026-10-10); a 40:1 box (Phidgets has none; it would hold better, not
+  jam less); the lowest crank plate in the file of six (round 1's "small", USD 2).
+- **Where:** `spiderpig/construction/handcrank.py`, `spiderpig/cradle_drive.py`,
+  `spiderpig/cradle_report.py`, `spiderpig/config.py`, `spiderpig/construction/cradle.py`,
+  `spiderpig/cradle_pack.py`, `spiderpig/hardware/cradle_catalog.py`, `tests/test_cradle.py`.

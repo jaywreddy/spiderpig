@@ -372,14 +372,17 @@ def clutch(grip_r: float, ratio: int = 30, eta: float = 0.55) -> dict[str, float
     input (N·m) as set (:data:`CLUTCH_SLIP_N` at the grip) and at either end of its
     :data:`CLUTCH_SCATTER`, the most it puts on the crank through the worm (``ratio``, at a
     hand's speed ``eta``: the crank torque no push at the grip exceeds,
-    ``config.PRODUCT_CLUTCH_NM``), and each ball's spring force as set (its balls in 90°
-    seats, a friction angle of 6°)."""
+    ``config.PRODUCT_CLUTCH_NM``), and each ball's spring force where it slips (at the top of
+    its climb out of its 90° seat, a friction angle of 6°: ``spring_n``) and seated
+    (``spring_set_n``, its spring that much less compressed: what the set screws are drawn
+    at; the scale sets it in the end)."""
     set_nm = CLUTCH_SLIP_N * grip_r / 1000.0
     lo, hi = set_nm * (1 - CLUTCH_SCATTER), set_nm * (1 + CLUTCH_SCATTER)
     ramp = math.tan(math.radians(45.0 + 6.0))
+    peak = set_nm * 1000.0 / (CLUTCH["balls"] * CLUTCH["r"] * ramp)
     return {"slip_nm": round(set_nm, 3), "slip_lo_nm": round(lo, 3), "slip_hi_nm": round(hi, 3),
-            "crank_cap_nm": round(hi * ratio * eta, 1),
-            "spring_n": round(set_nm * 1000.0 / (CLUTCH["balls"] * CLUTCH["r"] * ramp), 1)}
+            "crank_cap_nm": round(hi * ratio * eta, 1), "spring_n": round(peak, 1),
+            "spring_set_n": round(peak - CLUTCH_SPRING[2] * clutch_climb(), 1)}
 
 
 def clutch_climb() -> float:
@@ -389,8 +392,9 @@ def clutch_climb() -> float:
 
 
 class HandCrank(Group):
-    """The decanting cradle's crank: the worm gearbox on its riser, the keyed arm and its
-    spacers and end cap, the crankpin and the hand crank (this module's docstring)."""
+    """The decanting cradle's crank: the worm gearbox on its riser's spacers, the crank block
+    keyed on its shaft and seated on its end, the crankpin and the hand crank with its slip
+    clutch (this module's docstring)."""
 
     name = GROUP
     stack_only = True           # the contract checks only what is inside the stack
@@ -1070,10 +1074,10 @@ class HandCrank(Group):
         xb = f1 - cl["seat_d"] / 2 + ball_r * math.sqrt(2) + 0.02   # a ball's centre, seated
         sp_od, sp_free, sp_k, sp_max_len, sp_wire, sp_key = CLUTCH_SPRING
         sc_d, sc_len, sc_key = SET_SCREW
-        f_s = clutch(throw)["spring_n"]
+        got = clutch(throw)
+        f_s = got["spring_set_n"]
         s0 = xb + ball_r + (sp_free - f_s / sp_k)       # the set screw's inner end
-        if s0 + sc_len > REACH - 0.5 or \
-                sp_free - f_s / sp_k - clutch_climb() < sp_max_len + 0.3:
+        if s0 + sc_len > REACH - 0.5 or sp_free - got["spring_n"] / sp_k < sp_max_len + 0.3:
             raise ConstructionError(f"the clutch's springs ({f_s:.0f} N set) and set screws "
                                     f"don't fit the arm's {boss_t:g} mm boss")
         balls = [(cl["r"] * math.cos(phi), cl["r"] * math.sin(phi))

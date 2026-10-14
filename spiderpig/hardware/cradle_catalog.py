@@ -188,9 +188,13 @@ register(
          (Offer("Phidgets", "https://www.phidgets.com/?prodid=869", "TRM4401_0",
                 price_usd=62.90, verified=True, tiers=((1, 62.90), (5, 60.38), (10, 57.87)),
                 note="30:1 only. 11 mm input with 4 mm keyway; 19 mm bore with 6 mm keyway; "
-                     "45 N·m; 3.5 kN radial; backlash 1/2°; 27 in stock. Ships from "
-                     "Calgary, Canada: check the shipping, duties and brokerage at checkout "
-                     "(not in the total); page fetched 2026-10-13"),),
+                     "45 N·m; 3.5 kN radial; backlash 1/2°; 27 in stock; country of origin "
+                     "China, US HTS 8483.40.50.10 (page re-rendered 2026-10-14, the price "
+                     "unchanged). Ships from Calgary, Canada by UPS; since 2025-05-02 Phidgets "
+                     "collects US duties, tariffs and brokerage at checkout (UPS Global "
+                     "Checkout, a fee of its own): the duty on this code from China is 40 % "
+                     "(2.5 % + 25 % Section 301 + 12.5 % since 2026-07; tariffs.wove.com, "
+                     "2026-10-14), the shaft's 50 %, no de minimis: not in the total"),),
          dims={"ratio": 30, "centre_distance": 40.0, "input_d": 11.0, "input_len": 23.0,
                "input_shoulder": 53.0, "bore": 19.0, "pcd": 75.0, "face_thread": "M6x11",
                "spigot_d": 60.0, "width": 73.0, "mass_g": 2100.0},

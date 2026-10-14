@@ -62,7 +62,7 @@ def drive_limits(box, grip_r: float, peak: float, start_nm: float) -> dict:
             "cap_x_jam_push": round(cap / jam, 2),
             "jam_push_n": JAM_HAND_N,
             "gearbox_cap_x_rating": round(cap / box.rated_nm, 2),
-            "spring_n": got["spring_n"],
+            "spring_n": [got["spring_set_n"], got["spring_n"]],      # seated, slipping
         },
         "keyway": {"one_plate_nm": round(one, 1), "four_plates_nm": round(four, 1),
                    "one_plate_sf_walk": round(one / max(peak, 1e-9), 2),

@@ -632,10 +632,9 @@ def wheel_sweep(mech) -> list[dict]:
             Location(((t0 + t1) / 2, 0.0, 0.0))).rotate(Axis.Z, a).moved(
             Location((float(end[0]), float(end[1]), z)))
 
-    sweep = None
-    for r, t0, t1 in w["sweep"]:
-        c = cyl(float(r), float(t0), float(t1))
-        sweep = c if sweep is None else sweep + c
+    from spiderpig.shapes import union
+
+    sweep = union([cyl(float(r), float(t0), float(t1)) for r, t0, t1 in w["sweep"]])
     out = []
     box = sweep.bounding_box()
     for b in mech.bodies:

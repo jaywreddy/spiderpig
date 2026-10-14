@@ -468,7 +468,6 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
         REACH,
         HandCrank,
         clutch,
-        clutch_climb,
         handle_r,
     )
 
@@ -479,7 +478,7 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
         assert got["slip_lo_nm"] < got["slip_nm"] < got["slip_hi_nm"]
         # each spring as set: under its solid with room for the ball to climb out of its seat
         _, free, rate, max_len, _, _ = CLUTCH_SPRING
-        assert free - got["spring_n"] / rate - clutch_climb() > max_len
+        assert free - got["spring_n"] / rate > max_len           # (at the top of its climb)
     hc = HandCrank()
     parts, sweep = hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame", 100.0)
     by = {b.name: b for b in parts}
@@ -1161,19 +1160,22 @@ def test_the_packer_levels_drops_and_fills_in_order():
     assert order.relations(np.array([[[10, 70, 10], [50, 80, 50]]], float)) == ({0}, set())
 
 
-PACK_BOX = {"decanter_hinge": (705.0, 305.0, 610.0)}
+PACK_BOX = {"decanter_hinge": (705.0, 325.0, 610.0)}
 """A's flat-pack box, outside (x, height, z; mm): at most (the base board's 684 x 584 mm since
-the stand's 2026-10-14 refit, the walls round it)."""
-MODULE_BOX = (30.0, 500.0, 600.0)
+the stand's 2026-10-14 refit, the walls round it). 305 tall until round 1's drive review: the
+hand crank with its slip clutch is 189 x 135 x 52 mm (it had been 123 x 118 x 28), 321."""
+MODULE_BOX = (30.0, 520.0, 600.0)
 """A cradle packed as modules (B): its box, outside, over its base board's length and width
 (x, z: the board lies at the bottom, the other pieces over it) at most 30 mm (its walls and
-clearances take 16), at most 500 mm tall (the drive side with the cradle box lies flat, 442
+clearances take 16), at most 520 mm tall (the drive side with the cradle box lies flat, 442
 mm, on the 28 mm board and its bolts), and across no more than 30 mm over the larger of the
 board's width and 600 mm (the drive side's height in its plane at the pack pose, 596).
 B, 2026-10-13: 643 x 478 x 611 mm on its 626 x 530 board, about 188 L (its flat pack had
 been 112); 2026-10-14 (round 1: the knobs and cleats on the board, the pack pose at the rear
-leg): 702 x 485 x 606 on its 684 x 584 board, 206 L. Read off the board, so a larger board
-moves the bound with it."""
+leg): 702 x 485 x 606 on its 684 x 584 board, 206 L; round 1's drive review (the hand crank
+in its stow clips on the drive side's outer face, where the passive panel had nested beside
+the gearbox: anything on that face costs the same): 702 x 514 x 604, 218 L (500 tall until
+then). Read off the board, so a larger board moves the bound with it."""
 PACK_JOINTS = {"decanter_hinge": ("Pin E ", "pillar G"), "decanter_rcm": ("Pins X and Y ", None)}
 """Where each cradle link comes off its side: its pins and its pillar (the steps name them)."""
 MODULES = {"decanter_hinge": None,
