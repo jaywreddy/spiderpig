@@ -15,6 +15,12 @@ each step, the sentences a stage puts in place of a hook's (the right side's inn
 goes on on the robot, not on the bench), and the parts it moves (the right servo goes on
 with the centre plates).
 
+Which robot-level hooks run, and the order they fill, is the robot's layout's
+(:data:`LAYOUT_ORDERS`, :func:`layout_hooks`: a walker's mirrored pair, the chassis and the
+deck; an arm's turret, its base, :func:`construction.rotary.base_pair.assembly`). The wiring
+step is the design's controller's (the role ``controller``): its declared sentences, the
+cables it buys (:func:`controller_ops`), whichever controller it is.
+
 A body no hook claims still gets a step: on a side, the step of the layer its bottom face
 sits in (the gap under a layer goes with that layer), with a generic sentence; on the
 robot, a last step. :func:`assembly_steps` checks every body is added exactly once (whole, or in
@@ -32,6 +38,7 @@ from dataclasses import dataclass, field, replace
 
 STACK, UNIT, JOIN = "stack", "unit", "join"
 CHASSIS, WIRING, DECK, OTHER = "chassis", "wiring", "deck", "other"
+TURRET, MOUNT = "turret", "mount"
 SIDES = ("L", "R")
 EPS = 0.05
 
@@ -110,6 +117,7 @@ class RobotView:
     fab: dict[str, str | None]
     keys: dict[str, str | None]
     meta: dict = field(default_factory=dict)
+    lines: tuple[str, ...] = ()        # the catalog keys of the BOM lines no body is
 
     def named(self, pattern: str) -> list[str]:
         rx = re.compile(pattern)
@@ -126,7 +134,8 @@ class Stage:
     """One stage of the order: ``tags`` the tags of each step (``"R.unit.servo"`` takes
     another stage's op; ``()``: by layer for the stack, one step per tag else), ``text`` a
     sentence in place of the hooks' for a tag, ``intro`` the stage's first sentence,
-    ``where`` "bench" or "robot" (the picture: the stage alone, or everything so far)."""
+    ``where`` "bench" or "robot" (the picture: the stage alone, or everything so far),
+    ``outro`` a sentence after its hooks' in each of its steps."""
 
     stage: str
     side: str | None
@@ -135,6 +144,7 @@ class Stage:
     text: tuple[tuple[str, str], ...] = ()
     intro: str = ""
     where: str = "bench"
+    outro: str = ""
 
 
 ROBOT_ORDER: tuple[Stage, ...] = (
@@ -172,7 +182,12 @@ ROBOT_ORDER: tuple[Stage, ...] = (
     Stage(JOIN, "R", "Right side: body onto the leg stack", where="robot",
           intro="Turn the body over onto the right leg stack: the hub plate's pocket over "
                 "its hub chain's standoff, the pillars' tops into the inner plate."),
-    Stage(WIRING, None, "Wiring", where="robot"),
+    Stage(WIRING, None, "Wiring", where="robot",
+          outro="The bus plugs are already in (the centre plates' steps: the top-entry "
+                "sockets take a plug only through the plates' window): each servo's wires "
+                "from its channel's end at the centre plates' +x edge up through the deck's "
+                "wire slot over it to its own one of the board's two bus servo ports "
+                "(connector first), before the deck goes in."),
     Stage(DECK, None, "Deck", where="robot", tags=(("electronics",), ("deck",))),
     Stage(OTHER, None, "Remaining parts", where="robot"),
 )
@@ -202,12 +217,23 @@ ARM_ORDER: tuple[Stage, ...] = tuple(
     for s in SIDE_ORDER)
 """An arm's side (its drives in place of a crank and a servo)."""
 
-WIRING_TEXT = (
-    "The bus plugs are already in (the centre plates' steps: the top-entry sockets take a "
-    "plug only through the plates' window): each servo's wires from its channel's end at "
-    "the centre plates' +x edge up through the deck's wire slot over it to its own one of "
-    "the board's two bus servo ports (connector first), before the deck goes in.",
+TURRET_ORDER: tuple[Stage, ...] = (
+    *(s for s in ARM_ORDER if s.stage != OTHER),
+    Stage(TURRET, None, "The turret's base, on the bench",
+          tags=(("columns",), ("bearings",), ("preload",), ("turntable",), ("motor",),
+                ("stop",), ("bench",)),
+          intro="The base is built on its own, bottom up, then screwed to the bench."),
+    Stage(MOUNT, None, "The side onto the turntable", where="robot", tags=(("mount",),)),
+    Stage(WIRING, None, "Wiring", where="robot", tags=(("wiring", "cables"),)),
+    Stage(OTHER, None, "Remaining parts", where="robot"),
 )
+"""An arm's robot (its side on the turret: :mod:`construction.rotary`): the side as
+:data:`ARM_ORDER` builds it, the base on the bench, the side stood on the turntable, the
+controller wired."""
+
+LAYOUT_ORDERS: dict[str, tuple[Stage, ...]] = {"mirrored_pair": ROBOT_ORDER,
+                                               "turret": TURRET_ORDER}
+"""Each robot layout's order (:data:`config.ROBOT_LAYOUTS`)."""
 
 
 # ---------------------------------------------------------------------------
@@ -308,21 +334,61 @@ def _claimed(ops: list[Op]) -> set[str]:
     return {p.name for op in ops for p in op.pieces}
 
 
-def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
-    """The guide's steps for a fabricated ``mech`` (a robot, or a side on its own) of
-    ``design`` (its ``SideDesign``: the groups and the plan)."""
+def layout_hooks(layout: str) -> tuple:
+    """The robot-level hooks of a layout (each ``RobotView -> [Op]``): a mirrored pair's
+    chassis and deck, a turret's base."""
     from spiderpig.construction import chassis, deck
+    from spiderpig.construction.rotary import base_pair
 
+    return {"mirrored_pair": (chassis.assembly, deck.assembly),
+            "turret": (base_pair.assembly,)}.get(layout, ())
+
+
+def controller_ops(view: RobotView, ctl, joints=()) -> list[Op]:
+    """The wiring step of a robot whose controller is ``ctl`` (the role ``controller``,
+    :class:`actuators.controllers.Controller`; ``None``: your own, no step of its own): its
+    declared sentences, then each of its wires' whose two ends the robot has, its ports
+    named for ``joints``; its parts list the controller's ``wiring_extras``. Only when its
+    board is in the robot (a deck that didn't fit has none)."""
+    if ctl is None:
+        return []
+    from spiderpig.hardware import catalog
+
+    roles = set()
+    for key in dict.fromkeys([*(k for k in view.keys.values() if k), *view.lines]):
+        try:
+            name = catalog.get(key).name
+        except KeyError:
+            name = ""
+        if (role := ctl.role_of(key, name)) is not None:
+            roles.add(role)
+    if "board" not in roles:
+        return []
+    texts = list(ctl.wiring_text)
+    texts += [w.text.format(ports=ctl.port_text(joints)) for w in ctl.wiring
+              if w.text and w.a in roles and w.b in roles]
+    return [Op(WIRING, (0,), (), ctl.wiring_title, " ".join(texts), "wiring",
+               extras=tuple(ctl.wiring_extras))]
+
+
+def assembly_steps(mech, design, robot: bool | None = None, config=None) -> list[Step]:
+    """The guide's steps for a fabricated ``mech`` (a robot, or a side on its own) of
+    ``design`` (its ``SideDesign``: the groups and the plan); ``config`` the robot's (whose
+    controller wires it; default: the design's)."""
+    from spiderpig.actuators.controllers import of as controller_of
+
+    robot = bool(mech.meta.get("robot")) if robot is None else robot
+    layout = str(mech.meta.get("layout") or ("mirrored_pair" if robot else ""))
+    if not robot and layout == "mirrored_pair":
+        layout = ""
     rows = [r for r in rows_of(mech) if r["z"] is not None]
     turret = set((mech.meta.get("turret") or {}).get("parts", ()))
-    turret_rows, rows = ([r for r in rows if r["name"] in turret],
-                         [r for r in rows if r["name"] not in turret])
-    robot = bool(mech.meta.get("robot")) if robot is None else robot
+    own_rows, rows = ([r for r in rows if r["name"] in turret],
+                      [r for r in rows if r["name"] not in turret])
     mid = float(mech.meta.get("mid_plane", 0.0)) if robot else 0.0
     layers = layers_of(design.plan)
     sides = SIDES if robot else ("",)
     ops: list[Op] = []
-    clip_side: dict[str, str] = {}
     for s in sides:
         mine = [r for r in rows if (side_of(r["name"]) or "") == s]
         prefix = f"{s}." if s else ""
@@ -341,29 +407,37 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
                            for p in op.pieces)
             ops.append(Op(op.stage, op.key, pieces, op.title, op.text, op.tag, op.sub, s,
                           op.count))
-        clip_side.update({prefix + bare(r["name"]): s for r in mine})
-    if robot:
-        rv = RobotView({r["name"]: r["z"] for r in rows}, {r["name"]: r["rigid_with"]
-                                                             for r in rows},
-                       {r["name"]: r["fab"] for r in rows},
-                       {r["name"]: r["bom_key"] for r in rows}, dict(mech.meta))
-        ops += chassis.assembly(rv) + deck.assembly(rv)
+    whole_robot = robot or bool(own_rows)       # (an arm's side on its turret: a robot)
+    if whole_robot:
+        level = rows if robot else own_rows      # what the robot-level hooks put on
+        rv = RobotView({r["name"]: r["z"] for r in level},
+                       {r["name"]: r["rigid_with"] for r in level},
+                       {r["name"]: r["fab"] for r in level},
+                       {r["name"]: r["bom_key"] for r in level}, dict(mech.meta),
+                       tuple(dict.fromkeys(x.key for x in mech.bom_extras)))
+        for hook in layout_hooks(layout):
+            ops += hook(rv)
+        cfg = config if config is not None else getattr(design.ctx, "config", None)
+        if cfg is not None:
+            try:
+                ctl = controller_of(cfg)
+            except ValueError:          # (a controller that can't drive it: none drawn)
+                ctl = None
+            wired = RobotView(rv.z, rv.hosts, rv.fab,
+                              {**rv.keys, **{r["name"]: r["bom_key"] for r in rows}},
+                              rv.meta, rv.lines)                # its motors, a camera
+            joints = (*cfg.lk.inputs, *(str(j.get("name")) for j in
+                                        (mech.meta.get("tree") or {}).get("joints", ())))
+            ops += controller_ops(wired, ctl, joints)
         left = sorted(set(rv.z) - _claimed(ops))
         if left:
             ops.append(Op(OTHER, (), whole(*left), "Remaining parts",
                           "The remaining parts, where they are drawn.", tag="other"))
-    if turret_rows:          # an arm's turret (construction.rotary.turret): one step for now
-        text = " ".join([
-            "The base (its columns, the yaw motor under its top plate, the bearings and the "
-            "shaft), the yaw drive, the turntable; then the side stood on it, its feet "
-            "bolted to the brackets.",
-            *(mech.meta.get("turret") or {}).get("assembly", ())])
-        ops.append(Op(OTHER, (), whole(*sorted(r["name"] for r in turret_rows)), "The turret",
-                      text, tag="turret"))
-    _check(ops, {r["name"] for r in rows + turret_rows})
-    arm = getattr(getattr(design.ctx, "config", None), "lk", None)
-    side_order = ARM_ORDER if arm is not None and arm.ranged else SIDE_ORDER
-    return _order(ops, ROBOT_ORDER if robot else side_order)
+    _check(ops, {r["name"] for r in rows + own_rows})
+    lk = getattr(getattr(design.ctx, "config", None), "lk", None)
+    side_order = ARM_ORDER if lk is not None and lk.ranged else SIDE_ORDER
+    order = LAYOUT_ORDERS.get(layout, side_order) if whole_robot else side_order
+    return _order(ops, order)
 
 
 def _robot_level(name: str) -> bool:
@@ -476,8 +550,8 @@ def _numbered(groups) -> list[Step]:
             t = override.get(op.tag, op.text)
             if t and t not in texts:
                 texts.append(t)
-        if st.stage == WIRING:
-            texts += [t for t in WIRING_TEXT if t not in texts]
+        if st.outro and st.outro not in texts:
+            texts.append(st.outro)
         count = [body_of(_pid(p)) for op in gops if op.count for p in op.pieces
                  if body_of(_pid(p)) not in counted]
         counted.update(count)

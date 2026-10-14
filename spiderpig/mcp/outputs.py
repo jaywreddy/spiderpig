@@ -87,6 +87,53 @@ class DescribeOut(Result):
     card: JSON
 
 
+class CheckOfCandidate(TypedDict):
+    """One requirement of a task on a candidate: ``ok`` null when this tier didn't
+    measure it (``source`` says what does); ``tier`` ``bound`` is a necessary condition."""
+
+    requirement: str
+    value: float | None
+    need: str
+    ok: bool | None
+    tier: str
+    source: str
+    detail: str
+
+
+class CandidateOut(TypedDict):
+    """A linkage (and module) for the task: its verdict, score, checks, numbers, the
+    ``spec`` to resolve, the stored ``design`` it read, the ``scale`` that meets a missed
+    length (unchecked), ``why`` and its ``rank``."""
+
+    linkage: str
+    name: str
+    kind: str
+    module: str
+    ok: bool | None
+    score: float
+    checks: list[CheckOfCandidate]
+    numbers: JSON
+    spec: JSON
+    design: str | None
+    scale: JSON | None
+    why: str
+    rank: int
+
+
+class CandidatesOut(Result):
+    """``candidates``: the task as read, the ranked candidates, the excluded linkages with
+    why (the capability each lacks), notes; or, for a task that doesn't validate,
+    ``errors``."""
+
+    task: NotRequired[JSON]
+    do: NotRequired[str]
+    candidates: NotRequired[list[CandidateOut]]
+    excluded: NotRequired[list[JSON]]
+    notes: NotRequired[list[str]]
+    seconds: NotRequired[float]
+    errors: NotRequired[list[SpecErrorOut]]
+
+
 class CatalogOut(Result):
     servos: NotRequired[list[JSON]]
     sheets: NotRequired[list[JSON]]
@@ -313,7 +360,8 @@ class ViewOut(Result):
 
 
 __all__ = [
-    "JSON", "BuildOut", "CatalogOut", "CheckOut", "CompareOut", "DescribeOut", "DesignOut",
+    "JSON", "BuildOut", "CandidateOut", "CandidatesOut", "CatalogOut", "CheckOfCandidate",
+    "CheckOut", "CompareOut", "DescribeOut", "DesignOut",
     "DesignsOut", "ExplainOut", "ExportOut", "FailureOut", "GcOut", "JobOut", "JobResult",
     "LinkagesOut", "PlanOut", "PrecisionOut", "RecommendOut", "RecommendationOut", "Result",
     "RowOut", "SpecErrorOut", "StageOut", "VerifyOut", "ViewOut", "WalkOut",

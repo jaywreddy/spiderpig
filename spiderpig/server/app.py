@@ -29,8 +29,12 @@ Design parameters (the walking model's contract, see ``walk.py``):
     The fabricated walker baked with those parameters: ``robot`` (both
     sides, ``module`` legs per side) or ``side`` (one side of ``module``);
     the ids old URLs use (``klann``, ``double``, ``decker``,
-    ``double_double``) are one side of that module (:data:`MODES`;
-    ``/api/modes`` lists the ids the viewer's dropdown offers, with labels).
+    ``double_double``) are one side of that module (:data:`MODES`).
+``GET /api/modes?linkage=KEY`` (or ``?design=<id>``)
+    The views the linkage declares (:func:`modes_of`), in the viewer's dropdown order,
+    with labels: its robot when it makes one (:func:`spiderpig.config.robot_layout`: a
+    walker's two mirrored sides, an arm on its turntable), then one side of each of its
+    leg modules (a walker's) or its one side (a mechanism's, an arm's).
     Every design is cached in the store's ``bakes/`` as ``<config key>-<bake key>.glb``
     (:func:`bake_key`; the newest ``CACHE_SIZE`` non-default ones kept). A design the
     planner or a
@@ -77,7 +81,15 @@ from dataclasses import asdict, dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import QueryParams
@@ -89,6 +101,7 @@ from spiderpig.config import (
     BuildConfig,
     default_module,
     design_from_query,
+    robot_layout,
 )
 from spiderpig.server.watcher import WatchBroadcaster, is_ignored_dir, is_source
 from spiderpig.store import Store
@@ -689,11 +702,44 @@ def _walk_json(config: BuildConfig) -> bytes:
     return json.dumps(payload, allow_nan=False, separators=(",", ":")).encode()
 
 
+ROBOT_LABELS = {"mirrored_pair": "robot", "turret": "robot (on its turntable)"}
+"""The dropdown's label of each robot layout's ``robot`` view."""
+
+
+def modes_of(lk: linkage.Linkage) -> dict[str, str]:
+    """The view ids ``lk`` declares, in order, with their labels: ``robot`` when it makes a
+    robot (its layout's label), then one side of each leg module it walks on (a fixed
+    module's id of :data:`MODES`), else, a linkage with no feet (one side, no legs), ``side``
+    alone."""
+    out: dict[str, str] = {}
+    layout = robot_layout(lk)
+    if layout:
+        out["robot"] = ROBOT_LABELS.get(layout, "robot")
+    if lk.walks:
+        for m in lk.leg_modules:
+            mid = next((k for k, md in MODES.items() if md.module == m and md.label), None)
+            if mid is not None:
+                out[mid] = MODES[mid].label or mid
+    else:
+        out["side"] = "the side alone" if layout else "one side"
+    return out
+
+
 @app.get("/api/modes")
-def list_modes() -> dict:
-    """The ids the viewer's dropdown offers (in order) and their labels."""
-    offered = {k: m.label for k, m in MODES.items() if m.label}
-    return {"default": _DEFAULT_MODE, "modes": list(offered), "labels": offered}
+def list_modes(linkage_key: str | None = Query(None, alias="linkage"),
+               design: str | None = None) -> dict:
+    """The views the viewer's dropdown offers for a linkage (the design's, ``design=<id>``;
+    else ``linkage``, default :data:`linkage.DEFAULT`), in order, and their labels
+    (:func:`modes_of`)."""
+    key = _design(design).config.linkage if design else (linkage_key or linkage.DEFAULT)
+    try:
+        lk = linkage.get(key)
+    except KeyError as e:
+        raise HTTPException(status_code=422, detail=str(e).strip("'\"")) from None
+    offered = modes_of(lk)
+    default = _DEFAULT_MODE if _DEFAULT_MODE in offered else next(iter(offered))
+    return {"linkage": lk.key, "kind": lk.kind, "default": default, "modes": list(offered),
+            "labels": offered}
 
 
 @app.get("/api/linkages")
