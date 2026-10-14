@@ -113,8 +113,10 @@ stops there:
       bolt through one ear into a nut and a fender washer in a T-slot under the groove.
     - It serves every base from 285 mm (inside the rear V: a 750 ml's at 300) to 576 mm
       (a 6 L's at 571) behind the mouth.
-    - It rides the rear V block, so it rises with it. At rest, set for a 6 L, the rails'
-      end comes down to about 18 mm over the base board (keep it clear there).
+    - It rides the rear V block, so it rises with it. At rest, set for a 6 L, it comes
+      down to 26 mm over the base board, a finger's 25 mm (ISO 13854): the flanges end at
+      588 mm, past a 6 L's heel, and the +z rail's keel is chamfered at its end
+      (`cradle.FLANGE_END`, `cradle.finger_gap`).
 - **The bottles** (`cradle.setting`, `cradle.seat`): every one lies with the mouth on the
   pivot and the axis level, so the mouth stays put for each. Its setting is the two V
   blocks' rise and the base stop's place, read off the scales with the bottle out (see
@@ -501,8 +503,8 @@ back onto the mouth when let go.
 inside the rear V (255-380), where the old spine couldn't reach. A gate across the V,
 keyed to the block's flats and continued by rails behind it, serves them and the 6 L's
 (571) alike, and the rails, rising with the block, give the V's flanges behind it the same
-height at every setting. It drops the 155 g spine; the lowest point at rest hardly moves
-(the rails' end, about 18 mm over the board).
+height at every setting. It drops the 155 g spine; at rest it comes no nearer the board
+than 26 mm (the old rails' end had been 18.8 mm over it, under a finger's 25 mm).
 
 **Use** (the guide's "Setting it for a bottle"):
 1. At rest, the bottle out, set all three by their scales: the gate's pointer to the
@@ -1015,25 +1017,27 @@ Things to know before cutting and on the bench:
 - **The room it needs** (`cradle.USE_LIMITS`, the guide's "Decanting" step):
   - 950 mm of headroom: a 6 L's base at full tilt reaches about 910 mm over the table.
   - 100 mm behind the base board: the base stop's rails reach past its rear edge at full
-    tilt (A 84 mm, B 42).
+    tilt (A 74 mm, B 32).
   - The vessel: as "The vessel under the mouth" above, one height for the whole swing. It
     stands under the mouth's centre (`cradle.DECANTER_X`) on a 100 x 100 mm lab jack in
     the jack locator's pocket.
 - **Where it pinches** (the use limits, round 1): both side stacks, their bay faces too
   (each return to rest the cradle links shear past the inner bars' front ends); on B the
-  crank and the rod's end, turning in the open above and behind the gearbox; and the base
-  board behind the decanter, where at rest the base stop's rails come down to 18 mm over
-  it, under the 25 mm a finger needs (ISO 13854). A trapped finger: turn the handle back
+  crank and the rod's end, turning in the open above and behind the gearbox. (At rest the
+  base stop comes down to 26 mm over the base board behind the decanter: a finger's 25 mm,
+  ISO 13854.) A trapped finger: turn the handle back
   the way it came (the worm holds what it has caught). Take the handle off when the
   cradle is left: nothing turns without it.
 - **Never force the crank.** If it stiffens, something is in the way: the drive holds a
   40 N push at the grip, and near either end of travel the cradle's force grows without
   bound.
 - **Letting go stops the bottle, not the stream:** to stop it, turn back about a turn.
-- **The lip gauge down before the bottle passes level:** with it up a wet bottle slides
+- **The lip gauge down before the bottle passes level:** it falls back by itself, so
+  check nothing holds it up (a corkscrew left in the cork); with it up a wet bottle slides
   forward at full tilt, its mouth off the pivot over the decanter.
-- **Uncork at rest**, the base stop set and the lip gauge up, holding the neck, a
-  corkscrew's lever lifted straight up; then flip the gauge down onto the mouth. Not a
+- **Uncork at rest**, the base stop set: lift the lip gauge onto its stop and hold it, or
+  let it rest on the corkscrew, holding the neck, a corkscrew's lever lifted straight up;
+  let go and the gauge falls back onto the mouth. Not a
   sparkling wine under pressure: at rest the mouth points 50° up toward the front (the 6 L
   methuselah is a Champagne bottle); ease such a cork out by hand first, the mouth pointed
   away from people.

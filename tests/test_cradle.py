@@ -621,7 +621,9 @@ def test_the_whole_cradle_is_clash_free_over_the_swing(key):
     """Both sides, the box, the stand on its base plate, the bottle (a 6 L methuselah, the V
     blocks at their lowest) and the decanter at rest, at full tilt and across the turn: no
     two parts meet, the hand crank's sweep meets nothing, and every bottle size at its own
-    setting (its V blocks raised, its base stop moved) meets nothing, nor do they."""
+    setting (its V blocks raised, its base stop moved) meets nothing, nor do they; the base
+    stop never comes nearer the base board than a finger's 25 mm (ISO 13854: at rest, set
+    for a 6 L, its lowest)."""
     from spiderpig.construction.contract import bad_solids, clashes
     from spiderpig.cradle_report import wheel_sweep
     from spiderpig.fabricate import fabricate, template_for
@@ -635,6 +637,7 @@ def test_the_whole_cradle_is_clash_free_over_the_swing(key):
         mech = fabricate(tmpl, cfg, float(t))
         assert clashes(mech) == [], t
         assert wheel_sweep(mech) == [], t
+        assert cr.finger_gap(mech) >= cr.FINGER_GAP, t
         for size in cr.SIZES:
             assert cr.bottle_hits(mech, size) == [], (t, size.key)
     assert bad_solids(mech) == []

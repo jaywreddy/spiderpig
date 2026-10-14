@@ -81,8 +81,8 @@ from spiderpig.shapes import Cut, Shape3D, cut_holes, difference, disc, moved, p
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
 
 LIP_HEIGHT = 550.0      # the bottle's mouth over the table (mm): at rest, 50° neck up, the
-#                         base stop's rails' end (set for a 6 L) hangs about 514 mm under
-#                         it, over the base board's top (17 mm up)
+#                         base stop (set for a 6 L) hangs about 507 mm under it, 26 mm
+#                         over the base board's top (17 mm up)
 DECANTER_RISER = 135.0  # the drawn decanter's riser: the highest that keeps it clear of the
 #                         cradle box over the whole swing (cradle_report.room: at rest, 50°
 #                         neck up, the front saddle, the tie rods and the light hang across
@@ -1407,6 +1407,12 @@ RAIL_Z = 92.0                 # the rails' outer faces (their inner the V's edge
 FLANGE = (-85.0, 8.5)         # each rail's 45° flange continuing the V behind the block (the
 #                               body of a 3 L or more rests on it: review round 1, B1): its
 #                               bottom (cradle y) and its thickness across
+FLANGE_END = 588.0            # where the flanges and their liners end (cradle x): past a 6 L's
+#                               heel (561), short of the rails' end, so that at rest nothing of
+#                               the base stop comes nearer the base board than a finger's 25 mm
+#                               (ISO 13854: the end of the flange had been 18.8 mm over it)
+KEEL_CHAMFER = 5.0            # the +z keel's bottom end cut back at 45° this far, for the same
+FINGER_GAP = 25.0             # ISO 13854's least gap for a finger
 TONGUE = (352.0, 74.0, 90.0, 12.0)      # each rail's tongue into its socket under the flats:
 #                                         its front x, |z| span, height (its top the flats'
 #                                         underside, the +z one's keel's)
@@ -1462,21 +1468,29 @@ def _rails(s: Saddle) -> tuple[list[Shape3D], list[Shape3D], list[Shape3D]]:
         bar = _prism_x([(sign * z, y) for z, y in zy], xr, RAIL_END)
         top = _tongue_top(sign)
         tongue = _box(tx0, xr + 0.5, top - th, top + 0.01, *sorted((sign * tz0, sign * tz1)))
+        zk = sorted((sign * (GROOVE[0] - 5.0), sign * (GROOVE[1] + 5.0)))
         if sign > 0:                           # the keel round the T-slot
-            tongue = union([tongue, _box(xr, RAIL_END, keel, lo + 0.01, GROOVE[0] - 5.0,
-                                         GROOVE[1] + 5.0)])
+            tongue = union([tongue, _box(xr, RAIL_END, keel, lo + 0.01, *zk)])
         sbot = _socket_bottom(sign)
+        k = KEEL_CHAMFER
         cuts = [_box(xr - 1.0, RAIL_END + 1.0, hi - depth, hi + 1.0,
-                     *sorted((sign * g0, sign * g1)))]
+                     *sorted((sign * g0, sign * g1))),
+                _box(FLANGE_END, RAIL_END + 1.0, yb - 1.0, lo, *sorted(        # (the flange's
+                    (0.0, sign * (GROOVE[0] - 5.5))))]                          # end)
         if sign > 0:
-            cuts += [*_tslot(xr - 1.0, RAIL_END - 3.0), *_stop_scale(xr, RAIL_END, hi)]
+            chamfer = Solid.extrude(Face(Wire.make_polygon(
+                [(RAIL_END - k, keel - 0.01, zk[0] - 1.0), (RAIL_END + 0.01, keel - 0.01,
+                                                             zk[0] - 1.0),
+                 (RAIL_END + 0.01, keel + k, zk[0] - 1.0)], close=True)),
+                (0, 0, zk[1] - zk[0] + 2.0))
+            cuts += [*_tslot(xr - 1.0, RAIL_END - 3.0), *_stop_scale(xr, RAIL_END, hi), chamfer]
         zt = sign * (tz0 + tz1) / 2
         y_head = sbot + RAIL_HEAD_SINK             # the screws' heads' tops, sunk in the floor
         cuts += [_rod_y(x, zt, M5_PILOT / 2, top - th - 1.0, y_head + RAIL_SCREW + 1.0)
                  for x in RAIL_SCREW_X]
         band = [(sign * zv(hi), hi), (sign * (zv(hi) - LINER * math.sqrt(2)), hi),
                 (sign * (zv(yb) - LINER * math.sqrt(2)), yb), (sign * zv(yb), yb)]
-        liner = _prism_x(band, xr + CLEAR, RAIL_END - CLEAR)
+        liner = _prism_x(band, xr + CLEAR, FLANGE_END - CLEAR)
         keys, holes = _liner_pegs(s.apex, FLANGE_PEGS, (sign,))
         rails.append(difference(union([bar, tongue]), *cuts, *holes))
         liners.append(union([liner, *keys]))
@@ -2332,9 +2346,8 @@ def assembly(view) -> list:
                       "lip), its body's every 10 mm at the rear. Lay the bottle in, its label "
                       "up, its base to the gate: it slides back onto it. The lip gauge stays "
                       "down; its pad stands just in front of the mouth, a millimetre or less "
-                      "from the rim (more, and the gate or a knob is off). A Champagne "
-                      "bottle's cork and cage stand in front of the mouth: lift the gauge as "
-                      "it goes in and let it rest on the cage. To uncork, lift the gauge onto "
+                      "from the rim (more, and the gate or a knob is off). To uncork, lift "
+                      "the gauge onto "
                       "its stop and hold it there, or let it rest on the corkscrew; let go "
                       "and it falls back onto the mouth. It must be down before the handle "
                       "turns: past level it holds the bottle forward, as the gate holds it "
@@ -2389,19 +2402,21 @@ USE_LIMITS = (
     "While the handle turns, keep fingers clear of where it pinches: both side stacks, their "
     "bay faces included (each time the cradle comes back to rest the cradle links shear past "
     "the inner bars' front ends, at the bay's edge); the crank and the rod's end, which turn "
-    "in the open above and behind the gearbox, right in front of the hand crank; and the base "
-    "board behind the decanter, where at rest the base stop's rails come down to 18 mm over "
-    "it, less than the 25 mm a finger needs (ISO 13854). A trapped finger: the worm holds "
+    "in the open above and behind the gearbox, right in front of the hand crank. (At rest the "
+    "base stop comes down to 26 mm over the base board behind the decanter, a finger's 25 mm "
+    "by ISO 13854: keep the board clear there.) A trapped finger: the worm holds "
     "whatever it has caught, so turn the handle back the way it came; never pull. When you "
     "leave it, take the handle off (its thumb screw): nothing turns without it. "
     "Never force the handle: if it stiffens, stop and look (the drive holds a firm 40 N push "
     "at the grip against a blocked cradle, no more; if it stays stiff after being forced, "
     "look for a bent pin between the rod and the cradle link). Letting go stops the bottle, "
     "not the stream: the wine already over the lip runs on; to stop it, turn back about a "
-    "turn. Check the lip gauge is down before the bottle passes level: with it up, a wet "
-    "bottle slides forward at full tilt, its mouth off the pivot over the decanter. Uncork "
-    "at rest, the base stop set and the lip gauge up, holding the neck, a corkscrew's lever "
-    "lifted straight up; then flip the gauge down onto the mouth. Not a sparkling wine under "
+    "turn. The lip gauge falls back onto the mouth by itself: check it is down before the "
+    "bottle passes level, nothing holding it up (a corkscrew left in the cork included); with "
+    "it up, a wet bottle slides forward at full tilt, its mouth off the pivot over the "
+    "decanter. Uncork at rest, the base stop set: lift the lip gauge onto its stop and hold "
+    "it there, or let it rest on the corkscrew, holding the neck, the corkscrew's lever lifted "
+    "straight up; let go and the gauge falls back onto the mouth. Not a sparkling wine under "
     "pressure: at rest the mouth points 50° up toward the front; ease such a cork out by "
     "hand before the bottle goes in, the mouth pointed away from people. Keep your hands off "
     "the decanter while the handle turns (near rest the cradle box comes down over it, and "
@@ -2617,6 +2632,16 @@ def at_setting(mech, size: BottleSize):
                                                          0.0))))
         bodies.append(b)
     return replace(mech, bodies=bodies, meta=dict(mech.meta, bottle=size.name))
+
+
+def finger_gap(mech) -> float:
+    """The least gap (mm) between the base stop (its rails, their liners, its gate and lock)
+    and the base board's top in the assembled cradle ``mech`` as drawn (its V blocks at their
+    lowest): at rest, the lowest it comes over the swing, at least :data:`FINGER_GAP`."""
+    by = {b.name: b for b in mech.bodies if b.part is not None}
+    board = by["base_plate"].placed_part().bounding_box().max.Y
+    return min(b.placed_part().bounding_box().min.Y for n, b in by.items()
+               if n.startswith("base_stop")) - board
 
 
 def bottle_hits(mech, size: BottleSize = DESIGN) -> list[str]:

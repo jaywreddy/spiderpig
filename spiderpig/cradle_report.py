@@ -542,7 +542,7 @@ def balance(rest_deg: float = -50.0, full_deg: float = 30.0) -> dict:
     false."""
     front, _ = cr.SADDLES
     x0 = front.vee[0]
-    flange_end = cr.RAIL_END - cr.CLEAR
+    flange_end = cr.FLANGE_END - cr.CLEAR
     rows = []
     for size in cr.SIZES:
         at = cr.setting(size)
@@ -728,7 +728,7 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
     xr, xf = rear.vee[1], sum(front.vee) / 2
     m_rail, case = 0.0, ""
     for z in cr.SIZES:
-        end = min(cr.RAIL_END - cr.CLEAR, z.length - HEEL)
+        end = min(cr.FLANGE_END - cr.CLEAR, z.length - HEEL)
         if end <= xr:
             continue
         com = com_of(z)

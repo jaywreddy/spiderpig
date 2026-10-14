@@ -956,6 +956,13 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
     print standing; the rails print apart; grease on the thumbscrews (the BOM's notes).
   - **The procedure:** set all three by their scales with the bottle out, lay it in onto
     the gate with the gauge down; lift the gauge only to uncork.
+  - **A finger's gap under the base stop** (round 1's stand review, ISO 13854's 25 mm, left
+    to the base stop): the flanges and their liners end at 588 mm (past a 6 L's heel at
+    561) and the +z rail's keel is chamfered at its end, so at rest, set for a 6 L, the base
+    stop comes no nearer the board than 26.4 mm on B and 26.5 on A (the rails' end had been
+    18.8). `cradle.finger_gap`, checked at every angle of the clash test; the use limits no
+    longer list it as a pinch, and say the gauge falls back (to uncork: hold it on its stop
+    or rest it on the corkscrew).
 - **Why:**
   - **A full 6 L tipped nose-up at rest (B1).** The gate pushes the base below the axis,
     a couple that moves the saddles' reaction toward the base by its depth x tan 50°: at the
