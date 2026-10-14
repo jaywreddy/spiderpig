@@ -150,7 +150,8 @@ stops there:
     crankpin's M8 thread was a cantilever that long, rated at SF 1.0-1.25 once its yield
     and preload were right.)
   - **Hand crank:** a printed offset crank on the gearbox's 11 mm input shaft.
-    - Its hub is keyed on the shaft, with an M3 set screw on the key.
+    - Its hub is keyed on the shaft, with an M3 x 9 knurled thumb screw on the key
+      (`handcrank.HANDLE_THUMB`, McMaster 92545A115, 18-8): it comes off by hand.
     - A 100 mm tube carries the arm out to where no moving part of the stack ever reaches,
       clear of the outer plate. The arm is 100 mm on B and 105 on A (`handcrank.HANDLE_RS`):
       a full 6 L's worst turn under 25 N at the grip.
@@ -179,10 +180,27 @@ stops there:
   - On the bench, a ring into each pin's lower groove and the pin up through its lowest
     link; the other ring once its highest link is on. Nothing is glued or threadlocked.
   - About USD 21-24 a pin (the discount is per length), so only where the jam needs it
-    (`config.PRODUCT_PIN_JOINTS`): B's rod pin P and arm pin K, A's one pin E. B's J, J2, X
-    and Y stay M6 Chicago screws (8 mm barrel, 243 threadlocker, the barrel's head held
-    from below with taped pliers), which hold the 6 L's jam there at SF 1.39 to 2.19. The
+    (`config.PRODUCT_PIN_JOINTS`): B's rod pin P and arm pin K, A's one pin E. B's J and
+    J2 stay M6 Chicago screws (8 mm barrel, 243 threadlocker, the barrel's head held
+    from below with taped pliers), which hold the 6 L's jam there at SF 1.39 and 2.19. The
     shoulder screws tried first are in [DECISIONS.md](DECISIONS.md).
+- **The quick-release pins** (`clevis8`, `construction.pivots.clevis`, since 2026-10-13):
+  B's X and Y, where its cradle link b6 meets each side, on both sides.
+  - An 18-8 clevis pin, 8 x 20 mm, head 14 x 3, 15 mm usable to its 2 mm cotter hole
+    (McMaster 90378A701, USD 5.47), and a hairpin cotter (an R-clip: 2 mm wire, 50 mm long,
+    McMaster 98350A131, 5 for USD 3.68).
+  - Its head is inside the stack, on b4's (b5's) outer face over a printed take-up spacer:
+    15 mm less the 11.2 mm stack and the least play, to the 0.1 mm (3.5 mm: 0.3 mm of play).
+    The head and the spacer stand 6.8 mm out, into the layer of b2 and b3, which never come
+    within 70 mm of X or Y.
+  - The clip goes through the pin's hole from the bay side by hand, over b6, in the gap
+    under the inner plate; the pin's end passes the inner plate's layer in its open, as a
+    tie rod does (the bar O1-O2 never comes within 81 mm of X or Y).
+  - Pull the two clips and the passive side panel slides off its cradle link, the pins
+    with it ("Flat pack"). The clips go back in the pins' holes.
+  - Rated as a solid 8 mm rod at annealed 304's minimum yield (205 MPa): 1.39 x the M6
+    Chicago barrel it replaced. Jammed, X 2.70 and Y 2.34 (they were 1.72 and 1.49).
+  - B's stack is 79.68 mm a side (80.15 with the Chicago screws).
 - **The pillars** are 12 mm steel standoffs (MISUMI NETRF12, M6 ends;
   `StandoffAxle.cradle_shaft`), each made to its plates' gap: a 6 L's jam bent the 10 mm
   ones (SF 0.78 at B's O2). An M6 button head goes through each plate without a washer, to
@@ -223,11 +241,16 @@ stops there:
   0.125 in aluminium it replaced. SendCutSend publishes no plywood price: its cutting is
   quoted at upload. Oil it; it isn't weather-proof.
   - Both outer plates' rails bolt onto it with printed L-brackets: an M5 screw and nut
-    through the upright and the outer plate, an M6 x 20 carriage bolt up through the board
-    and the foot (Bolt Depot 18220). Its hole is round (`cradle.CARRIAGE_HOLE`); its square
+    through the upright and the outer plate, an M6 x 25 carriage bolt up through the board
+    and the foot (Bolt Depot 18221). Its hole is round (`cradle.CARRIAGE_HOLE`); its square
     neck is pulled into the wood, as a carriage bolt is meant to be, so its nut goes on from
     above: nothing to reach under the board. (A router can't cut the square hole the
     aluminium plate had: its bit leaves 1.6 mm corners.)
+    - The nut is a knurled thumb nut, by hand (`cradle.THUMB_NUT`, DIN 467 form, 24 mm
+      across, 6 mm tall: McMaster 92815A203, USD 1.69), 5 mm of thread past it. The bolt
+      stands 22 mm off the outer plate (`cradle.BOLT_OUT`) so the knurl clears the upright's
+      M5 screw head by 2.25 mm. An M6 wing nut (28-33 mm wings) would hit the upright; Bolt
+      Depot lists no metric thumb nut.
     - All the bolts go in with the board. The passive side is set down 7-15 mm out from its
       place, inside its bolts, and pushed home.
   - A U-notch from its front edge takes the vessel's riser, slid in on the table; the
@@ -311,18 +334,49 @@ adapters lying on the table don't ride the cradle (only the drawn magnum's do).
 
 `spiderpig/cradle_pack.py` (`flat_pack`) takes the cradle apart for the trip and stacks it
 in one box. The cradle page's Flat pack button flies each piece into the box, in the order
-they go in (`/api/cradle/{key}/pack`).
+they go in (`/api/cradle/{key}/pack`). B packs as three modules, A flat.
 
-**What comes apart.** Only what is already fastened. The steps are read off the parts and
-the linkage, so they follow the design (`cradle_pack.pieces`):
+**B: three modules and the hand crank** (`cradle_pack.module_pieces`, the user's of
+2026-10-13). No tool, no small part left loose: about 188 L, where its flat pack was 112.
+1. Crank it to the pack pose: to rest, then 4 handle turns on (`cradle_pack.PACK_TURNS`,
+   `pack_t`), the bottle 35° neck up.
+   - At rest the passive side's cradle link b6 overlaps that side's inner bar O1-O2 (its
+     front ties' boss over the bar's O1 end, by about 2 mm) until 46° neck up. Past that it
+     clears it: 14.6 mm at 4 turns, 38 mm at full tilt.
+   - 4 turns, not full tilt: there the cradle box stands up out of the side and the box is
+     259 L.
+2. Undo the four thumb nuts on the base board's bolts by hand and lift the cradle off the
+   board, both sides and the cradle box together. The bolts stay in the board, the nuts
+   back on them.
+3. Pull the two R-clips of B's pins X and Y on the passive side, from the bay ("The
+   quick-release pins").
+4. Slide the passive side panel straight off its cradle link, outward. Its pins come out of
+   the link with it; the clips go back in their holes.
+   - `cradle_pack.slide_hits` sweeps the panel's parts along z in 0.5 mm steps against the
+     drive side and the cradle box: nothing meets (the payload's `slide_off`).
+5. Loosen the hand crank's thumb screw and pull it off.
+
+The pieces: the base board (its feet, bolts and thumb nuts), the passive side panel (every
+part of that side but its cradle link, its brackets), the drive side with the cradle box
+(both cradle links, the ties, the saddles and the drawn bottle's adapters, the light, the
+base stop: the worm holds it as cranked), the hand crank, and the other bottles' adapters
+and collars, loose round them. The passive side's b5, hanging on J2, swings into its panel
+(`cradle_pack.tuck`). The two panels lie flat on the board, either face down; the drive side
+lies with the cradle box up or down, about 442 mm tall.
+
+The steps above lift the cradle off the board before the panel slides: its brackets' feet
+sit on the bolts, so the panel can't slide sideways while it stands there.
+
+**A: flat.** Its cradle link rides pillar G between the side's plates, so a side can't come
+off it at pins alone. It comes apart where it is already fastened (`cradle_pack.pieces`):
 1. The bottle's adapters come out of the saddles. Every adapter and collar travels loose.
-2. The hand crank comes off its shaft (its set screw).
-3. The base board comes off (the brackets' nuts). The carriage bolts stay in it.
+2. The hand crank comes off its shaft (its thumb screw).
+3. The base board comes off (the brackets' thumb nuts). The carriage bolts stay in it.
 4. Each inner plate comes off (its screws, from the bay side).
 5. Each side panel comes off its cradle link, where the link meets the side
    (`mech.connections`).
    - A pin: its upper E-ring comes off; the pin stays in the side's links, the ring back on
-     it for the trip. A's pin E (drive side), B's pins X and Y (both sides).
+     it for the trip. A's pin E (drive side).
    - A pillar slides out of the link's bore: A's pillar G.
    - The cradle box then comes away whole.
 6. The cradle box comes apart:
@@ -333,7 +387,7 @@ the linkage, so they follow the design (`cradle_pack.pieces`):
      each cradle link with the loose spacers that sat over it.
 
 A link left hanging on one joint once its cradle link is off swings into its panel
-(`cradle_pack.tuck`): B's b5 on J2, which stood above the frame.
+(`cradle_pack.tuck`).
 
 **How it stacks** (`cradle_pack.pack`). It works on each part's bounding box, 3 mm apart
 (`CLEAR`):
@@ -342,9 +396,9 @@ A link left hanging on one joint once its cradle link is off swings into its pan
   axis orientations.
 - **The base board** stays at the bottom, where it is. The box is as wide as the largest
   piece lying flat.
-- **The side panels** drop onto a heightmap, in both orders, either face down, either way
-  round; the lowest pair wins. They nest: one panel's pillars stand between the other's
-  gearbox and brackets.
+- **The side panels** (B: the passive side and the drive side with the cradle box) drop
+  onto a heightmap, in both orders, either face down, either way round; the lowest pair
+  wins. A's nest: one panel's pillars stand between the other's gearbox and brackets.
 - **The rest fill in**, largest first, at the lowest free slot of a voxel grid. That
   includes the cavities under a panel's plate. A slot is picked by:
   - what raises the box least;
@@ -353,7 +407,8 @@ A link left hanging on one joint once its cradle link is off swings into its pan
   A piece never goes both over and under another: it couldn't go in.
 - **The order in**: bottom up, as the stack allows (what is under a piece goes in first).
 
-The box's bounds per design are in `tests/test_cradle.py` (`PACK_BOX`).
+The box's bounds per design are in `tests/test_cradle.py`: `PACK_BOX` (A) and
+`MODULE_BOX` (B, read off its base board's size).
 
 ## Loads and checks
 
@@ -477,7 +532,7 @@ grip jammed, 2026-10-13):
 | swing | −50.0° to +30.0°, the mouth still (0 mm), every bottle's mouth on the pivot |
 | transmission | 36.7° at worst (the rod's); the parallelograms 48.5° and 51.5° |
 | gearbox | 32.0 N·m peak: SF 1.41 on the NRV040's 45 N·m; 23.7 N at the 100 mm grip |
-| jam (66 N·m) | pillar O2 1.31, pillar O1 1.39, pin J2 1.39 (Chicago), pin Y 1.49, pin X 1.72, links b3 and b4 1.73, the crank's keyway 2.0, pin J 2.19, pin P 3.51 and pin K 4.48 (steel) |
+| jam (66 N·m) | pillar O2 1.33, pin J2 1.39 (Chicago), pillar O1 1.41, links b3 and b4 1.73, the crank's keyway 2.0, pin J 2.19 (Chicago), pin Y 2.34 and pin X 2.70 (clevis), pin P 3.51 and pin K 4.48 (steel) |
 | walking | every joint 6.5 or more; the crank's keyway 4.1 |
 | rod, crankpin | buckling 1.59 × its jam force; the crankpin 1.96 jammed |
 | stand | tips at 26.0° at worst (a full 6 L), a push of 41.9 N or more at a bottle's top |

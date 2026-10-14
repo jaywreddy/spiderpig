@@ -1,10 +1,12 @@
 /**
- * The cradle's flat pack (``/api/cradle/{key}/pack``, ``spiderpig.cradle_pack``): each
- * piece it comes apart into (the base plate, the side panels, the cradle links, the tie
- * rods, the saddles…) flies from the assembled cradle into its place in the box, one after
- * another in the order they go in (bottom up), and the box fades in round them. The
- * transforms are in the baked model's own frame (the ``walker`` node's: x along the
- * linkage, y up, z across the bay), from each part's pose at the clip's first frame.
+ * The cradle's pack (``/api/cradle/{key}/pack``, ``spiderpig.cradle_pack``): each piece it
+ * comes apart into (flat, A: the base plate, the side panels, the cradle links, the tie
+ * rods, the saddles…; as modules, B: the base board, the passive side panel, the drive side
+ * with the cradle box, the hand crank) flies from the assembled cradle into its place in the
+ * box, one after another in the order they go in (bottom up), and the box fades in round
+ * them. The transforms are in the baked model's own frame (the ``walker`` node's: x along
+ * the linkage, y up, z across the bay), from each part's pose at the pack's pose (``pose``:
+ * its clip fraction; the clip's first frame when it has none).
  */
 import * as THREE from 'three';
 
@@ -21,6 +23,14 @@ export interface PackData {
   modules: PackModule[];    // in the order they go in the box, bottom up
   box: { inside_mm: number[]; outside_mm: number[]; floor: number[]; volume_l: number };
   steps: string[];          // how it comes apart, in order
+  mode?: 'flat' | 'modules';
+  /** The pose the transforms start from: the crank cranked to it (B: 4 turns from rest). */
+  pose?: { crank_t: number; clip_fraction: number; tilt_deg: number; turns_from_rest: number | null };
+}
+
+/** The clip fraction the pack's transforms start from (0, the clip's first frame, if none). */
+export function packFraction(data: PackData): number {
+  return data.pose?.clip_fraction ?? 0;
 }
 
 interface Track { node: THREE.Object3D; from: Mover; to: Mover; module: number }
@@ -58,8 +68,9 @@ export function stagger(s: number, i: number, n: number, overlap = 0.5): number 
   return u * u * (3 - 2 * u);              // smoothstep
 }
 
-/** Build the pack for the loaded model: ``walker`` its baked root (posed at the clip's first
- * frame when this is called), ``hide`` the display-only nodes (the bottle, the decanter). */
+/** Build the pack for the loaded model: ``walker`` its baked root (posed at the pack's pose,
+ * ``packFraction``, when this is called), ``hide`` the display-only nodes (the bottle, the
+ * decanter). */
 export function createPack(walker: THREE.Object3D, data: PackData, hide: string[]): Pack {
   const tracks: Track[] = [];
   data.modules.forEach((m, i) => {
@@ -100,7 +111,7 @@ export function createPack(walker: THREE.Object3D, data: PackData, hide: string[
     walker.updateMatrixWorld(true);
     const inv = walker.matrixWorld.clone().invert();
     for (const t of tracks) if (t.module === i) {
-      const bb = new THREE.Box3().setFromObject(t.node).applyMatrix4(inv);
+      const bb = new THREE.Box3().setFromObject(t.node, true).applyMatrix4(inv);   // (precise: a turned mesh)
       b.union(bb);
     }
     return { key: m.key, min: b.min.toArray().map(Math.round), max: b.max.toArray().map(Math.round) };

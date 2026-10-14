@@ -13,7 +13,7 @@ import { loadGlb, teardown, type LoadedScene } from '../loader';
 import { isAbort } from '../loads';
 import type { View } from '../types';
 import { COLORS, createDiagram, type Diagram } from './diagram';
-import { createPack, type Pack, type PackData } from './pack';
+import { createPack, packFraction, type Pack, type PackData } from './pack';
 import { createPour } from './pour';
 import {
   fractionAtTurns, phaseAt, tiltAt, tiltWords, turnsAt, type CradleMotion,
@@ -253,12 +253,16 @@ function renderPackInfo(d: PackData): void {
   const info = $('pack-info');
   const [x, y, z] = d.box.outside_mm.map((v) => Math.round(v)) as [number, number, number];
   info.replaceChildren();
-  const h = document.createElement('h3'); h.textContent = 'Flat pack';
+  const h = document.createElement('h3');
+  h.textContent = d.mode === 'modules' ? 'Packed in modules' : 'Flat pack';
   const size = document.createElement('p');
   size.className = 'pack-size';
   size.textContent = `One box, ${x} × ${z} × ${y} mm outside (${d.box.volume_l} L).`;
   const how = document.createElement('p');
-  how.textContent = 'It comes apart where it is already screwed together, in this order:';
+  const turns = d.pose?.turns_from_rest;
+  how.textContent = d.mode === 'modules'
+    ? `It comes apart in modules, by hand, in this order${turns ? ` (cranked ${turns} turns from rest first)` : ''}:`
+    : 'It comes apart where it is already screwed together, in this order:';
   const ol = document.createElement('ol');
   for (const step of d.steps) {
     const li = document.createElement('li');
@@ -304,8 +308,12 @@ async function togglePack(): Promise<void> {
     if (mine !== ticket || !loaded) return;
   }
   if (!pack) {
-    loaded.action.time = 0;         // the transforms start from the clip's first frame
+    // the transforms start from the pack's pose (B is cranked to it first: the readouts and
+    // the diagram show it too, and the cradle comes back to it)
+    f = packFraction(packData);
+    loaded.action.time = f * loaded.clipDuration;
     loaded.mixer.update(0);
+    dirty = true;
     pack = createPack(loaded.walker, packData, ['bottle', 'decanter', 'decanter_riser']);
   }
   renderPackInfo(packData);

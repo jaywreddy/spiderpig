@@ -793,3 +793,60 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** `spiderpig/construction/pivots/pivot_pin.py`,
   `spiderpig/hardware/cradle_catalog.py` (its own block), `spiderpig/cradle_pack.py`,
   `tests/test_cradle.py`.
+
+### 2026-10-13: cradle B packs as three modules (user: "3 pieces plus the crank with no small parts")
+
+- **What:** the user's choice: "The passive side panel unpins from the cradle box at 2
+  quick-release pins. Both side panels lift off the base board at 4 knob nuts, and the
+  hand crank pulls off. The drive side and cradle box travel as one unit. That's 3 pieces
+  plus the crank with no small parts, but a box of roughly 200 L."
+  ([DECANTER.md](DECANTER.md), "Flat pack" and "The quick-release pins").
+  - **The pack** (`cradle_pack.module_pieces`, `PACK_TURNS`, `pack_t`): B is cranked to 4
+    handle turns from rest, lifted off its board, its two clips pulled, its passive side
+    slid off. The pieces: the base board, the passive side panel, the drive side with the
+    cradle box, the hand crank, and the other bottles' nine adapters and collars, loose.
+    The payload says its `mode`, its `pose` (the viewer poses the clip there first) and
+    `slide_off`. A keeps its flat pack: its cradle link rides pillar G.
+  - **The pins at X and Y** (`clevis8`, `construction.pivots.clevis`, both sides): an 18-8
+    clevis pin 8 x 20 (McMaster 90378A701, USD 5.47), its head inside the stack over a
+    printed take-up spacer, a hairpin cotter (98350A131, 5 for USD 3.68) through it from
+    the bay. The planner's new `tips` hook claims its end in the inner plate's open (a seat),
+    and `CradlePlates` keeps the plate off its path as off the tie rods'. Its usable length
+    is capped as a Chicago barrel's (`chicago.MAX_BARREL`): uncapped, the 25-44 mm stock let
+    the planner spread X's links 30 mm apart.
+  - **The base board's nuts:** a knurled thumb nut (DIN 467 form, 24 x 6, McMaster
+    92815A203, USD 1.69) on an M6 x 25 carriage bolt (Bolt Depot 18221, USD 0.26), 5 mm of
+    thread past it; the bolt 22 mm off the outer plate (from 19) so the knurl clears the
+    bracket's M5 screw head. The brackets' M5 screws stay: each bracket travels on its side.
+  - **The hand crank:** an M3 x 9 knurled thumb screw on the input key (McMaster 92545A115,
+    18-8, USD 1.76) for the M3 set screw; `cradle_report.wheel_sweep` sweeps its head.
+- **Numbers** (B):
+  - The box: 643 x 611 x 478 mm outside, 188 L, 13 pieces (it was 643 x 547 x 318, 112 L,
+    27 pieces).
+  - The pose: 35° neck up, b6 R 14.6 mm clear of the bar O1-O2 in plan (38.3 at full tilt;
+    it overlaps from rest to 46° neck up). The sweep of the panel along z meets nothing.
+  - The stack: 79.68 mm a side (80.15): the clips' gap is 2.7 mm (the Chicago heads' 3.2),
+    and the layer between b4/b5 and b6 a 3.2 mm gap.
+  - Jam SF at 66 N·m: X 2.70, Y 2.34 (Chicago 1.72, 1.49); every other row as before but
+    pillar O2 1.33 (1.31), O1 1.41 (1.39). Walking 4.1 and more. The gearbox SF 1.41.
+- **Why:**
+  - **The pose:** full tilt clears most (38 mm), but the cradle box stands up 290 mm over
+    the mouth there: a 259 L box. 4 turns from rest is about 190 L, with 14.6 mm of
+    clearance (3 to 6 turns all clear).
+  - **The pin:** the cheapest tool-free one that keeps the stack. MISUMI's one-end-ring,
+    other-end-cross-hole pin is made to length but from USD 17.62 (unhardened); its headed
+    clevis pins start at 18 mm usable (USD 9.36); a ball-lock pin's tip would stand into
+    the layers past b4. The 15 mm stock pin needs a 3.5 mm printed spacer under its head:
+    the head and spacer reach into the layer of b2 and b3, which never come near X or Y.
+  - **The nut:** a wing nut's wings (DIN 315 M6: 30-33 mm; McMaster's American style 28
+    mm) hit the bracket's upright 14 mm off the bolt. Bolt Depot sells no metric thumb nut.
+  - **The order:** the panel's brackets sit on the board's bolts, so the cradle comes off
+    the board before the panel slides off (the user's list had the slide first).
+- **Cost:** the four clevis pins USD 21.88 and a pack of clips 3.68, for a pack of 20 M6 x
+  12 Chicago screws (8.50); four thumb nuts 6.76 for four thin nuts 0.40; the bolts 0.03
+  more each; the thumb screw 1.76 for a 0.09 set screw. About USD 25 more.
+- **Where:** `spiderpig/construction/pivots/clevis.py`, `spiderpig/construction/axle.py`
+  (`tips`), `spiderpig/construction/cradle.py` (`_bracket`, the inner plate's keep-outs),
+  `spiderpig/construction/handcrank.py`, `spiderpig/config.py`,
+  `spiderpig/hardware/cradle_catalog.py`, `spiderpig/cradle_pack.py`,
+  `spiderpig/cradle_report.py`, `viewer/src/decant/{pack,main}.ts`, `tests/test_cradle.py`.

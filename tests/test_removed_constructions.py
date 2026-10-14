@@ -24,7 +24,7 @@ from spiderpig.spec import SpecErrors
 from spiderpig.store import Store
 
 KEPT = {"crank": {"bolt", "bolt_round"}, "pin": {"chicago"}, "pillar": {"standoff"}}
-CRADLE = {"crank": {"hand"}, "pin": {"chicago6", "pivot8"}}   # decanting cradles' only
+CRADLE = {"crank": {"hand"}, "pin": {"chicago6", "pivot8", "clevis8"}}  # cradles only
 
 REMOVED = [(field, key) for field, table in REMOVED_CONSTRUCTIONS.items() for key in table]
 

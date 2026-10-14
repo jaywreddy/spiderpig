@@ -29,10 +29,10 @@ self-locking worm gear reducer instead of a servo:
   on its end over the rod. The rod rides just over the block, so the crankpin carries the
   rod's force a few millimetres off its socket (the 2026-10-10 review round 2: the arm had
   been on the key, the rod 21 mm over it, the crankpin a cantilever that long).
-* **The hand crank**: printed, on the input shaft (keyed, an M3 set screw on the key), a
-  tube :data:`REACH` out along the shaft to its arm, :data:`HANDLE_R` throw, so the arm
-  turns behind every moving part of the stack; its grip a printed sleeve spinning on a
-  NETRF10 standoff screwed into the arm.
+* **The hand crank**: printed, on the input shaft (keyed, an M3 thumb screw on the key: it
+  comes off by hand, :data:`HANDLE_THUMB`), a tube :data:`REACH` out along the shaft to its
+  arm, :data:`HANDLE_R` throw, so the arm turns behind every moving part of the stack; its
+  grip a printed sleeve spinning on a NETRF10 standoff screwed into the arm.
 
 The rod sweeps across the axis O once a turn (the crank-rocker's folded toggle), so nothing
 of the drive may stand at O in the rod's layer: the planner puts the rod over the block and
@@ -204,7 +204,11 @@ REACH = 100.0                   # its printed tube from the input shaft's end to
 ARM_T, ARM_W = 10.0, 18.0       # the printed crank arm: along the shaft, across
 GRIP = (20.0, 25.0)             # its printed grip: d, length (on a 10 mm NETRF10)
 HUB_LEN = 18.0                  # the printed crank's hub on the input shaft (its radius the box's)
-HANDLE_SET = 6.0                # the M3 cup-point set screw on that key
+HANDLE_THUMB = (9.0, 8.0, 5.0)  # the knurled-head M3 thumb screw down onto that key (McMaster
+#                                 92545A115, 18-8): under its head, its head d and h; through the
+#                                 hub's 6.7 mm of print to the key, its head 2.3 mm off the hub
+#                                 (2026-10-13: the hand crank comes off with no tool, as a
+#                                 cradle packs: it was an M3 x 6 cup-point set screw)
 
 
 def handle_r(config) -> float:
@@ -685,6 +689,12 @@ class HandCrank(Group):
                        "dir": [round(float(v), 6) for v in d], "axis_z": round(zh, 3),
                        "reach_mm": REACH, "arm_t_mm": ARM_T, "hub_r_mm": self.box.crank_hub_r,
                        "hub_len_mm": HUB_LEN,
+                       "thumb_r_mm": round(math.hypot(self.box.input_d / 2
+                                                      + self.box.input_key[1] + 0.05
+                                                      + HANDLE_THUMB[0] + HANDLE_THUMB[2],
+                                                      HANDLE_THUMB[1] / 2), 3),
+                       "thumb_x_mm": [-HUB_LEN / 2 - HANDLE_THUMB[1] / 2,
+                                      -HUB_LEN / 2 + HANDLE_THUMB[1] / 2],
                        "r_mm": handle_r(ctx.config) + GRIP[0] / 2 + 1.0,
                        "grip_r_mm": handle_r(ctx.config),
                        "grip_len_mm": GRIP[1] + 1.2 + M5.head_h},
@@ -775,8 +785,9 @@ class HandCrank(Group):
                "printed grip over the standoff, the wide washer and an M5 button head on its "
                "end (threadlocker): the grip spins on the standoff. The crank's hub onto the "
                "gearbox's input shaft, its keyway over the shaft's 3 mm key (it comes with "
-               "the gearbox: else a 3 x 3 x 16 DIN 6885 key), and the M3 set screw down onto "
-               "the key. Then the rod's check: from rest (the cradle neck up) turn the handle "
+               "the gearbox: else a 3 x 3 x 16 DIN 6885 key), and the M3 thumb screw down onto "
+               "the key by hand (snug: it only keeps the hub on; it comes off the same way). "
+               "Then the rod's check: from rest (the cradle neck up) turn the handle "
                "4 turns one way and, if the rear tie's screw head under the drive side's "
                "cradle link never passed over the rod, back to rest and 4 turns the other "
                "way. Where the head is over the rod, press the rod up against its washer and "
@@ -832,11 +843,12 @@ class HandCrank(Group):
 
     def _handle(self, end, d, z, host, throw: float = HANDLE_R) -> list:
         """The printed hand crank on the input shaft: its hub keyed over the shaft's 3 mm key
-        (an M3 set screw down onto the key in a printed pilot), a tube :data:`REACH` on
-        along the shaft and the arm there, :data:`HANDLE_R` out; its grip a printed sleeve
-        spinning on a NETRF10 (the drive's other standoffs' stock: no shoulder screw to buy
-        elsewhere) in a socket in the arm. Drawn at rest, the arm down: built along +x from
-        the shaft's end, then turned to ``d`` and moved to ``end`` (side z ``z``)."""
+        (an M3 thumb screw down onto the key in a printed pilot, :data:`HANDLE_THUMB`), a
+        tube :data:`REACH` on along the shaft and the arm there, :data:`HANDLE_R` out; its
+        grip a printed sleeve spinning on a NETRF10 (the drive's other standoffs' stock: no
+        shoulder screw to buy elsewhere) in a socket in the arm. Drawn at rest, the arm down:
+        built along +x from the shaft's end, then turned to ``d`` and moved to ``end`` (side
+        z ``z``)."""
         along_x = (0.0, 90.0, 0.0)                      # a cylinder's axis along +x
         a = math.degrees(math.atan2(d[1], d[0]))
 
@@ -858,8 +870,14 @@ class HandCrank(Group):
             Location((-HUB_LEN / 2, 0.0, (key_top + 0.2) / 2)))
         pilot = Cylinder(1.3, hub_r - key_top + 2.0).moved(
             Location((-HUB_LEN / 2, 0.0, (hub_r + key_top + 2.0) / 2)))
-        set_screw = Cylinder(1.25, HANDLE_SET).moved(
-            Location((-HUB_LEN / 2, 0.0, key_top + 0.05 + HANDLE_SET / 2)))
+        t_len, t_d, t_h = HANDLE_THUMB
+        if key_top + t_len <= hub_r + 0.5:
+            raise ConstructionError(f"an M3 x {t_len:g} thumb screw doesn't reach the input "
+                                    f"key through the {hub_r - key_top:.1f} mm hub")
+        t_top = key_top + 0.05 + t_len               # its head's underside
+        set_screw = union([Cylinder(1.25, t_len).moved(
+            Location((-HUB_LEN / 2, 0.0, t_top - t_len / 2))),
+            Cylinder(t_d / 2, t_h).moved(Location((-HUB_LEN / 2, 0.0, t_top + t_h / 2)))])
         # the grip at the arm's end, out along the shaft: a printed sleeve spinning on a
         # NETRF10 standing in a socket in the arm's outer face, an M5 up through the arm into
         # it (its head in a counterbore in the arm's inner face), a wide washer and an M5 on
@@ -892,8 +910,8 @@ class HandCrank(Group):
         handle = difference(union([hub, arm]), bore, keyway, pilot, hole.moved(down),
                             socket.moved(down), sink.moved(down))
         return [hardware("handle", place(handle), host, fab="printed", color=PRINT_COLOR),
-                hardware("handle_set_screw", place(set_screw), host, fab="purchased",
-                         bom_key=f"m3_set_screw_{HANDLE_SET:g}", color=STEEL),
+                hardware("handle_thumb_screw", place(set_screw), host, fab="purchased",
+                         bom_key=f"m3_thumb_screw_{t_len:g}", color=STEEL),
                 hardware("handle_grip", place(grip.moved(down)), host, fab="printed",
                          color="#2b2b2b"),
                 hardware("handle_grip_pin", place(standoff.moved(down)), host,
