@@ -65,18 +65,19 @@ doesn't plan (each with why)."""
 DEFAULT_PIVOTS: dict[str, tuple[str, str]] = {
     "walker": ("chicago", "standoff"),
     "mechanism": ("chicago", "standoff"),
-    "arm": ("ball", "ball_pillar"),
+    "arm": ("ball_pair", "ball_pair_pillar"),
 }
 """The ``(pin, pillar)`` a design gets when it names none, per kind (:func:`default_pin`,
 :func:`default_pillar`): a walker's and a mechanism's plain holes (the Chicago screw, the
 standoff column; D1, 2026-10-07); an arm's ball bearings at every pivot (the user's call of
 2026-10-11 for the palletizer: plain holes' play, at the arm's levers, is millimetres at the
-tool; ``spiderpig precision --compare``)."""
+tool; ``spiderpig precision --compare``), since 2026-10-14 the approved arm's: each pivot a
+preloaded bearing pair on a ground pin (ISO 9283 RP 0.047 mm in a session; the single
+``ball``: 0.2 mm), which also holds a crash at the tool where the single bearing's barrel
+bent (the plain ``palletizer``'s elbow pin E, jam SF 0.44: DECISIONS.md 2026-10-14)."""
 
 LINKAGE_PIVOTS: dict[str, tuple[str, str]] = {
-    # the user's arm (2026-10-13/14, docs/agentlib/DECISIONS.md): each pivot a preloaded
-    # bearing pair on a ground pin, ISO 9283 RP 0.047 mm in a session (ball: 0.2 mm)
-    "palletizer_reach": ("ball_pair", "ball_pair_pillar"),
+    # empty since the approved arm's pivots became every arm's (2026-10-14)
 }
 """Per linkage: the ``(pin, pillar)`` it gets when it names none, where its kind's
 :data:`DEFAULT_PIVOTS` aren't its own design's (each with why)."""
@@ -95,9 +96,10 @@ KIND_FIT: dict[str, dict[str, float]] = {
 }
 """Per kind: the :class:`fit.Params` fields a design gets where :class:`fit.Params`' own
 default doesn't build its :data:`DEFAULT_PIVOTS` (each with why): an arm's links are
-6.6 mm in radius, the ``ball_pillar``'s 10 mm bearing seat plus ``min_wall``
-(``BearingSeat.check``). Applied when the config's ``params`` are the plain defaults
-(:func:`default_params`); a spec's ``fit`` starts from them (``FitSpec.params``)."""
+6.6 mm in radius, a pillar's 10 mm bearing seat (``ball_pillar``, ``ball_pair_pillar``)
+plus ``min_wall`` (``BearingSeat.check``). Applied when the config's ``params`` are the
+plain defaults (:func:`default_params`); a spec's ``fit`` starts from them
+(``FitSpec.params``)."""
 
 
 def default_pin(lk: linkage.Linkage) -> str:
@@ -399,11 +401,13 @@ class BuildConfig:
     #                                   DEFAULT_PIVOTS: a walker's 6 mm round standoff column,
     #                                   a stock goBILDA one or else one steel standoff made to
     #                                   length, never spliced, construction.pivots.standoff;
-    #                                   an arm's ball_pillar, an MR106ZZ in every link on it)
+    #                                   an arm's ball_pair_pillar, MR106ZZ pairs in hubs
+    #                                   beside its links on a ground shaft)
     pin: str = ""                     # pivots between links ("": default_pin, the kind's: a
     #                                   walker's M3 Chicago screw (4 mm barrel), printed rings
     #                                   and head spacers, construction.pivots.chicago; an
-    #                                   arm's ball, an MR84ZZ in every rider on the barrel)
+    #                                   arm's ball_pair, preloaded MR84ZZ pairs on a ground
+    #                                   pin)
     crank: str = ""                   # the crankshaft ("": default_crank: the linkage's own,
     #                                   LINKAGE_CRANKS, else its kind's, DEFAULT_CRANKS: "bolt",
     #                                   construction.crank.BoltCrank, single aluminium web plates

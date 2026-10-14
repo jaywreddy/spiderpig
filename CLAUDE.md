@@ -65,10 +65,10 @@ robot; a mechanism's `single`, one side).
 - Constructions: `--pin chicago --pillar standoff --crank bolt` for a walker (their columns
   stock tubes cut to length and DIN 988 shims, nothing printed: a construction's `spacers`,
   `construction.pivots.common.Stock`); an arm's
-  pivots are the ball bearings `--pin ball` / `--pillar ball_pillar` on 6.6 mm links
-  (`config.DEFAULT_PIVOTS`, `KIND_FIT`; their McMaster models: `spiderpig cad`); the
-  precision pivots `--pin ball_pair --pillar ball_pair_pillar` pair each bearing in a hub
-  beside its link on ground shafts, preloaded (`construction/pivots/pair.py`). The `bolt` crank is single
+  pivots are the approved arm's `--pin ball_pair --pillar ball_pair_pillar`, each bearing
+  paired in a hub beside its link on ground shafts, preloaded (`construction/pivots/pair.py`),
+  on 6.6 mm links (`config.DEFAULT_PIVOTS`, `KIND_FIT`; their McMaster models: `spiderpig
+  cad`); the single bearings `--pin ball` / `--pillar ball_pillar` stay selectable. The `bolt` crank is single
   aluminium web plates on steel hex-standoff crankpins (`construction/crank/`); `bolt_round`
   is the round friction-clamped standoff. Nothing else exists (`config.REMOVED_CONSTRUCTIONS`,
   `config.REMOVED_PARAMS`: a removed key fails with its replacement).
@@ -82,12 +82,17 @@ robot; a mechanism's `single`, one side).
   and toe on `bolt_round`), `MODULE_CRANKS` (empty), `LINKAGE_CRANK_SHEETS`
   (`hoecken_pantograph` on 0.080 in 6061), `LINKAGE_TORQUE_LIMITS`; Klann variants' quads at
   `linkage.KLANN_QUAD`. `config.default_crank` / `default_crank_sheet` read them. A
-  linkage's own pivots and roles: `LINKAGE_PIVOTS`, `LINKAGE_ROLES` (`roles.default_key`),
-  its links' sheets `materials.LINK_SHEETS`: `palletizer_reach` is the user's approved arm
-  (ball_pair pivots, the `mt4_compact` turret, stall homing and the camera). The
+  linkage's own pivots and roles: `LINKAGE_PIVOTS` (empty), `LINKAGE_ROLES`
+  (`roles.default_key`), its links' sheets `materials.LINK_SHEETS`: `palletizer_reach` is the
+  user's approved arm (the `mt4_compact` turret, stall homing and the camera; its links'
+  sheets the plain `palletizer`'s too, `materials.PALLETIZER_LINKS`). The
   Chicago barrels a linkage stocks on a crank: `chicago.BARRELS` (the Strider's bolt crank),
   beside `MAX_BARREL`.
 - Heads: `StackSpec.heads` "best" (sunk first); a single-plate crank plans "gap_sink".
+- Controllers (the role `controller`): what drives the design, then its servo's protocol
+  (`controllers.BUS_DEFAULTS`): an STS3215 walker the deck's ESP32 kit, an XL330 / XL430
+  walker `u2d2_dynamixel`, an arm `skr_pico_pi_zero`. An arm's `servo` and `crank_sheet`
+  stay at their defaults, any other refused (`config.ROLE_FIELDS`).
 - Numbers (layers, height, parts, cost, audit verdict): `docs/agentlib/DESIGNS.md`.
 
 ## Environment
