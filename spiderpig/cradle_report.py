@@ -13,13 +13,18 @@ A cradle (:mod:`construction.cradle`) is judged here, not by the walking model o
 * **The loads**: a quasi-static planar solve (:func:`statics`) of the side's bodies, the
   cradle box's mass and a **sealed full 6 L methuselah** (the worst a cradle carries: nothing
   pours out of it) on the cradle, gravity alone, at every crank angle: the crank's torque,
-  every pin's force. A **jam** case puts a firm push at the grip on a blocked cradle
-  (:data:`JAM_HAND_N`, about twice what the worst turn takes, through the worm at a hand's
-  speed: :func:`jam_nm`), away from the crank-rocker's toggles (where nothing can bound
-  it). The pins are rated by :mod:`spiderpig.strength` at these loads ("walk" the bottle's,
-  "jam" the jam's).
+  every pin's force. A **jam** case puts the most the hand crank's slip clutch lets through
+  on a blocked cradle (since design review round 1: :func:`jam_nm`; a firm push at the grip,
+  :data:`JAM_HAND_N`, had been the case), away from the crank-rocker's toggles (where
+  nothing can bound it). The pins are rated by :mod:`spiderpig.strength` at these loads
+  ("walk" the bottle's, "jam" the jam's).
+* **The clutch's cap** (:func:`clutch_case`): the most the hand crank's slip clutch lets
+  onto the crank, however hard the push (``config.PRODUCT_CLUTCH_NM``), on a blocked cradle
+  over the whole turn, the toggles included: each part's safety factor as the excluded
+  band round the toggles narrows to nothing, and where it falls under 1.3 and 1.
 * **The hand**: the crank torque through the worm (its ratio, its static efficiency: the
-  slow end of a hand's speed) at the handle's throw; turns per pour.
+  slow end of a hand's speed) at the handle's throw; turns per pour; the slip clutch's
+  setting against the worst starting turn; the gearbox and the keyed plates at the jams.
 * **The rod**: Euler buckling of the connecting rod at its largest compression.
 * **The stand**: the centre of mass of the cradle with each bottle, full and empty, at its
   own setting, over the swing, against the feet (the base ties' line along x, the two
@@ -30,6 +35,7 @@ A cradle (:mod:`construction.cradle`) is judged here, not by the walking model o
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass
 
@@ -40,11 +46,14 @@ from spiderpig.construction import cradle as cr
 from spiderpig.construction.handcrank import (
     CRANKPIN_D,
     HANDLE_R,
+    LIGHT_LOAD_N,
     NRV040,
     HandCrank,
     WormBox,
+    clutch,
     handle_r,
 )
+from spiderpig.cradle_drive import clutch_case, drive_limits, verdict
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware import mass as mass_mod
 from spiderpig.hardware.cradle_catalog import (
@@ -64,16 +73,25 @@ TOGGLE_DEG = 30.0       # the jam case leaves out crank angles this close to a t
 #                         the cradle moves under 1° per 10° of crank (it is at its end), and a
 #                         block's force grows without bound
 E_ALU = 69000.0         # MPa, 5052 / 6061
-WARN_HANDLE_N = 40.0    # a handle force a hand turns steadily for a minute
-JAM_HAND_N = 40.0       # the jam: a firm push at the grip against a blocked cradle (about twice
-#                         the worst turn's: a hand that feels it stop and pushes on)
+WARN_HANDLE_N = LIGHT_LOAD_N    # the grip force a light-load crank takes (MIL-STD-1472H)
+JAM_HAND_N = 40.0       # a firm push at the grip against a blocked cradle (about twice the
+#                         worst turn's: a hand that feels it stop and pushes on): no bound by
+#                         itself, so the jam is the clutch's cap (jam_nm); reported beside it
+
+
+def push_nm(box: WormBox = NRV040, grip_r: float = HANDLE_R) -> float:
+    """The crank torque (N·m) of :data:`JAM_HAND_N` at the grip (``grip_r`` mm) through the
+    worm at a hand's speed (``WormBox.eta_hand``)."""
+    return JAM_HAND_N * grip_r / 1000.0 * box.ratio * box.eta_hand
 
 
 def jam_nm(box: WormBox = NRV040, grip_r: float = HANDLE_R) -> float:
-    """The jam case's crank torque (N·m): :data:`JAM_HAND_N` at the grip (``grip_r`` mm)
-    through the worm at a hand's speed (``WormBox.eta_hand``: ``config.PRODUCT_JAM_NM`` is
-    this number)."""
-    return JAM_HAND_N * grip_r / 1000.0 * box.ratio * box.eta_hand
+    """The jam case's crank torque (N·m): the most the hand crank's slip clutch lets through
+    (``construction.handcrank.clutch``'s cap, design review round 1's drive), however hard
+    the push at the grip (``grip_r`` mm out): :func:`push_nm`'s firm push is no bound (a hand
+    on a crank that feels stuck pushes 60-150 N), the clutch is. ``config.PRODUCT_JAM_NM``
+    is this number."""
+    return clutch(grip_r, box.ratio, box.eta_hand)["crank_cap_nm"]
 
 
 @dataclass
@@ -322,7 +340,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                                "full_kg": size.mass_full_kg})
 
     mech = fabricate(tmpl, config, 1.0, store=store)
-    # the loads: a sealed full 6 L methuselah; the jam: a firm push at the grip
+    # the loads: a sealed full 6 L methuselah; the jam: the hand crank's clutch's cap
     rigid, joints = planar_model(config, mech, 1.0, cr.DESIGN)
     torque, forces = statics(config, rigid, joints, ts)
     near = _toggles(config, ts)
@@ -352,6 +370,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     empty, _ = statics(config, rigid0, joints0, ts)
     out["drive"]["empty_handle_force_n"] = round(
         float(np.abs(empty).max()) / (box.ratio * box.eta_static) / (grip_r / 1000.0), 2)
+    out["drive"].update(drive_limits(box, grip_r, peak, handle))
     if out["drive"]["handle_force_n"] > WARN_HANDLE_N:
         out.setdefault("warnings", []).append(
             f"the handle needs {out['drive']['handle_force_n']} N at its grip at worst")
@@ -393,6 +412,11 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     out["strength"] = strength_check(config, mech, rows, peak, struct)
     out["structure"] = {k: v for k, v in struct.items() if k not in ("rated", "pillars")}
     out["blocked"] = blocked(config, mech, ts=ts)
+    cap = out["drive"]["clutch"]["crank_cap_nm"]
+    out["jam_capped"] = clutch_case(config, mech, ts, tilt, cap, out["rod"], out["crankpin"],
+                                    out["drive"]["jam_push_nm"])
+    out["blocked_capped"] = blocked(config, mech, ts=ts, crank_nm=cap)
+    out["verdict"] = verdict(lk.key, out)
     moving = {*cr.REAR_MOVES, *cr.STOP_MOVES}
     out["saddles"] = saddles(float(tilt.min()), float(tilt.max()), sum(
         part_mass_kg(config, b) for b in mech.bodies if b.name in moving))
@@ -548,32 +572,96 @@ PLA_ALLOW = 10.0        # MPa: a printed PLA part under a load that stays (a qua
 #                         ~40 MPa across its layers: it creeps, it doesn't break)
 STAINLESS_YIELD = 210.0     # MPa: the thumbscrews' 18-8, as annealed 304 (no class named)
 CORKSCREW_N = 13.0      # a corkscrew's push into the cork (the mechanical review: 6-13 N)
-LOCK_PRELOAD_N = 600.0  # the base stop's M5 lock, snug into its printed pilot (about 0.6 N·m)
+LOCK_TORQUE_NM = 0.5    # the base stop's knob (26 mm) turned tight by hand
+NUT_FACTOR = 0.2        # a dry steel screw's preload: torque / (factor x diameter)
 PLA_FRICTION = 0.3
+TPU_FRICTION = 0.5      # the rear lead screw's TPU 95A brake washer on aluminium and PLA, dry
+LEAD_FRICTION = 0.08    # its bronze nut on the stainless screw, greased: the least it may be
+KNOCK_N = 50.0          # a knock sideways on the rear knob (a hand, a bottle going in)
+BASE_RING = 10.0        # a bottle's base rests on a ring this far in from its body's radius
+HEEL = 10.0             # its body's last 10 mm, rounded into the base, rest on nothing
+
+
+def balance(rest_deg: float = -50.0, full_deg: float = 30.0) -> dict:
+    """Where the saddles' reaction on each bottle centres along its axis (from the mouth),
+    at rest, lying level and at full tilt, against the support it rests on: the front V's
+    front end to the rear support's end (the rear V and the base stop's rails' flanges
+    behind it, as far as the body's heel). At rest the gate pushes the base back below the
+    axis (as low as it can: the base's ring or the gate's bottom edge, or the V's grip on
+    the body, whichever is lower), at full tilt the lip gauge pushes the rim's top forward
+    above it: either is a couple with the weight's pull along the axis, and moves the
+    centre toward the base by its depth x tan(tilt) (review round 1, B1). The centre of mass:
+    ``BottleSize.com_from_mouth`` (round 1's shell-and-wine model). A centre past the
+    support's end lifts the neck off the front V: ``ok`` false."""
+    front, _ = cr.SADDLES
+    x0 = front.vee[0]
+    flange_end = cr.FLANGE_END - cr.CLEAR
+    rows = []
+    for size in cr.SIZES:
+        at = cr.setting(size)
+        end = min(flange_end, size.length - HEEL)
+        com = size.com_from_mouth
+        gate = min(size.r - BASE_RING, -(cr.GATE_BOTTOM + at.rear))
+        depth_rest = max(gate, size.r / math.sqrt(2))
+        rim = (cr.GAUGE_PAD[0] + size.r_neck) / 2
+        for case, deg, depth in (("rest", rest_deg, depth_rest), ("level", 0.0, 0.0),
+                                 ("full", full_deg, rim)):
+            x = com + depth * math.tan(math.radians(abs(deg)))
+            rows.append({"bottle": size.name, "case": case, "tilt_deg": round(deg, 1),
+                         "com_mm": round(com, 1), "couple_depth_mm": round(depth, 1),
+                         "centre_mm": round(x, 1), "support_mm": [x0, round(end, 1)],
+                         "margin_mm": round(end - x, 1), "ok": x0 < x < end})
+    return {"rows": rows, "worst_margin_mm": min(r["margin_mm"] for r in rows),
+            "ok": all(r["ok"] for r in rows)}
+
+
+def _section(zy) -> tuple[float, float, float]:
+    """A polygon's (z, y) area, second moment about its horizontal centroidal axis and its
+    farthest fibre from that axis (mm): a rail's section under a vertical load."""
+    pts = [*zy, zy[0]]
+    a = cy = iy = 0.0
+    for (z0, y0), (z1, y1) in itertools.pairwise(pts):
+        cross = z0 * y1 - z1 * y0
+        a += cross
+        cy += (y0 + y1) * cross
+        iy += (y0 * y0 + y0 * y1 + y1 * y1) * cross
+    a /= 2.0
+    cy /= 6.0 * a
+    i = iy / 12.0 - a * cy * cy
+    far = max(abs(y - cy) for _, y in zy)
+    return abs(a), abs(i), far
 
 
 def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 0.0
             ) -> dict:
     """The saddles' loads and stresses, a sealed full bottle of each size at its own setting
-    over the swing (``rest_deg`` to ``full_deg``), its weight the worst way for each part:
+    over the swing (``rest_deg`` to ``full_deg``), its weight the worst way for each part
+    (its centre of mass ``BottleSize.com_from_mouth``), and :func:`balance`:
 
-    * the rear V block on its tie rods (a 6 L methuselah's V blocks sit on them: its
-      bearing on the rods' seats);
-    * a V block hung on its thumbscrew (any thinner bottle's, the heaviest a 6 L set a hair
-      off the rods): the screw's load and its nut's bearing in the block, and the roll
-      couple of a load at the axis held by a screw at the block's end: the post (stiffer)
-      and the screw bend under it, shared by their stiffness;
-    * the V block itself, carried from that end;
-    * the base stop at rest (the bottle's weight down the axis and a corkscrew's push): its
-      gate's plate in bending between its ears, its lock's grip;
+    * the rear V block on its tie rods (a 6 L methuselah's V blocks sit on them);
+    * a V block hung on its thumbscrew (the heaviest a 6 L set a hair off the rods): the
+      screw's barrel nut in the block, the roll couple of a load at the axis held at the
+      block's end (the post, stiffer, and the screw share it), and at rest the pitch of the
+      bottle's pull along the axis, 121 mm over the post's root, on the post too;
+    * the rear lead screw: its brake (the collar's TPU washer under the block's load) against
+      the thread turning back under it, its span and its tower under a knock at the knob;
+    * the base stop at rest (the bottle's pull down the axis and a corkscrew's push): its
+      gate's plate in bending between its ears, its lock's grip (the knob's preload on two
+      faces) and the T-slot's lips under that preload; its rails as cantilevers from their
+      sockets, the body's share on their flanges at worst (the bottle on the front V and the
+      flanges' end), the sockets' floors under their tongues;
     * the lip gauge at full tilt (the weight down the axis, no friction counted): its pad,
-      its bar and its arm in bending.
+      its arm across the mouth, its bar beside the neck, its bridge over the post (the push
+      is off their lines by the hinge's 41 mm across and the rim's height), the post (bent
+      by the push, twisted by its turn) and the pin (the turn's couple on its knuckles).
 
-    Each row: the load (N), the stress (MPa) and its limit (:data:`PLA_ALLOW` for a printed
-    part, the steel's yield), their ratio ``sf``. ``moving_kg``: what rides the rear V block
-    (itself, its liner, the base stop's rails and gate), hung with the bottle."""
+    Each row: the load (N, or N·m where the case says), the stress (MPa) and its limit
+    (:data:`PLA_ALLOW` for a printed part, the steel's yield), their ratio ``sf``.
+    ``moving_kg``: what rides the rear V block (itself, its liner, the base stop), hung with
+    the bottle."""
     g = G
-    w_max = max(z.mass_full_kg for z in cr.SIZES) * g
+    heavy = max(cr.SIZES, key=lambda z: z.mass_full_kg)
+    w_max = heavy.mass_full_kg * g
     front, rear = cr.SADDLES
     rows: list[dict] = []
 
@@ -582,71 +670,186 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
                      "stress_mpa": round(stress, 2), "limit_mpa": limit,
                      "sf": round(limit / max(stress, 1e-9), 2)})
 
+    s_rest = math.sin(math.radians(-rest_deg))
+    c_rest = math.cos(math.radians(rest_deg))
     # the rear V block on its two rods (the 6 L, lying level): each seat a 9 mm wide arc
     # over 24 mm of rod
     seat_area = 2.0 * math.sqrt(cr.SEAT_R ** 2 - (cr.SEAT_R - cr.SEAT_DEPTH) ** 2) * 24.0
     row("rear V block's seats on the tie rods", "a full 6 L methuselah, level", w_max,
         w_max / 2 / seat_area, PLA_ALLOW)
-    # hung on its thumbscrew: the rear one carries what the rear V carries (all of it, its
-    # centre of mass within the rear V); the front one its share
-    xf, xr = sum(front.vee) / 2, sum(rear.vee) / 2
-    hung = (max(z.mass_full_kg for z in cr.SIZES) + moving_kg) * g
-    zg = cr.REAR_GUIDE[1]
-    af = cr.COUPLER[0]
-    face = 3 * math.sqrt(3) / 2 * (af / math.sqrt(3)) ** 2 - math.pi * 4.2 ** 2
-    row("rear thumbscrew's coupling nut on the V block", "a full 6 L, hung, level", hung,
-        hung / face, PLA_ALLOW)
-    couple = hung * zg                                        # N·mm, about the axis
+    # hung on its lead screw: the barrel nut bears up on the bore's end over it
+    hung = (heavy.mass_full_kg + moving_kg) * g
+    nd = cr.LEAD_NUT[0]
+    ring = math.pi / 4 * ((nd + 0.2) ** 2 - (cr.LEAD_SCREW[0] + 1.0) ** 2)
+    row("rear barrel nut on the V block", "a full 6 L, hung, level", hung, hung / ring,
+        PLA_ALLOW)
+    zs = cr.REAR_LEAD[1]
+    xp = cr.REAR_POST[0]
     post_i = math.pi * cr.POST_D ** 4 / 64
-    root = 8.0 - 1.22687 * 1.25                               # M8's minor diameter
+    post_s = math.pi * cr.POST_D ** 3 / 32
+    root = cr.LEAD_SCREW[2]
     screw_i = math.pi * root ** 4 / 64
+    screw_s = math.pi * root ** 3 / 32
     share = post_i / (post_i + screw_i)
-    row("rear post (NETRF12, bending)", "the couple of a full 6 L hung at the screw",
-        couple * share / 1000, couple * share / (math.pi * cr.POST_D ** 3 / 32),
-        NETRF10_YIELD)
-    row("rear thumbscrew (M8, bending)", "its share of that couple",
-        couple * (1 - share) / 1000, couple * (1 - share) / (math.pi * root ** 3 / 32),
-        STAINLESS_YIELD)
-    # the V block at the post's boss: the post's share of the couple into its flats and
-    # the gusset under them
+    couple = hung * zs                                        # N·mm, about the axis
+    row("rear post (NETRF12, bending)", "the roll of a full 6 L hung at the screw (N·m)",
+        couple * share / 1000, couple * share / post_s, NETRF10_YIELD)
+    row("rear lead screw (bending)", "its share of that roll (N·m)",
+        couple * (1 - share) / 1000, couple * (1 - share) / screw_s, STAINLESS_YIELD)
+    # at rest, a bottle hung on the screw (any but the methuselah, whose block sits on its
+    # rods): its pull along the axis, at the axis, pitches the block about the post's root
+    worst = (0.0, None)
+    for size in cr.SIZES:
+        if cr.setting(size).rear <= 1e-9:
+            continue
+        m = (size.mass_full_kg + moving_kg) * g
+        com = size.com_from_mouth
+        pitch = m * c_rest * (com - xp) + (m * s_rest + CORKSCREW_N) * -cr.REAR_FOOT_TOP
+        roll = m * c_rest * zs
+        both = math.hypot(pitch, roll)
+        if both > worst[0]:
+            worst = (both, size)
+    both, size = worst
+    if size is not None:
+        row("rear post (NETRF12, bending at rest)", f"a full {size.name} hung: the pull "
+            "along the axis and the roll (N·m)", both * share / 1000,
+            both * share / post_s, NETRF10_YIELD)
+    # the V block at the post's boss: the post's share of the roll into its flats and the
+    # gusset under them
     depth = cr.REAR_FLANGE[1] - cr.GUSSET[1]
-    row("rear V block at the post's boss", "the post's share of that couple",
+    row("rear V block at the post's boss", "the post's share of the roll (N·m)",
         couple * share / 1000, couple * share / (cr.GUSSET[0] * depth ** 2 / 6), PLA_ALLOW)
-    share_f = max(max((xr - z.com_from_mouth) / (xr - xf), 0.0) * z.mass_full_kg * g
-                  for z in cr.SIZES)
+    # the lead screw's brake: the collar's TPU washer, pressed by the block's load, against
+    # the thread turned back by it (its lead 8 mm: no self-locking)
+    od, d = cr.COLLAR[0] / 2, cr.LEAD_SCREW[0] / 2 + 0.3
+    r_brake = 2.0 / 3.0 * (od ** 3 - d ** 3) / (od ** 2 - d ** 2)
+    pitch_d = cr.LEAD_SCREW[0] - 1.0                          # its mean diameter, Tr8 x 2
+    lead_a = math.atan(cr.LEAD / (math.pi * pitch_d))
+    phi = math.atan(LEAD_FRICTION / math.cos(math.radians(15.0)))
+    back = cr.LEAD / (2 * math.pi) * math.tan(lead_a - phi) / math.tan(lead_a)  # mm per N
+    rows.append({"part": "rear lead screw's brake (no turning back)",
+                 "case": "any load on the block: its brake's grip per its pull back (mm·N/N)",
+                 "load_n": round(back, 3), "grip_n": round(TPU_FRICTION * r_brake, 3),
+                 "sf": round(TPU_FRICTION * r_brake / back, 2)})
+    # a knock at the rear knob: into the tower's arm (the screw's top in its bushing), the
+    # tower bending at its root; the screw between the nut and the bushing, knocked midway
+    tx0, tx1, tz0, tz1 = cr.TOWER
+    k0, k1 = cr.REAR_KNOB
+    lever = (k0 + k1) / 2 - cr.REAR_FOOT_TOP
+    t_s = min((tx1 - tx0) * (tz1 - tz0) ** 2, (tz1 - tz0) * (tx1 - tx0) ** 2) / 6
+    row("rear knob's tower (bending)", "a 50 N knock sideways at the knob", KNOCK_N,
+        KNOCK_N * lever / t_s, PLA_ALLOW)
+    span = cr.ARM[1] - cr.LEAD_BOSS[2]
+    row("rear lead screw (bending)", "a 50 N knock midway between the nut and the bushing",
+        KNOCK_N, KNOCK_N * span / 4 / screw_s, STAINLESS_YIELD)
+    share_f = max(max((cr.SADDLES[1].vee[0] + cr.SADDLES[1].vee[1]) / 2
+                      - z.com_from_mouth, 0.0)
+                  / ((cr.SADDLES[1].vee[0] + cr.SADDLES[1].vee[1]) / 2 - sum(front.vee) / 2)
+                  * z.mass_full_kg * g for z in cr.SIZES)
     row("front thumbscrew's nut on the V block", "the heaviest front share, level", share_f,
         share_f / (3 * math.sqrt(3) / 2 * (cr.M6_HEX[0] / math.sqrt(3)) ** 2
                    - math.pi * 3.3 ** 2), PLA_ALLOW)
     # the base stop at rest: down the axis, the gate's plate a beam between its ears
-    s_rest = math.sin(math.radians(-rest_deg))
     push = w_max * s_rest + CORKSCREW_N
     span = 2 * (cr.GROOVE[0] + cr.GROOVE[1]) / 2
     height = cr.REAR_FLANGE[1] + 6.0 - cr.GATE_BOTTOM
     row("base stop's gate (bending)", "a full 6 L at rest, a corkscrew's push", push,
         push * span / 4 / (height * cr.GATE_T ** 2 / 6), PLA_ALLOW)
-    grip = 2 * PLA_FRICTION * LOCK_PRELOAD_N
-    rows.append({"part": "base stop's lock (its grip)", "case": "the same", "load_n":
-                 round(push, 1), "grip_n": grip, "sf": round(grip / push, 2),
-                 "backstop_mm": cr.SLOT[1] - cr.SLOT[0] - 2 * cr.TIE_HOLE / 2})
+    preload = LOCK_TORQUE_NM * 1000 / (NUT_FACTOR * 5.0)
+    grip = 2 * PLA_FRICTION * preload
+    rows.append({"part": "base stop's lock (its grip)", "case": "the same: its knob tight "
+                 "by hand, the ear on the rail and the washer on the T-slot's lips",
+                 "load_n": round(push, 1), "grip_n": round(grip, 1),
+                 "sf": round(grip / push, 2)})
+    _, neck, lip, (ww, _), _, _, _ = cr.TSLOT
+    wd = cr.LOCK_WASHER[0]
+    reach = ww / 2 - (neck / 2 + wd / 2) / 2                   # the load's lever to the root
+    width = wd + 2 * lip                                       # along the slot (45° spread)
+    row("base stop's T-slot lips (bending)", "the lock's preload", preload,
+        preload / 2 * reach / (width * lip ** 2 / 6), PLA_ALLOW)
+    # the rails: the body's share on the flanges at worst, each rail a cantilever from its
+    # socket; the socket's floor under the tongue's back end
+    lo, hi, _ = cr.REAR_FLANGE
+    yb, ft = cr.FLANGE
+    apex = rear.apex
+
+    def zv(y: float) -> float:
+        return y - apex
+
+    _, rail_i, far = _section([(zv(hi), hi), (cr.RAIL_Z, hi), (cr.RAIL_Z, lo),   # (the -z
+                               (zv(lo) + ft, lo), (zv(yb) + ft, yb), (zv(yb), yb)])  # one's)
+    xr, xf = rear.vee[1], sum(front.vee) / 2
+    m_rail, case = 0.0, ""
+    for z in cr.SIZES:
+        end = min(cr.FLANGE_END - cr.CLEAR, z.length - HEEL)
+        if end <= xr:
+            continue
+        com = z.com_from_mouth
+        for name, deg, depth in (("at rest", rest_deg, max(min(
+                z.r - BASE_RING, -(cr.GATE_BOTTOM + cr.setting(z).rear)),
+                z.r / math.sqrt(2))), ("level", 0.0, 0.0)):
+            wn = z.mass_full_kg * g * math.cos(math.radians(deg))
+            x = com + depth * math.tan(math.radians(abs(deg)))
+            on = wn * (x - xf) / (end - xf)                    # on the flanges' end at worst
+            m = on * (end - xr) / 2                            # per rail
+            if m > m_rail:
+                m_rail, case = m, f"a full {z.name} {name}: its body on the flanges' end (N·m)"
+    row("base stop's rails (bending at their sockets)", case, m_rail / 1000,
+        m_rail * far / rail_i, PLA_ALLOW)
+    tx0_, tz0_, tz1_, _ = cr.TONGUE
+    bear = m_rail / ((xr - tx0_) * 2 / 3)                      # the tongue's ends' bearing
+    t_floor = cr.SOCKET[3] - cr.RAIL_HEAD_SINK / 2
+    span_f = tz1_ - tz0_ + 2 * cr.CLEAR
+    row("base stop's sockets (their floors under the tongues)", "the same", bear,
+        3 * bear * span_f / (2 * (xr - tx0_) / 2 * t_floor ** 2), PLA_ALLOW)
     # the lip gauge at full tilt: the weight down the axis on its pad (on the rim's top)
     pull = w_max * math.sin(math.radians(full_deg))
     bottom, half = cr.GAUGE_PAD
+    ax0, ax1 = cr.GAUGE_FRONT
+    y0, y1, bz0, bz1 = cr.GAUGE_BAR
+    by0, by1, rz0, rz1 = cr.GAUGE_BRIDGE
+    yp, zp = cr.GAUGE_PIVOT
     rim = (bottom + max(z.r_neck for z in cr.SIZES)) / 2
-    y0, y1 = cr.GAUGE_BAR
+    t = ax1 - ax0                                              # their depth along x
     row("lip gauge's pad (bending)", "a full 6 L at full tilt, no friction", pull,
-        pull * (y0 - rim) / ((2 * half) * 9.8 ** 2 / 6), PLA_ALLOW)
-    row("lip gauge's bar (bending)", "the same", pull,
-        pull * ((y0 + y1) / 2 - rim) / ((2 * half) * (y1 - y0) ** 2 / 6), PLA_ALLOW)
-    arm = cr.GAUGE_POST_X[1] + 0.5 - cr.GAUGE_CHEEK_X[0]
+        pull * (y0 - bottom) / ((2 * half) * t ** 2 / 6), PLA_ALLOW)
     row("lip gauge's arm (bending)", "the same", pull,
-        pull * abs(cr.GAUGE_PIVOT[1]) / ((y1 - y0) * arm ** 2 / 6), PLA_ALLOW)
-    return {"rows": rows, "worst_sf": min(r["sf"] for r in rows)}
+        pull * -bz1 / ((y1 - y0) * t ** 2 / 6), PLA_ALLOW)
+    bw, bh = bz1 - bz0, y1 - y0
+    row("lip gauge's bar (bending both ways)", "the same", pull,
+        pull * -(bz0 + bz1) / 2 / (bh * bw ** 2 / 6)
+        + pull * ((y0 + y1) / 2 - rim) / (bw * bh ** 2 / 6), PLA_ALLOW)
+    rw, rh = rz1 - rz0, by1 - by0
+    row("lip gauge's bridge (bending both ways)", "the same", pull,
+        pull * -zp / (rh * rw ** 2 / 6) + pull * ((by0 + by1) / 2 - rim) / (rw * rh ** 2 / 6),
+        PLA_ALLOW)
+    px0, px1, _ = cr.GAUGE_POST
+    pl, pw = px1 - px0, -cr.FRONT_HALF - cr.CLEAR - cr.FRONT_W[0]   # along x, across
+    turn = pull * -zp                                          # N·mm, about the post's axis
+    sigma = pull * (yp - cr.FRONT_TOP) / (pw * pl ** 2 / 6)
+    a, b = max(pl, pw), min(pl, pw)
+    tau = turn / ((1 / 3 - 0.21 * b / a * (1 - (b / a) ** 4 / 12)) * a * b ** 2)
+    row("lip gauge's post (bent and twisted)", "the same (its knuckle on the post's back)",
+        pull, math.sqrt(sigma ** 2 + 3 * tau ** 2), PLA_ALLOW)
+    (f0, f1), (b0, b1) = cr.GAUGE_KNUCKLES
+    spacing = (b0 + b1) / 2 - (f0 + f1) / 2
+    on_pin = turn / spacing                                    # each knuckle on the pin
+    m_pin = on_pin * ((f1 - f0) / 2 + (px0 - f1))
+    row("lip gauge's pin (M5, bending)", "its knuckles' couple, the push's turn", on_pin,
+        m_pin / (math.pi * 4.134 ** 3 / 32), STAINLESS_YIELD)
+    row("lip gauge's post's bore (bearing)", "the pin's couple in it", on_pin,
+        6 * turn / ((cr.TIE_HOLE - 0.2) * pl ** 2), PLA_ALLOW)
+    worst_sf = min(r["sf"] for r in rows)
+    return {"rows": rows, "worst_sf": worst_sf, "balance": balance(rest_deg, full_deg),
+            "gauge": cr.gauge_return()}
 
 
 def wheel_sweep(mech) -> list[dict]:
-    """What the hand crank's turning would hit: its tube about the input shaft, the disc its
-    hub's thumb screw sweeps, and the disc its arm and grip sweep, against every part but the
-    crank's own and the gearbox it rides (the crank is drawn at rest)."""
+    """What the hand crank's turning would hit: the solids of revolution its parts sweep
+    about the input shaft (``notes["hand_crank"]["handle"]["sweep"]``: its hub and tube, the
+    hub's thumb screw's head, the clutch's flange and boss, the disc its arm, grip and the
+    grip's bolt and nut sweep), against every part but the crank's own and the gearbox it
+    rides (the crank is drawn at rest)."""
     from build123d import Axis, Cylinder, Location
 
     w = (mech.meta.get("hand_crank") or {}).get("handle")
@@ -655,7 +858,6 @@ def wheel_sweep(mech) -> list[dict]:
     end, d = np.asarray(w["end_xy"], float), np.asarray(w["dir"], float)
     z = float(w["axis_z"]) - float(mech.meta.get("mid_plane", 0.0))
     a = math.degrees(math.atan2(d[1], d[0]))
-    reach, t_arm = float(w["reach_mm"]), float(w["arm_t_mm"])
 
     def cyl(r: float, t0: float, t1: float):
         # along +x from the shaft's end, then turned to the shaft's way (as it is built)
@@ -663,10 +865,9 @@ def wheel_sweep(mech) -> list[dict]:
             Location(((t0 + t1) / 2, 0.0, 0.0))).rotate(Axis.Z, a).moved(
             Location((float(end[0]), float(end[1]), z)))
 
-    sweep = cyl(float(w["hub_r_mm"]), -float(w.get("hub_len_mm", 0.0)), reach - t_arm) + cyl(
-        float(w["r_mm"]), reach - t_arm, reach + float(w["grip_len_mm"]))
-    if "thumb_r_mm" in w:               # the hub's thumb screw's head, turning with it
-        sweep = sweep + cyl(float(w["thumb_r_mm"]), *map(float, w["thumb_x_mm"]))
+    from spiderpig.shapes import union
+
+    sweep = union([cyl(float(r), float(t0), float(t1)) for r, t0, t1 in w["sweep"]])
     out = []
     box = sweep.bounding_box()
     for b in mech.bodies:
@@ -702,8 +903,8 @@ def joint_rows(config: BuildConfig, rider: str, joints, forces, jam_f) -> list[d
 def loads(config: BuildConfig, store=None) -> dict:
     """The joint loads :mod:`spiderpig.strength` rates a cradle at (what
     :func:`strength.design_loads` returns for one: the audit's, ``explain``'s and verify's
-    pin and plate rows): a sealed full 6 L methuselah's walking, a firm push at the grip
-    jammed (:func:`jam_nm`)."""
+    pin and plate rows): a sealed full 6 L methuselah's walking, the hand crank's clutch's
+    cap jammed (:func:`jam_nm`)."""
     tmpl = template_for(config)
     design = design_side(tmpl, config)
     mech = fabricate(tmpl, config, 1.0, store=store)
@@ -732,16 +933,16 @@ def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float,
                        "frame": r["joint"] in ground, "links": bodies,
                        "walk": {"n": r["bottle_n"], "patterns": None},
                        "jam": {"n": r["jam_n"], "patterns": None}})
-    out = {"source": "statics", "note": "a cradle's: a sealed full 6 L methuselah (walk), a "
-           f"firm push at the grip on a blocked cradle ({JAM_HAND_N:g} N: "
-           f"{jam_nm(grip_r=handle_r(config)):g} N·m at the crank, jam); cradle_report",
+    out = {"source": "statics", "note": "a cradle's: a sealed full 6 L methuselah (walk), the "
+           "most the hand crank's slip clutch lets onto a blocked cradle "
+           f"({jam_nm(grip_r=handle_r(config)):g} N·m at the crank, jam); cradle_report",
            "walk_n": max((j["walk"]["n"] for j in joints), default=0.0),
            "jam_n": max((j["jam"]["n"] for j in joints), default=0.0), "joints": joints,
            "torque_limit_nm": jam_nm(grip_r=handle_r(config)),
            "walk_torque_nm": round(crank_nm, 2),
            "joint_moment_factor": 1.0,
-           "crank_basis": f"statics: the bottle's largest torque over a pour, a {JAM_HAND_N:g} "
-                          "N push at the grip jammed"}
+           "crank_basis": "statics: the bottle's largest torque over a pour, the hand crank's "
+                          "clutch's cap jammed"}
     if struct is not None:
         out["link_frames"] = struct["link_frames"]
         out["posts"] = struct["pillars"]
@@ -1111,15 +1312,21 @@ VERDICT = {
     "decanter_hinge": ("build", "The one to build: a four-bar crank-rocker whose rocker is the "
                        "cradle, hinged at the bottle's mouth. From 50° neck up (an opened "
                        "full bottle goes in) to 30° neck down, a 750 ml to a 6 L. Every check "
-                       "passes with a full 6 L: the joints hold a forced crank (jam SF 1.6 at "
-                       "worst), the gearbox 1.44 x its rating, the stand tips past 25°."),
+                       "passes with a full 6 L: a slip clutch in the hand crank caps the "
+                       "crank's torque however hard the push, every joint holds that cap at "
+                       "SF 1.3 or more away from the ends of the swing, the gearbox carries "
+                       "the bottle within its rating, the stand tips past 15°."),
     "decanter_rcm": ("build", "To build too: an eight-bar double parallelogram turns the "
                      "cradle about a point with nothing there, so nothing stands at the "
                      "mouth; its pivots hang under the mouth, its crank behind. Every check "
-                     "passes with a full 6 L: the joints hold a forced crank (jam SF 1.31 at "
-                     "worst), the gearbox 1.52 x its rating, the stand tips past 25°."),
+                     "passes with a full 6 L: a slip clutch in the hand crank caps the "
+                     "crank's torque however hard the push, every joint holds that cap at SF "
+                     "1.3 or more away from the ends of the swing, the gearbox carries the "
+                     "bottle within its rating, the stand tips past 25°."),
 }
-"""Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why."""
+"""Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why: the
+bars ``tests/test_cradle.py`` holds, not a copied number; :func:`report`'s ``verdict`` adds its
+own numbers (:func:`cradle_drive.verdict`)."""
 
 
 def motion(config: BuildConfig, n: int = 360) -> dict:

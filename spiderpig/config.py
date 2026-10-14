@@ -294,12 +294,21 @@ PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 material) when the config names the default (:data:`SHEET`): a decanting cradle is all
 aluminium, its links' 0.125 in 5052 (:data:`materials.CRADLE_LINK_SHEET`)."""
 
-PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 69.3, "decanter_rcm": 66.0}
+PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 61.3, "decanter_rcm": 61.3}
 """Per product linkage: the crank torque its joints are rated at in a jam, in place of a
-servo's firmware limit (:func:`torque_limit_nm`): a decanting cradle's, a firm 40 N push at
-its grip (B's 100 mm out, A's 105: ``construction.handcrank.HANDLE_RS``) through its
-NRV040's 30:1 worm at a hand's speed (:func:`spiderpig.cradle_report.jam_nm`, which a test
-holds these to)."""
+servo's firmware limit (:func:`torque_limit_nm`): a decanting cradle's, the most its hand
+crank's slip clutch lets through, however hard the push (:data:`PRODUCT_CLUTCH_NM`, since
+design review round 1; a firm 40 N push at the grip had been the case:
+:func:`spiderpig.cradle_report.jam_nm`, which a test holds these to)."""
+
+PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 61.3, "decanter_rcm": 61.3}
+"""Per product linkage: the most its hand crank's slip clutch lets onto the crank, however
+hard the push (design review round 1, 2026-10-14): set to slip at
+``construction.handcrank.CLUTCH_SLIP_NM`` at the input, at the top of its
+``CLUTCH_SCATTER``, through the NRV040's 30:1 worm at a hand's speed (``handcrank.clutch``,
+which a test holds these to). The crank torque to re-run a strength check at: a bound, unlike
+the push (``cradle_report``'s ``jam_capped`` rates it over the whole turn, the toggles
+included)."""
 
 
 def product_defaults(product: str) -> dict:

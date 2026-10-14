@@ -483,8 +483,8 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         f = row["factor"]
         cap = min(row["capacity_nm"].values())
         lim = cap / (JAM_WARN * f)
-        if config.lk.product:       # a hand on a gearbox: a firm push is the jam case
-            return [_hand_fix(row["jam"]["torque_nm"], lim) if row.get("jam") else
+        if config.lk.product:       # a hand on a gearbox: its clutch's cap is the jam case
+            return [_hand_fix(row["jam"]["torque_nm"], lim, config) if row.get("jam") else
                     f"never force the hand crank past {lim:.2f} N·m at the crank"]
         out.append(f"set the servo's torque limit to {lim:.2f} N·m or less (jam SF "
                    f"{JAM_WARN:g}; now {row['jam']['torque_nm']:g})" if row.get("jam") else
@@ -585,19 +585,20 @@ def _limit_fix(limit: float, jam_sf: float, config: BuildConfig, why: str = "") 
     it."""
     to = limit * jam_sf / JAM_WARN
     if config.lk.product:
-        return _hand_fix(limit, to)
+        return _hand_fix(limit, to, config)
     return f"a servo torque limit of {to:.2f} N·m (now {limit:g}{why}) for jam SF {JAM_WARN:g}"
 
 
-def _hand_fix(jam_nm: float, to: float) -> str:
+def _hand_fix(jam_nm: float, to: float, config: BuildConfig) -> str:
     """A product's fix in the hand's terms: the push at its crank's grip under which the row
-    keeps jam SF :data:`JAM_WARN` (the jam case, ``jam_nm`` at the crank, is
-    :data:`cradle_report.JAM_HAND_N` there)."""
-    from spiderpig.cradle_report import JAM_HAND_N
+    keeps jam SF :data:`JAM_WARN` (the jam case, ``jam_nm`` at the crank, is the most the
+    hand crank's slip clutch lets through: ``cradle_report.jam_nm``)."""
+    from spiderpig.construction.handcrank import handle_r
+    from spiderpig.cradle_report import JAM_HAND_N, push_nm
 
     return (f"never force the hand crank against a blocked cradle: jam SF {JAM_WARN:g} holds "
-            f"up to about {JAM_HAND_N * to / jam_nm:.0f} N at the grip (the jam case is a firm "
-            f"{JAM_HAND_N:g} N push there: {jam_nm:g} N·m at the crank)")
+            f"up to about {JAM_HAND_N * to / push_nm(grip_r=handle_r(config)):.0f} N at the "
+            f"grip (the jam case is {jam_nm:g} N·m at the crank, its slip clutch's cap)")
 
 
 def findings(rows: list[dict], notes: dict, loads: dict, config: BuildConfig) -> list[dict]:

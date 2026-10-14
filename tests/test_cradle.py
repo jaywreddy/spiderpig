@@ -155,10 +155,12 @@ def test_the_worm_holds_and_every_bottle_lies_with_its_mouth_on_the_pivot():
         assert cr.STOP_RANGE[0] <= s.stop <= cr.STOP_RANGE[1]
         assert cr.seat(size) == pytest.approx((0.0, 0.0, 0.0), abs=1e-9), size.name
         # its centre of mass (the shell-and-wine model, design review round 1) behind the
-        # front V, 28-40 % of its length up from its base (a 6 L methuselah's, 390 mm from
-        # the mouth, lies 10 mm behind the rear V's end: the mounting review's B1)
+        # front V, 28-40 % of its length up from its base, and on the rear support (a 6 L
+        # methuselah's, 390 mm from the mouth, lies 10 mm behind the rear V's end, over the
+        # base stop's rails' flanges: the mounting review's B1)
         assert front.vee[1] < size.com_from_mouth, size.name
         assert 0.6 < size.com_from_mouth / size.length < 0.72, size.name
+        assert size.com_from_mouth < min(cr.FLANGE_END, size.length), size.name
     assert cr.setting(cr.METHUSELAH) == cr.Setting(0.0, 0.0, cr.METHUSELAH.length + 0.5)
     # a magnum in the 6 L's setting would lie nose up, its mouth off the pivot
     y0, slope, x0 = cr.seat(cr.MAGNUM, cr.setting(cr.DESIGN))
@@ -419,9 +421,10 @@ def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
     foot's oversize hole (the side settles where the linkage puts it), an 18-8 fender washer
     over the hole, an 18-8 M6 nut in a printed thumb knob, the knob clear of the bracket's
     upright and the upright's M5 screw head, a thread past the nut and the bolt's end in the
-    knob; the hand crank's hub an M3 thumb screw down to the input key, its head clear of
+    knob; the hand crank's hub an M3 thumb screw down to the input key through a brass
+    heat-set insert (round 1: a printed thread undone at every pack wears), its head clear of
     the hub."""
-    from spiderpig.construction.handcrank import HANDLE_THUMB, HandCrank
+    from spiderpig.construction.handcrank import HANDLE_THUMB, INSERT, HandCrank
 
     bracket, parts, _ = cr._bracket((0.0, 12.5), 0.0, 0.0, 1, 4.75)   # (its screw 12.5 up)
     by = {suffix: (part, key) for part, key, suffix in parts}
@@ -439,13 +442,115 @@ def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
     assert cr.BRACKET_HOLE - cr.CARRIAGE[0] >= 2.0                           # oversize
     assert cr.WASHER[1] / 2 - (cr.BRACKET_HOLE - cr.CARRIAGE[0]) / 2 > cr.BRACKET_HOLE / 2
     hc = HandCrank()
-    bodies = {b.name: b for b in hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame")}
+    got, _ = hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame")
+    bodies = {b.name: b for b in got}
     thumb = bodies["handle_thumb_screw"]
     assert thumb.bom_key == f"m3_thumb_screw_{HANDLE_THUMB[0]:g}"
-    inter = thumb.part & bodies["handle"].part
-    assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3
+    assert bodies["handle_insert"].bom_key == INSERT[2]
+    for part in ("handle", "handle_insert"):
+        inter = thumb.part & bodies[part].part
+        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3, part
     reach = thumb.part.bounding_box().max.Z
     assert reach > hc.box.crank_hub_r + HANDLE_THUMB[2]
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
+    """The hand crank's slip clutch (round 1's drive review: a 40 N push was no bound): its
+    arm turns on the hub's journal, three steel balls on springs and set screws in its boss
+    seated in the flange's conical seats; its parts meet nowhere, each ball sits in a seat,
+    the springs stay off solid as set, the set screws inside the boss; the cap it puts on the
+    crank is ``config.PRODUCT_CLUTCH_NM``'s; the cap and the journal's thumb screw keep the arm
+    on, so it comes off the input shaft whole; the grip is 60 mm long on a bolt's plain
+    shank."""
+    from spiderpig.config import PRODUCT_CLUTCH_NM
+    from spiderpig.construction.handcrank import (
+        CLUTCH,
+        CLUTCH_SPRING,
+        GRIP,
+        NRV040,
+        REACH,
+        HandCrank,
+        clutch,
+        handle_r,
+    )
+
+    for key in CRADLES:
+        cfg = BuildConfig(linkage=key, robot=False)
+        got = clutch(handle_r(cfg), NRV040.ratio, NRV040.eta_hand)
+        assert PRODUCT_CLUTCH_NM[key] == pytest.approx(got["crank_cap_nm"], abs=0.05)
+        assert got["slip_lo_nm"] < got["slip_nm"] < got["slip_hi_nm"]
+        # each spring as set: under its solid with room for the ball to climb out of its seat
+        _, free, rate, max_len, _, _ = CLUTCH_SPRING
+        assert free - got["spring_n"] / rate > max_len           # (at the top of its climb)
+    hc = HandCrank()
+    parts, sweep = hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame", 100.0)
+    by = {b.name: b for b in parts}
+    for a, b in itertools.combinations(parts, 2):
+        inter = a.part & b.part
+        assert inter is None or sum(x.volume for x in inter.solids()) < 0.05, (a.name, b.name)
+    balls = [by[f"handle_ball{i}"] for i in range(CLUTCH["balls"])]
+    flange = (REACH - CLUTCH["boss_t"] - CLUTCH["gap"])          # the seats' face (x)
+    for ball in balls:
+        bb = ball.part.bounding_box()
+        assert flange - 1.0 > bb.min.X                             # down in its seat
+        assert math.hypot(bb.center().Y, bb.center().Z) == pytest.approx(CLUTCH["r"], abs=0.01)
+    for i in range(CLUTCH["balls"]):
+        assert by[f"handle_set_screw{i}"].part.bounding_box().max.X < REACH
+    grip = by["handle_grip"].part.bounding_box()
+    assert pytest.approx(GRIP[1], abs=0.01) == grip.size.X
+    assert by["handle_grip_pin"].bom_key.startswith("m8_hex_bolt_")
+    assert by["handle_grip_nut"].bom_key == "m8_nyloc_nut"
+    # the arm is held on the journal by the cap and its thumb screw (the crank comes off
+    # whole), and everything that turns is inside the sweep
+    assert by["handle_cap"].part.bounding_box().min.X >= REACH
+    assert max(s[2] for s in sweep) >= max(b.part.bounding_box().max.X for b in parts) - 1e-6
+    assert max(s[0] for s in sweep) >= 100.0 + GRIP[0] / 2
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_gearbox_stands_on_spacers_and_the_crank_block_on_shims():
+    """The riser (round 1's drive review, B1): four round spacers on the face screws, on the
+    gearbox's machined face, the plate over the spigot ring and the turning hub's end by
+    ``RISER_CLEAR`` whatever their unmeasured heights; the crank block's top plate seated on
+    the shaft's steel end over DIN 988 shims (M2: no printed sleeve in the clamp), the drawn
+    shim leaving room either way; the keyed plates on the key's straight flanks for any shim
+    the guide may call for; the shims bought fill any gap to it within a ring."""
+    from spiderpig.construction.handcrank import (
+        KEYED_PLATES,
+        NRV040,
+        RISER_CLEAR,
+        SHIM,
+        SPACER,
+        arm_z,
+        riser_for,
+        shims_for,
+    )
+
+    t, t_frame = 3.175, 4.75
+    a0, a1 = arm_z(0.0, t_frame, KEYED_PLATES * t)
+    r = riser_for(0.0, a0, a1, t, NRV040, t_frame)
+    assert r.spacer in SPACER[2]
+    assert r.face == pytest.approx(-r.spacer)
+    assert r.spacer - max(NRV040.spigot_h, NRV040.hub_out) >= RISER_CLEAR
+    assert NRV040.pcd / 2 - SPACER[0] / 2 >= NRV040.spigot_d / 2 + 1.0    # off the spigot
+    assert 0.3 <= r.shim <= r.shim_max - 0.3
+    k = (r.seat - a0) / t
+    assert k == pytest.approx(round(k))
+    assert round(k) > KEYED_PLATES
+    key_w, _, key_len = NRV040.shaft_key
+    for shim in (0.0, r.shim_max):
+        end = r.seat - shim
+        assert end - NRV040.key_short - key_w / 2 >= a1 - 0.2 - 1e-9
+        assert end - NRV040.key_short - key_len + key_w / 2 <= a0
+    assert r.shim_max <= SHIM[0] * SHIM[1]
+    # the rings to the one below the gap: the block a ring at most low, never high
+    t_shim = SHIM[0]
+    for gap in (0.0, 0.19, 0.2, r.shim, r.shim_max):
+        got = sum(shims_for(gap))
+        assert gap - t_shim < got <= gap + 1e-9
 
 
 @pytest.mark.construction
@@ -623,7 +728,9 @@ def test_the_whole_cradle_is_clash_free_over_the_swing(key):
     """Both sides, the box, the stand on its base plate, the bottle (a 6 L methuselah, the V
     blocks at their lowest) and the decanter at rest, at full tilt and across the turn: no
     two parts meet, the hand crank's sweep meets nothing, and every bottle size at its own
-    setting (its V blocks raised, its base stop moved) meets nothing, nor do they."""
+    setting (its V blocks raised, its base stop moved) meets nothing, nor do they; the base
+    stop never comes nearer the base board than a finger's 25 mm (ISO 13854: at rest, set
+    for a 6 L, its lowest)."""
     from spiderpig.construction.contract import bad_solids, clashes
     from spiderpig.cradle_report import wheel_sweep
     from spiderpig.fabricate import fabricate, template_for
@@ -632,11 +739,15 @@ def test_the_whole_cradle_is_clash_free_over_the_swing(key):
     tmpl = template_for(cfg)
     ts = np.linspace(0, 2 * math.pi, 721)
     tilt = _tilt(key, ts)
-    angles = [ts[int(np.argmin(tilt))], ts[int(np.argmax(tilt))], 1.0, 3.5, 5.2]
+    # (and where A's 105 mm hand crank met its cradle link b2 and tie Tr2's screw, design
+    # review round 1's drive: about 165-195° and 330-345° of crank)
+    angles = [ts[int(np.argmin(tilt))], ts[int(np.argmax(tilt))], 1.0, 3.5, 5.2,
+              *np.radians([165.0, 180.0, 345.0])]
     for t in angles:
         mech = fabricate(tmpl, cfg, float(t))
         assert clashes(mech) == [], t
         assert wheel_sweep(mech) == [], t
+        assert cr.finger_gap(mech) >= cr.FINGER_GAP, t
         for size in cr.SIZES:
             assert cr.bottle_hits(mech, size) == [], (t, size.key)
     assert bad_solids(mech) == []
@@ -668,9 +779,10 @@ def test_the_cradle_passes_the_cut_rules(key):
 def test_the_cradle_stands_turns_easily_and_holds():
     """A, the one to build: the mouth still for both bottles, it stands at 15° and more and
     takes a 25 N push at the bottle's top (the worst over the swing), the hand turns it with
-    under 25 N, the worm holds, the rod, the crankpin and every pin and plate hold a sealed
-    full 6 L bottle 3 x over and a firm 40 N push at the grip on a blocked cradle (the jam:
-    ``cradle_report.jam_nm``, ``config.PRODUCT_JAM_NM``)."""
+    under MIL-STD-1472H's light-load crank's 22 N, the worm holds within its rating at a
+    hand's speed, the rod, the crankpin and every pin and plate hold a sealed full 6 L bottle
+    3 x over and a firm 40 N push at the grip on a blocked cradle up to the clutch's cap (the
+    jam: ``cradle_report.jam_nm``, ``config.PRODUCT_JAM_NM``)."""
     from spiderpig.config import PRODUCT_JAM_NM
     from spiderpig.construction.handcrank import handle_r
     from spiderpig.cradle_report import JAM_HAND_N, jam_nm, report
@@ -685,13 +797,6 @@ def test_the_cradle_stands_turns_easily_and_holds():
     assert r["stand"]["worst_tip_deg"] >= 15.0
     assert min(c["push_at_top_n"] for c in r["stand"]["cases"]) >= 25.0
     assert r["drive"]["irreversible"]
-    # (against its 45 N·m rating; the peak is a sealed full 6 L at one tilt, at hand speed.
-    # OPEN for the drive stream: the corrected centre of mass, design review round 1, put
-    # the peak at 36.0 N·m, SF 1.25, and 25.4 N at the grip, where the bars were 1.3 and
-    # 25 N; the jam at the grip, 40 N, is held, so neither the handle nor the ratio can
-    # move alone: DECISIONS.md 2026-10-14)
-    assert r["drive"]["gearbox_sf"] >= 1.2
-    assert r["drive"]["handle_force_n"] < 26.0
     assert r["rod"]["sf_bottle"] >= 3.0
     assert r["rod"]["sf_jam"] >= 1.5
     assert r["crankpin"]["sf_bottle"] >= 3.0
@@ -710,6 +815,50 @@ def test_the_cradle_stands_turns_easily_and_holds():
     assert min(jam) >= 1.3, [(x["joint"], x["jam_sf"]) for x in rows]
     _the_structure_is_rated(r, ("b2",), {"pillar:G"},
                             {"column:C1", "column:C2", "column:D1", "column:D2"})
+    _holds_the_clutchs_cap(r)
+    _the_drive_keeps_its_bars(r)       # (last: its grip misses the bar, open)
+
+
+def _the_drive_keeps_its_bars(r: dict) -> None:
+    """A report's drive against its cited bars (design review round 1's drive, 2026-10-14):
+    the NRV040 at a hand's speed (Motovario's 30:1 rating at its lowest listed input speed,
+    500 rpm, scaled to Phidgets' 45 N·m: ``handcrank.NRV040``) 1.3 x over the walking peak,
+    and within the 45 N·m row itself; the grip under MIL-STD-1472H's light-load crank's 22 N
+    (Figure 13: ``handcrank.LIGHT_LOAD_N``) at a throw within its 125 mm."""
+    from spiderpig.construction.handcrank import LIGHT_LOAD_N
+
+    drive = r["drive"]
+    assert drive["gearbox_sf_hand"] >= 1.3, (drive["gearbox_sf_hand"], drive["gearbox_sf"])
+    assert drive["gearbox_sf"] >= 1.0, drive["gearbox_sf"]
+    assert drive["handle_force_n"] < LIGHT_LOAD_N, (drive["handle_force_n"],
+                                                     drive["grip_radius_mm"])
+    assert drive["grip_radius_mm"] <= 125.0
+
+
+def _holds_the_clutchs_cap(r: dict) -> None:
+    """A report's drive at its clutch (``cradle_drive``): its least slip clears the worst
+    starting turn by the margin; its cap is the jam case's torque (however hard the push),
+    within the gearbox's momentary limit (2 x its rating); the grip's force at the clutch's
+    top within the input shaft's radial load there; every part holds the cap at SF 1.3 or
+    more 30° and more from the toggles (where the old 40 N push's case skipped, every part
+    is now rated: the band round a toggle where any falls under 1.3 is reported, no wider);
+    the gearbox's and the keyed plates' rows at the jams."""
+    clutch = r["drive"]["clutch"]
+    assert clutch["margin"] >= clutch["margin_floor"]
+    assert r["drive"]["jam_torque_nm"] == pytest.approx(clutch["crank_cap_nm"], abs=0.01)
+    assert r["drive"]["gearbox_jam_x_peak_limit"] <= 1.0
+    assert r["drive"]["input_overhung"]["sf"] >= 2.0
+    capped = r["jam_capped"]
+    assert capped["crank_nm"] == clutch["crank_cap_nm"]
+    assert capped["away"][0] >= 1.3, capped["away"]
+    holds = capped["holds_1p3_outside_deg"]
+    bands = [(x["band_deg"], x["worst"]) for x in capped["by_band"]]
+    assert holds is not None, bands                 # (5° steps: where the old case
+    assert holds <= 30.0, bands                     # skipped, now rated at a bound)
+    assert capped["by_band"][0]["band_deg"] == 0.0              # the whole turn rated
+    assert r["drive"]["gearbox_jam_x_rating"] > 1.0             # (reported, not a bar)
+    assert r["drive"]["keyway"]["four_plates_sf_cap"] >= 2.0
+    assert "This report:" in r["verdict"][1]
 
 
 @pytest.mark.slow
@@ -717,9 +866,10 @@ def test_the_cradle_stands_turns_easily_and_holds():
 def test_b_stands_turns_easily_and_holds():
     """B, the virtual hinge (``docs/agentlib/DECANTER.md``): the mouth still for both
     bottles, it stands at 25° and takes a 25 N push at the bottle's top (the worst over the
-    swing), the hand turns it with under 25 N, the worm holds within its rating, the rod and
-    the crankpin hold the jam, every pin, pillar and plate holds a sealed full 6 L bottle 2 x
-    over and a firm 40 N push at the grip on a blocked cradle 1.3 x over."""
+    swing), the hand turns it with under MIL-STD-1472H's light-load crank's 22 N, the worm
+    holds within its rating at a hand's speed, the rod and the crankpin hold the jam, every
+    pin, pillar and plate holds a sealed full 6 L bottle 2 x over and a firm 40 N push at the
+    grip on a blocked cradle, up to the clutch's cap, 1.3 x over."""
     from spiderpig.cradle_report import report
 
     r = report(BuildConfig(linkage="decanter_rcm", robot=False), clash_angles=0)
@@ -728,10 +878,6 @@ def test_b_stands_turns_easily_and_holds():
     assert r["stand"]["worst_tip_deg"] >= 25.0
     assert min(c["push_at_top_n"] for c in r["stand"]["cases"]) >= 25.0
     assert r["drive"]["irreversible"]
-    assert r["drive"]["gearbox_sf"] >= 1.3
-    # (OPEN for the drive stream: 25.4 N since the corrected centre of mass, design review
-    # round 1; the bar was 25 N: DECISIONS.md 2026-10-14)
-    assert r["drive"]["handle_force_n"] < 26.0
     assert r["rod"]["sf_jam"] >= 1.5
     assert r["crankpin"]["sf_jam"] >= 1.5
     # the empty cradle turns with a fingertip (the guide's check after it goes back together)
@@ -764,6 +910,8 @@ def test_b_stands_turns_easily_and_holds():
     front = r["blocked"]["cases"]["front saddle"]
     assert front["joints_n"]["J"] > 3.0 * max(x["jam_n"] or 0.0 for x in rows
                                               if x["joint"] == "pin:J")
+    _holds_the_clutchs_cap(r)
+    _the_drive_keeps_its_bars(r)
 
 
 def _the_structure_is_rated(r: dict, links, pillars, columns) -> None:
@@ -909,7 +1057,10 @@ def test_every_printed_part_fits_a_print_bed_in_its_pose():
     poses = mech.meta["print_poses"]
     for name in ("front_saddle", "rear_saddle", "front_saddle_vee", "rear_saddle_vee",
                  "front_saddle_liner", "front_saddle_knob", "front_saddle_gauge",
-                 "base_stop_rails", "base_stop_gate", "L.handle", "foot_boot_0"):
+                 "rear_saddle_liner", "rear_saddle_knob", "rear_saddle_brake",
+                 "base_stop_rail0", "base_stop_rail1", "base_stop_rail0_liner",
+                 "base_stop_rail1_liner", "base_stop_gate", "base_stop_knob", "L.handle",
+                 "foot_boot_0"):
         assert name in poses, name
     for b in mech.bodies:
         if b.fab != "printed" or b.part is None:
@@ -1046,8 +1197,9 @@ def test_a_frame_plates_member_buckles_out_of_its_plane():
 def test_the_saddles_hold_a_full_6_l():
     """``cradle_report.saddles``: every printed part of the saddles, the lip gauge and the base
     stop under its allowable at a full 6 L's worst (hung on its thumbscrew, leaning on the
-    gate at rest with a corkscrew's push, on the gauge at full tilt with no friction), the
-    post and the thumbscrew 3 x under their yield, the gate's lock gripping 3 x its load."""
+    gate at rest with a corkscrew's push, on the gauge at full tilt with no friction, its
+    body on the rails' flanges), the post and the screws 3 x under their yield, the gate's
+    lock gripping and the lead screw's brake holding 3 x what they hold."""
     from spiderpig.cradle_report import PLA_ALLOW, saddles
 
     got = saddles(-50.0, 30.0, 0.75)
@@ -1058,7 +1210,37 @@ def test_the_saddles_hold_a_full_6_l():
         else:
             assert r["sf"] >= 3.0, r
     assert rows["rear post (NETRF12, bending)"]["load_n"] > 10.0     # (N·m: the couple)
-    assert rows["base stop's lock (its grip)"]["backstop_mm"] < 10.0
+    assert rows["rear post (NETRF12, bending at rest)"]["load_n"] > 10.0
+    for part in ("rear lead screw's brake (no turning back)", "base stop's lock (its grip)",
+                 "base stop's rails (bending at their sockets)", "lip gauge's post (bent and "
+                 "twisted)", "rear knob's tower (bending)", "base stop's T-slot lips (bending)"):
+        assert part in rows, part
+    assert got["balance"]["ok"]
+    assert got["gauge"]["falls_back"]
+
+
+@pytest.mark.no_fabricate
+def test_every_bottle_rests_on_both_saddles_at_rest_level_and_tipped():
+    """``cradle_report.balance`` (review round 1, B1): with its centre of mass where the shell
+    model puts it (a 6 L methuselah's 390 mm from the mouth), the gate's push under the axis
+    at rest and the gauge's over it at full tilt, each bottle's reaction centres inside its
+    support, the front V to the rear support's end (the rear V, then the rails' flanges), by
+    40 mm or more; without the flanges (the rear V's end at 380) the 6 L would lift its neck
+    off the front V at rest. The lip gauge, lifted to its stop, falls back shut."""
+    from spiderpig.cradle_report import balance
+
+    assert cr.METHUSELAH.com_from_mouth == 390.0
+    got = balance(-50.0, 30.0)
+    assert got["ok"]
+    assert got["worst_margin_mm"] >= 40.0
+    assert {r["case"] for r in got["rows"]} == {"rest", "level", "full"}
+    assert len(got["rows"]) == 3 * len(cr.SIZES)
+    rest = {r["bottle"]: r for r in got["rows"] if r["case"] == "rest"}
+    assert rest[cr.METHUSELAH.name]["centre_mm"] > cr.SADDLES[1].vee[1]     # (on the flanges)
+    g = cr.gauge_return()
+    assert g["falls_back"]
+    assert g["com_deg_open"] < 85.0
+    assert abs(g["stop_on_wall_mm"]) < 0.05
 
 
 @pytest.mark.server

@@ -87,86 +87,141 @@ stops there:
     from its underside, and a V block that rides up and down in it on a thumbscrew.
     - The front one carries the neck: its V block slides in the carrier's box guide, an M6
       thumbscrew at its end.
-    - The rear one carries the body: its V block rides a 12 mm steel post at one end and an
-      M8 lead screw at the other. It is 125 mm long, so it reaches behind the 6 L's centre
-      of mass (331 mm from the mouth) and still under a 750 ml's body: a bottle bears on
-      both saddles, lying level or tipped.
-    - The Vs are 90°, lined with 2 mm TPU. At a 6 L methuselah's setting each V block sits
-      on its tie rods (the rear one in a seat over each); a thinner bottle's ride higher.
-  - **The lip gauge** (`cradle._gauge`): a printed arm hinged on the front carrier (an M5
-    button head along the axis). Flipped down, its pad stands in front of the mouth, its
-    back face on the pivot's plane, over the top of the rim (above a cork's bore). It
-    marks where the mouth goes, and it is the forward stop: past level a bottle would
-    slide toward its mouth, and the rim's top bears on it. It flips up and out to lay a
-    bottle in or to uncork.
+    - The rear one carries the body: its V block rides a 12 mm steel post at one end and a
+      coarse lead screw (8 mm a turn) at the other. The base stop's two rails continue its
+      V behind it on 45° flanges to 588 mm, so a 6 L's whole body is carried: lying level
+      or tipped, a bottle's weight centres on the saddles (`cradle_report.balance`, "The
+      saddles, adjustable").
+    - The Vs are 90°, lined with 2 mm TPU pegged into them. At a 6 L methuselah's setting
+      each V block sits on its tie rods (the rear one in a seat over each); a thinner
+      bottle's ride higher.
+  - **The lip gauge** (`cradle._gauge`): a printed arm on a hinge along the axis on the
+    front carrier (two knuckles either side of a post, an M5 tap bolt through them). Down,
+    its pad stands in front of the mouth, its back face on the pivot's plane, over the top
+    of the rim (above a cork's bore), and its bar runs back beside the neck, not over it: a
+    bottle lays in with it down. It checks where the mouth is, and it is the forward stop:
+    past level a bottle would slide toward its mouth, and the rim's top bears on it. It
+    lifts 70° onto a stop to uncork; let go, it falls back by itself (its centre of mass
+    stays inboard of the hinge), so it can't be left up.
   - **The base stop** (`cradle._rails`, `cradle._gate`): a printed gate across the V behind
     the bottle's base, riding the rear V block's flats and two printed rails behind the
     block. It is the back stop: at rest the bottle stands 50° neck up and leans on it (at
     25° nose up the liners' friction alone had held a bottle, and a corkscrew's push of
     6-13 N slid it back off the pivot: the mechanical review).
-    - Keys under its ears run in a groove along each flat and rail; an M5 button head
-      through a slot in one ear into a row of pilots (8 mm apart) clamps it anywhere, so
-      it sets to the bottle in hand. Should it slip, the slot's end stops it within 8.5 mm.
+    - Keys under its ears run in a groove along each flat and rail. It is set by a scale
+      grooved across the +z flat and rail and locked by hand: a printed knob on an M5 tap
+      bolt through one ear into a nut and a fender washer in a T-slot under the groove.
     - It serves every base from 285 mm (inside the rear V: a 750 ml's at 300) to 576 mm
       (a 6 L's at 571) behind the mouth.
-    - It rides the rear V block, so it rises with it. At rest, set for a 6 L, the rails'
-      end comes down to about 18 mm over the base board (keep it clear there).
+    - It rides the rear V block, so it rises with it. At rest, set for a 6 L, it comes
+      down to 26 mm over the base board, a finger's 25 mm (ISO 13854): the flanges end at
+      588 mm, past a 6 L's heel, and the +z rail's keel is chamfered at its end
+      (`cradle.FLANGE_END`, `cradle.finger_gap`).
 - **The bottles** (`cradle.setting`, `cradle.seat`): every one lies with the mouth on the
   pivot and the axis level, so the mouth stays put for each. Its setting is the two V
-  blocks' rise and the base stop's place, read off the scales (see "The saddles,
-  adjustable"); the lip gauge and the base stop hold it there.
+  blocks' rise and the base stop's place, read off the scales with the bottle out (see
+  "The saddles, adjustable"); the base stop and the lip gauge hold it there.
   - The 6 L necks' lengths and radii are estimates scaled from the jeroboam's (no maker
     draws them): set the front knob to the neck in hand.
-  - Another bottle: set each knob to its neck's and its body's diameter on the scales'
-    other rows, and the base stop to its base with the gauge down.
-- **The drive** (`spiderpig/construction/handcrank.py`, `config.crank == "hand"`).
+  - Another bottle: set each knob to its neck's (measured 50-80 mm from the lip) and its
+    body's diameter on the scales' other rows, and the base stop to its length.
+- **The drive** (`spiderpig/construction/handcrank.py`, `config.crank == "hand"`; round 1's
+  drive review of 2026-10-14 reworked its riser, its block, its tie and its hand crank).
   - **Gearbox:** an NRV040 worm gear reducer at 30:1 (Phidgets TRM4401_0, rated 45 N·m;
-    `handcrank.NRV040`). It stands outboard on the drive side's outer plate, on 0.125 in
-    riser discs, held by four M6 button heads into its tapped face holes (75 mm PCD). A
-    full 6 L peaks at about 30 N·m at the crank: the NRV030 (20 N·m) that held a 3 L
-    couldn't.
+    `handcrank.NRV040`). It stands outboard on the drive side's outer plate, held by four M6
+    button heads into its tapped face holes (75 mm PCD). A full 6 L peaks at 35-37 N·m at
+    the crank: the NRV030 (20 N·m) that held a 3 L couldn't.
+  - **Its rating at a hand's speed** (`WormBox.rated_hand_nm`, round 1's drive): 58.1 N·m.
+    Motovario's NRV040 at 30:1 is rated Mn2 34 N·m at 2800 rpm input, 46 at 1750, 48 at
+    1400, 51 at 1140, 53 at 900 and 62 at 500, the slowest its tables list (the VSF IEC
+    catalogue, EN rev 0 2017, printed pp. 161, 171, 181, 191, 201, 211): the mesh's wear and
+    heat set it, and both fall as the input slows. A hand turns it at about 60 rpm, so the
+    500 rpm figure is the cited one nearest, on the safe side. Phidgets rates its clone 45
+    with no speed, so the clone is taken at Motovario's 62 times 45/48. The walking peak
+    is rated against both (`gearbox_sf_hand`, bar 1.3; `gearbox_sf` on the 45 N·m, kept as
+    a row). The clutch's cap is held to the catalogue's momentary limit, 2 x Mn2 (p. 9:
+    "must not exceed 200%"), taken on the 45: 90 N·m.
+  - **The riser** (`handcrank.riser_for`, `handcrank.SPACER`): four 12 mm aluminium round
+    spacers (McMaster 94669A349, 13 mm OD) on the face screws, bearing on the gearbox's
+    machined output face outside its spigot ring. The raised spigot ring and the turning
+    output hub's end stand 9.5 mm under the plate, so neither unmeasured height is in the
+    stack-up. (Until round 1, three 0.125 in discs were bored to the hub's drawn 30 mm, on
+    the spigot's assumed 2.5 mm: a hub standing proud would have been braked by the four
+    screws' preload, and would have lifted the block into the rod.)
   - **Holding:** its static efficiency at 30:1 is 0.45 (Motovario's mesh data), under the
     0.5 that the makers' catalogues give for static irreversibility. So the cradle holds
-    any angle when let go.
+    any angle when let go. Phidgets' unit is a Chinese NMRV clone, not Motovario's mesh, so
+    the guide bench-tests it (a full bottle at level, the table tapped, 10 minutes); one
+    that creeps settles back neck up, never further, and an O-ring's drag on the input
+    doubles the margin.
   - **The crank block:** 0.125 in 6061 plates, each the arm's whole outline, stacked on the
     stock 19 mm keyed output shaft (Phidgets TRM4006_0, modelled with its collar and key).
     - Every plate round the shaft is keyed, the lowest four on the 6 mm key's straight
       flanks: the shaft's keyseat is end-milled, so the key's ends are round (the
-      fabrication review).
-    - The top plate lies over the shaft's end: an M6 button head through it into the
-      shaft's end tap, to 3 N·m (it clamps the block on the printed sleeve). It goes in dry:
-      the sleeve settles, so after the first few pours it comes out for threadlocker and
-      goes back to 3 N·m.
-    - A NETRF10 through the block (`WormBox.tie_r`: 52 mm on the NRV040), screwed at both
-      ends, makes the plates one rigid block and clamps them, its screw head and wide
-      washer clear of the riser screws.
+      fabrication review). The slots are cut at the key's 6.0 mm and filed together on the
+      key, the block tied, to a slide fit: one plate alone holds 33 N·m at bearing yield,
+      under the clutch's cap; the four together 132.
+    - It is built and fitted on the bench as one block, tied by an M6 x 30 button head
+      through every plate into a thin nut under the lowest (`handcrank.TIE_NUT`; a NETRF10
+      and two screws until round 1).
+    - Its top plate seats on the shaft's steel end face over 0.2 mm DIN 988 shim rings
+      (`handcrank.SHIM`, two drawn), an M6 button head through both into the shaft's end
+      tap, threadlocker, 8 N·m. Only steel and aluminium are in that clamp: the printed
+      sleeve the block had clamped on until round 1 crept out of its preload.
+    - The go/no-go (the guide's): the gearbox on its spacers under the plate, the shaft's
+      end measures 28.75 mm over the plate's inner face; the block's top plate sits at
+      29.22, so the shims are the difference in whole rings, up to 1.6 mm. Higher, 13 mm
+      spacers; lower than 27.6, 11 mm ones.
   - **Crankpin:** a 12 mm NETRF12 standing in the block from its lowest plate (an M6 up
     through it) through the rod, an M6 and a wide washer on its end over the rod (a 6 L's
-    jam bent the 10 mm one: SF 1.13), 0.2-0.3 mm of
-    play (its length rounds down; a printed spacer under the rod, sanded on the bench,
-    takes the plates' tolerance). The washer keeps the rod 0.26 mm (nominal) under the rear
-    tie's screw head where that head crosses it, 1 to 4 handle turns from rest. The chain's
-    tolerance is about 0.3 mm, so the guide checks it with a sheet of paper: a rub there is
-    a scrape, not a jam. The rod rides 3 mm over the block's screw heads, its force 8.7 mm
-    off the crankpin's socket. (Before, the arm sat on the key and the rod 21 mm over it: an ISO 7379
-    crankpin's M8 thread was a cantilever that long, rated at SF 1.0-1.25 once its yield
-    and preload were right.)
-  - **Hand crank:** a printed offset crank on the gearbox's 11 mm input shaft.
-    - Its hub is keyed on the shaft, with an M3 x 9 knurled thumb screw on the key
-      (`handcrank.HANDLE_THUMB`, McMaster 92545A115, 18-8): it comes off by hand.
-    - A 100 mm tube carries the arm out to where no moving part of the stack ever reaches,
-      clear of the outer plate. The arm is 100 mm on B and 105 on A (`handcrank.HANDLE_RS`):
-      a full 6 L's worst turn under 25 N at the grip.
-    - Its grip is a printed sleeve spinning on a NETRF10 standing in a socket in the arm, an
-      M5 up through the arm into it and an M5 and a wide washer on its end. (An M6 shoulder
-      screw's 11 mm thread through the 10 mm arm had caught 1 mm of its nut; the standoff
-      also takes McMaster off the order.)
+    jam bent the 10 mm one: SF 1.13), 0.2-0.3 mm of play (its length rounds down; a printed
+    spacer under the rod, sanded on the bench, takes the plates' tolerance), greased where
+    the rod turns. The washer keeps the rod 0.26 mm (nominal) under the rear tie's screw
+    head where that head crosses it, 1 to 4 handle turns from rest. The chain's tolerance
+    is about 0.3 mm, so the guide checks it with a sheet of paper: a rub there is a scrape,
+    not a jam. The rod rides 3 mm over the block's screw heads, its force 9.5 mm off the
+    crankpin's socket (the lever the build measures, `crankpin_lever_mm`). (Before, the
+    arm sat on the key and the rod 21 mm over it: an ISO 7379 crankpin's M8 thread was a
+    cantilever that long, rated at SF 1.0-1.25 once its yield and preload were right.)
+  - **Hand crank** (`handcrank.HandCrank._handle`): printed in two parts joined by a
+    ball-detent slip clutch, on the gearbox's 11 mm input shaft.
+    - The hub is printed solid, its bore reamed to 11 mm, 21 mm long on the shaft, keyed
+      on its 4 x 4 key (glued into the shaft's keyseat), with an M3 x 9 knurled thumb screw
+      (McMaster 92545A115) through a brass heat-set insert onto the key: it comes off by
+      hand. It runs on as a 100 mm tube to the clutch's flange and a journal.
+    - The arm turns on the journal, held by a printed cap and a second thumb screw. Three 6
+      mm steel balls in its boss, each on a spring (McMaster 9434K49) and an M8 set screw,
+      press into six 90° conical seats in the flange (`handcrank.CLUTCH`). It is set on the
+      bench with a luggage scale to slip at 3.375 N·m on the input
+      (`handcrank.CLUTCH_SLIP_NM`, ±10 % once set): 27 N at B's grip, 40 at A's. At its
+      least that is 1.1 times a sealed full 6 L's worst starting turn on A (2.735 N·m at the
+      input; B's 2.602). Through the worm at a hand's speed it is at most 61.3 N·m on either
+      crank (`config.PRODUCT_CLUTCH_NM`), however hard anyone pushes, and that is the jam
+      case's torque (`cradle_report.jam_nm`). A firm 40 N push had been the case: 82.5 N·m
+      at B's grip, no bound.
+    - Its 60 x 16 mm printed grip spins on the plain shank of an M8 x 85 hex bolt through
+      the arm's end, a nyloc nut on the arm's inner face (a NETRF10 standoff and two button
+      heads until round 1: a 25 mm knob was a two-finger pinch). 60 x 16 is within
+      MIL-STD-1472H's light-load crank handle, 25-75 mm long and 10-16 across.
+    - The arm is 125 mm on B (`handcrank.HANDLE_R`), behind every moving part of the stack.
+      That is MIL-STD-1472H's longest light-load crank: under 22 N at the grip
+      (`handcrank.LIGHT_LOAD_N`), a 38-125 mm radius below 100 rpm, wrist and finger
+      movement (§5.1.4.1.2.4.7, Figure 13, p. 76). From 22 N up it is an arm's crank, 190 mm
+      or more. A full 6 L's worst start is 20.8 N on B. A pour is about 15 turns (30:1 over
+      half a crank turn), the many-turn task the standard puts cranks to (§5.1.4.1.2.4.1.1).
+    - A's arm is 85 mm (`handcrank.HANDLE_RS`): its cradle link b2 and its rear tie Tr2's
+      screw pass 100-135 mm behind the input shaft's axis at about 165-195° and 330-345° of
+      crank, so the crank's disc (the throw, half the grip and 1 mm) clears only up to about
+      97 mm. Its 105 mm arm had met them there; the slow test's five angles had missed it.
+      At 85 mm a full 6 L's worst start is 32.2 N at A's grip, over the 22 N bar: open
+      (DECISIONS.md, 2026-10-14, the drive).
+    - Turn it from the drive side's rear corner, the neck in view.
   - **No guard over the crank** (the user's call, 2026-10-10: the guard, a disc in the
     outer plate and then the gearbox's flange, read as a big disc either way). The gearbox
-    sits on its small riser discs; the crank turns about 2 rpm behind the outer plate's
-    truss. On B its top-rear arc and the rod's end turn in the open, above and behind the
-    gearbox, right in front of the hand crank (round 1): the use limits name them with the
-    other pinch points (`cradle.USE_LIMITS`), and taking the handle off locks it.
+    sits on its spacers; the crank turns about 2 rpm behind the outer plate's truss. On B
+    its top-rear arc and the rod's end turn in the open, above and behind the gearbox,
+    right in front of the hand crank (round 1): the use limits name them with the other
+    pinch points (`cradle.USE_LIMITS`), and taking the handle off locks it.
   - **The handle comes off by hand** (its thumb screw): nothing turns without it, so it is
     the child lock, and the use limits say to take it off when the cradle is left.
 - **The pins** (`pivot8`, `config.PRODUCT_PINS`, since 2026-10-13): hardened steel pivot
@@ -266,8 +321,8 @@ stops there:
   - Nothing crosses the bay over the mouth.
 - **The base board** (`cradle._base_plate`, the part `base_plate`): 9 mm Baltic birch
   plywood, routed by SendCutSend (`birch_9mm`, the user's of 2026-10-13), 584 mm across
-  the bay (`cradle.BASE_HALF`), 682 mm long on A and 680 on B (`Stand.base`: a full 6 L
-  tips past 25° over every edge of B's; A's rear edge 24.4° since the corrected centre of
+  the bay (`cradle.BASE_HALF`), 682 mm long on both (`Stand.base`: a full 6 L
+  tips past 25° over every edge of B's; A's rear edge 24.0° since the corrected centre of
   mass, its bar 15°). B's sits 40 mm toward its drive side (`cradle.BASE_Z`,
   round 1 of 2026-10-14: the gearbox and the hand crank put the cradle's centre of mass 68
   mm that way). Its corners are rounded 35 mm and the notch's mouth 8 mm
@@ -364,12 +419,13 @@ adjustable"). What it changed, and why:
   NRV030 (20 N·m) became an NRV040 (45 N·m: SF 1.41 on B, 1.33 on A), and the handle grew
   to 100 mm (A 105), so the worst turn stays under 25 N at the grip. (Corrected 2026-10-14:
   29.5 and 31.3 N·m, SF 1.52 and 1.44. The load case had kept the drawn magnum's 1.25 kg of
-  adapter liners: DECISIONS.md.)
+  adapter liners: DECISIONS.md. Round 1's drive: 125 mm on B, 85 on A, "The drive" above.)
 - **The jam grows with the handle.** A firm 40 N push on a 100 mm handle through the worm
-  at a hand's speed is 66 N·m at the crank (A 69.3: `config.PRODUCT_JAM_NM`), where it had
+  at a hand's speed is 66 N·m at the crank (A 69.3, then the jam case), where it had
   been 36. Whatever the ratio or the handle, a jam push about twice the worst turn's puts
   the drive path at about twice the bottle's peak: every part between the crank and the
-  cradle needed 1.4-1.9 x its strength.
+  cradle needed 1.4-1.9 x its strength. (Round 1 of 2026-10-14: a slip clutch in the hand
+  crank now bounds it, "Loads and checks".)
   - The pillars and the crankpin: 12 mm NETRF12 (1.73 x the 10 mm's bending section).
   - B's arms b2, b3 and bar b4: 7075-T6 0.190 in (1.72 x 6061's yield).
   - The rods: 0.250 in 5052 on both, and every link 24 mm wide (their buckling; a 0.313 in
@@ -389,6 +445,10 @@ The user's choice: "Each saddle's V rides up or down on a thumbscrew, with a sca
 bottle size. A flip-down lip gauge marks where the mouth goes, and the existing base stop
 locks the bottle there. The top stays open, so bottles still lay in from above. Two knobs
 plus the stop replace all the adapters." The 10 printed adapter liners and collars are gone.
+Design review round 1 (the same day) found it didn't yet work: a full 6 L tipped nose-up
+off the front V at rest, setting a big bottle took three hands and a hex key, and the rear
+knob took 55 turns and bent at a knock. What changed for it is under "Review round 1"
+below; the rest of this section describes the saddles as they now are.
 
 **The setting** (`cradle.setting`): a bottle lies with its axis level through the pivot
 when each 90° V's apex is `(r + 2) √2` under the axis (`r` its radius, 2 the liner), so
@@ -411,38 +471,77 @@ from 76 to 174.
 ```
   front saddle (looking along the axis)        rear saddle (looking along the axis)
 
-     gauge           knob                          post          knob (M8 screw)
-      ____          (M6)                            ||    6 L      _|_
-     |    \__________|_                             ||  .-'''-.     |
-     |  cheek |  .-.  |#|                         __||_/       \_ __|__
-     |  post  | ( O ) |#| <- tab + M6 nut         |  ||\  axis  /  || | <- coupling nut
-     |   |\___|  \ /  |#|                         |  || \_____/   || |
-     |   |  V  block  |#|                         |  ||\  V   /   || |
-     |___|____________|_|                         |__||_\_block/__||_|
-   ===o========o===  tie rods                     ===o=====o========o=== tie rods (side blocks)
+    bar  gauge's pad       knob (M6)           post                    knob (lead screw)
+     ||   ____             _|_                  ||      6 L           ___|___  <- tower's arm
+     ||  |pad |  .-.      |#|                   ||   .-'''-.           |#|  |
+   __||__|____| ( O ) ____|#|_ <- tab + M6 nut  ||  /       \       ___|#|__|_
+  |  post   \__  \ /  _/  |#| |              ___||_ \  axis /  ____|  boss  | | <- tower
+  |   |      V  block     |#| |             |   ||\  \____/  /|    | (nut)  | |
+  |___|___________________|_|_|             |___||_\  V    /_|____|___||___|_|
+   ===o========o===  tie rods                ===o=====\block/=====o==[collar]=== tie rods
 ```
 
 - **Front:** the V block slides in a box (the carrier's walls, the front and back ones
-  notched under the lowest V). Its tab at the +z end holds an M6 nut. The M6 x 60 tap bolt
-  stands in a blind bore in the carrier's floor, through the nut, its printed knob on its
-  head over the wall. The knob stays put: turning it walks the nut, and the block, up or
-  down. The block bears down on the nut, so the thread (self-locking) holds it.
-- **Rear:** the V block's two end bosses ride a NETRF12 post (12 mm, at -z) and the M8 x
-  150 tap bolt (+z), whose coupling nut sits in the boss. The post and the screw stand in
-  the carrier's two side blocks on the tie rods, joined by a bridge under the block. Its
-  knob is at the screw's head, beside the bottle, reached from above.
+  notched under the lowest V; two drains through the back one at the floor, its low end at
+  rest). Its tab at the +z end holds an M6 nut. The M6 x 60 tap bolt stands in a blind bore
+  in the carrier's floor, through the nut, its printed knob on its head over the wall. The
+  knob stays put: turning it walks the nut, and the block, up or down (13 turns end to
+  end). The block bears down on the nut, so the thread (self-locking) holds it.
+- **Rear:** the V block's two end bosses ride a NETRF12 post (12 mm, at -z) and a
+  Tr8 x 8 lead screw (+z, 8 mm a turn: 9 turns end to end), whose bronze barrel nut sits in
+  the boss from below, an M3 set screw on it. The post stands in the carrier's -z side
+  block; the screw's foot in the +z one, through its clamping collar in a pocket there on a
+  TPU brake washer. A tower on that block rises beside the screw to an arm over its top: a
+  bushing round the screw under the printed knob.
+  - An 8 mm lead isn't self-locking (the thread's lead angle, 20°, is over its friction's).
+    The collar holds it: the block's load presses the collar's 21 mm face on the TPU
+    washer, whose grip at that radius is 4.1 x the thread's turn back under the same load,
+    whatever the bottle (`cradle_report.saddles`, a greased thread). The knob turns easily
+    with the bottle out, when the block carries only itself.
   - The screw holds the block at one end. A bottle's weight at the axis rolls the block
-    about it, and the post takes that couple (it is 5.7 x stiffer than the screw's core).
-    That is why the post is 12 mm, not 10.
+    about it, and the post takes that couple (it is 22 x stiffer than the lead screw's
+    core). That is why the post is 12 mm, not 10.
+  - The screw's knob sits at |z| 110, 11 mm outboard of a 6 L's widest as it's laid in
+    (the M8's was at 4). A knock at the knob goes into the tower's arm, not the screw, which
+    is held at both ends (`saddles`: 6.3 MPa in the tower at 50 N; the old free M8 yielded
+    at about 50 N).
   - Gussets under the flats spread the couple into the block.
-- **The scales:** grooves the V block's top edge (front) or its screw boss's top (rear)
-  reads. One row has a groove per bottle of the five. The other is graduated in diameter:
-  the neck's every 4 mm in front, the body's every 10 mm at the rear. No text is printed
-  on them: glyphs would depend on the fonts of the machine that builds the STL.
+- **The scales:** grooves the V block's top edge (front) or its screw boss's top (rear, on
+  the tower's face) reads. One row has a groove per bottle, a dot each per place from the
+  top: in front three (`cradle.FRONT_GROUPS`: the 750 ml and the magnum share one, the two
+  6 L another; their necks rise the block 0.7 mm apart, so each pair is set at the mean,
+  0.45 mm off at the mouth), at the rear five. The other row is graded in diameter: the
+  neck's every 4 mm in front, the body's every 10 mm at the rear. No text is printed on
+  them: glyphs would depend on the fonts of the machine that builds the STL.
 - **No depth added:** each carrier's bottom is the old saddle's (front -60, rear -149).
   The V block sits on the rods at its lowest, and its guides stand beside the bottle (|z|
-  97 to 115 at the rear, inside the bay's 130). `decanters.TIES` didn't move: neither
+  91 to 126 at the rear, inside the bay's 130). `decanters.TIES` didn't move: neither
   cradle re-plans.
+
+**Resting on both saddles** (`cradle_report.balance`; review round 1, B1). At rest the gate
+pushes the base back below the axis while the weight pulls along it; that couple moves the
+centre of the saddles' reaction toward the base by the push's depth times tan 50°. With the
+gate's push as low as it can be (the base's ring or the gate's bottom edge) and the centre
+of mass where review round 1's shell model puts a full bottle (`BottleSize.com_from_mouth`
+since that round, 31-36 % of its length from the base: 390 mm from the mouth for the
+methuselah), the reaction centred up to 482 mm from the mouth, 102
+past the rear V's end: the neck lifted off the front V and the bottle pivoted on the V's
+back edge. The base stop's rails now carry 45° flanges continuing the V behind the block,
+lined with TPU, so the rear support runs to 588 mm (the body's heel, 10 mm short of its
+base, ends it for each bottle):
+
+| bottle | at rest | level | full tilt | its support's end |
+|---|---|---|---|---|
+| 750 ml | 223 | 191 | 199 | 290 |
+| magnum | 276 | 230 | 238 | 346 |
+| 3 L jeroboam | 397 | 325 | 334 | 460 |
+| 6 L impériale | 405 | 319 | 329 | 483 |
+| 6 L methuselah | 482 | 390 | 400 | 561 |
+
+The reaction's centre (mm from the mouth); every one at least 62 mm inside its support. At
+full tilt the lip gauge's push over the axis moves it back too (by the rim's height times
+tan 30°). The rails join the block in a socket under each flat, their tongues 28 mm in, so
+the body's load on the flanges' end goes into the block in bearing.
 
 **Why not the tie rods in vertical slots** (the first idea): the slot would have to run
 the whole travel under the rod, so the rear block would hang 69 mm deeper at a 6 L's
@@ -450,9 +549,13 @@ setting. That is onto the decanter's axis at rest, 217 mm over the table. The fr
 would hang 8 mm deeper. The rods can't go higher: they already sit just under the 6 L's V
 apex.
 
-**Why not detents:** a 5 mm pitch leaves a front V up to 2.5 mm off. Over the 252 mm to
-the rear V, that puts the mouth 0.8 mm off the pivot, and it wanders 1 mm over the swing.
-The thumbscrew is exact and adds no depth.
+**Why a coarse screw at the rear, a fine one in front:** the mouth's height follows the
+front V 1.25 mm per millimetre and the rear one only 0.25 (the rear V is 4 x as far from
+the pivot), so the rear needs coarse steps and the front fine ones. The M8's 1.25 mm took 55
+turns for a 72 mm travel that buys nothing a 8 mm lead doesn't; the front M6 stays (13
+turns). Detents (review round 1's pins in a row of holes, S1) would have been simpler still
+and saved the screw, but the user's choice is a V on a thumbscrew, and a 5 mm detent pitch
+leaves a front V up to 2.5 mm off (0.8 mm at the mouth).
 
 **Why the gauge is the forward stop:** with no collar, a stop must hold the bottle from
 sliding toward its mouth past level. A lip over the base's heel can't: the heel tapers
@@ -460,55 +563,116 @@ toward the base, and nothing on the bottle faces the mouth but the shoulder and 
 mouth's own face. A shoulder stop would need a third adjustment, 45 mm along the axis
 (and the light stands there). The gauge is at the pivot by construction, for any bottle.
 Its pad bears on the top of the rim, over the bore; the stream leaves the bottom of the
-bore, and the decanter is below. The bottle's push runs along the hinge's axis, so it
-can't flip the gauge open.
+bore, and the decanter is below. Its bar runs back beside the neck, so the bottle lays in
+under nothing; a bottle's push on the pad is 41 mm off the hinge's line, and the hinge's
+two knuckles either side of the post take that turn on the pin (the push itself bears the
+back knuckle on the post's back face, not on a thread). It can't be forgotten up: lifted
+to uncork, it stops at 70° with its centre of mass still inboard of the hinge, and falls
+back onto the mouth when let go.
 
 **Why the base stop rides the V block:** a 750 ml's base (300 mm) and a magnum's (356) lie
 inside the rear V (255-380), where the old spine couldn't reach. A gate across the V,
 keyed to the block's flats and continued by rails behind it, serves them and the 6 L's
-(571) alike. It drops the 155 g spine, and the lowest point at rest doesn't move (the
-rails' end, 18.8 mm over the board, against the spine's 18.1).
+(571) alike, and the rails, rising with the block, give the V's flanges behind it the same
+height at every setting. It drops the 155 g spine; at rest it comes no nearer the board
+than 26 mm (the old rails' end had been 18.8 mm over it, under a finger's 25 mm).
 
 **Use** (the guide's "Setting it for a bottle"):
-1. At rest, the bottle out, the gauge up: turn each knob to the bottle's groove.
-2. Lay the bottle in, its label up. Flip the gauge down; slide the bottle up to it.
-3. Slide the gate up to the base and lock it.
-4. The gauge stays down while it pours. Flip it up to uncork or to take the bottle out.
+1. At rest, the bottle out, set all three by their scales: the gate's pointer to the
+   bottle's groove across the rail or flat, its knob tight by hand; each V block's reading
+   edge to the bottle's groove (a dot per place on every scale). Another bottle: its length
+   (plus half a millimetre) on the 10 mm grooves, its neck's diameter measured 50-80 mm
+   from the lip (where the front V holds it: a Port bottle's bulb or a tapered neck sets by
+   that), its body's.
+2. Lay the bottle in, its label up, its base to the gate: it slides back onto it. The
+   gauge stays down; its pad stands a millimetre or less in front of the rim.
+3. To uncork, lift the gauge onto its stop and hold it (or let it rest on the corkscrew);
+   let go and it falls back onto the mouth. It must be down before the handle turns.
 
-**The parts** (prices from pages rendered 2026-10-13, qty 1, per cradle; the sourcing in
-`/root/scratch/decant/saddles/sourcing/` on the development box):
+**The parts** (prices from pages rendered 2026-10-13 and 2026-10-14, qty 1, per cradle;
+the sourcing in `/root/scratch/decant/saddles/sourcing/` and
+`/root/scratch/decant/review5/r1_mounting/pages/` on the development box):
 
 | part | where | USD |
 |---|---|---|
-| M8 x 150 tap bolt, fully threaded, 18-8 | Bolt Depot 11110 | 2.87 |
-| M8 x 24 coupling nut, 18-8 (DIN 6334) | Bolt Depot 27224 | 2.52 |
+| Tr8 x 8 lead screw, 150 mm, stainless | ServoCity 3501-0804-0150 | 6.99 |
+| its barrel nut, bronze, 12 x 16 mm | ServoCity 3500-0804-1216 | 4.99 |
+| its clamping collar, 21 x 9 mm, aluminium | ServoCity 3504-0804-2109 | 6.99 |
 | M6 x 60 tap bolt, fully threaded, 18-8 | Bolt Depot 5973 | 0.60 |
 | M6 hex nut, 18-8 | Bolt Depot 4776 | 0.11 |
 | NETRF12-130 standoff (the rear post) | MISUMI | 16.98 |
 | M6 x 12 button head (the post's foot) | Bolt Depot 6644 | 0.19 |
-| M5 x 16 button heads: the gauge's pin, the rails' two, the gate's lock | Bolt Depot 6634 | 4 x 0.14 |
+| M5 x 16 button heads: the rails' four | Bolt Depot 6634 | 4 x 0.14 |
+| M5 x 25 tap bolt (the base stop's lock) | Bolt Depot 5952 | 0.22 |
+| M5 nut and two fender washers (in its T-slot, on its ear) | Bolt Depot 4775, 7314 | 0.07 + 2 x 0.10 |
+| M5 x 40 tap bolt and nylon-insert nut (the gauge's pin) | Bolt Depot 5955, 4794 | 0.34 + 0.09 |
+| M3 x 6 set screws: the barrel nut's, the rear knob's | Bolt Depot 8707 | 2 x 0.09 |
 
-That is about USD 23 more per cradle than the old saddles, the post most of it (a NETRF10
-would be 14.08, at yield SF 2.3 under the couple). Everything else is printed: the two
-carriers, the two V blocks and their TPU liners, two knobs, the gauge, the rails and the
-gate.
+That is about USD 38.50, USD 14.70 more than with the M8 screw and coupling nut, the screw,
+its nut and collar most of it (a 3D printer's T8 x 8 kit off the shelf, screw, nut and
+collar, would do; ServoCity's are the ones priced). Everything else is printed: the two
+carriers, the two V blocks, the TPU liners (the Vs' and the rails' flanges') and the
+rear screw's brake washer, three knobs, the gauge, the rails and the gate.
 
-**What holds** (`cradle_report.saddles`; a full 6 L, 11.1 kg, its worst way for each part;
-printed parts against 10 MPa, a quarter of printed PLA's strength across its layers, for a
-load that stays):
+**What holds** (`cradle_report.saddles`; a sealed full bottle, its worst way for each part,
+its centre of mass the shell model's; printed parts against 10 MPa, a quarter of
+printed PLA's strength across its layers, for a load that stays):
 
 | part | load | stress |
 |---|---|---|
-| rear V block on its rods' seats | 109 N | 0.28 MPa |
-| rear coupling nut on the block | 116 N (hung) | 1.3 MPa |
-| rear post, bending | 11 N·m couple | 65 MPa (SF 3.4 on 1018's 220) |
-| rear screw, bending | its share | 35 MPa (SF 6.0) |
-| rear V block at the post's boss | the post's share | 1.2 MPa |
+| rear V block on its rods' seats | 109 N (a 6 L, level) | 0.28 MPa |
+| rear barrel nut on the block | 116 N (a 6 L hung) | 2.2 MPa |
+| rear post, bending | 12.2 N·m roll, a 6 L hung at the screw | 72 MPa (SF 3.05 on 1018's 220) |
+| rear post at rest | 12.1 N·m: a hung impériale's pull along the axis, 121 mm over its root, and its roll | 71 MPa (SF 3.1) |
+| rear lead screw | its share of the roll; a 50 N knock between its nut and bushing | 33, 56 MPa (SF 6.4, 3.8) |
+| rear lead screw's brake | the block's load on the collar's TPU washer | 4.1 x the thread's turn back |
+| rear knob's tower | a 50 N knock at the knob | 6.3 MPa |
 | base stop's gate, bending | 96 N at rest (with a corkscrew's push) | 5.4 MPa |
-| base stop's lock | 96 N | its grip 360 N (SF 3.7) |
-| lip gauge's pad, bar, arm | 54 N at full tilt (no friction) | 3.8, 3.0, 4.3 MPa |
+| base stop's lock | 96 N | its grip 300 N (SF 3.1: 0.5 N·m by hand, two faces) |
+| base stop's T-slot lips | the lock's 500 N preload | 6.9 MPa |
+| base stop's rails at their sockets | 6.5 N·m each: a 6 L's body on the flanges' end, level | 4.1 MPa |
+| the sockets' floors | 346 N under each tongue's end | 7.7 MPa |
+| lip gauge's pad, arm, bar, bridge | 54 N at full tilt (no friction) | 1.1, 2.6, 8.4, 5.9 MPa |
+| lip gauge's post | the same, bent and twisted (its 41 mm turn) | 6.4 MPa |
+| lip gauge's pin (M5) and the post's bore | the knuckles' 89 N couple | 42 MPa (SF 4.9); 7.5 MPa bearing |
 
 The V blocks carry no jam load: the tie rods and the cradle links do.
+
+**What they weigh:** the saddles, the gauge and the base stop come to about 1.6 kg, solid
+(the report counts a printed part at full infill), 0.3 kg more than with the M8 screw, most
+of it the rails' flanges 100-210 mm behind the rear V. With a sealed full 6 L at its
+shell model's centre of mass (390 mm) that puts the crank's peak at 35.1 N·m on B (34.3 with
+the old saddles: the gearbox's SF 1.28, was 1.31; 26.0 N at the grip, was 25.4) and 36.9 on
+A (36.0: SF 1.22, was 1.25; 26.0 N); the stand tips over its rear edge at 25.0° on B and
+24.1° on A. B's gearbox (its 1.3 bar) and both grips (the relaxed 26 N bar) are past what
+the tests ask: the drive's to settle (2026-10-14). Round 1's drive set both bars on cited
+sources ("The drive"): the gearbox rated at a hand's speed, 1.65 on B and 1.57 on A; the
+grip under MIL-STD-1472H's 22 N, 20.8 N on B's 125 mm crank. A's 85 mm crank (the longest
+its cradle clears) takes 32.2 N: open. B's board is 682 mm (25.1°).
+
+**Review round 1** (the same day; `/root/scratch/decant/review5/r1/mounting.md` on the
+development box). What it found, and what changed:
+- **A full 6 L tipped nose-up at rest (B1).** The rear support ran out at 380 mm; it now
+  runs to 588 on the rails' flanges, and `cradle_report.balance` checks every size at rest,
+  level and full tilt (above).
+- **Setting a big bottle took three hands and a hex key (M1, and the stand's M5).** The
+  gate is set first, by its scale, with the bottle out, and locks by a knob on a T-slot nut
+  (no pilot re-threaded at each change, m3); the knobs likewise; the bottle then lays in
+  onto the gate with the gauge already down.
+- **The rear knob was in a 6 L's way and its M8 yielded at a 50 N knock (M2); 55 turns
+  (M5).** The lead screw's knob moved outboard over a tower's arm that holds the screw's
+  top; 9 turns.
+- **The gauge's post took 10.8 MPa across its layers (M3) and nothing returned the gauge
+  (M4).** Two knuckles on an 18.4 mm post, the push in bearing, rated with its turn; the
+  return by gravity from its stop.
+- **The liners walked (M6).** Each is pegged into its V.
+- **Minor:** three named grooves in front, dots on every scale (m1); the V blocks print
+  standing, the rails on their outer faces, one each, the liners flat or on their edges
+  (m4); drains in the front carrier (m7); grease on the thumbscrews (the BOM's notes, m9);
+  the guide measures an off-list neck 50-80 mm from its lip (m5).
+- **Not done:** the rails still reach 600 mm for every bottle (m10); the light stays the
+  penlight (m6, S4); the tie rods stay NETRF10 (S5); the post's socket isn't deeper (m2: the
+  post itself is rated at rest instead, SF 3.1).
 
 ## The vessel under the mouth
 
@@ -557,7 +721,11 @@ plate and columns), where its flat pack was 112.
      the cradle box stands up out of the side (a 259 L box).
    - The first time, mark the pose for the way back with a paint pen: a line across the arm
      b3 and the inner bar at its O1 end, and one across b5 and b3 by J2.
-2. Hand crank: loosen its thumb screw and pull it off. Nothing turns without it.
+2. Hand crank: loosen its thumb screw and pull it off. Nothing turns without it. (Its
+   thumb screws stay in their brass inserts and the input key is glued in: nothing small
+   comes loose. A stow clip on the drive side's outer face was tried in round 1's drive
+   review: B's plan lays that face on the passive panel, so the clipped crank lifted the
+   drive side 54 mm, over the box's bound.)
 3. Undo the four thumb knobs on the base board's bolts by hand and lift the cradle off the
    board by its two outer plates' top members (never by the cradle box: only the worm holds
    it). The bolts stay in the board, the washers and knobs back on them.
@@ -728,29 +896,28 @@ The methuselah's 59 mm further back adds about 16 % to the crank's peak: the gea
 the grip are under "Turning it" below and in B's table. (Its centre now lies 10 mm behind
 the rear V's end: the mounting review's finding, the saddles' own.)
 
-The jam case is a firm push at the crank's grip on a blocked cradle
-(`cradle_report.JAM_HAND_N`, 40 N: about 1.7 x what the worst turn takes), through the
-worm at a hand's speed (`WormBox.eta_hand`, 0.55 on the NRV040): 66 N·m at B's crank on
-its 100 mm handle, 69.3 at A's on its 105 (`cradle_report.jam_nm`,
-`config.PRODUCT_JAM_NM`, per linkage).
+The jam case is the most the hand crank's slip clutch lets onto a blocked cradle: 61.3 N·m
+at either crank (`cradle_report.jam_nm`, `config.PRODUCT_JAM_NM`; "The clutch's cap"
+below), however hard the push. Until round 1's drive it was a firm push at the grip
+(`cradle_report.JAM_HAND_N`, 40 N: about 1.7 x what the worst turn takes) through the worm
+at a hand's speed (`WormBox.eta_hand`, 0.55 on the NRV040): 66 N·m at B's crank on its
+100 mm handle, 69.3 at A's on its 105, and no bound.
 - Rated at the gearbox's rating instead, it would be reached at less than the worst turn's
   own force: no bound (all three reviews of 2026-10-10).
-- It is not counted within 30° of crank round either toggle, where a blocked crank-rocker's
-  forces grow without bound. There, only clearance protects: the decanter's lip and
-  anything under the cradle.
-- The crank's torque is a parameter of the structure's check (`cradle_report.structure`'s
-  `crank_nm` and `skip`): a clutch's cap, if one comes, rates the toggle zones too.
-- What A holds there: pin E (steel) 2.88, the crankpin 1.6, the keyed plates 1.9, the rod's
-  buckling 2.05, pillar G 1.63 (on its box: below), its cradle link b2 1.61 (in bending,
-  chord by chord; 0.187 in 5052, its E-Tr1 32 mm wide against buckling), the columns
-  2.17 and more, the outer plate's members 2.01, the inner's 2.97.
-- Turning it: 36.0 N·m at A's crank at worst (the NRV040's SF 1.25), 25.4 N at the grip:
-  both over their bars since the corrected centre of mass (31.3 N·m, 1.44 and 22.1 N
-  before), open for the drive (DECISIONS.md, 2026-10-14). It tips at 24.4° over its rear
-  edge (25.3° before; its test's bar is 15°), 25.7° to its drive side, 30.8° to the other
-  and 38.6° forward, and takes a 34.9 N push at a bottle's top (an empty 750 ml, toward
-  the drive side), the worst over the swing; 10 mm more board at the rear would bring it
-  past 25° (25.3°).
+- The joints' rows leave out 30° of crank round either toggle, where a blocked
+  crank-rocker's forces grow without bound; the clutch's case rates them (below). There
+  only clearance protects: the decanter's lip and anything under the cradle.
+- What A holds there: pin E (steel) 3.26, the crankpin 1.81, the keyed plates 2.15, the
+  rod's buckling 2.32, pillar G 1.82 (on its box: below), its cradle link b2 1.82 (in
+  bending, chord by chord; 0.187 in 5052, its E-Tr1 32 mm wide against buckling), the
+  columns 2.43 and more, the outer plate's members 2.24, the inner's 3.33 (at the 40 N
+  push's 69.3 N·m: 2.88, 1.6, 1.9, 2.05, 1.63, 1.61, 2.17, 2.01, 2.97).
+- Turning it: 36.9 N·m at A's crank at worst, a sealed full 6 L on the mounting round's
+  saddles: the NRV040's SF 1.57 at a hand's speed (1.22 on its 45 N·m). 32.2 N at A's 85
+  mm grip, over the 22 N bar (MIL-STD-1472H's light-load crank): open (DECISIONS.md,
+  2026-10-14, the drive). It tips at 24.0° over its rear edge (its test's bar is 15°),
+  25.6° to its drive side, 30.6° to the other and 38.6° forward, and takes a 36.1 N push at
+  a bottle's top (toward the drive side), the worst over the swing.
 - The rating is the plan's: a wider stack between the rod and the cradle link puts pin E
   lower. A product is never served a plan from another engine version
   (`stages.planning._reuse_plan`): it re-plans, proven thinnest.
@@ -786,18 +953,47 @@ as a beam between both plates) missed. They feed `strength.check` (`loads_doc`'s
 
 **The known limits: a blocked cradle** (`cradle_report.blocked`, the report's `blocked`).
 The jam case is a couple on the cradle. A real block is a force at a contact, and near the
-mouth its lever is short. The same 66 N·m (A 69.3) against a block:
+mouth its lever is short. The same 61.3 N·m, the clutch's cap, against a block:
 
 | block at | B: the block's force | B: J / O1 / X / K | B: weakest | A: weakest |
 |---|---|---|---|---|
-| the front tie Tf1 (the front saddle, the light, the front ties on a raised decanter's rim), 72 mm from the mouth | 3.65 kN | 6.6 / 6.2 / 3.7 / 3.6 kN | the outer plate 0.17, pillars O1 0.30 and O2 0.34, pin K 0.66 | the outer plate 0.21, pillar G 0.72 (G 4.4 kN) |
-| the rear saddle's underside, 351 mm out | 0.75 kN | 1.6 / 2.1 / 1.0 / 2.0 kN | the outer plate 0.73, pillar O2 0.86, O1 1.01 | the outer plate 0.84 |
+| the front tie Tf1 (the front saddle, the light, the front ties on a raised decanter's rim), 72 mm from the mouth | 3.43 kN | 6.2 / 5.9 / 3.5 / 3.4 kN | the outer plate 0.18, pillars O1 0.32 and O2 0.36, pin K 0.70 | the outer plate 0.23, pillar G 0.81 (G 3.9 kN) |
+| the rear saddle's underside, 351 mm out | 0.71 kN | 1.5 / 2.0 / 1.0 / 1.8 kN | the outer plate 0.78, pillar O2 0.93, O1 1.07 | the outer plate 0.94 |
 
-Not designed for: nothing that holds a block 72 mm from the mouth at a firm push fits the
-cradle. In practice the glass decanter breaks first. The use limits keep the decanter out
-of the cradle box's path (raise its jack only past −20°, lower it before cranking back),
-and the cure is a torque limiter at the hand (a slip hub just over the worst turn's
-force), the drive's next round.
+Not designed for: nothing that holds a block 72 mm from the mouth at the cap fits the
+cradle, and no clutch a hand can turn brings those to 1. In practice the glass decanter
+breaks first. The use limits keep the decanter out of the cradle box's path (raise its
+jack only past −20°, lower it before cranking back). (At the 40 N push, before round 1's
+drive: B's outer plate 0.17, pillars 0.30 and 0.34; A's plate 0.21.)
+
+**The clutch's cap** (round 1's drive review, 2026-10-14: `config.PRODUCT_CLUTCH_NM`,
+`cradle_drive.clutch_case`, the report's `jam_capped`). The hand crank's slip clutch slips
+at 3.375 N·m on the input (27 N at B's grip, 40 at A's), at most 10 % more once set, so the
+crank never sees more than 61.3 N·m on either, through the worm at a hand's speed, however
+hard the push. That is a bound, and the jam case; the 40 N push that had been the case
+isn't one (a hand on a crank that feels stuck pushes 60-150 N). The report rates the cap
+over the whole turn, the toggles included:
+- The report's own model rates it (`cradle_report.structure` with no toggle skipped, the
+  links chord by chord, the posts on their box, the plates' members): 30° of crank and more
+  from either toggle every part holds it, B at SF 1.36 or more (pillar O2; 1.31 at the
+  40 N push's 66 N·m with the old saddles), A at 1.80 (b2; 1.61 at 69.3 N·m).
+- Nearer a toggle the rod's force goes as the cap over the sine of the crank's angle to the
+  rod, and no torque bounds it. B: pillar O2 1.15 at ±25°, 0.93 at ±20°, 0.46 at ±10°; the
+  rod buckles (elastically, into its 3 mm gaps) within ±17° of rest and ±9° of full tilt. A:
+  every part holds 1.3 outside ±25° (the last 3.8° of tilt before rest, 5.9° before full);
+  b2 0.85 at ±15°; the rod buckles within ±12° and ±6°. Only clearance protects there: the
+  use limits keep everything from under the cradle box and the bottle in the last two or
+  three turns.
+- The gearbox at the cap: 1.36 x its 45 N·m rating, 0.68 x the catalogue's momentary limit
+  (2 x Mn2, p. 9: 90 N·m), on either (the 40 N push had been 1.47 and 1.54 x).
+- The input shaft's radial load (`input_overhung`): the grip's middle 155 mm past the
+  input's shoulder, where the catalogue allows Fr1 a / (b + x) = 149 N on the NRV040 (p. 43:
+  350 N, a 106, b 95); the clutch's top is 29.7 N at B's grip (SF 5.0), 43.7 at A's (3.4).
+- The keyed plates hold 2.15 x the cap filed together on the key; one plate bearing alone
+  0.54, and 0.94 at B's walking peak, so the guide files them together.
+- The bars are the tests' (`tests/test_cradle.py`): the clutch's least slip at least 1.1 x
+  the worst starting turn (1.17 on B, 1.11 on A), every part at 1.3 or more 30° from the
+  toggles, the cap within the gearbox's momentary limit.
 
 Every joint on both sides is rated at the full planar load (`cradle_report.SHARE` = 1),
 not a share of it. The rod drives one side, whose pivots carry half the weight plus the
@@ -805,8 +1001,15 @@ rod's whole force.
 
 `spiderpig/cradle_report.py` (`report(config)`) measures:
 - **Swing:** the swing and each bottle's own mouth wander.
-- **Drive:** the crank's peak torque, the gearbox's safety factor, the force at the crank's
-  grip, the jam's push and torque, the turns per pour.
+- **Drive:** the crank's peak torque, the gearbox's safety factor at a hand's speed and on
+  its 45 N·m, the force at the crank's grip against MIL-STD-1472H's 22 N, the jam's torque
+  (the clutch's cap) and the 40 N push's beside it, the turns per pour; the clutch's slip
+  against the worst starting turn and its cap, the gearbox at the jam against its rating
+  and its momentary limit, the input shaft's radial load, the keyed plates
+  (`cradle_drive.drive_limits`).
+- **The clutch's cap** (`jam_capped`, `cradle_drive.clutch_case`): every part at the cap over
+  the whole turn, per excluded band round the toggles (0 to 30°), and where each falls under
+  1.3 and 1.
 - **Rod and crankpin:** the rod's buckling, the crankpin standoff as a cantilever off the
   block.
 - **Stand:** the whole cradle's centre of mass over the swing against the base board's
@@ -823,7 +1026,9 @@ rod's whole force.
 - **Blocked:** the known limits, a block at the front tie and at the rear saddle
   (`blocked`).
 - **Saddles:** the loads and stresses of the saddles' printed parts and steel, the lip
-  gauge's and the base stop's (`cradle_report.saddles`: "The saddles, adjustable").
+  gauge's and the base stop's, and where each bottle's weight centres on them at rest,
+  level and full tilt (`cradle_report.saddles`, `cradle_report.balance`: "The saddles,
+  adjustable").
 - **Clashes:** the whole cradle's clashes over the swing, the hand crank's swept volume
   against everything, and every bottle at its own setting, its V blocks and base stop
   moved (`cradle.bottle_hits`, `cradle.at_setting`).
@@ -831,16 +1036,22 @@ rod's whole force.
 `tests/test_cradle.py` holds the thresholds, for A:
 - each bottle's mouth wander under 0.5 mm;
 - tipping at 15° or more, and 25 N or more at the bottle's top, the worst over the swing;
-- the crank's grip force under 26 N (25 until the corrected centre of mass: open for the
-  drive);
-- the gearbox's safety factor at least 1.2, against its 45 N·m rating (the peak is a
-  sealed full 6 L at one tilt, at hand speed; 1.3 until the corrected centre of mass:
-  open for the drive);
+- the crank's grip force at a sealed full 6 L's worst start under 22 N (MIL-STD-1472H's
+  light-load crank, Figure 13), its throw within 125 mm: A misses it at 32.2 N on its 85
+  mm crank (open; the test checks it last);
+- the gearbox's safety factor at least 1.3 at a hand's speed (Motovario's NRV040 30:1 at
+  its slowest listed input, 500 rpm, scaled to Phidgets' 45 N·m: 58.1 N·m) and 1 on its
+  45 N·m rating, the peak a sealed full 6 L at one tilt;
+- the clutch's least slip 1.1 x the worst starting turn or more, its cap within the
+  gearbox's momentary limit (2 x its rating), the input shaft's radial load at the
+  clutch's top at least 2 x under the catalogue's;
 - every pin, pillar, column, link and frame plate at least 3 walking and 1.3 jammed (the
   links, posts and plates from the force vectors); the keyed plates at least 2.5 walking
   and 1.5 jammed; the crankpin and the rod 1.5 jammed;
 - the saddles' printed parts under 10 MPa at a full 6 L's worst, the post and the
-  thumbscrew 3 x under their yield, the base stop's lock gripping 3 x its load;
+  screws 3 x under their yield, the base stop's lock gripping and the rear lead screw's
+  brake holding 3 x what they hold; every bottle's weight centred on its saddles by 40 mm
+  or more at rest, level and full tilt, and the lip gauge falling back from its stop;
 - the cut rules pass, every printed part fits a 250 x 210 x 210 mm bed in its pose;
 - the assembly order covers every part.
 
@@ -908,18 +1119,19 @@ or a rule of the build:
   bending: its rear arm held the jam at 0.32).
 
 **What it holds** (`cradle_report.report`, a sealed full 6 L walking, its centre of mass
-390 mm from the mouth, a 40 N push at the grip jammed; 2026-10-14, after the design
-review's structure round):
+390 mm from the mouth, the hand crank's clutch's cap jammed; 2026-10-14, after the design
+review's structure, mounting and drive rounds):
 
 | check | B |
 |---|---|
 | swing | −50.0° to +30.0°, the mouth still (0 mm), every bottle's mouth on the pivot |
 | transmission | 36.7° at worst (the rod's); the parallelograms 48.5° and 51.5° |
-| gearbox | 34.3 N·m peak: SF 1.31 on the NRV040's 45 N·m; 25.4 N at the 100 mm grip (over its 25 N bar since the corrected centre of mass: open for the drive) |
-| jam (66 N·m) | pillars O1 and O2 1.31 (on their box), b6 1.33, pin K 1.43 (clevis), b4 1.44 (its chord's buckling), the outer plate's members 1.5, the inner's 1.64, b1 1.77, b3 1.87, the crank's keyway 2.0, pin J2 2.16 (clevis), column D1 2.19, pin Y 2.21 and pin X 2.52 (clevis), pin P 2.66 (steel), b2 3.05, pin J 10.6 (steel) |
-| walking | every joint, link, column and plate 4.25 or more; the crank's keyway 3.85 |
-| rod, crankpin | buckling 1.59 × its jam force; the crankpin 1.96 jammed |
-| stand | tips at 25.2° at worst (a full 6 L, over the rear edge); the drive side 29.7°, the passive side 28.9°, the front 40.1°; a push of 44.1 N or more at a bottle's top (an empty 750 ml, toward the drive side). The board 40 mm toward the drive side and 680 mm long, round 1: it had been 25.9° (26.0° to the drive side, 31.7° to the other) and 32.0 N |
+| gearbox | 35.1 N·m peak: SF 1.65 on the NRV040's 58.1 N·m at a hand's speed (1.28 on its 45 N·m); 20.8 N at the 125 mm grip at the worst start (the bar 22 N, MIL-STD-1472H) |
+| jam (61.3 N·m, the clutch's cap) | pillars O1 and O2 1.4 (on their box), b6 1.42, pin K 1.54 (clevis), b4 1.55 (its chord's buckling), the outer plate's members 1.61, the inner's 1.76, b1 1.91, b3 2.0, the crank's keyway 2.15, pin J2 2.3 (clevis), column D1 2.35, pin Y 2.36 and pin X 2.73 (clevis), pin P 2.87 (steel), b2 3.29, pin J 11.4 (steel) |
+| walking | every joint, link, column and plate 4.15 or more; the crank's keyway 3.76 |
+| rod, crankpin | buckling 1.71 × its jam force; the crankpin 2.11 jammed |
+| the clutch's cap over the whole turn | every part 1.36 or more 30° and more from the toggles (pillar O2); pillar O2 1.15 at ±25°, 0.93 at ±20°; the rod buckles within ±17° of rest, ±9° of full tilt (round 1's drive review) |
+| stand | tips at 25.1° at worst (a full 6 L, over the rear edge); the drive side 29.7°, the passive side 28.7°, the front 40.2°; a push of 45.5 N or more at a bottle's top (an empty 750 ml, toward the drive side). The board 40 mm toward the drive side and 682 mm long, round 1: it had been 25.9° (26.0° to the drive side, 31.7° to the other) and 32.0 N |
 | stack | 84.23 mm a side (79.68 before: the clevis pin at K, b6 in 0.187 in) |
 
 Before the review's round (2026-10-13, the old rules and a 331 mm centre of mass): pillar
@@ -942,18 +1154,19 @@ b2 held 0.80, b6 0.32 and pillar O2 about 0.4.
   outer plate, about SF 0.4 jammed). Each side is now a box from the pivots down, as A's
   is. The triangle and the leg are in front of the bar, where no tie rod or pin end passes;
   a column between O1 and D1 would stand in the lever b2's sweep. Nothing crosses the bay.
-- **The base board** runs from 160 mm in front of the mouth to 520 mm behind it: 680 by
+- **The base board** runs from 160 mm in front of the mouth to 522 mm behind it: 682 by
   584 mm (a full 6 L tips past 25° over its sides and its rear edge; it was 596 by 500 for
   a 3 L, 626 by 530 until the stand's check of 2026-10-14, 684 until the corrected centre
-  of mass and the structure round the same day). The first refit's had run 827
+  of mass and the structure round the same day, 680 until round 1's drive). The first refit's had run 827
   mm, to 640 mm behind the mouth, with the crank 480 mm back. Its middle is 40 mm toward
   the drive side (`cradle.BASE_Z`, round 1). Its front keeps its 160 mm: the reviewer's
   35 mm trim (the front tips at 39.5°) would put the passive front foot's pad on that
   side's carriage bolt's head, now the board's passive edge is 40 mm nearer the bolts.
-  - The rear edge binds, at 25.2° (bar 25°): with the centre of mass corrected (390 mm
-    from the mouth) and round 1's structure, 680 mm is the least board that holds it
-    (674 mm: 24.6°; 684: 25.6°). Each 10 mm of board at the rear is about 0.5°; `python
-    -m spiderpig.cradle_report stand` re-runs the stand alone.
+  - The rear edge binds, at 25.1° (bar 25°): with the centre of mass corrected (390 mm
+    from the mouth), round 1's structure, the mounting round's saddles and the drive
+    round's parts, 682 mm is the least board that holds it (680: 24.9°; 684: 25.3°). Each
+    10 mm of board at the rear is about 0.5°; `python -m spiderpig.cradle_report stand`
+    re-runs the stand alone.
 - **Planned on its own, the passive side would be about 35 mm thick** (the review's
   estimate, not built): its layers 1–8 hold only the pillars' sleeves under the drive's
   crank block. How: plan the passive side as its own design (the side's linkage with no
@@ -1021,13 +1234,29 @@ Things to know before cutting and on the bench:
   (`bom.CRADLE_CUT_PROXIES`); on B that is USD 68-136. The birch, never quoted, stays
   unpriced with its area (4439 cm² on B). The cutting's source line names A's quote as A's
   (it had printed "USD 359-368 in all" in B's order).
-- **Measure the gearbox** when it arrives: the output face's spigot (2.5 mm is drawn; under
-  2 mm, put an M6 washer under each riser screw's head), the output shaft's collar and key
-  (drawn from Motovario's 18 mm NRV040 shaft: Phidgets' is 19 mm) and where the key sits.
-- **File the keyed plates' keyways to the key** if they bind. A laser-cut slot comes back
-  ±0.13 mm.
-- **Oil the steel standoffs:** they are bare 1018. Wipe each with light oil, and keep the
-  cradle dry.
+- **Run the gearbox in and wipe it:** a new worm box can weep oil at its seals, and it
+  stands over the base board beside the wine. A few hundred input turns (a drill, slowly),
+  then wipe it.
+- **The gearbox's go/no-go** (the guide's riser step): on its spacers under the outer plate,
+  the shaft's end over the plate's inner face sets the shim rings under the crank block's
+  top plate, or calls for 11 or 13 mm spacers ("The drive" above). The output shaft
+  matches Phidgets' own shaft drawing (19 h6, collar 24 x 3, 40 past it, a 30 mm keyway);
+  the housing's spigot height, hub protrusion and hub diameter are unpublished, and the
+  spacers keep them out of the stack-up.
+- **File the keyed plates' slots together on the key**, the block tied on the bench, to a
+  slide fit: a laser-cut slot comes back ±0.13 mm in width and place, and until they are
+  fitted the tightest plate carries the crank alone.
+- **Set the hand crank's clutch** with a luggage scale before it goes on (the guide's hand
+  crank step), dry, and check it again yearly or after it has slipped hard.
+- **Glue the input shaft's key** into its keyseat (threadlocker or super glue): it falls out
+  when the crank comes off otherwise.
+- **Oil the steel standoffs:** they are bare 1018. Wipe each with light oil, grease the
+  crankpin where the rod turns on it, and keep the cradle dry.
+- **The worm's hold, on the bench:** with a full bottle at level, tap the table and watch a
+  pencil line across the crank and the plate for 10 minutes (the guide's hand crank step).
+  The clone's mesh isn't Motovario's: a 16 % drop in its friction loses self-locking. One
+  that creeps settles back neck up; an O-ring's drag between the hub and the input seal
+  doubles the margin.
 - **Dry-fit the hinge:** the cradle link must swing under its own weight once the
   pillar's screws are tight.
 - **Break the laser-cut edges** where hands go: the bay and the frame tops.
@@ -1036,29 +1265,34 @@ Things to know before cutting and on the bench:
 - **The room it needs** (`cradle.USE_LIMITS`, the guide's "Decanting" step):
   - 950 mm of headroom: a 6 L's base at full tilt reaches about 910 mm over the table.
   - 100 mm behind the base board: the base stop's rails reach past its rear edge at full
-    tilt (A 84 mm, B 42).
+    tilt (A 74 mm, B 32), and B's hand crank's 60 mm grip turns up to 89 mm past it (and
+    65 mm past the board's drive-side edge, its 125 mm crank; A's 46 mm).
   - The vessel: as "The vessel under the mouth" above, one height for the whole swing. It
     stands under the mouth's centre (`cradle.DECANTER_X`) on a 100 x 100 mm lab jack in
     the jack locator's pocket.
 - **Where it pinches** (the use limits, round 1): both side stacks, their bay faces too
   (each return to rest the cradle links shear past the inner bars' front ends); on B the
-  crank and the rod's end, turning in the open above and behind the gearbox; and the base
-  board behind the decanter, where at rest the base stop's rails come down to 18 mm over
-  it, under the 25 mm a finger needs (ISO 13854). A trapped finger: turn the handle back
+  crank and the rod's end, turning in the open above and behind the gearbox. (At rest the
+  base stop comes down to 26 mm over the base board behind the decanter: a finger's 25 mm,
+  ISO 13854.) A trapped finger: turn the handle back
   the way it came (the worm holds what it has caught). Take the handle off when the
   cradle is left: nothing turns without it.
-- **Never force the crank.** If it stiffens, something is in the way: the drive holds a
-  40 N push at the grip, and near either end of travel the cradle's force grows without
-  bound.
+- **Never force the crank.** If it stiffens, something is in the way. The clutch clicks
+  round past its bench setting (27 N at B's grip, 40 at A's), so a push can't break the
+  drive away from the ends of the swing; within the last two or three handle turns before rest or full tilt the
+  cradle's force grows without bound however the clutch is set: nothing under the cradle
+  box or the bottle there.
 - **Letting go stops the bottle, not the stream:** to stop it, turn back about a turn.
-- **The lip gauge down before the bottle passes level:** with it up a wet bottle slides
+- **The lip gauge down before the bottle passes level:** it falls back by itself, so
+  check nothing holds it up (a corkscrew left in the cork); with it up a wet bottle slides
   forward at full tilt, its mouth off the pivot over the decanter.
-- **Uncork at rest**, the base stop set and the lip gauge up, holding the neck, a
-  corkscrew's lever lifted straight up; then flip the gauge down onto the mouth. Not a
+- **Uncork at rest**, the base stop set: lift the lip gauge onto its stop and hold it, or
+  let it rest on the corkscrew, holding the neck, a corkscrew's lever lifted straight up;
+  let go and the gauge falls back onto the mouth. Not a
   sparkling wine under pressure: at rest the mouth points 50° up toward the front (the 6 L
   methuselah is a Champagne bottle); ease such a cork out by hand first, the mouth pointed
   away from people.
 - **Lift it** by its base board in use; to take it off the board, by its outer plates' top
   members, never by the cradle box or the hand crank.
-- **PLA softens at about 55 °C:** a cradle that travels in a hot car wants the crank's
-  sleeve, the brackets and the thumb knobs in PETG.
+- **PLA softens at about 55 °C:** a cradle that travels in a hot car wants the hand crank,
+  the brackets and the thumb knobs in PETG.
