@@ -1268,3 +1268,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   arm's step names its supply, host, ports (`q1 on X, q2 on Y, q3 on Z`), outputs and
   camera, and its parts list buys the board's lines. A BOM line is a box only where no body
   is its role's.
+- **The gate** (against `platform-5396098`): all eight designs identical (parts, plans,
+  BOM, DXF), so no new baseline and DESIGNS.md unchanged; the hooks stay out of the
+  fabrication's code key (the turret's sentences are `turret_parts`' meta, its steps
+  `base_pair.assembly`'s).
