@@ -1120,7 +1120,13 @@ of `repeatability.static_loads` over the inputs' box): operating, its weight and
 payload (`precision.payload_g`) x 1.5 for the moves' accelerations; jammed, a crash, the
 tool blocked while every drive pushes at its holding torque x ratio, gravity added. A link's
 hole is its pivot's bearing seat where the link holds one (`strength.link_hole`). A
-cranked mechanism's loads are what it drives: not rated. The audit also reports each link's tilt out of plane
+cranked mechanism (no floor, no sim loads either) is rated the same way
+(`strength.crank_loads`, 2026-10-14; "not rated" before): operating, its weight and a given
+payload over a turn of the crank x 1.5; jammed, its output blocked while its servo pushes at
+its torque limit (`config.torque_limit_nm`, what `spiderpig control servo` writes into it,
+as a walker's), gravity added, the crank angles where its lever on the output is under
+`strength.CRANK_LEVER_FLOOR` of its largest left out (the output's dead points, where only
+the crank's stop bounds the force). The audit also reports each link's tilt out of plane
 (`construction/wobble.py`): free (bore clearance over bearing length) and held by the faces
 beside it; a link beside a clearance gap bears on what the column holds there (an end's
 head or printed spacer, a gap ring). For a linkage that walks, it reports the feet across
@@ -1244,7 +1250,8 @@ a walker's default `esp32_bus_servo` is the deck's kit (`controllers.DECK_KIT`, 
 the deck's bodies, `Controller.mount`), and `none` (your own electronics) leaves the deck
 bare: the plate on its rails with its wire and cable-tie slots, nothing of the kit bought
 (`deck_parts`' `kit`, `meta["deck"]["electronics"]`; the sim carries the kit's catalogued
-mass for it, `sim.mjcf.kit_mass_g`). The role reached the walkers after their designs
+mass for it, `sim.mjcf.kit_mass_g`, and for a controller bought as lines over the bare deck
+its own carried parts, `sim.mjcf.bare_deck_g`). The role reached the walkers after their designs
 were stored, so its walker default is the role's `implicit` key: it is left out of their
 resolved specs and their ids stay (`roles.Role`, `BuildConfig.applied_roles`).
 
@@ -1404,12 +1411,18 @@ robot is an entry rather than an edit across the stages:
   The robot-level roles (`roles.Role.robot`) are dropped from the side's config
   (`BuildConfig.side_config`), so one plan serves every turntable and tool.
 - **Controllers** (role `controller`, `actuators/controllers.py`): the electronics that
-  drive a robot's motors, chosen by what they drive (`Controller.drives`, matched to the
-  design's motors by `controllers.motors_of`: the role `servo`'s bus servos or the role
-  `actuator`'s steppers, never the kind's name): a walker's serial-bus servo board and
-  battery on its deck (`esp32_bus_servo`), an arm's stepper board running Klipper
-  (`skr_pico_pi_zero`), or `none`. A board that can't drive the design's motors is a
-  `ConstructionError` (`construction.robot.controller_of`).
+  drive a design's motors, every design that has them (a mechanism's too, 2026-10-14),
+  chosen by what they drive (`Controller.drives`, the motor role's name, matched to the
+  design's own by `controllers.motors_of`: `roles.motor_role`, from its inputs, a crank's
+  `servo` or ranged inputs' `actuator`, never the kind's name): a serial-bus servo board
+  and battery (`esp32_bus_servo`: on a walker's deck; a mechanism, whose side is the
+  machine, buys it as lines, `construction.robot.controller_lines`, and wires it in its
+  side's last step), a DYNAMIXEL servo's USB interface and hub (`u2d2_dynamixel`), a
+  stepper board running Klipper (`skr_pico_pi_zero`), or `none`. A board that can't drive
+  the design's motors is a `ConstructionError` (`construction.robot.controller_of`). The
+  drive groups are keyed on the same names (`construction.DRIVES`: `ServoDrive` for the
+  servo, a `JointDrive` per declared drive for the actuators, a cranked linkage's second
+  input's too when it declares one, `Linkage.drives`).
 - **Control** (`spiderpig/control/`, `spiderpig control`): one entry point for every
   robot's motors, its actions by what drives the design. A crank's serial-bus servos
   (`control.servos`): `axes` lists each crank's servo (a walker's `L` and `R`, bus IDs 1
@@ -1479,7 +1492,7 @@ holds its outputs, from the same sources and options, does nothing
 | `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
 | `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
 | `ORDER.md` | the shopping list (`hardware/order.py`) | not in the snapshot |
-| `urdf/<name>.urdf`, `urdf/meshes/`, `urdf/<name>.joints.json` | an arm's URDF for ROS (`spiderpig/urdf.py`): a link per rigid body, the actuated inputs and the robot's joints, the side's other pins as a spanning tree (a `mimic` where a pin follows one input), the loops' closing pins and every passive joint's map in the sidecar (its MuJoCo model is the export's `mjcf`, section 7.3) | arms only |
+| `urdf/<name>.urdf`, `urdf/meshes/`, `urdf/<name>.joints.json` | an arm's URDF for ROS (`spiderpig/urdf.py`): a link per rigid body, the actuated inputs and the robot's joints, the side's other pins as a spanning tree (a `mimic` where a pin follows one input), the loops' closing pins and every passive joint's map in the sidecar (its MuJoCo model is the export's `mjcf`, section 7.3) | ranged linkages only (`Linkage.ranged`; `urdf.write` refuses a crank's design with `urdf.unsupported`'s reason) |
 
 `api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names
 (section 9.2); its `dxf` is the packed sheets only: `ORDER.md` and `laser/parts/` come
@@ -1585,8 +1598,14 @@ its hinge reading the input's design angle. Its motors go by what they drive: a 
 velocity actuator on each crank, a stepper's position actuator on each joint
 `actuators.joint_ratings` rates (its holding stiffness through the reduction, capped where
 the step can't hold it stably; its holding torque the force limit; its rotor's inertia
-through the reduction the joint's armature). The URDF stays the export for ROS; `spiderpig
-sim` holds a design that doesn't walk at its pose under gravity (`sim.run.hold`).
+through the reduction the joint's armature). The URDF stays the export for ROS, a ranged
+linkage's only (`urdf.unsupported` says why a crank's is refused: its joints follow the
+crank's full turn, which a URDF tree can only table); `spiderpig sim` holds a design that
+doesn't walk at its pose under gravity (`sim.run.hold`: its steppers' position actuators
+told their angles, a crank's servo in position mode, a P loop over its speed loop, so it
+doesn't creep), with its payload at the output (an arm's `PAYLOAD_G` unless its spec says),
+and turns a fixed design's crank through a turn (`sim.run.turn`: its torque against the
+stall, `verify`'s `sim.torque`, as a walker's).
 
 The walker's model, the one the figures below are of: a free-floating base
 carries the frame, servos and chassis; each side's crank turns on a hinge at O; each link
@@ -1669,7 +1688,7 @@ checked current by `tests/test_guide.py`):
 
 7. **Right side: body onto the leg stack.** Turn the body over onto the right leg stack: the hub plate's pocket over its hub chain's standoff, the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
 
-8. **Wiring.** The harness: the XT30 pigtail from the battery's lead to the protection board, the DC plug pigtail from the switch to the board's DC jack, and the battery divider (the 100k resistor from the switched battery to an ESP32 ADC pin, the 33k from that pin to ground). The battery is an HV LiPo: charge it as 2S, 8.4 V, only. Set the IP2326 charger board to 2S (it stops at 8.3-8.5 V, safe for the HV pack), never its 3S / 12.6 V jumper setting, and never use an HV (8.7 V) charger: the servos are 7.4 V parts. The bus plugs are already in (the centre plates' steps: the top-entry sockets take a plug only through the plates' window): each servo's wires from its channel's end at the centre plates' +x edge up through the deck's wire slot over it to its own one of the board's two bus servo ports (connector first), before the deck goes in.
+8. **Wiring.** The bus plugs are already in (the centre plates' steps: the top-entry sockets take a plug only through the plates' window): each servo's wires run from its channel's end at the centre plates' +x edge up through the deck's wire slot over it, before the deck goes in. The harness: the XT30 pigtail from the battery's lead to the protection board, the DC plug pigtail from the switch to the board's DC jack, and the battery divider (the 100k resistor from the switched battery to an ESP32 ADC pin, the 33k from that pin to ground). The battery is an HV LiPo: charge it as 2S, 8.4 V, only. Set the IP2326 charger board to 2S (it stops at 8.3-8.5 V, safe for the HV pack), never its 3S / 12.6 V jumper setting, and never use an HV (8.7 V) charger: the servos are 7.4 V parts. Each servo's bus cable (connector first) to its own one of the board's two bus servo ports.
 
 9. **Deck.** Deck electronics, on the bench: the board on its nylon standoffs; the battery cradle screwed down (two M3 button heads through its ears, nuts under the deck), the battery strapped in; the charger and the protection board under the deck on foam tape; the switch; wires tied down through the cable-tie slots. Lower the deck, electronics on, straight down between the inner plates, its notches past the pillars' inner heads, onto the rails; its 4 screws into the rails' captive nuts.
 <!-- assembly-order: end -->
@@ -1974,8 +1993,12 @@ accuracy, its tilt-dependent rows left unverified). `standard` adds a build, the
 re-checked on 2,880 fresh samples, the contract at two crank angles, OCCT clashes and solid
 validity, sheet packing and the full cost, the whole precision budget (an arm's links'
 tilt from the build), and every kind's joint strength (a walker's at its sim or family
-loads, an arm's at its static loads). `full`
-adds two more contract angles, a second clash angle and, for walkers, a MuJoCo run. A
+loads, an arm's and a cranked mechanism's at their static loads). A precision budget whose
+model raised fails the report only where the spec sets a `precision` target; else its
+`precision.budget` row is soft, informational. `full`
+adds two more contract angles, a second clash angle and MuJoCo: a walker's run; any other
+design held at its pose with its payload (`sim.holds`) and, cranked, its crank turned once
+(`sim.torque`), both soft. A
 design is `ok` when every hard row passes; its `score` is a weighted mean over the soft
 targets.
 

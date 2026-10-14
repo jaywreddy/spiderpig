@@ -535,6 +535,7 @@
   },
   "filament": "pla_filament",
   "layers": 14,
+  "layout": "mirrored_pair",
   "linkage": "strider",
   "mid_plane": 105.66399999999999,
   "module": "double",
@@ -1578,11 +1579,11 @@
    }
   }
  },
- "engine_version": "0.1.0+20b872c8002c",
+ "engine_version": "0.1.0+2ee05f78651a",
  "generator": "tests/test_strength.py::test_the_order_designs_meta_current[strider_double]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-f18d8391e1dc680c"
+ "source_key": "gen-57da78af2074bc74"
 }

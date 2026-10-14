@@ -25,6 +25,13 @@ tree that keeps most joints a function of one input, and says how to set the res
 URDF is the arm for ROS; its MuJoCo model is every design's (:mod:`spiderpig.sim.mjcf`, the
 export's ``mjcf``), from the same spatial tree and the same motor ratings
 (:func:`actuators.joint_ratings`).
+
+**Which designs** (:func:`unsupported`, 2026-10-14): a linkage whose inputs turn over ranges
+on a fixed base (:attr:`linkage.Linkage.ranged`). A crank's design is refused with that
+reason, not exported half-way: its every joint follows the crank's full turn nonlinearly (a
+URDF can only table it, the sidecar's job, and MoveIt plans nothing over one input it can't
+choose), and a walker stands on its feet (no fixed ``base_link``). Its MuJoCo model is the
+export that holds it (``mjcf``).
 """
 
 from __future__ import annotations
@@ -105,14 +112,26 @@ def _fit(rel: np.ndarray, x: np.ndarray, names: tuple[str, ...]) -> tuple[dict[s
     return coef, float(sol[-1]), res < LINEAR_TOL
 
 
+def unsupported(lk: linkage.Linkage) -> str:
+    """Why ``lk``'s designs export no URDF (module docstring: by capability, its inputs'
+    ranges), or ``""`` when they do."""
+    if lk.ranged:
+        return ""
+    why = ("it walks on its feet (no fixed base_link)" if lk.walks else
+           "its joints follow a crank's full turn, which a URDF tree can only table")
+    return (f"{lk.key} has no URDF: the URDF is a ranged linkage's (inputs over ranges on a "
+            f"fixed base, Linkage.ranged) and {why}; its MuJoCo model is the export that "
+            f"holds it (mjcf)")
+
+
 def model(mech: Mechanism, config: BuildConfig, t: float) -> UrdfModel:
-    """The URDF tree of ``mech`` (``config`` fabricated at ``t``): module docstring."""
+    """The URDF tree of ``mech`` (``config`` fabricated at ``t``): module docstring;
+    :class:`ValueError` with :func:`unsupported`'s reason for a design it can't be."""
     from spiderpig import walk
 
     lk = config.lk
-    if not lk.ranged:
-        raise ValueError(f"{lk.key} is a {lk.kind}: the URDF is an arm's (its inputs drive "
-                         "links over ranges)")
+    if why := unsupported(lk):
+        raise ValueError(why)
     values = config.values
     by = {b.name: b for b in mech.bodies}
     tree = RobotTree.from_meta(mech.meta.get("tree"))
@@ -287,7 +306,8 @@ def _ratings(mech: Mechanism) -> dict[str, tuple[float, float, float]]:
 def write(mech: Mechanism, config: BuildConfig, t: float, out: Path, name: str,
           props: dict | None = None) -> list[Path]:
     """``<out>/<name>.urdf``, its meshes under ``<out>/meshes/`` and the sidecar
-    ``<name>.joints.json`` (module docstring). Returns the files written."""
+    ``<name>.joints.json`` (module docstring). Returns the files written; refuses a design
+    with no URDF (:func:`unsupported`: :class:`ValueError`, nothing written)."""
     from build123d import Compound, Location
 
     from spiderpig import walk

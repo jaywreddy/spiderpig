@@ -22,7 +22,8 @@ angles, clashes and solids at the build's, the DXF pack, the BOM, the whole
 precision budget and every kind's joint strength), ``full`` (the audit's four
 contract angles, clashes at two, and MuJoCo when ``mujoco`` imports: a walker's run, its
 speed reported beside the walk model's, informational; any other design held at its pose
-under gravity by its motors, ``sim.holds``, soft).
+under gravity by its motors with its payload, ``sim.holds``, and a cranked one's crank
+driven through a turn, ``sim.torque`` as a walker's, both soft).
 
 A hard target's miss fails the report (``ok``); a soft miss lowers ``score``
 (the weighted mean over the soft targets of ``max(0, 1 - miss / |bound|)``).
@@ -437,7 +438,9 @@ def _precision_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
     ``quick`` the stored one when there is one, else the budget without fabricating: a
     cranked mechanism's is whole, a ranged linkage's leaves out the links' tilt, so its
     ``repeatability_mm``, ISO RP, out-of-plane and sag stay ``unverified`` until
-    ``standard``."""
+    ``standard``. A budget whose model raised fails the report only when the spec sets a
+    ``precision`` target (there is something to verify); else its row is soft,
+    informational."""
     from spiderpig.api import accuracy
 
     if design.lk.output is None:
@@ -452,9 +455,14 @@ def _precision_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
             pr = (accuracy.precision(design) if not design.lk.ranged
                   else accuracy.measure(design, planar=True))
     if pr.failures:
-        rep.failures += [f for f in pr.failures if f not in rep.failures]
+        # the budget's model raised: a failure only where the spec asks for a precision
+        # (a target to verify); else what it says is informational, a soft row
+        targeted = bool(design.spec.precision)
+        if targeted:
+            rep.failures += [f for f in pr.failures if f not in rep.failures]
         return [Row("precision.budget", "precision", pr.failures[0].code, None, False,
-                    "estimated", True, pr.failures[0].message.splitlines()[0])]
+                    "estimated", targeted, pr.failures[0].message.splitlines()[0]
+                    + ("" if targeted else " (no precision target: informational)"))]
     return list(pr.rows)
 
 
@@ -462,11 +470,12 @@ def _strength_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
     """Every joint's safety factor at the design's loads (:func:`strength.check`): a
     joint under jam SF 1 fails (``strength`` / ``joint_overload``, the joint, its
     numbers and fixes as culprits) when the loads are the design's own (simulated, given,
-    or a ranged linkage's static model: its weight and payload operating, a crash at the
-    drives' holding torque jammed); one under the warning limits is a soft row. A walker:
-    ``full`` simulates the loads (cached per design); ``standard`` uses them when stored,
-    else the family's, whose verdict is an estimate: a soft row, no failure (``verify
-    full`` decides). A cranked mechanism's loads are what it drives: not rated (said)."""
+    or the static model, a linkage's with no floor: its weight and payload operating, a
+    crash jammed, the output blocked while the drives push at the most they give, an arm's
+    holding torque, a cranked mechanism's servo at its torque limit); one under the warning
+    limits is a soft row. A walker: ``full`` simulates the loads (cached per design);
+    ``standard`` uses them when stored, else the family's, whose verdict is an estimate: a
+    soft row, no failure (``verify full`` decides)."""
     from spiderpig import strength
 
     mech = design.mech
@@ -478,9 +487,6 @@ def _strength_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
     except Exception as e:  # noqa: BLE001 - never fail verify over the loads themselves
         return [Row("strength.joints", "strength", None, None, True, "estimated", False,
                     f"no loads: {e}")]
-    if loads.get("source") == "none":
-        return [Row("strength.joints", "strength", None, None, True, "estimated", False,
-                    f"not rated: {loads.get('note', '')}")]
     st = strength.check(mech.meta.get("wobble") or {}, mech.meta, design.config, loads)
     tier = "measured" if loads.get("source") == "sim" else "estimated"
     own = loads.get("source") in ("sim", "override", "static")
@@ -690,7 +696,7 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     cfg = design.config
     sides = cfg.sides
     kind = cfg.lk.kind
-    cranked = rolemod.applies("crank", kind)        # a servo on a crank, else a motor a drive
+    cranked = rolemod.motor_role(cfg.lk) == "servo"    # a servo on a crank, else steppers
     from spiderpig.materials import link_sheets
 
     named: list[str] = [cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values()]
@@ -841,28 +847,57 @@ def _sim_rows(design: Design, rep: VerifyReport) -> list[Row]:
     ]
 
 
+def hold_payload_g(design: Design) -> float:
+    """What a held design carries at its output in MuJoCo (g): the spec's
+    ``precision.payload_g``, else a ranged linkage's :data:`repeatability.PAYLOAD_G` (what
+    its precision and strength assume), a cranked one's none."""
+    from spiderpig.repeatability import PAYLOAD_G
+
+    given = design.spec.payload_g
+    if given is not None:
+        return float(given)
+    return PAYLOAD_G if design.lk.ranged else 0.0
+
+
 def _hold_rows(design: Design, rep: VerifyReport) -> list[Row]:
     """A design that doesn't walk in MuJoCo (the one model, :mod:`spiderpig.sim.mjcf`,
-    fixed): ``sim.holds``, its motors holding it at its pose under gravity
-    (:func:`spiderpig.sim.run.hold`), the value the worst site's sag (mm)."""
+    fixed): ``sim.holds``, its motors holding it at its pose under gravity with its payload
+    (:func:`hold_payload_g`, at its tool's tip or output: :func:`spiderpig.sim.run.hold`),
+    the value the worst site's sag (mm); a cranked one's ``sim.torque`` too, its crank
+    driven through a turn (:func:`spiderpig.sim.run.turn`): the peak against the stall, as
+    a walker's."""
     if importlib.util.find_spec("mujoco") is None:
         return [Row("sim.mujoco", "sim", "not installed", None, True, "estimated", False,
                     "pip install mujoco to simulate")]
-    from spiderpig.sim.run import HOLD_SAG_MM, HOLD_SECONDS, hold
+    from spiderpig.sim.mjcf import SimParams
+    from spiderpig.sim.run import HOLD_SAG_MM, HOLD_SECONDS, hold, turn
 
+    payload = hold_payload_g(design)
+    params = SimParams(payload_g=payload)
     try:
-        m = hold(design.config)
+        m = hold(design.config, params=params)
+        t = turn(design.config, params=params)
     except Exception as e:  # noqa: BLE001 - MuJoCo's own errors are not ours to classify
         rep.failures.append(Failure("sim", "sim_failed", str(e)))
         return [Row("sim.run", "sim", "failed", None, False, "measured", True, str(e))]
     worst = max(m["torque_fraction"].items(), key=lambda kv: kv[1], default=None)
-    detail = (f"held {HOLD_SECONDS:g} s under gravity by its motors: "
+    detail = (f"held {HOLD_SECONDS:g} s under gravity by its motors"
+              + (f", a {payload:g} g payload at its output" if payload else "") + ": "
               + ", ".join(f"{s} sags {v:.3f} mm" for s, v in m["sag"].items())
               + (f"; {worst[0]} at {worst[1] * 100:.0f} % of its torque" if worst else "")
               + f"; loops closed to {m['loop_error']:.3f} mm"
               + ("" if m["finite"] else "; the state blew up"))
-    return [Row("sim.holds", "sim", round(m["sag_max"], 4), f"<= {HOLD_SAG_MM:g}",
+    rows = [Row("sim.holds", "sim", round(m["sag_max"], 4), f"<= {HOLD_SAG_MM:g}",
                 bool(m["holds"]), "measured", False, detail, unit="mm")]
+    if t is not None:
+        rows.append(Row(
+            "sim.torque", "sim", t["torque_peak"], f"<= {t['torque_limit']:g}",
+            not t["saturates"], "measured", False,
+            f"one turn at the servo's full speed: peak {t['torque_peak']:.3f} N·m of "
+            f"{t['torque_limit']:g} stall, mean {t['torque_mean']:.3f}"
+            + ("" if t["completed"] else
+               f"; it stalled ({t['revolutions']:.2f} of a turn)"), unit="N·m"))
+    return rows
 
 
 def fall_detail(m: dict, design: Design | None = None) -> str:

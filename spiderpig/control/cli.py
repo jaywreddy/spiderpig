@@ -57,16 +57,16 @@ def main(argv: list[str] | None = None) -> int:
 
     cfg = args.config
     motors = motors_of(cfg)
-    if motors == "bus_servo" and args.action in STEPPER_ONLY:
+    if motors == "servo" and args.action in STEPPER_ONLY:
         print(f"error: {args.action} is a stepper-driven design's (an arm's); "
               f"{cfg.linkage}'s cranks turn on bus servos: axes, servo, homing",
               file=sys.stderr)
         return 2
-    if motors == "stepper" and args.action in SERVO_ONLY:
+    if motors == "actuator" and args.action in SERVO_ONLY:
         print(f"error: {args.action} is a bus-servo design's (a crank's); {cfg.linkage}'s "
               "joints turn on steppers: axes, fk, ik, klipper, homing", file=sys.stderr)
         return 2
-    if motors == "stepper":
+    if motors == "actuator":
         return _stepper_main(args)
     try:
         return _servo_main(args)

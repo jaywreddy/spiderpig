@@ -122,7 +122,9 @@ electronics at their catalogued masses, ``mass_g``), plus :attr:`SimParams.paylo
 (0 by default; a point mass at :attr:`SimParams.payload_pos` for anything else carried;
 the wiring, ~5-10 g, is not modelled). A robot whose frame has no room for the deck
 (``meta["deck"]["fitted"]`` false) carries :data:`DECK_FALLBACK_G` there instead, the
-deck's measured mass on the default designs. (Before the deck, a 100 g ESTIMATE at the
+deck's measured mass on the default designs; a bare deck (the role ``controller`` none, or
+a controller bought as lines) its controller's carried parts, or your own at the kit's mass
+(:func:`bare_deck_g`). (Before the deck, a 100 g ESTIMATE at the
 crank axis stood for the electronics: +100 / +200 g on the Klann quad cost 1 / 3 % of
 speed and raised the mean torque from 0.05 to 0.055 / 0.065 N·m.) ``mass.total``
 counts all of it.
@@ -840,25 +842,41 @@ mass on the Strider double and the Klann quad: plate, rails, hardware, electroni
 
 def kit_mass_g() -> float:
     """The deck kit's catalogued electronics (g: :data:`actuators.controllers.DECK_KIT`'s
-    items with a ``mass_g``): what a bare deck's robot carries of its own (the role
-    ``controller`` none)."""
+    items with a ``mass_g``): what a bare deck's robot carries when its electronics are your
+    own (the role ``controller`` none: a stand-in at the kit's mass)."""
     from spiderpig.actuators.controllers import DECK_KIT, get
     from spiderpig.hardware.catalog import get as item
 
     return sum(q * float(item(k).dims.get("mass_g", 0.0)) for k, q in get(DECK_KIT).bom)
 
 
+def bare_deck_g(config: BuildConfig) -> float:
+    """What a walker with a bare deck carries on it (g): your own electronics (the role
+    ``controller`` none) at the deck kit's mass (:func:`kit_mass_g`); a named controller's
+    own carried parts (:func:`actuators.controllers.carried_g`: a DYNAMIXEL walker's U2D2
+    and hub, not the ESP32 kit's 61 g it carried before 2026-10-14)."""
+    from spiderpig.actuators.controllers import carried_g, of
+
+    try:
+        ctl = of(config)
+    except ValueError:          # (a controller that can't drive it: the build says so)
+        ctl = None
+    return kit_mass_g() if ctl is None else carried_g(ctl)
+
+
 def payload_g(rm: RobotModel, params: SimParams) -> float:
     """The point mass the design carries: :attr:`SimParams.payload_g`, plus, on a walker,
-    :data:`DECK_FALLBACK_G` when the robot has no electronics deck, or :func:`kit_mass_g`
-    when its deck is bare (your own electronics, at the kit's mass). A fixed design's
-    payload rides its tool's tip or its output (:func:`_payload_at`)."""
+    :data:`DECK_FALLBACK_G` when the robot has no electronics deck, or :func:`bare_deck_g`
+    when its deck is bare (your own electronics at the kit's mass, or a named controller's
+    carried parts). A fixed design's payload rides its tool's tip or its output
+    (:func:`_payload_at`)."""
     if not rm.walks:            # a fixed design's electronics ride its bench, not it
         return params.payload_g
     deck = rm.meta.get("deck", {})
     if not deck.get("fitted", False):
         return params.payload_g + DECK_FALLBACK_G
-    return params.payload_g + (kit_mass_g() if deck.get("electronics") is False else 0.0)
+    return params.payload_g + (bare_deck_g(rm.config) if deck.get("electronics") is False
+                               else 0.0)
 
 
 def _with_payload(mb: MjBody, grams: float, pos) -> tuple[float, np.ndarray, np.ndarray]:

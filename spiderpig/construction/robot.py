@@ -337,7 +337,7 @@ class Turret(Layout):
 
         turret, _ = self.plans(design, config)
         bodies, turning, extras, info = turret_parts(turret, design.ctx)
-        extras = extras + _controller_lines(config)     # the electronics: bought lines
+        extras = extras + controller_lines(config)      # the electronics: bought lines
 
         def over(bb) -> bool:      # over the turret's keep-out (only that)
             return (turret.x_a + turret.keep_r > bb.min.X
@@ -395,13 +395,15 @@ def controller_of(config):
         raise ConstructionError(str(e.args[0])) from None
 
 
-def _controller_lines(config) -> list:
-    """The controller's parts as BOM lines (a controller whose parts aren't bodies of the
-    robot: not ``mount="deck"``)."""
+def controller_lines(config, deck: bool = True) -> list:
+    """The controller's parts as BOM lines: those that aren't bodies of the machine. With a
+    ``deck`` (a robot: a walker's electronics deck draws a ``mount="deck"`` controller's
+    parts as bodies) a deck-mounted one buys none; without (a mechanism: its side is the
+    machine, no deck) every controller is bought as lines."""
     from spiderpig.hardware.bom import BomLine
 
     ctl = controller_of(config)
-    if ctl is None or ctl.mount:
+    if ctl is None or (ctl.mount and deck):
         return []
     return [BomLine(k, q, f"controller: {ctl.key}") for k, q in ctl.bom]
 
@@ -446,12 +448,13 @@ def _assemble_pair(side: Mechanism, design, config=None) -> Mechanism:
     bodies += parts
     deck, deck_extras, info["deck"] = _deck(side, design, z_mid, host, bodies,
                                             kit=ctl is not None and ctl.mount == "deck")
-    extras += _controller_lines(config)
+    extras += controller_lines(config)
     if deck:
         bodies += deck
         extras += deck_extras
         info["fastened"] = list(info["fastened"]) + info["deck"].pop("fastened")
-    meta = dict(side.meta, robot=True, mid_plane=z_mid, filament="pla_filament", **info)
+    meta = dict(side.meta, robot=True, layout=MirroredPair.key, mid_plane=z_mid,
+                filament="pla_filament", **info)
     return Mechanism(
         name=f"{side.name}_robot", bodies=bodies, connections=connections, meta=meta,
         bom_extras=list(side.bom_extras) * 2 + extras,

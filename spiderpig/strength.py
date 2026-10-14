@@ -23,7 +23,12 @@ no floor, no crank) has its own from the quasi-static model the precision budget
 solves (:func:`arm_loads`, :func:`repeatability.static_loads`, per joint as the sim's):
 operating (the ``walk`` column) its weight and the payload over the inputs' box x the
 moves' accelerations, jammed a crash (the output blocked, the drives at their holding
-torque). A cranked mechanism's loads are what it drives (``none``: no rows).
+torque). A cranked mechanism (no floor: what it drives is unknown) is rated the same way
+(:func:`crank_loads`, 2026-10-14; "not rated" before): operating, its weight and a given
+payload over a turn x the accelerations; jammed, its output blocked while the crank's servo
+pushes at the most it gives, its torque limit (:func:`config.torque_limit_nm`: what
+``spiderpig control servo`` writes into it, as a walker's; the stall for a servo with
+none), away from the output's dead points (:data:`CRANK_LEVER_FLOOR`), gravity added.
 
 Findings (:func:`findings`): a joint whose jam safety factor is under
 :data:`JAM_ERROR` (1.0) is an **error** (it yields, or slips, at a jam the firmware
@@ -67,8 +72,16 @@ the Klann's the demo Klann quad's, which bounds the variants (``klann_lego`` qua
 GENERIC_PIN_LOADS = (119.0, 155.0)
 """A family nobody measured: the most loaded family's (the demo Klann's)."""
 PER_JOINT = ("sim", "static")
-"""The loads' sources that are per joint (``joints``): the sim's, a ranged linkage's static
-model's (:func:`arm_loads`)."""
+"""The loads' sources that are per joint (``joints``): the sim's, the static model's (an
+arm's, :func:`arm_loads`; a cranked mechanism's, :func:`crank_loads`)."""
+CRANK_POSES = 24
+"""A cranked mechanism's static loads are solved at ``4 x`` this many crank angles a turn
+(:func:`linkage.constraints.sample_inputs`)."""
+CRANK_LEVER_FLOOR = 0.1
+"""The crank angles where the crank's lever on the output is under this share of its
+largest are left out of a mechanism's crash (:func:`repeatability.static_loads`'
+``lever_floor``): at the output's dead points a blocked output's force has no bound but the
+crank's own stop (the analogue of the arm's box kept to its 10-90 %)."""
 
 
 
@@ -106,20 +119,19 @@ def design_loads(config: BuildConfig, store=None, *, override: tuple[float, floa
     ``note`` saying where they came from, the largest walking and jam joint loads
     (``walk_n``, ``jam_n``), the sim's (or the static model's) ``joints`` and the crank's
     torques. ``sim="cached"``: the design's simulated loads only if the store has them.
-    ``payload_g``: a ranged linkage's load at the output (default
-    :data:`repeatability.PAYLOAD_G`)."""
+    ``payload_g``: the load at the output of a linkage with no floor (a ranged one's default
+    :data:`repeatability.PAYLOAD_G`; a cranked mechanism's none)."""
     from spiderpig import linkage as lk
     from spiderpig.config import torque_limit_nm
 
     if override is None and lk.get(config.linkage).ranged:
         return arm_loads(config, payload_g)
+    if override is None and not lk.get(config.linkage).walks:
+        return crank_loads(config, payload_g)
     limit = torque_limit_nm(config)
     if override is not None:
         out = uniform_loads(*override, "override", f"--pin-load {override[0]:g},{override[1]:g} "
                             "N on every joint")
-    elif not lk.get(config.linkage).walks:
-        out = uniform_loads(0.0, 0.0, "none", "a mechanism: its pin loads come from what it "
-                            "drives (--pin-load WALK,JAM sets them)")
     else:
         why = "the sim was not asked for (--no-sim)" if not sim else None
         if sim:
@@ -187,6 +199,29 @@ def link_g_per_mm(config: BuildConfig) -> dict[str, float]:
     return out
 
 
+def static_joints(config: BuildConfig, st) -> list[dict]:
+    """The static model's loads (:class:`repeatability.StaticLoads`) laid out as the sim's
+    joints: per axle its links (the crank's body left out), whether the frame holds it,
+    whether it is the crank's (a crank's rows are :func:`crank_strength`'s), ``walk`` its
+    most loaded interface operating, ``jam`` its worst interface's gravity + crash."""
+    from spiderpig.linkage.constraints import layout
+
+    lay = layout(config.lk)
+    crank = set(config.lk.crank)
+    joints = []
+    for j in lay.axles:
+        ifs = [i for i in lay.interfaces if i[0] == j]
+        worst = max(ifs, key=lambda i: st.gravity[i] + st.crash[i])
+        joints.append({
+            "stem": j, "links": sorted(b for _, b in ifs if b not in ("torso", "conn")),
+            "frame": any(b == "torso" for _, b in ifs), "crank": j in crank,
+            "walk": {"n": round(max(st.operating[i] for i in ifs), 3), "patterns": []},
+            "jam": {"n": round(st.gravity[worst] + st.crash[worst], 3), "patterns": [],
+                    "gravity_n": round(st.gravity[worst], 3),
+                    "crash_n": round(st.crash[worst], 3)}})
+    return joints
+
+
 def arm_loads(config: BuildConfig, payload_g: float | None = None) -> dict:
     """A ranged linkage's loads (source ``static``): the quasi-static model of
     :func:`repeatability.static_loads` over the inputs' box, as the sim's are laid out (per
@@ -197,24 +232,12 @@ def arm_loads(config: BuildConfig, payload_g: float | None = None) -> dict:
     interface's. No crank and no servo limit (``torque_limit_nm`` None): the drives' run
     current is the lever."""
     from spiderpig import repeatability as rep
-    from spiderpig.linkage.constraints import layout
 
     payload = rep.PAYLOAD_G if payload_g is None else float(payload_g)
     caps = drive_capacity(config)
     st = rep.static_loads(config.lk, config.values, link_g_per_mm=link_g_per_mm(config),
                           payload_g=payload, capacity_nm=caps)
-    lay = layout(config.lk)
-    joints = []
-    for j in lay.axles:
-        ifs = [i for i in lay.interfaces if i[0] == j]
-        worst = max(ifs, key=lambda i: st.gravity[i] + st.crash[i])
-        joints.append({
-            "stem": j, "links": sorted(b for _, b in ifs if b != "torso"),
-            "frame": any(b == "torso" for _, b in ifs), "crank": False,
-            "walk": {"n": round(max(st.operating[i] for i in ifs), 3), "patterns": []},
-            "jam": {"n": round(st.gravity[worst] + st.crash[worst], 3), "patterns": [],
-                    "gravity_n": round(st.gravity[worst], 3),
-                    "crash_n": round(st.crash[worst], 3)}})
+    joints = static_joints(config, st)
     walks = [g["walk"]["n"] for g in joints]
     jams = [g["jam"]["n"] for g in joints]
     cap = ", ".join(f"{k} {v:.2f}" for k, v in caps.items()) or "none"
@@ -229,6 +252,55 @@ def arm_loads(config: BuildConfig, payload_g: float | None = None) -> dict:
             "capacity_nm": {k: round(v, 4) for k, v in caps.items()},
             "drive_gravity_nm": {k: round(v, 4) for k, v in st.drive_nm.items()},
             "crash_force_n": round(st.crash_force_n, 2), "torque_limit_nm": None}
+
+
+def crank_loads(config: BuildConfig, payload_g: float | None = None) -> dict:
+    """A cranked mechanism's loads (source ``static``, module docstring): the static model
+    of :func:`repeatability.static_loads` over a turn of its crank
+    (:data:`CRANK_POSES`), laid out as the sim's (:func:`static_joints`). ``walk``:
+    operating, its links' weight, their hardware and ``payload_g`` (default none) at the
+    output x :data:`repeatability.ACCEL_FACTOR`; ``jam``: the output blocked while the
+    crank's servo pushes at its torque limit (:func:`config.torque_limit_nm`, the most the
+    servo set up by ``spiderpig control servo`` gives; its stall without one;
+    ``torque_limit_nm``: the crank's jam row reads it too), gravity added, the output's dead
+    points left out (:data:`CRANK_LEVER_FLOOR`).
+    The crank's walking torque is the largest gravity torque x the accelerations."""
+    from spiderpig import repeatability as rep
+    from spiderpig import servos
+    from spiderpig.config import torque_limit_nm
+    from spiderpig.linkage.constraints import sample_inputs
+
+    lk = config.lk
+    payload = 0.0 if payload_g is None else float(payload_g)
+    limit = torque_limit_nm(config)
+    torque = limit if limit is not None else servos.get(config.servo).stall_torque_nm or 0.0
+    caps = dict.fromkeys(rep.driven_inputs(lk), torque)
+    st = rep.static_loads(lk, config.values, link_g_per_mm=link_g_per_mm(config),
+                          payload_g=payload, capacity_nm=caps,
+                          ins=sample_inputs(lk, CRANK_POSES), tool_g=0.0,
+                          lever_floor=CRANK_LEVER_FLOOR)
+    joints = static_joints(config, st)
+    walks = [g["walk"]["n"] for g in joints if not g["crank"]]
+    jams = [g["jam"]["n"] for g in joints if not g["crank"]]
+    walk_t = rep.ACCEL_FACTOR * st.drive_nm.get("t", 0.0)
+    what = "torque limit" if limit is not None else "stall"
+    note = ("the static model over a turn of the crank: operating, the mechanism's weight"
+            + (f" and a {payload:g} g payload" if payload else "")
+            + f" x {rep.ACCEL_FACTOR:g} for the motion; jammed, its output blocked while the "
+            f"{config.servo} pushes at its {torque:g} N·m {what} (up to "
+            f"{st.crash_force_n:.1f} N at the output), gravity added")
+    if st.toggled:
+        note += (f"; {st.toggled} of {4 * CRANK_POSES} crank angles left out near the "
+                 f"output's dead points (the crank's lever under "
+                 f"{CRANK_LEVER_FLOOR:.0%} of its largest: there the crank's stop bounds it)")
+    if st.singular:
+        note += f"; {st.singular} crank angles left out (the drive can't set the force there)"
+    return {"source": "static", "note": note, "walk_n": max(walks, default=0.0),
+            "jam_n": max(jams, default=0.0), "joints": joints, "payload_g": payload,
+            "capacity_nm": {k: round(v, 4) for k, v in caps.items()},
+            "drive_gravity_nm": {k: round(v, 4) for k, v in st.drive_nm.items()},
+            "crash_force_n": round(st.crash_force_n, 2), "torque_limit_nm": torque or None,
+            "walk_torque_nm": round(walk_t, 5) or None}
 
 
 # -- per joint --------------------------------------------------------------------------

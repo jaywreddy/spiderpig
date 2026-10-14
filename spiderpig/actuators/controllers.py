@@ -1,28 +1,30 @@
-"""Controllers: the electronics that drive a robot's motors (the role ``controller``,
-:mod:`spiderpig.roles`; an arm's since 2026-10-13, loop 2's electronics; every robot's
-since 2026-10-14).
+"""Controllers: the electronics that drive a design's motors (the role ``controller``,
+:mod:`spiderpig.roles`; an arm's since 2026-10-13, loop 2's electronics; a walker's since
+2026-10-14; every design with motors, a mechanism's too, since 2026-10-14's second round).
 
-A :class:`Controller` is the boards and wiring a robot buys to run (``bom``: catalog keys)
-and what it drives (``drives``, a capability: :func:`of` matches it to the design's motors,
-:func:`motors_of`, never to a kind's name):
+A :class:`Controller` is the boards and wiring a design buys to run (``bom``: catalog keys)
+and what it drives (``drives``: the motor role it serves, :data:`DRIVES`, matched by
+:func:`of` to the design's own, :func:`motors_of` = :func:`roles.motor_role`, never to a
+kind's name):
 
-* ``"stepper"``: step/dir drivers under Klipper (an arm's, :mod:`hardware.arm_electronics`),
-  and the pins Klipper drives (:mod:`control.klipper`): each joint's motor port (step, dir,
-  enable, its TMC2209's UART address and DIAG pin, the port's endstop input: one pin with
-  the DIAG on a jumper), the drivers' shared UART, the outputs (the vacuum pump, its release
-  valve, the drivers' fan) and how the host reaches the MCU. The joints take the ports in
-  order (``q1`` the turntable on X, ``q2`` the upper arm on Y, ``q3`` the forearm on Z,
-  ``q4`` a wrist on E), as in the pin map of the notes of 2026-10-13 (BTT's SKR-Pico manual
-  and schematic, Klipper's ``generic-bigtreetech-skr-pico-v1.0.cfg``). Its parts are BOM
-  lines of the robot (``mount=""``).
-* ``"bus_servo"``: servos on a half-duplex serial bus (a crank's servo,
+* ``"actuator"``: steppers on step/dir drivers under Klipper (a ranged input's,
+  :mod:`hardware.arm_electronics`), and the pins Klipper drives (:mod:`control.klipper`):
+  each joint's motor port (step, dir, enable, its TMC2209's UART address and DIAG pin, the
+  port's endstop input: one pin with the DIAG on a jumper), the drivers' shared UART, the
+  outputs (the vacuum pump, its release valve, the drivers' fan) and how the host reaches
+  the MCU. The joints take the ports in order (``q1`` the turntable on X, ``q2`` the upper
+  arm on Y, ``q3`` the forearm on Z, ``q4`` a wrist on E), as in the pin map of the notes
+  of 2026-10-13 (BTT's SKR-Pico manual and schematic, Klipper's
+  ``generic-bigtreetech-skr-pico-v1.0.cfg``). Its parts are BOM lines (``mount=""``).
+* ``"servo"``: servos on a half-duplex serial bus (a crank's servo,
   :mod:`hardware.electronics`): the ``protocol`` it speaks, its ``bus_ports`` and ``baud``
-  (what :mod:`control.servos` writes into the servos). ``mount="deck"``: its parts are
-  bodies of a walker, laid out by the electronics deck (:mod:`construction.deck`, drawn for
-  :data:`DECK_KIT`), so the BOM counts them from the bodies, not from ``bom``. A design's
-  default is the board that speaks its servo's protocol (:data:`BUS_DEFAULTS`): the deck's
-  ESP32 board for Feetech's STS servos, ROBOTIS's U2D2 for DYNAMIXEL's (bought as lines, the
-  deck bare).
+  (what :mod:`control.servos` writes into the servos). ``mount="deck"``: on a walker its
+  parts are bodies of the robot, laid out by the electronics deck (:mod:`construction.deck`,
+  drawn for :data:`DECK_KIT`), so the BOM counts them from the bodies, not from ``bom``; a
+  design with no deck (a mechanism: its side is the machine) buys them as lines
+  (:func:`construction.robot.controller_lines`). A design's default is the board that
+  speaks its servo's protocol (:data:`BUS_DEFAULTS`): the deck's ESP32 board for Feetech's
+  STS servos, ROBOTIS's U2D2 for DYNAMIXEL's (bought as lines, a walker's deck bare).
 
 The key :data:`roles.NONE` is your own electronics: nothing bought, a walker's deck bare
 (:func:`construction.deck.deck_parts`), an arm's Klipper pins left to fill.
@@ -33,7 +35,8 @@ controller a design names, never a kind: ``nodes`` say which bought part is whic
 diagram (a pattern over its catalog key, else its name), ``wiring`` the links between them
 (:class:`Wire`: the cables bought for each, or what makes it; a sentence for the guide when
 both ends are in the robot), ``wiring_text`` the step's own sentences and ``wiring_extras``
-the bought lines its parts list takes.
+the bought lines its parts list takes. What a walker carries of it, modelled in MuJoCo, is
+:func:`carried_g` (a bare deck's: the parts the controller declares ``carried``).
 """
 
 from __future__ import annotations
@@ -42,8 +45,13 @@ from dataclasses import dataclass
 
 from spiderpig.hardware.electronics import HV_WARNING
 
-DRIVES = ("stepper", "bus_servo")
-"""What a controller drives: step/dir stepper drivers, or servos on a serial bus."""
+DRIVES = ("servo", "actuator")
+"""What a controller drives: the motor role it serves (:data:`roles.MOTOR_ROLES`): a crank's
+serial-bus servos, or ranged inputs' steppers on step/dir drivers. One vocabulary with the
+drive groups (:data:`construction.DRIVES`) and the roles (2026-10-14: ``"bus_servo"`` /
+``"stepper"`` before)."""
+DRIVE_WORDS = {"servo": "serial-bus servos", "actuator": "steppers"}
+"""How a message names each drive's motors."""
 
 PROTOCOLS = ("feetech_sts", "dynamixel_2")
 """The serial-bus servo protocols (a servo's :attr:`servos.spec.ServoSpec.protocol`)."""
@@ -97,7 +105,7 @@ class Controller:
     restart_method: str = ""
     driver: str = "tmc2209"
     source: str = ""
-    drives: str = "stepper"         # what it drives (DRIVES), matched to the design's motors
+    drives: str = "actuator"        # the motor role it drives (DRIVES): the design's own
     protocol: str = ""              # a bus servo board's protocol (PROTOCOLS)
     bus_ports: int = 0              # its servo bus sockets
     baud: int = 0                   # the bus's speed (bit/s)
@@ -107,11 +115,13 @@ class Controller:
     wiring_title: str = "Wiring"
     wiring_text: tuple[str, ...] = ()           # the guide's wiring step's sentences
     wiring_extras: tuple[str, ...] = ()         # the bought lines its parts list takes
+    carried: tuple[str, ...] = ()   # the catalog keys of its parts a walker carries on a
+    #                                 bare deck (:func:`carried_g`; "deck" mounts: modelled)
 
     def __post_init__(self):
         if self.drives not in DRIVES:
             raise ValueError(f"controller {self.key}: drives is one of {DRIVES}")
-        if self.drives == "bus_servo" and self.protocol not in PROTOCOLS:
+        if self.drives == "servo" and self.protocol not in PROTOCOLS:
             raise ValueError(f"controller {self.key}: a bus servo board names its protocol "
                              f"({', '.join(PROTOCOLS)})")
 
@@ -205,7 +215,7 @@ CONTROLLERS: dict[str, Controller] = {c.key: c for c in (
          ("lipo_strap_10mm", 1.0), ("ip2326_charger", 1.0), ("bms_hx_2s_jh20", 1.0),
          ("foam_tape", 1.0), ("toggle_mts102", 1.0), ("resistor_100k", 1.0),
          ("resistor_33k", 1.0), ("xt30_pigtail_pair", 1.0), ("dc_plug_5521_pigtail", 1.0)),
-        drives="bus_servo", protocol="feetech_sts", bus_ports=2, baud=1_000_000,
+        drives="servo", protocol="feetech_sts", bus_ports=2, baud=1_000_000,
         mount="deck",
         nodes=(("servo", r"servo_(?!driver)|^servo$|sts\d|xl\d"), ("battery", r"lipo|battery"),
                ("charger", r"charger|ip2326"), ("protection", r"bms|protection"),
@@ -220,7 +230,9 @@ CONTROLLERS: dict[str, Controller] = {c.key: c for c in (
         wiring_text=("The harness: the XT30 pigtail from the battery's lead to the protection "
                      "board, the DC plug pigtail from the switch to the board's DC jack, and "
                      "the battery divider (the 100k resistor from the switched battery to an "
-                     "ESP32 ADC pin, the 33k from that pin to ground). " + HV_WARNING,),
+                     "ESP32 ADC pin, the 33k from that pin to ground). " + HV_WARNING,
+                     "Each servo's bus cable (connector first) to its own one of the board's "
+                     "two bus servo ports."),
         wiring_extras=("resistor_100k", "resistor_33k", "xt30_pigtail_pair",
                        "dc_plug_5521_pigtail"),
         source="option 1 of the electronics review (2026-10-03, hardware.electronics); "
@@ -230,7 +242,22 @@ CONTROLLERS: dict[str, Controller] = {c.key: c for c in (
         "your computer runs the walk over USB, your supply at the servos' voltage powers "
         "the bus; the electronics deck bare",
         (("u2d2", 1.0), ("u2d2_power_hub_set", 1.0)),
-        drives="bus_servo", protocol="dynamixel_2", bus_ports=1, baud=1_000_000,
+        drives="servo", protocol="dynamixel_2", bus_ports=1, baud=1_000_000,
+        nodes=(("servo", r"servo_(?!driver)|^servo$|xl\d|sts\d"),
+               ("hub", r"power_hub|hub"), ("board", r"^u2d2$|u2d2 \(|usb")),
+        wiring=(Wire("hub", "board", via="the hub's 3-pin cable to the U2D2's TTL port",
+                     text="The U2D2 onto its Power Hub Board, the hub's 3-pin cable into the "
+                          "U2D2's TTL port."),
+                Wire("hub", "servo", cables=r"bus_cable|3.?pin|extension",
+                     via="the servos' own cables, chained",
+                     text="The servos chained on the hub's TTL bus, each servo's cable into "
+                          "the next (the first into the hub).")),
+        wiring_title="USB interface and bus",
+        wiring_text=("Your supply at the servos' voltage (XL330 5 V, XL430 11.1-12 V) to the "
+                     "hub's terminal block, + to +, off until the bus is wired; the U2D2's "
+                     "USB-C to the computer that runs the machine (spiderpig control).",),
+        wiring_extras=("u2d2", "u2d2_power_hub_set"),
+        carried=("u2d2", "u2d2_power_hub_set"),
         source="robotis.us product pages and the e-manual, read 2026-10-14 "
                "(hardware.electronics): the U2D2's TTL port (the XL servos chain from one "
                "another), 9,600 to 6,000,000 bps, no power to the servos; the hub 3.5-24 V"),
@@ -243,11 +270,11 @@ one the electronics deck is drawn for (:mod:`construction.deck`). The STS3215 wa
 carried it, unnamed, before the role reached them: it is the role's ``implicit`` key
 (:class:`roles.Role`): never move their default. (A DYNAMIXEL walker's moved on 2026-10-14,
 the user's call: its resolved spec names ``u2d2_dynamixel``, so its id moved with it.)"""
-DEFAULTS = {"stepper": DEFAULT, "bus_servo": DECK_KIT}
+DEFAULTS = {"actuator": DEFAULT, "servo": DECK_KIT}
 BUS_DEFAULTS = {"feetech_sts": DECK_KIT, "dynamixel_2": "u2d2_dynamixel"}
 """A bus-servo design's controller by its servo's protocol (:data:`PROTOCOLS`): one that
 speaks it (2026-10-14: an XL330 / XL430 walker had the deck's Feetech board). A servo naming
-no protocol gets :data:`DEFAULTS`' ``bus_servo``."""
+no protocol gets :data:`DEFAULTS`' ``servo``."""
 
 
 def get(key: str) -> Controller:
@@ -258,12 +285,11 @@ def get(key: str) -> Controller:
 
 
 def motors_of(config) -> str:
-    """What drives ``config``'s design (:data:`DRIVES`): servos on a serial bus where the
-    role ``servo`` is a slot of it (a crank's drive), else steppers (the role ``actuator``,
-    an arm's inputs)."""
+    """The motor role of ``config``'s design (:data:`DRIVES`, :func:`roles.motor_role`): a
+    crank's servo, or ranged inputs' actuators."""
     from spiderpig import roles
 
-    return "bus_servo" if roles.applies("servo", config.lk.kind) else "stepper"
+    return roles.motor_role(config.lk)
 
 
 def default_key(config) -> str:
@@ -271,7 +297,7 @@ def default_key(config) -> str:
     (:data:`DEFAULTS`), and on a serial bus the one that speaks its servo's protocol
     (:data:`BUS_DEFAULTS`)."""
     need = motors_of(config)
-    if need == "bus_servo":
+    if need == "servo":
         from spiderpig import servos
 
         return BUS_DEFAULTS.get(servos.get(config.servo).protocol, DEFAULTS[need])
@@ -280,12 +306,8 @@ def default_key(config) -> str:
 
 def of(config) -> Controller | None:
     """The controller ``config`` names (``None``: :data:`roles.NONE`, your own), checked
-    against what drives its design: :class:`ValueError` when it can't drive them. A design
-    the role isn't a slot of (a mechanism: one side, no robot round it) has none."""
-    from spiderpig import roles
-
-    if not roles.applies("controller", config.lk.kind):
-        return None
+    against what drives its design: :class:`ValueError` when it can't drive them. Every
+    design with motors has the role (a mechanism's too: :mod:`spiderpig.roles`)."""
     key = config.role("controller")
     if not key:
         return None
@@ -293,10 +315,21 @@ def of(config) -> Controller | None:
     need = motors_of(config)
     if ctl.drives != need:
         fit = sorted(k for k, c in CONTROLLERS.items() if c.drives == need)
-        raise ValueError(f"controller {key!r} drives {ctl.drives.replace('_', ' ')}s and "
-                         f"{config.linkage}'s motors are {need.replace('_', ' ')}s: use "
+        raise ValueError(f"controller {key!r} drives {DRIVE_WORDS[ctl.drives]} and "
+                         f"{config.linkage}'s motors are {DRIVE_WORDS[need]}: use "
                          f"{' or '.join([*fit, 'none'])}")
     return ctl
+
+
+def carried_g(ctl: Controller) -> float:
+    """What a walker carries of controller ``ctl`` on a bare deck (g): its ``carried``
+    parts' catalogued ``mass_g`` (a part with none counts 0: the U2D2's power hub is
+    unweighed). A deck-mounted controller's parts are bodies of the robot (modelled, not
+    counted here)."""
+    from spiderpig.hardware.catalog import get as item
+
+    qty = dict(ctl.bom)
+    return sum(qty.get(k, 1.0) * float(item(k).dims.get("mass_g", 0.0)) for k in ctl.carried)
 
 
 def protocol_note(config, ctl: Controller | None) -> str:

@@ -217,6 +217,8 @@ class Linkage:
     # MT4's elbow stops, a parallelogram kept off its dead points); None: the box is the
     # ranges' rectangle (:meth:`inputs_at`)
     band: tuple[float, float] | None = None
+    # (a cranked linkage's second input may declare one too: a stepper's JointDrive beside
+    # the crank's servo, construction._joint_drives)
     drives: Mapping[str, tuple[str, str]] = field(default_factory=dict)
     angles: frozenset[str] = frozenset()
     labels: Mapping[str, str] = field(default_factory=dict)
@@ -254,8 +256,14 @@ class Linkage:
         """A cranked linkage's inputs are ``t`` and maybe ``t2`` (full turns); an arm's
         (no crank) each turn over a range and drive a link about a frame joint."""
         if self.crank:
-            if self.inputs not in (("t",), ("t", "t2")) or self.ranges or self.drives:
+            if self.inputs not in (("t",), ("t", "t2")) or self.ranges:
                 raise ValueError(f"{self.key}: inputs are the crank angle t, and maybe t2")
+            # the crank's servo turns t; a second input may declare its own drive (a link
+            # turning on a frame joint: construction._joint_drives builds it)
+            if "t" in self.drives or not set(self.drives) <= set(self.inputs):
+                raise ValueError(f"{self.key}: only a cranked linkage's second input may "
+                                 f"declare a drive (t is the crank's), got {sorted(self.drives)}")
+            self._check_drives(joints)
             return
         names = list(self.inputs)
         if not names or len(set(names)) != len(names) or \
@@ -271,13 +279,16 @@ class Linkage:
         for n, (lo, hi) in self.ranges.items():
             if not lo < hi or hi - lo > 360:
                 raise ValueError(f"{self.key}: input {n}'s range {lo}..{hi} deg")
+        self._check_drives(joints)
+        if self.output is None or self.feet:
+            raise ValueError(f"{self.key}: an arm has an output, no feet")
+
+    def _check_drives(self, joints: set[str]) -> None:
         for n, (link, about) in self.drives.items():
             if link not in self.links or about not in self.links[link][0] or \
                     about not in self.frame:
                 raise ValueError(f"{self.key}: input {n} drives {link!r} about {about!r}: a "
                                  "link turning on a frame joint")
-        if self.output is None or self.feet:
-            raise ValueError(f"{self.key}: an arm has an output, no feet")
 
     @property
     def kind(self) -> str:

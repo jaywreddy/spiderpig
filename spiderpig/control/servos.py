@@ -90,7 +90,7 @@ def bus_servos(config) -> list[BusServo]:
     from spiderpig.fabricate import template_for
     from spiderpig.stack import topology_from_template
 
-    if motors_of(config) != "bus_servo":
+    if motors_of(config) != "servo":
         raise ValueError(f"{config.linkage}'s motors are steppers, not bus servos: its axes "
                          "are spiderpig control's arm axes")
     side = config.side_config()

@@ -66,14 +66,16 @@ def _servo_drive(ctx: Context, config) -> list[Group]:
 
 
 def _joint_drives(ctx: Context, config) -> list[Group]:
-    """Each input a stepper and a transmission to the link it drives
-    (:mod:`construction.transmissions`; the roles ``actuator`` and ``transmission``, per
-    drive)."""
+    """Each input a link turns on a frame joint declares (:attr:`linkage.Linkage.drives`) a
+    stepper and a transmission to that link (:mod:`construction.transmissions`; the roles
+    ``actuator`` and ``transmission``, per drive): an arm's every input. Keyed on the
+    declared drives, not on the inputs' kind, so a cranked linkage whose second input
+    declares one (a five-bar's ``t2``) gets its drive here beside the crank's servo."""
     from spiderpig import actuators
 
     lk = config.lk
     out: list[Group] = []
-    for name in lk.inputs:
+    for name in (n for n in lk.inputs if n in lk.drives):
         link, about = lk.drives[name]
         out.append(JointDrive(name, link, about,
                               transmission(config.role("transmission", name)),
@@ -82,17 +84,22 @@ def _joint_drives(ctx: Context, config) -> list[Group]:
 
 
 DRIVES = {"servo": _servo_drive, "actuator": _joint_drives}
-"""The drive groups by the motor role that fills them (:mod:`spiderpig.roles`): a design
-takes the one whose role applies to its linkage's kind (2026-10-14: a kind test before)."""
+"""The drive groups by the motor role that fills them (:data:`roles.MOTOR_ROLES`): a design
+takes its own (:func:`roles.motor_role`, from its inputs: a crank's servo, ranged inputs'
+actuators; 2026-10-14: a kind test before). A cranked linkage's other inputs that declare a
+drive get theirs too (:func:`_joint_drives`)."""
 
 
 def _drive_groups(ctx: Context, config) -> list[Group]:
-    """The drives of the motor role that applies to the design (:data:`DRIVES`)."""
+    """The drives of the design's motor role (:data:`DRIVES`), and a cranked linkage's
+    declared joint drives beside its servo."""
     from spiderpig import roles as rolemod
 
-    kind = config.lk.kind if getattr(config, "linkage", None) else "walker"
-    (role,) = [r for r in DRIVES if rolemod.applies(r, kind)]
-    return DRIVES[role](ctx, config)
+    role = rolemod.motor_role(config.lk)
+    groups = DRIVES[role](ctx, config)
+    if role != "actuator" and config.lk.drives:
+        groups += _joint_drives(ctx, config)
+    return groups
 
 
 def _crank_groups(ctx: Context, config) -> list[Group]:

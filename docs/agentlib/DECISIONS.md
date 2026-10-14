@@ -1457,3 +1457,54 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   (167), 19 laser parts (17), BOM 71 lines $595.79 ($501.51; two DIN 988 6 x 12 shim
   thicknesses newly unpriced, not guessed), audit OK with 8 warnings (FAIL (2) before);
   `klann_quad` fails, known. DESIGNS.md regenerated from it.
+
+### 2026-10-14: one engine for every machine: controllers, strength, sim and exports by capability (fix round 2)
+
+- **The decision:** what a design gets follows what it declares (its inputs, `Linkage.ranged`
+  / `walks`, its robot layout), never its kind's name, toward the user's "one seamless repo
+  ... for a given task".
+- **Every design with motors has a controller.** The role `controller` applies to mechanisms
+  too (and `pin` / `pillar` to arms, whose `ball_pair` pivots the guide's cover now names).
+  A mechanism's default is its servo's protocol's (`controllers.BUS_DEFAULTS`: the ESP32 board
+  for the STS3215, `u2d2_dynamixel` for an XL); its side is the whole machine (no robot is
+  made of it), so `BuildConfig.side_config` keeps its robot roles and `fabricate_side` buys
+  the controller as lines (`construction.robot.controller_lines(deck=False)`, no deck to draw
+  it), wired in its side's last step (`SIDE_ORDER`'s wiring stage; the step lists every part
+  bought). The default STS3215 mechanisms' ids stay (the role's `implicit` key); their BOM
+  gains the ESP32 kit's 14 lines (the board, its 2S LiPo, charger, protection board, switch,
+  harness, the board's nylon standoffs): a one-sided demo on a bench still needs a board and
+  power, and the kit's battery keeps it untethered (`none` buys nothing).
+- **One drive vocabulary:** the motor role is chosen once from the inputs
+  (`roles.motor_role`: a crank's `servo`, ranged inputs' `actuator`); `Controller.drives`,
+  `controllers.DRIVES`, `construction.DRIVES` and `spiderpig control` use those names
+  (`"bus_servo"` / `"stepper"` before). `construction._joint_drives` serves any declared drive,
+  and a cranked linkage's second input may declare one (`Linkage.drives`, a stepper's
+  `JointDrive` beside the crank's servo, the constraints' layout holding it): the engine side
+  of a five-bar. `five_bar` declares none yet, so it still stops at `drive` /
+  `second_input_no_drive` (the API's note is another package's this round).
+- **A mechanism's jam is rated** as the arm's crash (`strength.crank_loads`: the static model
+  over a turn of the crank; operating its weight x 1.5, jammed its output blocked while the
+  servo pushes at its torque limit, the output's dead points, under 10 % of the crank's
+  largest lever, left out). At the STS3215's 0.85 N·m every one-input mechanism failed (jam SF
+  0.22-0.85: small cranks on acrylic links). Each now has its own limit
+  (`config.LINKAGE_TORQUE_LIMITS`, klann_lego's lever: no part changed): the largest that puts
+  every joint and link at jam SF 2, 0.09 (rocker_amplifier) to 0.36 N·m (hoecken); MuJoCo
+  turns each at 0.006-0.031 N·m, so each keeps 6.8 x or more of headroom over its own motion.
+  The torque limit is what `spiderpig control servo` writes into the servo, as a walker's,
+  hence the rating at it rather than the stall. **The user's call:** a mechanism driving a load
+  needs its limit raised and its links rated again (aluminium links clear it: the fixes say).
+- **The fixed designs' sim:** `sim.run.hold` holds a crank in the servo's position mode (a P
+  loop over its speed loop; the zero-speed command alone crept) and an arm with the payload
+  its precision assumes (`verify.hold_payload_g`: the spec's, else `PAYLOAD_G`); `sim.run.turn`
+  drives a fixed design's crank through a turn (the second, past the spin-up): `verify full`'s
+  soft `sim.torque`, as a walker's.
+- **Smaller fixes:** a DYNAMIXEL walker's bare deck carries the U2D2 and its hub
+  (`controllers.carried_g`, `sim.mjcf.bare_deck_g`), not the ESP32 kit's 61 g; `u2d2_dynamixel`
+  declares its wiring (boxes, links, sentences, its two lines in its step); the walker's
+  port sentence moved into `esp32_bus_servo.wiring_text`, the chassis' routing stays the
+  mirrored pair's (`ROBOT_ORDER`'s wiring intro); a robot's mechanism names its layout
+  (`meta["layout"]`, no `"mirrored_pair"` fallback; the drive groups no `"walker"` one); a
+  precision budget that raised fails `verify` only with a precision target.
+- **The URDF** stays a ranged linkage's: `urdf.write` refuses a crank's design with
+  `urdf.unsupported`'s reason (its joints follow the crank's full turn, which a URDF tree can
+  only table; a walker has no fixed base), not exported half-way; its MuJoCo model holds it.

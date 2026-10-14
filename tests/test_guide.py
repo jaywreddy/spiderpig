@@ -351,7 +351,12 @@ def test_a_mechanism_on_its_own_is_one_side():
     st, _ = _quantities(mech, design)
     _check(mech, st)
     assert {x.side for x in st} == {None}
-    assert {x.stage for x in st} <= {"stack", "unit", "join", "other"}
+    assert {x.stage for x in st} <= {"stack", "unit", "join", "wiring", "other"}
+    # its controller (2026-10-14): bought as lines, wired in its last step, no deck
+    (wiring,) = [x for x in st if x.stage == "wiring"]
+    assert wiring.number == len(st)
+    assert "esp32_servo_driver" in wiring.extras
+    assert "bus servo ports" in " ".join(wiring.text)
 
 
 @pytest.mark.slow
@@ -433,11 +438,15 @@ def test_the_turret_order_is_structured():
     from spiderpig.construction.assembly import ARM_ORDER, LAYOUT_ORDERS, TURRET_ORDER
 
     stages = [s.stage for s in TURRET_ORDER]
-    assert stages[:len(ARM_ORDER) - 1] == [s.stage for s in ARM_ORDER][:-1]     # the side first
+    side = [s.stage for s in ARM_ORDER if s.stage not in ("wiring", "other")]
+    assert stages[:len(side)] == side                                           # the side first
     assert stages[-4:] == ["turret", "mount", "wiring", "other"]
+    assert stages.count("wiring") == 1
     assert LAYOUT_ORDERS == {"mirrored_pair": ROBOT_ORDER, "turret": TURRET_ORDER}
     wiring = next(s for s in ROBOT_ORDER if s.stage == "wiring")
-    assert "bus servo ports" in wiring.outro          # the walker's: after the harness
+    assert "deck's wire slot" in wiring.intro         # the walker's layout: the routing
+    assert not wiring.outro                           # the ports: its controller's sentence
+    assert [s.stage for s in SIDE_ORDER][-2:] == ["wiring", "other"]     # a mechanism's
 
 
 @pytest.mark.no_fabricate

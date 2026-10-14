@@ -502,7 +502,7 @@ def test_the_servo_setup_writes_ids_mode_and_the_rated_torque_limit():
     assert own["controller"] is None
     assert own["bus"]["ports"] is None
     mech = servos.setup(BuildConfig(linkage="hoecken_pantograph", robot=False))
-    assert mech["controller"] is None                      # no robot round it: no role
+    assert mech["controller"]["key"] == "esp32_bus_servo"  # its motors' (2026-10-14)
     assert [s["name"] for s in mech["servos"]] == ["crank"]
     assert mech["phase_lock"] is None
     dxl = servos.setup(BuildConfig(servo="xl330_m288"))
