@@ -309,13 +309,15 @@ otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
 within 1e-9 relative / 1e-6 mm.
 
-**Baseline** (the robot-arm platform, `7112cca`, 2026-10-12: the walkers as the integration
+**Baseline** (the robot-arm platform, `867ae7e`, 2026-10-14: the walkers as the integration
 branch's `next-320384d` left them, and the palletizer on its turret on ball-bearing
-pivots): `~/.cache/spiderpig/gate/platform-7112cca/` on the development
+pivots): `~/.cache/spiderpig/gate/platform-867ae7e/` on the development
 box (`/root/.cache/...`), one `<design>.json` per design, their logs and `snapshot.json`
 (commit, branch, time). Compare against it from any worktree whose `spiderpig/` should
-match its output: `mise run gate -- compare ~/.cache/spiderpig/gate/platform-7112cca`. It differs
-from `platform-a1d6e49` (kept) by the BOMs' prices and sources alone (the cost loop's
+match its output: `mise run gate -- compare ~/.cache/spiderpig/gate/platform-867ae7e`. It differs
+from `platform-7112cca` (kept) by the palletizer's tool holder (two cut plates, no print)
+and the controller's rows in its BOM (the part-count loops, 2026-10-13), the walkers
+identical; from `platform-a1d6e49` (kept) by the BOMs' prices and sources alone (the cost loop's
 round 1: the catalog repriced, the cut model refitted; parts, plans and DXFs identical),
 from `platform-68f96d5` (kept) by the palletizer a layer thinner (the belt's small pulley's
 hub in the frame plate's window), from `platform-43363f3` (kept) by the palletizer's bearings priced at VXB, from
