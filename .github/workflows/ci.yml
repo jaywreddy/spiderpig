@@ -11,15 +11,22 @@ on:
   pull_request:
     # the defaults, and `labeled`: adding the `slow` label starts the slow tier at once
     # (any label re-runs the cheap jobs too: none is skipped, so a skipped check can never
-    # stand in for a failed one)
+    # stand in for a failed one). Removing a label triggers nothing (`unlabeled` isn't
+    # listed): an in-flight slow run goes on until cancelled (`gh run cancel`)
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:                    # a newer push to a ref cancels its older run
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+# A newer push to a ref cancels its older run (the slow tier's with it). A label other than
+# `slow` runs in a group of its own (`-label-NAME`), so adding one never cancels the
+# in-flight run, and the slow tier isn't started again by it (the `slow` job's `if`)
+concurrency:
+  group: >-
+    ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{
+    (github.event.action == 'labeled' && github.event.label.name != 'slow')
+    && format('-label-{0}', github.event.label.name) || '' }}
   cancel-in-progress: true
 
 env:
@@ -151,12 +158,14 @@ jobs:
   # The slow tier (`-m 'slow and not e2e'`), opt-in: a PR labelled `slow`, or a manual run
   # (Actions > CI > Run workflow, or `gh workflow run ci.yml --ref BRANCH`). Set up as
   # nightly.yml's `slow` job; its fabrication cache under its own key, starting from the
-  # nightly's or the quick job's entries for the same engine
+  # nightly's or the quick job's entries for the same engine. Not on another label's run
+  # (the run it would duplicate goes on: the concurrency group above)
   slow:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
-      contains(github.event.pull_request.labels.*.name, 'slow'))
+      contains(github.event.pull_request.labels.*.name, 'slow') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'slow'))
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
