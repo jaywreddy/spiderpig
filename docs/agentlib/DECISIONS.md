@@ -1143,3 +1143,5 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   speaks Feetech's protocol, not DYNAMIXEL's (as before this change: its BOM is the same);
   `spiderpig control servo` says so (`controllers.protocol_note`). Changing its default
   would move those designs' ids and BOMs: the user's call.
+- **The gate** (against `platform-77c117c`): all eight designs identical (parts, plans,
+  BOM, DXF, audit), so no new baseline and DESIGNS.md unchanged.
