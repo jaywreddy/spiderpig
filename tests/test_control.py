@@ -323,16 +323,17 @@ def test_a_geared_axis_goes_past_its_backlash():
 
 
 @pytest.mark.no_fabricate
-def test_an_arm_buys_its_controller_and_a_walker_none():
+def test_an_arm_buys_its_controller_and_a_walker_its_deck_kit():
     from spiderpig import roles
     from spiderpig.actuators import controllers
     from spiderpig.hardware.catalog import get
 
-    assert roles.choices("controller") == ["skr_pico_pi_zero", roles.NONE]
+    assert roles.choices("controller") == ["esp32_bus_servo", "skr_pico_pi_zero", roles.NONE]
     assert BuildConfig(linkage="palletizer").role("controller") == "skr_pico_pi_zero"
     assert BuildConfig(linkage="palletizer",
                        roles=(("controller", "none"),)).role("controller") == ""
-    assert "controller" not in BuildConfig().applied_roles()
+    assert BuildConfig().role("controller") == "esp32_bus_servo"
+    assert "controller" not in BuildConfig().applied_roles()     # implicit: the ids stay
     ctl = controllers.get("skr_pico_pi_zero")
     total = 0.0
     for key, qty in ctl.bom:            # every row bought, priced and dated
@@ -421,3 +422,118 @@ def test_the_control_cli_prints_axes_homing_fk_ik_and_writes_klipper(monkeypatch
     assert cli.main(["klipper", *arm, "--out", str(tmp_path)]) == 0
     assert (tmp_path / "printer.cfg").read_text().count("[manual_stepper ") == 3
     assert cli.main(["fk", *arm, "--q", "q1=0"]) == 2          # missing joints
+    assert cli.main(["servo", *arm]) == 2                      # steppers: no bus servos
+
+
+# -- a crank's serial-bus servos (control.servos, 2026-10-14) ---------------------------
+
+
+@pytest.mark.no_fabricate
+def test_a_walkers_cranks_are_two_bus_servos_with_their_phases_and_zero():
+    from spiderpig.control import servos
+
+    left, right = servos.bus_servos(BuildConfig())                 # the Strider double
+    assert (left.name, left.id, left.side) == ("L", 1, "left")
+    assert (right.name, right.id, right.side) == ("R", 2, "right")
+    assert left.phases_deg == right.phases_deg == (0.0, 180.0)     # the module's legs
+    assert {left.forward, right.forward} == {"cw", "ccw"}           # mirrored: opposite ways
+    assert (left.zero_pin, left.zero_deg) == ("J1_leg0", 0.0)
+    quad = servos.bus_servos(BuildConfig(module="quad"))
+    assert quad[0].phases_deg == (0.0, 180.0, 90.0, 270.0)
+    moved = servos.bus_servos(BuildConfig(phases=(0.0, math.pi / 2)))
+    assert moved[0].phases_deg == (0.0, 90.0)                       # the design's phases
+    (one,) = servos.bus_servos(BuildConfig(robot=False))            # one side, one crank
+    assert (one.name, one.id) == ("crank", 1)
+    assert one.forward == left.forward                              # the unmirrored side's
+    with pytest.raises(ValueError, match="steppers"):
+        servos.bus_servos(BuildConfig(linkage="palletizer"))
+
+
+@pytest.mark.no_fabricate
+def test_the_servo_setup_writes_ids_mode_and_the_rated_torque_limit():
+    from spiderpig import servos as servo_models
+    from spiderpig.config import torque_limit_nm
+    from spiderpig.control import servos
+
+    doc = servos.setup(BuildConfig())
+    assert doc["controller"]["key"] == "esp32_bus_servo"
+    assert doc["bus"] == {"protocol": "feetech_sts", "baud": 1_000_000,
+                          "steps_per_rev": 4096, "ports": 2}
+    assert doc["phase_lock"]["kp"] > 0
+    assert doc["side_offset_deg"] == 0.0
+    stall = servo_models.get("sts3215").stall_torque_nm
+    units = round(torque_limit_nm(BuildConfig()) / stall * 1000)
+    assert doc["torque_limit"]["units"] == units
+    for s, sid in zip(doc["servos"], (1, 2), strict=True):
+        w = {x["register"]: (x["address"], x["value"]) for x in s["writes"]}
+        assert w["id"] == (5, sid)
+        assert w["baud"] == (6, 0)                         # 1 Mbps
+        assert w["mode"] == (33, 1)                        # speed mode: the crank turns on
+        assert w["max_torque"] == (16, units)
+        assert w["torque_limit"] == (48, units)
+        assert s["zero"]["homing_offset"] is None          # the homing's to write
+    lego = servos.setup(BuildConfig(linkage="klann_lego", module="quad"))
+    assert lego["torque_limit"]["units"] < units           # config.LINKAGE_TORQUE_LIMITS
+    own = servos.setup(BuildConfig(roles=(("controller", "none"),)))
+    assert own["controller"] is None
+    assert own["bus"]["ports"] is None
+    mech = servos.setup(BuildConfig(linkage="hoecken_pantograph", robot=False))
+    assert mech["controller"] is None                      # no robot round it: no role
+    assert [s["name"] for s in mech["servos"]] == ["crank"]
+    assert mech["phase_lock"] is None
+    dxl = servos.setup(BuildConfig(servo="xl330_m288"))
+    assert dxl["bus"]["protocol"] == "dynamixel_2"
+    assert "dynamixel_2" in dxl["notes"][0]                # the deck's board can't drive it
+
+
+@pytest.mark.no_fabricate
+def test_a_cranks_zero_offset_makes_its_pose_read_mid_scale():
+    from spiderpig.control.servos import ZERO_COUNT, zero_offset
+
+    for raw in (0, 1, 1000, 2048, 3000, 4095):
+        off = zero_offset(raw, "feetech_sts")
+        value = -(off & 0x7FF) if off & 0x800 else off       # sign-magnitude, bit 11
+        assert abs(value) <= 2047
+        assert (raw - value - ZERO_COUNT) % 4096 in (0, 4095)   # (the clamp: one count)
+        assert (raw + zero_offset(raw, "dynamixel_2")) % 4096 == ZERO_COUNT
+    assert zero_offset(2048, "feetech_sts") == 0
+    assert zero_offset(2148, "feetech_sts") == 100
+    assert zero_offset(1948, "feetech_sts") == 0x800 | 100
+    with pytest.raises(ValueError, match="protocol"):
+        zero_offset(0, "pwm")
+
+
+@pytest.mark.no_fabricate
+def test_the_homing_zeroes_each_crank_once():
+    from spiderpig.control import servos
+
+    steps = servos.homing_steps(BuildConfig())
+    names = [n for n, _ in steps]
+    assert names.count("L") == names.count("R") == 4
+    assert names[-1] == "all"
+    assert any("Torque_Enable" in a and "2048" in a for _, a in steps)
+    assert any("J1_leg0" in a and "front" in a for _, a in steps)
+
+
+@pytest.mark.no_fabricate
+def test_the_control_cli_drives_a_walkers_servos(capsys, tmp_path):
+    import json
+
+    from spiderpig.control import cli
+
+    assert cli.main(["axes"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert [ln.split(":")[0] for ln in lines] == ["L", "R"]
+    assert "bus ID 1" in lines[0]
+    assert "bus ID 2" in lines[1]
+    assert cli.main(["homing"]) == 0
+    assert capsys.readouterr().out.startswith("1. [L]")
+    assert cli.main(["servo", "--out", str(tmp_path)]) == 0
+    doc = json.loads((tmp_path / "servos.json").read_text())
+    assert [s["id"] for s in doc["servos"]] == [1, 2]
+    capsys.readouterr()
+    assert cli.main(["servo", "--controller", "skr_pico_pi_zero", "--out",
+                     str(tmp_path)]) == 2                  # a stepper board on a servo bus
+    assert "bus servos" in capsys.readouterr().err
+    for stepper_only in ("klipper", "fk", "ik"):
+        assert cli.main([stepper_only]) == 2

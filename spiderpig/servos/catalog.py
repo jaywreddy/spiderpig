@@ -178,6 +178,7 @@ STS3215 = register_servo(ServoSpec(
     voltage=(4.0, 7.4),             # [C001]
     speed_rpm=52,                   # [C001] 0.192 s/60 deg at 7.4 V, no load
     weight_g=55,                    # [FT]
+    protocol="feetech_sts",
     interface="TTL half-duplex serial bus (Feetech SMS/STS protocol, 1 Mbps default), "
               "12-bit magnetic encoder; 2 x 5264-3P connectors",
     notes="Turns continuously (closed-loop speed mode). Needs a TTL bus adapter board. "
@@ -280,6 +281,7 @@ XL430_W250 = register_servo(ServoSpec(
     voltage=(6.5, 12.0),            # [EM4]; 11.1 V recommended
     speed_rpm=57,                   # [EM4] no load at 11.1 V
     weight_g=57.2,                  # [EM4]; the robotis.us listing says 65 g
+    protocol="dynamixel_2",
     interface="TTL half-duplex multidrop bus, DYNAMIXEL Protocol 2.0, 12-bit absolute encoder",
     notes="Needs 6.5-12 V (3S Li-ion) and a DYNAMIXEL TTL adapter (U2D2 or similar). The 2 x "
           "2.1 mm pilot holes the drawing puts 8 mm from the axis on the horn side are on the "
@@ -385,6 +387,7 @@ XL330_M288 = register_servo(ServoSpec(
     voltage=(3.7, 6.0),             # [EM3]; 5 V recommended
     speed_rpm=103,                  # [EM3] no load at 5 V
     weight_g=18,                    # [EM3]
+    protocol="dynamixel_2",
     interface="TTL half-duplex multidrop bus (3.3 V logic, 5 V tolerant), DYNAMIXEL Protocol "
               "2.0, 12-bit absolute encoder; JST EHR-03 connectors",
     notes="Marginal torque for a single-servo walker. The horn centre-screw thread and the "

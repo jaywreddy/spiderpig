@@ -1,4 +1,5 @@
-"""Catalog data: the electronics the deck carries (:mod:`construction.deck`).
+"""Catalog data: the electronics the deck carries (:mod:`construction.deck`): the role
+``controller``'s ``esp32_bus_servo`` (:mod:`actuators.controllers`), a walker's default.
 
 Option 1 of the electronics review (2026-10-03): a Waveshare "Servo Driver with ESP32"
 (drives both STS3215s over their serial bus), a 2S 450 mAh LiPo, an IP2326 2S USB-C

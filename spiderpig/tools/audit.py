@@ -170,6 +170,9 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
                                "stalled: the jam loads are undersampled")
     if config.mirrored and not rep["deck"].get("fitted"):
         rep["warnings"].append(f"no electronics deck: {rep['deck'].get('why')}")
+    elif config.mirrored and rep["deck"].get("electronics") is False:
+        rep["warnings"].append("the electronics deck is bare (the role controller none): "
+                               "your own electronics go on it")
     if config.mirrored and rep["chassis"].get("rear_screws_per_servo", 0) < 2:
         rep["warnings"].append(f"only {rep['chassis'].get('rear_screws_per_servo', 0)} rear "
                                "screw(s) per servo into the centre plates")
