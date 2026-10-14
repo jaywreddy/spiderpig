@@ -9,7 +9,7 @@ function data(pose?: PackData['pose']): PackData {
 }
 
 describe('the pack', () => {
-  it('starts from the pose the cradle is cranked to (B: 4 turns from rest)', () => {
+  it('starts from the pose the cradle is cranked to (B: its arm along the rear leg)', () => {
     const b = data({ crank_t: 0.5454, clip_fraction: 0.0868, tilt_deg: -34.8, turns_from_rest: 4 });
     expect(packFraction(b)).toBeCloseTo(0.0868, 6);
   });

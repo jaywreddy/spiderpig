@@ -30,8 +30,10 @@ one side at a time like any mechanism. The bottle lies between two sides, the **
   round the hinge and a leg down the front, four columns; B: the bar O1-O2), so the tie
   rods pass it in the open.
 * **The base board** (:func:`_base_plate`): both sides' rails bolted onto it with printed
-  brackets (:func:`_bracket`), the decanter in a notch from its front edge, printed TPU
-  feet snapped into its corners.
+  brackets (:func:`_bracket`: thumb knobs, no tool), each rail between two birch cleats
+  glued to it (:func:`_cleats`), the decanter's lab jack in a locator in a notch from its
+  front edge (:func:`_jack_locator`), printed TPU feet snapped into its corners; B's sits
+  toward its drive side (:data:`BASE_Z`).
 * **Display only** (``fab="display"``: drawn, never bought, cut or printed): the bottle (a
   6 L methuselah, :data:`SHOWN`: the V blocks drawn at its setting, their lowest) and a
   decanter under the mouth.
@@ -70,6 +72,7 @@ from spiderpig.construction.base import (
 )
 from spiderpig.construction.plates import FramePlates, boss_web
 from spiderpig.construction.robot import prefixed
+from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import screw
 from spiderpig.mechanism import Body, Mechanism
 from spiderpig.shapes import Cut, Shape3D, cut_holes, difference, disc, moved, pill, union
@@ -107,6 +110,7 @@ TIE_COLOR = "#4a4a4a"
 BOTTLE_COLOR = "#20402a"
 DECANTER_COLOR = "#cfe3f5"
 LED_COLOR = "#f0f0e0"
+BOARD_COLOR = "#9aa3ad"
 
 
 # --- the bottles (display) and what the saddles are sized for ----------------------------
@@ -279,9 +283,21 @@ class Stand:
 BASE_SHEET = "birch_9mm"        # the base board, both sides' outer plates bolted onto it:
 #                                 Baltic birch plywood, routed (2026-10-13, the user's)
 BASE_T = 9.0                    # its thickness
+WOOD_GLUE = "wood_glue"         # its cleats and the jack locator's layers glued (Titebond II)
 BASE_HALF = 292.0               # its half-width across the bay: a 584 mm track (a full 6 L
 #                                 tips sideways past 25° on B: cradle_report.stability)
+BASE_Z: dict[str, float] = {"decanter_rcm": -40.0}
+"""The base board's middle across the bay (mm, z; the drive side is -z), per cradle (0 if
+not named). B's sits 40 mm toward its drive side: the gearbox and the hand crank outboard
+put the whole cradle's centre of mass 68 mm that way, so a centred board had 26° to the
+drive side's edge and 32° to the other (round 1's stand review). The passive brackets'
+knobs reach 244 mm out, 8 mm inside its passive edge."""
+BASE_CORNER_R = 35.0            # its four corners rounded (the frames' fillets' language;
+#                                 a square plywood corner chips and catches a shin)
+NOTCH_MOUTH_R = 8.0             # the notch's two corners at the front edge, rounded too
 FOOT_PAD_H = 8.0                # its printed TPU feet, snapped into its corner holes
+FOOT_INSET = 25.0               # a foot's centre in from the board's edges
+FOOT_PAD_R = 12.0               # its pad's radius (the tipping edges: cradle_report.stability)
 BASE_TOP_CLEAR = FOOT_PAD_H + BASE_T - 2.0  # what may hang under it: all but 2 mm of the feet
 BASE_TOP = -LIP_HEIGHT + FOOT_PAD_H + BASE_T    # its top, from the mouth
 NOTCH_R = 126.0                 # the decanter's notch in it: a 244 mm decanter and play,
@@ -289,11 +305,26 @@ NOTCH_R = 126.0                 # the decanter's notch in it: a 244 mm decanter 
 #                                 end locating it under the mouth
 DECANTER_X = 0.0                # the decanter's axis, under the mouth (a stream lands -15..+16 mm
 #                                 from it over the pour: 2026-10-10 review round 2)
+JACK_BASE = 100.0               # the lab jack under the decanter: a 100 x 100 mm base and
+#                                 platform (the common 4 x 4 in stainless jack)
+JACK_PLAY = 0.5                 # its pocket's play each side
+LOCATOR = (-70.0, 1.0, 2)       # the jack locator in the notch: its front edge (x from the
+#                                 mouth), its play to the notch each side, its layers of the
+#                                 board's birch (glued: 18 mm, so its top layer meets the
+#                                 board's whole edge; the board stands 8 mm up on its feet)
+NOTCH_BAY = (-45.0, 15.0)       # the notch's two side bays (x from the mouth, radius) the
+#                                 locator's ears drop into: it can't slide out forward
+DOG_BONE_R = 1.6                # a routed square corner's relief: the router's 1/8 in bit
+#                                 (SendCutSend's least hole in 9 mm birch, 3.175 mm)
+CLEAT = (26.0, 0.15, 4.0)       # a rail's two birch cleats, glued to the board either side of
+#                                 it: their width across (SendCutSend's least birch part is
+#                                 25.4 mm), the play each side of the rail, the gap to a bracket
 _FOOT_Y = BASE_TOP + 12.5       # a foot's centre: its screw's boss (2 t) on the base board
 BRACKET = (36.0, 30.0, 5.0)     # a foot's printed bracket: its length, legs' height, wall
 """A stand foot is a printed L-bracket outside each outer plate, an M5 button head through
 it and the plate (its nut in the layer over the plate) and a carriage bolt up through the
-base board and its foot, a knurled thumb nut on it (:func:`_bracket`)."""
+base board and its foot's oversize hole, an 18-8 fender washer and a printed thumb knob (an
+18-8 nut pressed in it) on it (:func:`_bracket`)."""
 
 STANDS: dict[str, Stand] = {
     # A: the hinge G at the mouth, the crank O 173 behind and 202 under it. The outer plate
@@ -344,6 +375,11 @@ def stand_of(lk) -> Stand:
     except KeyError:
         raise ConstructionError(f"{lk.key} is a cradle with no stand (construction.cradle."
                                 "STANDS)") from None
+
+
+def base_z(lk) -> float:
+    """The base board's middle across the bay (:data:`BASE_Z`)."""
+    return BASE_Z.get(lk.key, 0.0)
 
 
 def mouth_frame(lk) -> tuple[str, str]:
@@ -1299,14 +1335,16 @@ CLIP_GAP = 16.0             # the clip starts this far under the head (the head 
 
 
 def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
-             ) -> tuple[Shape3D, list[tuple[Shape3D, str]], tuple[float, float]]:
+             ) -> tuple[Shape3D, list[tuple[Shape3D, str | None, str]], tuple[float, float]]:
     """A foot's printed L-bracket outside an outer plate (world): its upright leg on the
     plate's outer face (``face``; ``sign`` outward along z), its foot leg on the base board
     (its top ``y_top``); an M5 button head through the upright and the plate into a nut over
-    the plate, a carriage bolt up from under the base board through the foot, a knurled thumb
-    nut on it (:data:`THUMB_NUT`: by hand, so the side lifts off the board with no tool; its
-    head in the feet's clearance, :data:`BOLT_OUT` off the plate so the nut clears the
-    upright's screw head). (The bracket, its screws and nuts with their catalog keys, the base
+    the plate, a carriage bolt up from under the base board through the foot's oversize hole
+    (:data:`BRACKET_HOLE`), an 18-8 fender washer and a printed thumb knob on it, an 18-8 M6
+    nut pressed into the knob (:data:`KNOB`: by hand, so the side lifts off the board with no
+    tool; the bolt's head in the feet's clearance, :data:`BOLT_OUT` off the plate so the knob
+    clears the upright's screw head). (The bracket; its screws, nuts, washer and knob, each
+    with its catalog key (the knob's ``None``: printed) and its name's suffix; the base
     board's hole (x, z).)"""
     length, height, wall = BRACKET
     fx, fy = xy
@@ -1316,8 +1354,7 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     foot = Box(length, wall, height).moved(Location((fx, y_top + wall / 2, sum(zf) / 2)))
     zb = face + sign * BOLT_OUT                      # the foot leg's bolt
     hole_up = disc((fx, fy), TIE_HOLE / 2, zs[0] - 1, zs[1] + 1)
-    hole_down = Cylinder(CARRIAGE[0] / 2 + 0.4, wall + 2, rotation=(90, 0, 0)).moved(
-        Location((fx, y_top + wall / 2, zb)))
+    hole_down = _rod_y(fx, zb, BRACKET_HOLE / 2, y_top - 1.0, y_top + wall + 1.0)
     bracket = difference(union([up, foot]), hole_up, hole_down)
     # through the upright and the plate, the nut over the plate's inner face
     l_side = _m5_length(wall + t_frame + M5_NUT[1])
@@ -1325,47 +1362,70 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     nut_z = sorted((inner, inner - sign * M5_NUT[1]))
     side_screw = _screw((fx, fy), face + sign * wall, sign, l_side)
     side_nut = _nut((fx, fy), *nut_z)
-    # a carriage bolt up from under the base board (its square neck pulled into the wood:
-    # it can't turn), through the foot, its nut on the foot from above
-    d, length, head_d, neck_h, head_h = CARRIAGE
+    # a carriage bolt up from under the base board (its square neck in the board's square
+    # hole: it can't turn), through the foot, its washer and knob on the foot from above
+    d, blen, head_d, neck_h, head_h = CARRIAGE
     y_under = y_top - BASE_T
     if y_under - head_h < y_top - BASE_TOP_CLEAR:
         raise ValueError("the base board's carriage bolts' heads reach the table")
-    nut_d, nut_h, collar_d, collar_h = THUMB_NUT
-    if neck_h > BASE_T or BASE_T + wall + nut_h + 1.0 > length:
-        raise ValueError("the carriage bolt doesn't reach through the board, the foot and "
-                         "its thumb nut, a thread past it")
-    if BOLT_OUT - nut_d / 2 < wall + M5.head_h + 1.0:
-        raise ValueError("the thumb nut would hit the upright's screw head")
-    up = (90, 0, 0)
-    head = Cylinder(head_d / 2, head_h, rotation=up).moved(
-        Location((fx, y_under - head_h / 2, zb)))
-    shank = Cylinder(d / 2 * 0.97, length, rotation=up).moved(
-        Location((fx, y_under + length / 2, zb)))
-    y_nut = y_top + wall
-    nut = difference(union([
-        Cylinder(collar_d / 2, collar_h, rotation=up).moved(
-            Location((fx, y_nut + collar_h / 2, zb))),
-        Cylinder(nut_d / 2, nut_h - collar_h, rotation=up).moved(
-            Location((fx, y_nut + (nut_h + collar_h) / 2, zb)))]),
-        Cylinder(d / 2, nut_h + 2, rotation=up).moved(Location((fx, y_nut + nut_h / 2, zb))))
-    return bracket, [(side_screw, M5.key(l_side)), (side_nut, "m5_nut"),
-                     (union([head, shank]), f"m6_carriage_{length:g}"), (nut, "m6_thumb_nut")
-                     ], (fx, zb)
+    w_id, w_od, w_t = WASHER
+    af, nut_h = M6_HEX[0], M6_HEX[1]
+    knob_d = KNOB[0]
+    if neck_h > BASE_T or BASE_T + wall + w_t + nut_h + 1.0 > blen:
+        raise ValueError("the carriage bolt doesn't reach through the board, the foot, its "
+                         "washer and its nut, a thread past it")
+    if BOLT_OUT - knob_d / 2 < wall + M5.head_h + 1.0:
+        raise ValueError("the thumb knob would hit the upright's screw head")
+    if w_od / 2 - (BRACKET_HOLE - d) / 2 < BRACKET_HOLE / 2 + 1.0:
+        raise ValueError("the washer doesn't cover the bracket's oversize hole")
+    head = _rod_y(fx, zb, head_d / 2, y_under - head_h, y_under)
+    shank = _rod_y(fx, zb, d / 2 * 0.97, y_under, y_under + blen)
+    y_w = y_top + wall                              # the washer, on the foot
+    washer = difference(_rod_y(fx, zb, w_od / 2, y_w, y_w + w_t),
+                        _rod_y(fx, zb, w_id / 2, y_w - 1.0, y_w + w_t + 1.0))
+    y_n = y_w + w_t                                 # the nut and the knob, on the washer
+    nut = difference(_hex_y(fx, zb, af, y_n, y_n + nut_h),
+                     _rod_y(fx, zb, d / 2, y_n - 1.0, y_n + nut_h + 1.0))
+    return bracket, [(side_screw, M5.key(l_side), "screw0"), (side_nut, "m5_nut", "nut0"),
+                     (union([head, shank]), f"m6_carriage_{blen:g}", "screw1"),
+                     (washer, WASHER_KEY, "washer1"), (nut, "m6_nut", "nut1"),
+                     (_knob(fx, zb, y_n), None, "knob")], (fx, zb)
+
+
+def _knob(x: float, z: float, y0: float) -> Shape3D:
+    """A base board bolt's printed thumb knob (world): fluted, standing on its washer at
+    ``y0``, its 18-8 M6 nut pressed up into a hex pocket from its underside (the nut bears on
+    the washer; the knob only turns it), the bolt's end in its bore."""
+    d, h, flutes = KNOB
+    cuts = [_hex_y(x, z, M6_HEX[0] + 2 * KNOB_PRESS, y0 - 1.0, y0 + M6_HEX[1]),
+            _rod_y(x, z, 3.3, y0 - 1.0, y0 + h + 1.0)]
+    cuts += [_rod_y(x + d / 2 * math.cos(a), z + d / 2 * math.sin(a), 1.6, y0 - 1.0,
+                    y0 + h + 1.0) for a in np.linspace(0.0, 2 * math.pi, flutes, endpoint=False)]
+    return difference(_rod_y(x, z, d / 2, y0, y0 + h), union(cuts))
 
 
 CARRIAGE = (6.0, 25.0, 16.55, 4.6, 3.88)   # the base board's bolts (DIN 603 M6 x 25, Bolt
 #                                            Depot 18221): d, length, head d, neck h, head h
-#                                            (a thumb nut and 5 mm of thread past it)
-THUMB_NUT = (24.0, 6.0, 12.0, 1.0)         # its nut: a knurled thumb nut, DIN 467 form
-#                                            (McMaster 92815A203): head d, height, collar d, h
+#                                            (a washer, a nut and a thread past it)
+WASHER = (6.4, 18.0, 1.6)  # an 18-8 M6 fender washer under each knob (Bolt Depot 7315): id,
+#                            od, t; it spreads the nut's clamp over 200 mm^2 of the printed
+#                            foot (the thumb nut's 12 mm collar had 81 mm^2 on bare PLA)
+WASHER_KEY = "m6_washer_wide"
+KNOB = (24.0, 10.5, 12)    # the thumb knob: printed, across, tall (its top a millimetre over
+#                            the bolt's end), flutes round it; an 18-8 M6 nut (DIN 934, Bolt
+#                            Depot 4776) in it, so no thread is plastic and nothing rusts in a
+#                            wine bar (the black-oxide thumb nut it replaced)
+KNOB_PRESS = 0.05          # its hex pocket's clearance each flat: the nut presses in
 BOLT_OUT = 22.0            # the bolt this far out from the outer plate's face (19 under the
-#                            thin hex nut it had): the nut's knurl clears the upright's M5
-#                            screw head by 2.25 mm (a wing nut's 28-33 mm wings would hit it)
-CARRIAGE_HOLE = 6.4        # the board's round hole for it: the square neck (6.48 across its
-#                            flats) is pulled into the wood by its nut, as a carriage bolt is
-#                            meant to (a router can't cut a square hole: its bit's 1.6 mm
-#                            corners would let the neck turn)
+#                            thin hex nut it had): the knob clears the upright's M5 screw head
+#                            by 2.25 mm (a wing nut's 28-33 mm wings would hit it)
+BRACKET_HOLE = 8.5         # the bolt's hole in a bracket's foot: 1.25 mm of play round it, so
+#                            a side settles where the linkage puts it before its knobs are
+#                            snug (B's two remote centres must agree: round 1's linkage review)
+CARRIAGE_HOLE = 6.7        # the board's hole for its square neck (6.48 across its flats): a
+#                            routed square, a dog-bone in each corner (DOG_BONE_R), so the neck
+#                            locks by its shape (a round hole had the neck's corners crush 1.4
+#                            mm of birch each: a mallet, and split face veneers)
 
 
 def _m5_length(grip: float) -> float:
@@ -1378,30 +1438,96 @@ def _nut(xy, z0: float, z1: float) -> Shape3D:
     return difference(disc(xy, M5_NUT[0] / 2, z0, z1), disc(xy, 2.5, z0 - 1, z1 + 1))
 
 
-def _base_plate(lip, stand: Stand, y_top: float, holes: list[tuple[float, float]]
-                ) -> tuple[Shape3D, list[tuple[float, float]]]:
+def _rounded(x0: float, x1: float, z0: float, z1: float, y0: float, y1: float, r: float
+             ) -> Shape3D:
+    """A plate from ``x0`` to ``x1`` and ``z0`` to ``z1`` (world), ``y0`` to ``y1`` thick,
+    its four corners rounded ``r``."""
+    return union([_box(x0 + r, x1 - r, y0, y1, z0, z1), _box(x0, x1, y0, y1, z0 + r, z1 - r),
+                  *(_rod_y(x, z, r, y0, y1) for x in (x0 + r, x1 - r) for z in (z0 + r, z1 - r))])
+
+
+def _square_hole(x: float, z: float, side: float, y0: float, y1: float) -> Shape3D:
+    """A routed square hole's cutter (world, up y): ``side`` across, square to x and z, a
+    dog-bone relief of the bit's radius (:data:`DOG_BONE_R`) in each corner, the corner on
+    its circle, so a square part seats in it."""
+    h = side / 2
+    c = h - DOG_BONE_R / math.sqrt(2)
+    return union([_box(x - h, x + h, y0, y1, z - h, z + h),
+                  *(_rod_y(x + sx * c, z + sz * c, DOG_BONE_R, y0, y1)
+                    for sx in (-1, 1) for sz in (-1, 1))])
+
+
+def _base_plate(lip, stand: Stand, y_top: float, holes: list[tuple[float, float]],
+                z_mid: float = 0.0) -> tuple[Shape3D, list[tuple[float, float]]]:
     """The base board (world): from the stand's front to its rear edge, :data:`BASE_HALF`
-    each side of the bay's middle, under both sides' outer plates; a notch from its front
-    edge round the decanter (its round end under the mouth locating it), the brackets'
-    carriage bolts' holes, a hole in each corner for a TPU foot. (The board, the feet's
-    (x, z).)"""
+    each side of ``z_mid`` (:func:`base_z`), under both sides' outer plates, its corners
+    rounded (:data:`BASE_CORNER_R`); a notch from its front edge round the decanter (its
+    round end under the mouth, its mouth's corners rounded, a bay each side for the jack
+    locator's ears), the brackets' carriage bolts' square holes, a hole near each corner for
+    a TPU foot. (The board, the feet's (x, z).)"""
     t = BASE_T
     x0, x1 = float(lip[0]) + stand.base[0], float(lip[0]) + stand.base[1]
-    plate = Box(x1 - x0, t, 2 * BASE_HALF).moved(Location(((x0 + x1) / 2, y_top - t / 2, 0.0)))
+    za, zb = z_mid - BASE_HALF, z_mid + BASE_HALF
+    y0, y1 = y_top - t, y_top
+    plate = _rounded(x0, x1, za, zb, y0, y1, BASE_CORNER_R)
     xd = float(lip[0]) + DECANTER_X
-    up = (90, 0, 0)
-    notch = union([Box(xd - x0 + 1.0, t + 2, 2 * NOTCH_R).moved(
-                       Location(((x0 - 1.0 + xd) / 2, y_top - t / 2, 0.0))),
-                   Cylinder(NOTCH_R, t + 2, rotation=up).moved(Location((xd, y_top - t / 2,
-                                                                          0.0)))])
-    inset = 25.0
-    feet = [(x, z) for x in (x0 + inset, x1 - inset) for z in (-BASE_HALF + inset,
-                                                                BASE_HALF - inset)]
-    cuts = [Cylinder(CARRIAGE_HOLE / 2, t + 2, rotation=up).moved(
-        Location((x, y_top - t / 2, z))) for x, z in holes]     # the carriage bolts
-    cuts += [Cylinder(FOOT_STEM / 2 + 0.25, t + 2, rotation=up).moved(
-        Location((x, y_top - t / 2, z))) for x, z in feet]
-    return difference(plate, notch, *cuts), feet
+    c0, c1 = y0 - 1.0, y1 + 1.0
+    m = NOTCH_MOUTH_R
+    cuts = [_box(x0 - 1.0, xd, c0, c1, -NOTCH_R, NOTCH_R), _rod_y(xd, 0.0, NOTCH_R, c0, c1)]
+    cuts += [_rod_y(xd + NOTCH_BAY[0], s * NOTCH_R, NOTCH_BAY[1], c0, c1) for s in (-1, 1)]
+    cuts += [difference(_box(x0 - 1.0, x0 + m, c0, c1, *sorted((s * (NOTCH_R - 1.0),
+                                                               s * (NOTCH_R + m)))),
+                        _rod_y(x0 + m, s * (NOTCH_R + m), m, c0 - 1.0, c1 + 1.0))
+             for s in (-1, 1)]
+    cuts += [_square_hole(x, z, CARRIAGE_HOLE, c0, c1) for x, z in holes]
+    feet = [(x, z) for x in (x0 + FOOT_INSET, x1 - FOOT_INSET)
+            for z in (za + FOOT_INSET, zb - FOOT_INSET)]
+    cuts += [_rod_y(x, z, FOOT_STEM / 2 + 0.25, c0, c1) for x, z in feet]
+    return difference(plate, union(cuts)), feet
+
+
+def _jack_locator(lip, y_table: float) -> list[Shape3D]:
+    """The jack locator (world): :data:`LOCATOR`'s layers of the board's birch, glued, on the
+    table in the board's notch (its outline the notch's, :data:`LOCATOR`'s play in, from its
+    front edge to the round end; an ear into each of the notch's bays), a square pocket for
+    the lab jack's base (:data:`JACK_BASE`) under the mouth. It puts the jack's platform
+    under the mouth (it had floated 76 mm either way in the bare notch: round 1's stand
+    review) and lifts out to set a vessel on the table."""
+    x0, play, n = LOCATOR
+    x0 = float(lip[0]) + x0
+    xd = float(lip[0]) + DECANTER_X
+    r = NOTCH_R - play
+    out = []
+    for k in range(n):
+        y0 = y_table + k * BASE_T
+        y1 = y0 + BASE_T
+        body = union([_box(x0, xd, y0, y1, -r, r),
+                      cast(Shape3D, _rod_y(xd, 0.0, r, y0, y1)
+                           & _box(xd, xd + r + 1.0, y0 - 1.0, y1 + 1.0, -r - 1.0, r + 1.0)),
+                      *(_rod_y(xd + NOTCH_BAY[0], s * NOTCH_R, NOTCH_BAY[1] - play, y0, y1)
+                        for s in (-1, 1))])
+        out.append(difference(body, _square_hole(xd, 0.0, JACK_BASE + 2 * JACK_PLAY,
+                                                 y0 - 1.0, y1 + 1.0)))
+    return out
+
+
+def _cleats(xs: list[float], y_top: float, face: float, sign: int, t_frame: float
+            ) -> list[Shape3D]:
+    """A rail's birch cleats (world), glued to the base board either side of the outer
+    plate's rail, between its brackets (``xs``: their x, along the rail), :data:`CLEAT`'s
+    play off its faces: they hold the side upright on the board (the brackets alone had let
+    it sway several mm at a 20 N push: round 1's stand review) and drop it into place when
+    it goes back on."""
+    width, play, gap = CLEAT
+    inner = face - sign * t_frame
+    out = []
+    xs = sorted(xs)
+    for xa, xb in itertools.pairwise(xs):
+        a, b = xa + BRACKET[0] / 2 + gap, xb - BRACKET[0] / 2 - gap
+        for z0, z1 in ((face + sign * play, face + sign * (play + width)),
+                       (inner - sign * play, inner - sign * (play + width))):
+            out.append(_box(a, b, y_top, y_top + BASE_T, *sorted((z0, z1))))
+    return out
 
 
 FOOT_STEM = 10.0            # a TPU foot's stem through the base board's corner hole
@@ -1415,7 +1541,7 @@ def _tpu_foot(x: float, z: float, y_top: float) -> Shape3D:
 
     up = (-90, 0, 0)                         # a solid's axis along +y
     t = BASE_T
-    pad = Cylinder(12.0, FOOT_PAD_H, rotation=up).moved(
+    pad = Cylinder(FOOT_PAD_R, FOOT_PAD_H, rotation=up).moved(
         Location((x, y_top - t - FOOT_PAD_H / 2, z)))
     stem = Cylinder(FOOT_STEM / 2, t, rotation=up).moved(Location((x, y_top - t / 2, z)))
     lead = 1.25 / math.tan(math.radians(30.0)) + 0.6        # the cone's height
@@ -1440,7 +1566,7 @@ DRIVE_PARTS = ("gearbox", "riser_disc", "crank_", "crankpin", "handle")
 
 GROUPS = {"drive": ("gearbox", "riser_disc", "handle"), "crank": ("conn",),
           "box": ("tie_", "front_saddle", "rear_saddle", "led", "base_stop"),
-          "stand": ("base_plate", "foot_")}
+          "stand": ("base_plate", "base_cleat", "jack_locator", "foot_")}
 """A cradle's parts its sides' plan doesn't name, by name: the gearbox and the hand crank,
 the arm's plates, the cradle box, the stand's base (the records' groups:
 ``api.building.group_of``)."""
@@ -1654,26 +1780,38 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
     fastened += [("base_stop_rails", "rear_saddle_vee"), ("base_stop_gate", "base_stop_rails"),
                  ("base_stop_gate", "rear_saddle_vee"), ("base_stop_lock", "base_stop_gate"),
                  ("base_stop_lock", "base_stop_rails"), ("base_stop_lock", "rear_saddle_vee")]
-    # the base board, its TPU feet, and each foot's bracket bolting an outer plate onto it
+    # the base board, its TPU feet, its cleats, the jack locator in its notch, and each foot's
+    # bracket bolting an outer plate onto it
     y_top = float(cf.lip[1]) + BASE_TOP
     t_frame = plan.t(0)
     base_holes = []
+    cleats = []
     for s, sign in (("L", -1), ("R", 1)):
         face = sign * (z_mid - plan.z(0)[0])          # the outer plate's outer face
         host_s = prefixed(topo.frame_bodies[0], s)
-        for n in stand.feet:
-            xy = tuple(float(v) for v in _node_xy(build.xy, lk, topo, stand, n))
+        feet_xy = {n: tuple(float(v) for v in _node_xy(build.xy, lk, topo, stand, n))
+                   for n in stand.feet}
+        for n, xy in feet_xy.items():
             bracket, screws, hole = _bracket(xy, y_top, face, sign, t_frame)
             base_holes.append(hole)
             extras.append(hardware(f"foot_bracket_{n}{s}", bracket, host_s, fab="printed",
                                    color=SADDLE_COLOR))
-            for i, (part, key) in enumerate(screws):
-                extras.append(hardware(f"foot_bracket_{n}{s}_{'screw' if i % 2 == 0 else 'nut'}"
-                                       f"{i // 2}", part, host_s, fab="purchased",
-                                       bom_key=key, color=TIE_COLOR))
-    plate_part, foot_xz = _base_plate(cf.lip, stand, y_top, base_holes)
+            for part, key, suffix in screws:
+                extras.append(hardware(f"foot_bracket_{n}{s}_{suffix}", part, host_s,
+                                       fab="purchased" if key else "printed", bom_key=key,
+                                       color=TIE_COLOR if key else KNOB_COLOR))
+        cleats += [hardware(f"base_cleat_{s}{i}", part, frame_host, fab="laser",
+                            sheet=BASE_SHEET, color=BOARD_COLOR)
+                   for i, part in enumerate(_cleats([xy[0] for xy in feet_xy.values()], y_top,
+                                                    face, sign, t_frame))]
+    plate_part, foot_xz = _base_plate(cf.lip, stand, y_top, base_holes, base_z(lk))
     extras.append(hardware("base_plate", plate_part, frame_host, fab="laser",
-                           sheet=BASE_SHEET, color="#9aa3ad"))
+                           sheet=BASE_SHEET, color=BOARD_COLOR))
+    extras += cleats
+    extras += [hardware(f"jack_locator_{k}", part, frame_host, fab="laser", sheet=BASE_SHEET,
+                        color=BOARD_COLOR)
+               for k, part in enumerate(_jack_locator(cf.lip, y_top - BASE_T - FOOT_PAD_H))]
+    glue = [BomLine(WOOD_GLUE, 1, "the base board's cleats and the jack locator's layers")]
     for i, (x, z) in enumerate(foot_xz):
         extras.append(hardware(f"foot_boot_{i}", _tpu_foot(x, z, y_top), frame_host,
                                fab="printed", color=LINER_COLOR))
@@ -1694,10 +1832,10 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                 cradle_lip=[float(cf.lip[0]), float(cf.lip[1])], cradle_tilt=float(cf.tilt),
                 mid_plane=z_mid, bay_mm=BAY, lip_height_mm=LIP_HEIGHT,
                 tie_mm=tie_len, base_tie_mm=foot_len, bay_tie_mm=bay_len, fastened=fastened,
-                bottle=shown.name)
+                bottle=shown.name, cradle_linkage=lk.key)
     return Mechanism(name=f"{side.name}_cradle", bodies=bodies + extras,
                      connections=connections, meta=meta,
-                     bom_extras=list(side.bom_extras) + list(passive.bom_extras))
+                     bom_extras=list(side.bom_extras) + list(passive.bom_extras) + glue)
 
 
 def _decanter(lip) -> tuple[Shape3D, Shape3D]:
@@ -1723,8 +1861,9 @@ def assembly(view) -> list:
     plate, its feet and the drive side's brackets; the saddles (each V block in its carrier
     on its thumbscrew, the lip gauge on the front one) slid onto the rods, their set
     screws, the light, the base stop; the passive side's cradle link onto the rods and its
-    screws; the passive side's brackets; and the use: setting it for a bottle, then the
-    display bottle and decanter."""
+    screws; the passive side's brackets and cleats (its knobs snug last); and the use:
+    setting it for a bottle, the display bottle and decanter, and for a cradle that packs as
+    modules (:data:`PACK_POSES`) taking it apart and putting it back (:func:`module_steps`)."""
     from spiderpig.construction.assembly import CRADLE, FINISH, STACK, UNIT, USE, Op, whole
 
     ops = []
@@ -1794,29 +1933,47 @@ def assembly(view) -> list:
                       "switch it on).", "light"))
     base = [n for n in ("base_plate",) if n in view.z]
     feet = view.named(r"foot_boot_\w+")
+    locator = view.named(r"jack_locator_\d+")
+    cleats = {s: view.named(rf"base_cleat_{s}\d+") for s in SIDES_LR}
     brackets = {s: view.named(rf"foot_bracket_[A-Za-z0-9]+{s}(_\w+)?") for s in SIDES_LR}
     # every carriage bolt goes in with the base board (from under it), the passive side's too
     bolts = [n for n in brackets["R"] if n.endswith("_screw1")]
     brackets["R"] = [n for n in brackets["R"] if n not in bolts]
     how = ("At each foot a printed bracket outside the outer plate, over its carriage bolt: "
            "an M5 button head through the bracket and the plate, its nut over the plate's "
-           "inside (an 8 mm wrench, threadlocker: the bracket stays on its side); the "
-           "carriage bolt's knurled thumb nut on the bracket's foot, by hand (snug: the foot "
-           "is printed; no threadlocker, it comes off to pack).")
+           "inside (an 8 mm wrench, threadlocker: the bracket stays on its side); on the "
+           "carriage bolt over the bracket's foot an 18-8 fender washer, then a printed thumb "
+           "knob with an 18-8 M6 nut pressed up into its hex pocket (once, on the bench, in a "
+           "vise), turned down by hand (snug: the foot is printed; no threadlocker, it comes "
+           "off to pack). The foot's hole is 2.5 mm over the bolt: the side settles where the "
+           "linkage puts it.")
+    glue = ("Then its rail's two cleats: slide one against each face of the rail, a sheet of "
+            "paper between (their play), and pencil round them on the board; lift the side "
+            "off, glue the cleats on their marks (wood glue, a thin bead, weighted or clamped "
+            "30 minutes) and set the side back between them, its knobs on again.")
     if base or feet or brackets["L"]:
-        ops.append(Op(FINISH, (0,), whole(*base, *feet, *brackets["L"], *bolts), "Base board",
-                      "The TPU feet pushed up into the base board's corner holes (a twist "
-                      "helps them through); the M6 carriage bolts up through its holes from "
-                      "under, each head tapped with a mallet until its square neck is in the "
-                      "wood (it holds them: nothing to reach under the board later). The "
-                      "drive side onto the base board, its outer plate's rail on it, the "
-                      "notch at the front. " + how, "base"))
-    if brackets["R"]:
-        ops.append(Op(FINISH, (1,), whole(*brackets["R"]), "", how + " Then turn the crank "
-                      "through a whole pour again: both cradle links must still swing freely; "
-                      "and the rod's paper check again (the hand crank's step), now that the "
-                      "tie rods are held at both ends.",
-                      "base_R"))
+        ops.append(Op(FINISH, (0,), whole(*base, *feet, *locator, *cleats["L"], *brackets["L"],
+                                          *bolts), "Base board",
+                      "Seal the base board's edges (the notch's above all: its end grain would "
+                      "wick wine) and the jack locator's with a clear finish such as "
+                      "polyurethane; oil the faces. The TPU feet pushed up into the board's "
+                      "corner holes (a twist helps them through); the M6 carriage bolts up "
+                      "through its square holes from under, each square neck in its hole (it "
+                      "can't turn: nothing to reach under the board later; it hangs there "
+                      "until its knob is on, so the knobs go back on whenever the cradle is "
+                      "off). The "
+                      "jack locator's two layers glued face to face, their outlines flush "
+                      "(weighted 30 minutes); it drops into the notch, its ears in the notch's "
+                      "bays. The drive side onto the base board, its outer plate's rail on it, "
+                      "the notch at the front. " + how + " " + glue, "base"))
+    if brackets["R"] or cleats["R"]:
+        ops.append(Op(FINISH, (1,), whole(*cleats["R"], *brackets["R"]), "",
+                      how + " " + glue + " Tighten the passive side's knobs last: turn the "
+                      "crank through a whole pour and back to rest with them loose, then snug "
+                      "them. Then turn it through a whole pour again: both cradle links must "
+                      "still swing freely, the handle turning evenly; and the rod's paper check "
+                      "again (the hand crank's step), now that the tie rods are held at both "
+                      "ends.", "base_R"))
     if saddles:
         ops.append(Op(USE, (0,), (), "Setting it for a bottle",
                       "At rest (neck up), the bottle out and the lip gauge flipped up: turn "
@@ -1837,37 +1994,244 @@ def assembly(view) -> list:
     if shown:
         ops.append(Op(USE, (1,), whole(*shown), "Decanting",
                       "Not bought: crank the cradle to rest (neck up), set it for the bottle "
-                      "and lay the bottle in (the step before); stand the decanter on a riser "
-                      "(a lab jack) in the base board's notch, under the mouth, and raise it "
-                      "until its rim is a finger's width under the front saddle; switch the "
-                      "light on. Turn the "
+                      "and lay the bottle in (the step before); set a lab jack (100 x 100 mm) "
+                      "into the jack locator's square, the decanter on it, and raise it until "
+                      "the decanter's rim is a finger's width under the front saddle: that "
+                      "one height clears the whole swing, so leave it there until the bottle "
+                      "is back at rest. Switch the light on. Turn the "
                       "handle slowly, either way: the mouth stays where it is while the "
                       "bottle tips (rest to full tilt is 15 turns). Stop when the sediment "
                       "reaches the shoulder over the light; let go and it holds. " + USE_LIMITS,
                       "use", count=False))
+    key = view.meta.get("cradle_linkage")
+    if key in PACK_POSES:
+        from spiderpig import linkage
+
+        lk = linkage.get(key)
+        link = cradle_link(lk)
+        pins = sorted(j for j in lk.links[link][0]           # (shared with another link)
+                      if any(j in js for b, (js, _) in lk.links.items() if b != link))
+        breakdown, reassembly = module_steps(lk, pins)
+        ops.append(Op(USE, (2,), (), "Taking it apart for the trip",
+                      "Three modules and the hand crank, no tool. "
+                      + " ".join(f"{i}. {text}" for i, (text, _) in
+                                 enumerate(breakdown, 1)), "pack", count=False))
+        ops.append(Op(USE, (3,), (), "Putting it back together",
+                      " ".join(f"{i}. {text}" for i, text in enumerate(reassembly, 1)),
+                      "unpack", count=False))
     return ops
 
 
 SIDES_LR = ("L", "R")
 USE_LIMITS = (
     "Before you use it: give it 950 mm of headroom (a 6 L's base at full tilt) and 100 mm "
-    "behind the base board (the base stop's rails reach past its rear edge); keep the base "
-    "board clear behind the decanter (at rest the base stop's rails come down to 18 mm over "
-    "it). A vessel left under the mouth for the whole swing stands on a riser with its rim "
-    "no higher than 380 mm over the table: 250 mm across up to 165 mm, 125 mm across above "
-    "that (at rest the cradle box hangs under the mouth). To pour closer, raise it once the "
-    "cradle is past −20° (its rim up to 515 mm, 55 mm across above 475 mm), and lower it "
-    "again before you crank back to rest: the worm would bring the cradle box down onto it. "
+    "behind the base board (the base stop's rails reach past its rear edge). On a counter "
+    "that isn't flat the TPU feet take up about 1 mm; if it rocks, print a thicker foot for "
+    "the corner that lifts. Check the four thumb knobs are snug by hand before each use; one "
+    "that works loose again has let its bracket's printed foot creep under the washer: "
+    "snug it again, and if it keeps loosening reprint that bracket in PETG. "
+    "The decanter: set the jack's height once, at rest, and leave it for the whole swing: "
+    "its rim no higher than 380 mm over the table (250 mm across up to 165 mm, 125 mm "
+    "across above that; the cradle page gives each decanter's height). Never raise it "
+    "during a pour: on the way back to rest the worm would drive the cradle box down onto "
+    "the glass, and the handle would only feel a little stiff. "
+    "While the handle turns, keep fingers clear of where it pinches: both side stacks, their "
+    "bay faces included (each time the cradle comes back to rest the cradle links shear past "
+    "the inner bars' front ends, at the bay's edge); the crank and the rod's end, which turn "
+    "in the open above and behind the gearbox, right in front of the hand crank; and the base "
+    "board behind the decanter, where at rest the base stop's rails come down to 18 mm over "
+    "it, less than the 25 mm a finger needs (ISO 13854). A trapped finger: the worm holds "
+    "whatever it has caught, so turn the handle back the way it came; never pull. When you "
+    "leave it, take the handle off (its thumb screw): nothing turns without it. "
     "Never force the handle: if it stiffens, stop and look (the drive holds a firm 40 N push "
     "at the grip against a blocked cradle, no more; if it stays stiff after being forced, "
-    "look for a bent pin between the rod and the cradle link). Keep your fingers out of the "
-    "drive side's plates while it turns. Uncork at rest, the base stop set and the lip "
-    "gauge up, holding the neck, a corkscrew's lever lifted straight up; then flip the gauge "
-    "down onto the mouth. Keep your hands off the decanter while the handle turns (near "
-    "rest the cradle box comes down over it, and the worm doesn't stop for a hand). Lift "
-    "the cradle by its base board, never by the hand crank. "
-    "Hand-wash the printed parts (PLA softens at 55 °C).")
-"""The guide's use limits (the room it needs: ``docs/agentlib/DECANTER.md``)."""
+    "look for a bent pin between the rod and the cradle link). Letting go stops the bottle, "
+    "not the stream: the wine already over the lip runs on; to stop it, turn back about a "
+    "turn. Check the lip gauge is down before the bottle passes level: with it up, a wet "
+    "bottle slides forward at full tilt, its mouth off the pivot over the decanter. Uncork "
+    "at rest, the base stop set and the lip gauge up, holding the neck, a corkscrew's lever "
+    "lifted straight up; then flip the gauge down onto the mouth. Not a sparkling wine under "
+    "pressure: at rest the mouth points 50° up toward the front; ease such a cork out by "
+    "hand before the bottle goes in, the mouth pointed away from people. Keep your hands off "
+    "the decanter while the handle turns (near rest the cradle box comes down over it, and "
+    "the worm doesn't stop for a hand). Lift the cradle by its base board, never by the hand "
+    "crank or the cradle box. Hand-wash the printed parts (PLA softens at 55 °C).")
+"""The guide's use limits (the room it needs, the vessel, where it pinches: round 1's stand
+review, ``docs/agentlib/DECANTER.md``)."""
+
+
+@dataclass(frozen=True)
+class PackPose:
+    """Where a cradle that packs as modules is cranked to first (:data:`PACK_POSES`): the
+    crank's arm (O to its crankpin) along ``member`` of the drive side's outer plate (a
+    member of :class:`Stand`'s ``outer``), a mark seen without a tool or a count; ``words``
+    names it, ``marks`` the paint-pen lines that set the passive side's links back to it."""
+
+    member: tuple[str, str]
+    words: str
+    marks: str
+    nudge: str = ""             # the link the second pin stands in (swung to drop it in)
+
+
+PACK_POSES: dict[str, PackPose] = {
+    # B: the arm straight down along the rear leg O-Fr, about 5 1/2 turns from rest the way
+    # that swings it down: the bottle 31° neck up, inside the 44-20° where the passive cradle
+    # link clears its inner bar and the box doesn't grow (round 1's stand review; "4 turns"
+    # had been 35° one way, 39° the other, and 44-47° for a rest called early)
+    "decanter_rcm": PackPose(
+        ("O", "Fr"), "the drive side's outer plate's rear leg, straight down from the gearbox",
+        "a line across the arm b3 and the inner bar by pillar O1, and one across the link b5 "
+        "and b3 by its pin J2", "b5"),
+}
+"""The cradles that pack as modules (``cradle_pack.module_pieces``, the user's of
+2026-10-13), each one's pack pose (:func:`pack_pose`). A (not here) packs flat: its cradle
+link rides pillar G between its side's plates."""
+
+
+def pack_pose(lk) -> tuple[float, float, float] | None:
+    """The crank angle (radians) cradle ``lk`` packs at (:data:`PACK_POSES`: its arm along the
+    member), the bottle's tilt there (degrees) and the handle turns from rest to it (the
+    shorter way: its sign the crank's; rest, the bottle's least tilt); ``None``: it packs
+    flat. The arm's direction is the crank angle's own, so the pose is one crank angle."""
+    from spiderpig.construction.handcrank import NRV040
+
+    pose = PACK_POSES.get(lk.key)
+    if pose is None:
+        return None
+    n = 2880
+    ts = np.linspace(0.0, 2.0 * math.pi, n, endpoint=False)
+    pts = lk.solve().evaluate(ts)
+    o, ax = mouth_frame(lk)
+    stand = stand_of(lk)
+
+    def node(name: str) -> np.ndarray:
+        if name in stand.nodes:
+            return pts[o][0] + np.asarray(stand.nodes[name], float)
+        return pts[name][0]
+
+    a, b = (node(m) for m in pose.member)
+    want = math.atan2(b[1] - a[1], b[0] - a[0])
+    c0, c1 = lk.crank
+    arm = pts[c1] - pts[c0]
+    off = np.angle(np.exp(1j * (np.arctan2(arm[:, 1], arm[:, 0]) - want)))
+    k = int(np.argmin(np.abs(off)))
+    # the crank turns uniformly with t: refine to the exact angle
+    rate = np.sign(np.gradient(np.unwrap(np.arctan2(arm[:, 1], arm[:, 0])))[k])
+    t = float((ts[k] - rate * off[k]) % (2.0 * math.pi))
+    d = pts[ax] - pts[o]
+    tilt = np.unwrap(np.arctan2(d[:, 1], d[:, 0]))
+    rest = float(ts[int(np.argmin(tilt))])
+    at = lk.solve().evaluate(np.array([t]))
+    dt = at[ax][0] - at[o][0]
+    turn = (t - rest + math.pi) % (2.0 * math.pi) - math.pi        # the shorter way
+    return t, math.degrees(math.atan2(dt[1], dt[0])), turn / (2.0 * math.pi) * NRV040.ratio
+
+
+def _arm_way(lk, turns: float) -> str:
+    """Which way the crank's arm swings from rest the way ``turns`` goes: ``down`` or ``up``
+    (its crankpin's height)."""
+    n = 2880
+    ts = np.linspace(0.0, 2.0 * math.pi, n, endpoint=False)
+    pts = lk.solve().evaluate(ts)
+    o, ax = mouth_frame(lk)
+    d = pts[ax] - pts[o]
+    k = int(np.argmin(np.unwrap(np.arctan2(d[:, 1], d[:, 0]))))
+    y = pts[lk.crank[1]][:, 1]
+    step = 1 if turns > 0 else -1
+    return "down" if y[(k + step * 40) % n] < y[k] else "up"
+
+
+EMPTY_GRIP_N = 5.0
+"""The bench check after the cradle goes back together (:func:`module_steps`): the bottle
+out, the handle turns with under this at its grip (``cradle_report.report``'s
+``empty_handle_force_n``: B 3.6 N on 2026-10-14); more, and the two sides fight each other
+(B's two remote centres don't agree: round 1's linkage review)."""
+
+
+def _turns_words(turns: float) -> str:
+    """``5.6`` -> ``about 5½``: to the half turn."""
+    halves = round(abs(turns) * 2)
+    whole, half = divmod(halves, 2)
+    return f"about {whole}{'½' if half else ''}" if whole else "about ½"
+
+
+def module_steps(lk, pins) -> tuple[list[tuple[str, str]], list[str]]:
+    """How cradle ``lk`` (:data:`PACK_POSES`) comes apart into its modules and goes back
+    together, for ``cradle_pack.module_pieces`` and the guide (:func:`assembly`): the
+    breakdown's steps, each ``(text, tag)`` (tags ``pose``, ``hand_crank``, ``base``,
+    ``lay``, ``clips``, ``lift``: the pieces each frees), and the reassembly's texts.
+    ``pins``: the cradle link's pins on the passive side (B's X and Y).
+
+    Laid on its drive side (the gearbox down), the passive side panel lifts straight up off
+    the pins, level, its links unable to swing. Standing, the 6.8 kg drive module tipped
+    onto its cradle box once the pins cleared, and the panel fell the other way (round 1's
+    stand review). Not on the passive side, as that review had it: each quick-release pin's
+    head is on its link's outer face (:mod:`construction.pivots.clevis`), so with that side
+    down and its clip out the pin drops out of its link, nothing under its head."""
+    pose = PACK_POSES[lk.key]
+    got = pack_pose(lk)
+    assert got is not None
+    _, tilt, turns = got
+    names = " and ".join(pins)
+    which = "Pin" + ("s " if len(pins) > 1 else " ") + names
+    each = "each one's R-clip" if len(pins) > 1 else "its R-clip"
+    way = _arm_way(lk, turns)
+    nudge = (f", then nudge {pose.nudge or 'its link'} until pin {pins[1]} drops into its"
+             if len(pins) > 1 else "")
+    breakdown = [
+        (f"Crank it to the pack pose: from rest (the bottle neck up, where the cradle stops "
+         f"coming back), turn the handle the way that swings the crank's arm {way}, "
+         f"{_turns_words(turns)} turns, until the arm lies along {pose.words} (seen from "
+         f"outside, the leg hides it). The bottle is then {abs(tilt):.0f}° neck up, and the "
+         "passive side's cradle link clears that side's inner bar. The first time, mark the "
+         f"pose for the way back with a paint pen: {pose.marks}.", "pose"),
+        ("Hand crank: loosen its thumb screw by hand and pull it off the gearbox's input "
+         "shaft; the screw goes back into its hub. Nothing turns without it.", "hand_crank"),
+        ("Base board: undo the brackets' thumb knobs by hand and lift the cradle off by its "
+         "two outer plates' top members, never by the cradle box (only the worm holds it). "
+         "The carriage bolts stay in the board, their washers and knobs back on them.",
+         "base"),
+        ("Lay the cradle on its drive side on a folded towel, the gearbox down (it rests a "
+         "little tilted on the gearbox and that side's brackets), the passive side up. Lying "
+         "so, gravity runs along the pins: no link can swing.", "lay"),
+        (f"{which} (the cradle link's, on the passive side): reach into the bay and pull "
+         f"{each} by hand from under the passive side's cradle link. Each pin stays in the "
+         "panel's link, standing on its head.", "clips"),
+        ("Passive side panel: lift it straight up off the pins by its outer plate, level, "
+         "the pins coming with it, and hold it level. The printed spacer that sat on each "
+         "pin over the cradle link stays lying on the link: slip it back onto its pin's end "
+         "from below and push the pin's clip through its hole; then set the panel down any "
+         "way up. The drive side with the cradle box stays lying as it is, the worm holding "
+         "it: so it goes in the box.", "lift"),
+    ]
+    reassembly = [
+        "Lay the drive side with the cradle box on its drive side on a folded towel, the "
+        "gearbox down, the passive cradle link up.",
+        f"Lay the passive side panel down on its outer plate, its pins {names} held in its "
+        "links by their clips, and set the links to the pack pose by the paint marks: "
+        f"{pose.marks}. A strip of masking tape across each pair of marks holds them while "
+        "the panel turns over.",
+        "Turn the panel over and hold it level, its outer plate up: pull each pin's clip, "
+        "take its spacer off the pin's end and set the spacer over its hole in the cradle "
+        "link.",
+        f"Lower the panel level onto the cradle link: pin {pins[0]} through its spacer into "
+        f"its hole first (look in through the bay){nudge}. Peel the tape off.",
+        "Both R-clips in from under the cradle link, through the pins' holes, all the way: a "
+        "pin without its clip is held by nothing.",
+        "Stand the cradle up by its two outer plates' top members and set it on the base "
+        "board: each rail between its two cleats, each bracket's foot over its carriage bolt "
+        "(its hole is 2.5 mm oversize). The washers and the thumb knobs on: the drive side's "
+        "snug by hand, the passive side's only started.",
+        "The hand crank on, its thumb screw onto the input shaft's key.",
+        "Turn a whole pour and back to rest with the passive side's knobs loose: that side "
+        "settles where the linkage puts it. Then snug them, at rest.",
+        "The first build's checks again, the bottle out: turn a whole pour and back; both "
+        "cradle links swing freely and the handle turns evenly with a fingertip, under "
+        f"{EMPTY_GRIP_N:g} N at the grip, with no stiff spot (stiffer, the two sides fight "
+        "each other: loosen the passive side's knobs and turn again). Then the rod's paper "
+        "check (the hand crank's step). Both clips in, the four knobs snug.",
+    ]
+    return breakdown, reassembly
 
 
 FRONT_MOVES = ("front_saddle_vee", "front_saddle_liner", "front_saddle_nut")
@@ -1920,7 +2284,8 @@ def print_poses(names, tilt: float) -> dict[str, list[tuple[str, float]]]:
     (the V's section on the bed: no overhang), the knobs on their faces, the lip gauge on
     its side, the base stop's rails on their top and its gate on its face, the light's clip
     on its tube's foot (upright, round), the brackets on their L (its corner in every
-    layer), the feet as they stand, the hand crank on its arm (its tube up)."""
+    layer), the base board's thumb knobs on their tops, the feet as they stand, the hand
+    crank on its arm (its tube up)."""
     t = -math.degrees(tilt)
     out: dict[str, list[tuple[str, float]]] = {}
     carriers = {s.name for s in SADDLES}
@@ -1937,6 +2302,8 @@ def print_poses(names, tilt: float) -> dict[str, list[tuple[str, float]]]:
             out[n] = [("Z", t), ("X", -90.0)]
         elif n.startswith("foot_bracket_") and n.count("_") <= 2:   # its L on the bed: the
             out[n] = [("Y", 90.0)]                                   # corner in every layer
+        elif n.startswith("foot_bracket_") and n.endswith("_knob"):
+            out[n] = [("X", -90.0)]          # on its top: the nut's pocket open upward
         elif n.startswith("foot_boot_"):
             out[n] = [("X", 90.0)]
         elif n in ("L.handle", "L.handle_grip"):

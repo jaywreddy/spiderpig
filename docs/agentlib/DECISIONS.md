@@ -927,3 +927,152 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/cradle_pack.py`, `spiderpig/hardware/cradle_catalog.py`,
   `spiderpig/hardware/bom.py`, `viewer/src/decant/{motion,pour,diagram}.ts`,
   `tests/test_cradle.py`.
+
+### 2026-10-14: the cradles' stand, use and breakdown (design review round 1)
+
+- **What:** the fixes to round 1's stand-and-use review, with the base board, cost and
+  over-constraint findings of its parts and linkage reviews; B mainly
+  ([DECANTER.md](DECANTER.md): "The base board", "The vessel under the mouth", "Flat pack",
+  "Building one").
+  - **The breakdown no longer drops the drive module** (`cradle.module_steps`, used by
+    `cradle_pack.module_pieces` and the guide's two new last steps). Standing, the 6.8 kg
+    drive module tipped onto its cradle box once the pins cleared b6 (its centre of mass
+    66 mm past its one rail), and the panel fell the other way. Now the hand crank comes
+    off, then the cradle comes off the board by its outer plates' top members and is laid
+    on its drive side on a towel, the gearbox down. The clips come out from the bay, and
+    the passive panel lifts straight up off the pins, level, the pins in it. Lying so, no
+    link can swing. The drive module stays lying as it goes in the box.
+    - **Not on the passive side, as the review proposed** (and as the coordinator's brief
+      passed on). Each quick-release pin's head lies on its link's outer face (z 152-155
+      on the passive side, `construction.pivots.clevis`), with nothing under it in plan for
+      50 mm. With that side down and its clip out, the pin drops out of its link, and the
+      spacer between the links is left loose. With the drive side down the pins stand on
+      their heads in the panel; the two spacers stay on the cradle link and go back on the
+      pins with the clips.
+  - **Putting it back together is written down** (the payload's `reassembly`, the cradle
+    page's list, the guide's "Putting it back together"):
+    1. The drive module lies on its drive side.
+    2. Paint marks, made at the first breakdown, set the panel's links; masking tape holds
+       them while it turns over.
+    3. The spacers go over the cradle link's holes, and the panel is lowered level: pin X
+       first, then b5 is nudged until Y drops in.
+    4. Both clips go in.
+    5. The cradle goes onto the board between its cleats.
+    6. The passive side's knobs are snugged last, after a whole pour.
+    7. The first build's checks again, with a grip-force bound for the empty cradle
+       (`cradle.EMPTY_GRIP_N`, the report's `empty_handle_force_n`).
+  - **The pack pose is a mark you can see:** the crank's arm along the drive side's outer
+    plate's rear leg (`cradle.PACK_POSES`, `pack_pose`). That is about 5½ turns from rest
+    and 31° neck up.
+  - **One jack height for the whole swing:** the raise-after-−20° step is gone from
+    `cradle.USE_LIMITS`, the guide's "Decanting" step and `viewer/src/decant/pour.ts`.
+    - The jack locator (`cradle._jack_locator`) centres a 100 x 100 mm jack's base under
+      the mouth. It is two glued layers of the board's birch in the notch, with ears in the
+      notch's bays.
+  - **The board** (`cradle._base_plate`):
+    - B's sits 40 mm toward its drive side (`cradle.BASE_Z`).
+    - Its corners are rounded R35 and the notch's mouth R8.
+    - The carriage bolts' holes are routed squares with dog-bones.
+    - Each rail sits between two glued birch cleats (`cradle._cleats`).
+  - **The brackets** (`cradle._bracket`):
+    - The foot's hole is 8.5 mm, 1.25 mm of play.
+    - An 18-8 fender washer goes under a printed thumb knob, with an 18-8 M6 nut pressed
+      into the knob (`cradle.KNOB`). It replaces the black-oxide thumb nut.
+  - **The use limits** (`cradle.USE_LIMITS`) now say:
+    - where it pinches: the bay faces at each return to rest, the crank's arc outside the
+      outer plate, and the rails 18 mm over the board, under ISO 13854's 25 mm;
+    - to free a trapped finger by turning back;
+    - to take the handle off when the cradle is left (the child lock);
+    - that letting go doesn't stop the stream;
+    - to check the lip gauge is down before level;
+    - that sparkling wine under pressure doesn't go in corked;
+    - to check the knobs, and what to do if one works loose;
+    - that the feet rock on a counter that isn't flat;
+    - how to lift it.
+  - **Cost honesty** (`hardware.bom`):
+    - The BOM's and ORDER.md's totals say "The total excludes N unpriced cut lines", each
+      line with its area (`unpriced_cut_note`).
+    - Where a fitted sheet bounds an unpriced line, the note gives an estimate marked as one,
+      with its basis (`CRADLE_CUT_PROXIES`, `cut_ranges`): the 7075 at the 0.187 in 5052
+      fit, x1 to x2.
+    - The birch stays unpriced.
+    - `CRADLE_CUT_SOURCE` names A's quote as A's. It had printed A's "USD 359-368 in all"
+      in B's order as if it were B's.
+    - A walker's BOM is unchanged: `Bom.cut_ranges` is None.
+- **Numbers** (B, 2026-10-14):
+  - **The stand** (`cradle_report.stability`'s new `edges`):
+
+    | edge | tips at | was |
+    |---|---|---|
+    | rear (a full 6 L) | 27.2° | 26.1° |
+    | drive side | 29.9° | 26.0° |
+    | passive side | 29.3° | 31.7° |
+    | front | 39.5° | 39.1° |
+
+    - The least push at a bottle's top is 39.4 N, up from 32.0 N.
+    - The rear edge binds. The board's new parts (cleats, locator, knobs: 0.66 kg, low and
+      forward) gave it 1.1°.
+    - Each 10 mm a full 6 L's centre of mass moves toward its base costs the rear about
+      0.5°: 26.7° at 10 mm, 26.2° at 20, 25.2° at 40. Past about 45 mm the rear edge
+      needs the board longer at the back. `python -m spiderpig.cradle_report stand`
+      re-runs the stand alone.
+  - **The pack:** 702 x 606 x 485 mm outside, 206 L (it was 703 x 611 x 478, 205 L).
+    - The knobs, at 17 mm over the board, and the cleats raise the panels 6 mm.
+    - At 31° neck up b6 clears the bar by about 18 mm (it was 14.6 at 35°). The
+      `slide_off` sweep meets nothing.
+  - **The parts:**
+    - Birch: 7 parts, 4439 cm² (the board, 4 cleats of 452 x 26 mm as one file, the
+      locator's 2 layers as one file).
+    - Bought: 4 more 18-8 M6 nuts and fender washers (USD 0.92) and a bottle of Titebond
+      II (5.49), for 4 thumb nuts (6.76). The estimated total is USD 659.05 (it was
+      659.40), plus the 7075's USD 68-136 estimate; the birch is unpriced.
+  - **The empty cradle** turns with 3.6 N at the grip.
+- **Why:**
+  - **A mark, not a count:** rest is a toggle dwell; the bottle moves under 2° over its last
+    1½ turns.
+    - "Rest, then 4 turns" gave 35° neck up one way and 39° the other.
+    - With rest called 1½ to 2 turns early it gave 44-47°, where b6's boss is 0-4 mm off the
+      bar or jams on it.
+    - The arm and the leg are both visible, and the pose is one crank angle.
+    - From 44° to 20° the box doesn't grow: the board sets its length.
+  - **One jack height:** forgotten, the raised jack is a glass-crushing trap. Near −30°
+    each newton at the grip puts 20-25 N on the rim, and the extra effort reads as "a stiff
+    bit" next to the normal 21.9 N. It gained a RIEDEL Ultra 12 mm, and −20° can't be seen
+    on the cradle.
+  - **The cleats:** each side stood on two small printed brackets, with nothing across the
+    bay.
+    - The reviewer's estimate is a few N/mm of sideways stiffness at the bottle.
+    - Through-cut strips of the board's own sheet brace each rail and locate it on
+      reassembly with no pocket routing, which SendCutSend may not do.
+    - Gluing them to the as-built cradle makes them agree with it.
+  - **The oversize holes, the passive side last:** B's two remote centres must agree to
+    within the joints' play. A misfit of Δ forces 1.29 Δ of motion into the joints over a
+    swing.
+  - **The knob:** the user wants a short, cheap order.
+    - McMaster's 18-8 thumb nuts (90368A300, 96445A116) are 15 mm tall, would need a 30 mm
+      bolt, and show no price to a script. Aspen's 18-8 thin ones come 50 to a box (USD
+      167).
+    - A printed knob on an 18-8 nut already on the order costs 0.11 + filament. The nut
+      bears on the washer, and the knob only turns it.
+  - **The offset:** the gearbox (2.1 kg at z −258) puts the centre of mass 68 mm toward the
+    drive side. 40 mm keeps the passive brackets' knobs (244 mm out) 8 mm inside the
+    board.
+  - **The 7075's estimate:** no 7075 was ever quoted.
+    - Its floor is the 0.187 in 5052 fit (the dearer alloy can't be cheaper).
+    - The x2 is the repo's walker quotes' 6061-to-5052 ratio per area, not a bound.
+    - Wood was never quoted, so the birch gets no number.
+- **Not done:**
+  - **The front trim** (35 mm, the front at 39.5°): with the board offset, the passive
+    front foot's pad would sit on that side's carriage bolt's head.
+  - **The rails' 18 mm over the board:** they are the base stop's (the saddles' round). The
+    board says so and the use limits warn.
+  - **A tilt pointer and scale:** it needs notches in the plates or a cradle link (the
+    structure round's).
+  - **Witness notches:** paint marks instead.
+  - **A crank guard:** the user's call of 2026-10-10 stands.
+  - **A's pack:** still for shipping once. DECANTER.md and `cradle_pack`'s docstring now
+    say so.
+- **Where:** `spiderpig/construction/cradle.py`, `spiderpig/cradle_pack.py`,
+  `spiderpig/cradle_report.py`, `spiderpig/hardware/bom.py`, `spiderpig/hardware/order.py`,
+  `spiderpig/hardware/cradle_catalog.py`, `viewer/src/decant/{pour,pack,main}.ts`,
+  `tests/test_cradle.py`.
