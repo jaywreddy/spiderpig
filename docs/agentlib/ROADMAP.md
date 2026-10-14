@@ -148,9 +148,10 @@ story), now `platform-77c117c`, eight designs.
   `palletizer_reach`, a safety factor per joint kind); the budget's unverified figures (the
   pairs' tilt, belt span stiffness, rotor inertias) want a hardware run (a dial
   indicator) to replace them.
-- **One MuJoCo emitter.** A walker's model comes from `spiderpig/sim/mjcf.py`, an arm's
-  from `urdf.mjcf` beside its URDF: two writers of one format, the arm's not driven by
-  `spiderpig sim`. One emitter over `kinematics.RobotTree`, for every kind.
+- **One MuJoCo emitter.** Done (2026-10-14, DECISIONS.md): `spiderpig/sim/mjcf.py` writes
+  every kind's model over `kinematics.RobotTree`; `spiderpig sim` holds an arm at its pose.
+  `verify("full")` holds a fixed design there too (`sim.holds`). Left: the live session
+  (`/ws/sim`) is a walker's.
 - **A homing registry.** Homing methods are branches on a sensor's name
   (`control.homing.method`); a registry like the roles' would make a new sensor (switches
   on the planar joints, automatic homing) data, not code.

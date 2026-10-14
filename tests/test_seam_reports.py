@@ -1589,6 +1589,36 @@ def test_sim_rows_without_mujoco_say_how_to_get_it(monkeypatch):
         "sim.mujoco", "not installed", True, False, "pip install mujoco to simulate")
 
 
+def test_a_fixed_designs_full_verify_holds_it_in_mujoco(monkeypatch):
+    """``verify("full")`` of a design that doesn't walk: the same MuJoCo model, held at its
+    pose (``sim.run.hold``): one soft ``sim.holds`` row, the worst sag its value; a
+    failure to run is ``sim_failed``."""
+    pytest.importorskip("mujoco")
+    from spiderpig.sim import run
+
+    held = {"finite": True, "holds": True, "sag": {"tool0": 0.04, "output": 0.03},
+            "sag_max": 0.04, "torque_fraction": {"q2": 0.08, "q3": 0.0}, "loop_error": 0.009}
+    asked = []
+    monkeypatch.setattr(run, "hold", lambda config: asked.append(config) or held)
+    d = _design()
+    d.config = BuildConfig(linkage="palletizer_reach")
+    (row,) = vf._hold_rows(d, VerifyReport("full"))
+    assert asked == [d.config]
+    assert (row.requirement, row.value, row.target, row.passed, row.hard, row.unit) == (
+        "sim.holds", 0.04, f"<= {run.HOLD_SAG_MM:g}", True, False, "mm")
+    assert "tool0 sags 0.040 mm" in row.detail
+    assert "q2 at 8 % of its torque" in row.detail
+
+    def broken(config):
+        raise RuntimeError("bad model")
+
+    monkeypatch.setattr(run, "hold", broken)
+    rep = VerifyReport("full")
+    (row,) = vf._hold_rows(d, rep)
+    assert (row.requirement, row.passed) == ("sim.run", False)
+    assert [f.code for f in rep.failures] == ["sim_failed"]
+
+
 def test_done_scores_soft_rows_and_leaves_estimated_hard_targets_unverified(monkeypatch):
     monkeypatch.setattr(vf.api, "_commit", lambda design, stage, rep, op: (stage, op, rep))
     stride, mass, cost = (vf.target_field("motion", "stride_mm"),

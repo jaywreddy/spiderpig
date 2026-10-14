@@ -494,31 +494,56 @@ def test_posing_the_baked_arm_lands_on_the_bakes_own_frames():
 
 
 @pytest.mark.slow
-def test_the_arms_mujoco_model_closes_its_loops(tmp_path):
-    """MuJoCo's model of the same tree (``urdf.mjcf``): the motors' position actuators set,
-    the loops held by their pins, the tip settles where the kinematics put it."""
+def test_the_arms_mujoco_model_closes_its_loops():
+    """The arm's MuJoCo model is every design's (``sim.mjcf``: the same emitter as a
+    walker's): its base fixed in the URDF's ``base_link`` frame, the motors' position
+    actuators on the inputs (their design angles) and the turntable, the loops held by
+    their pins: the tip settles where the kinematics put it."""
     import mujoco
 
-    from spiderpig import urdf
     from spiderpig.control.arm import ArmModel
+    from tests import _sim
 
     cfg = _robot()
-    mech = cache.cached_robot(cfg, 1.0)
-    files = urdf.write(mech, cfg, 1.0, tmp_path, "arm")
-    model = mujoco.MjModel.from_xml_path(str(files[2]))
+    xml, meta = _sim.mjcf_of(cfg)
+    assert meta["freejoint"] is None
+    assert not meta["feet"]
+    acts = meta["actuators"]
+    assert {"q1", "q2", "q3"} <= set(acts)
+    assert all(a["type"] == "position" and a["motor"].startswith("nema") for a in acts.values())
+    assert acts["q2"]["ctrlrange"] == pytest.approx([math.radians(v)
+                                                     for v in cfg.lk.ranges["q2"]])
+    model = mujoco.MjModel.from_xml_string(xml)
+    assert "floor" not in {model.geom(i).name for i in range(model.ngeom)}
     data = mujoco.MjData(model)
     model.opt.gravity[:] = 0.0
-    m = urdf.model(mech, cfg, 1.0)
     _, design = cache.cached_design(cfg)
     arm = ArmModel.from_config(cfg, design)
-    q = {"q2": m.zero["q2"] + 0.2, "q3": m.zero["q3"] - 0.15, "q1": 0.5}
+    # (qpos0 is the tour's start, a corner of the inputs' box: move into it)
+    q = {"q2": acts["q2"]["ref"] + 0.2, "q3": acts["q3"]["ref"] + 0.15, "q1": 0.5}
     for n in ("q1", "q2", "q3"):
-        a = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
-        data.ctrl[a] = q[n] - m.zero.get(n, 0.0)
-    for _ in range(20000):
+        data.ctrl[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)] = q[n]
+    for _ in range(10000):
         mujoco.mj_step(model, data)
-    tip = arm.to_base(data.site("tool0").xpos * 1000.0)
-    np.testing.assert_allclose(tip, arm.fk(q), atol=0.01)
+    np.testing.assert_allclose(data.site("tool0").xpos * 1000.0, arm.fk(q), atol=0.01)
+
+
+@pytest.mark.slow
+def test_the_wrists_mujoco_model_stands_under_gravity():
+    """``spiderpig sim``'s hold (:func:`sim.run.hold`) of an arm with a wrist: its motors
+    hold it at its pose under gravity, the tip sagging under 10 mm, the state finite."""
+    from spiderpig.sim.run import hold
+    from tests import _sim
+
+    cfg = _robot(roles=(("tool", "suction_wrist"),))
+    xml, meta = _sim.mjcf_of(cfg)
+    assert "q4" in meta["actuators"]
+    assert meta["bodies"]["q4"]["parent"] == "b8"
+    m = hold(cfg, 3.0, model_xml=xml, model_meta=meta)
+    assert m["finite"], m
+    assert m["holds"], m
+    assert m["sag"]["tool0"] < 10.0
+    assert m["loop_error"] < 0.5
 
 
 @pytest.mark.no_fabricate
@@ -535,20 +560,28 @@ def test_a_stored_arm_loads_as_the_robot_it_was_resolved_to(tmp_path):
     assert derive(side, {"materials": {"thickness_mm": 3.1}}).config.robot is False
 
 
-@pytest.mark.slow
-def test_the_wrists_mujoco_model_stands_under_gravity(tmp_path):
-    import mujoco
+@pytest.mark.no_fabricate
+def test_the_urdf_and_the_mjcf_rate_the_stepped_joints_alike():
+    """``actuators.joint_ratings``: each stepper-driven joint's motor through its reduction
+    (the URDF's limits and the MJCF's position actuators read it); a walker's servo drive
+    is not a stepper: nothing."""
+    from spiderpig.actuators import STEPPERS, joint_ratings
+    from spiderpig.sim.mjcf import model_config
 
-    from spiderpig import urdf
-
-    cfg = _robot(roles=(("tool", "suction_wrist"),))
-    files = urdf.write(cache.cached_robot(cfg, 1.0), cfg, 1.0, tmp_path, "arm")
-    model = mujoco.MjModel.from_xml_path(str(files[2]))
-    data = mujoco.MjData(model)
-    mujoco.mj_forward(model, data)
-    start = data.site("tool0").xpos.copy()
-    for i in range(6000):                       # 3 s held by its motors, never reset
-        mujoco.mj_step(model, data)
-        assert np.isfinite(data.qacc).all(), i
-    assert data.time == pytest.approx(6000 * model.opt.timestep)
-    assert np.linalg.norm(data.site("tool0").xpos - start) < 0.01    # it sags under 10 mm
+    meta = {"drive": {"drive:q2": {"input": "q2", "motor": "nema17_17hs4401", "ratio": 5.0}},
+            "turret": {"motor": "nema17_17hs4401_x64", "ratio": 3.75},
+            "tool": {"wrist": "nema11_11hs20"}}
+    r = joint_ratings(meta)
+    assert set(r) == {"q1", "q2", "q4"}
+    m = STEPPERS["nema17_17hs4401"]
+    assert r["q2"].effort == pytest.approx(m.holding_nm * 5.0)
+    assert r["q2"].stiffness == pytest.approx(m.holding_nm * m.rotor_teeth * 25.0)
+    assert r["q2"].armature == pytest.approx(m.rotor_g_cm2 * 1e-7 * 25.0)
+    assert r["q4"].ratio == 1.0
+    assert joint_ratings({"drive": {"servo": "sts3215", "horn": {"r": 1.0}}}) == {}
+    # the model is of a walker's whole robot, of anything else as configured
+    walker = BuildConfig(linkage="klann", module="single", robot=False)
+    assert model_config(walker).robot
+    assert model_config(_robot(robot=False)) == _robot(robot=False)
+    side = BuildConfig(linkage="hoecken", robot=False)
+    assert model_config(side) is side

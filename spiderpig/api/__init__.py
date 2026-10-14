@@ -89,10 +89,10 @@ from spiderpig.api.exports import (
     _groups,
     _robot_files,
     _robot_files_job,
+    _robot_formats,
     _start_group_job,
     _start_robot_job,
     _timed,
-    _walker_formats,
     export,
     verify,
 )

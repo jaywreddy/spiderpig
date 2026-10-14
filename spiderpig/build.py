@@ -392,7 +392,8 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     if opts is not None:
         uptodate.forget(opts)       # (a build that stops short is never current)
-    for stale in (out / "urdf").glob("*.joints.json"):
+    # (an earlier engine's MuJoCo model beside the URDF too: now the export's mjcf)
+    for stale in [*(out / "urdf").glob("*.joints.json"), *(out / "urdf").glob("*.mjcf.xml")]:
         stale.unlink(missing_ok=True)
     for owned in (*fabmethods.folders(), "urdf"):   # no cut, print or URDF files left
         clear_generated(out / owned)              # from an earlier build
@@ -484,8 +485,8 @@ def main(argv=None) -> int:
             from spiderpig import urdf
 
             files = urdf.write(mech, config, 1.0, out / "urdf", args.name)
-            print(f"wrote {files[0]} ({len(files) - 3} link meshes), {files[1]} and "
-                  f"{files[2]} (MuJoCo)")
+            print(f"wrote {files[0]} ({len(files) - 2} link meshes) and {files[1]} (its "
+                  "MuJoCo model: spiderpig export --formats mjcf)")
 
         done = _exports_result(job) if job is not None else None
     except BaseException:
