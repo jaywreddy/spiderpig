@@ -190,8 +190,8 @@ def _seat_candidates(ctx: Context) -> list[tuple[str, str, tuple[str, ...], dict
         need = {}
         for m in ax.members:
             key = ctx.sheet("link", m)
-            if key is None or sheet(key).min_edge <= 0:
-                continue
+            if key is None or not sheet(key).metal:     # (acrylic's rule is a 1.35 mm
+                continue                                #  bridge: the link holds it)
             r = seat.seat_d() / 2 + RIDER_BOSS_T * ctx.sheet_t("link", m) + 0.1
             if r > ctx.params.link_radius + 1e-9:
                 need[m] = round(r, 3)
