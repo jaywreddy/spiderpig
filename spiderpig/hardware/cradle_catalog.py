@@ -513,17 +513,10 @@ register(
          dims={"d": 6.0, "length": 25.0, "head_d": 16.55, "head_h": 3.88, "neck": 6.48,
                "neck_h": 4.6},
          notes="A decanting cradle's base-board bolt (as m6_carriage_20), long enough for a "
-               "thumb nut and a thread past it."),
-    Item("m6_thumb_nut", "M6 low-profile knurled-head thumb nut (DIN 467 form), head 24 x 5, "
-         "black-oxide steel", "nut",
-         (Offer("McMaster-Carr", MCM + "92815A203/", "92815A203", price_usd=1.69, verified=True,
-                note="black-oxide steel, M6 x 1, knurled head 24 mm x 6 mm overall, collar 12 x "
-                     "1; the metric thumb-nut listing rendered 2026-10-13 (Bolt Depot lists no "
-                     "metric thumb nut; its M6 wing nuts, 6898 and 29213, span 28-33 mm and "
-                     "would hit the bracket's upright 14 mm off the bolt)"),),
-         dims={"d": 6.0, "head_d": 24.0, "h": 6.0, "collar_d": 12.0, "collar_h": 1.0},
-         notes="On a decanting cradle's base-board bolts, by hand: the side panels lift off "
-               "the board with no tool (cradle._bracket)."),
+               "fender washer, an M6 nut in a printed thumb knob and a thread past it "
+               "(cradle._bracket). (McMaster's 18-8 M6 carriage bolts, 97248A311-316, list "
+               "no price to a scripted page: the zinc one is kept, its head under the "
+               "board.)"),
     Item("m3_thumb_screw_9", "M3 x 9 knurled-head thumb screw, 18-8 (head 8 x 5)", "fastener",
          (Offer("McMaster-Carr", MCM + "92545A115/", "92545A115", price_usd=1.76,
                 verified=True,

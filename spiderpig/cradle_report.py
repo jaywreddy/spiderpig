@@ -306,6 +306,11 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
         "deg_per_handle_turn_mean": round(float(np.ptp(tilt)) / (box.ratio / 2.0), 2),
         "load_case": f"a sealed full {cr.DESIGN.name} ({cr.DESIGN.mass_full_kg} kg)",
     }
+    # the empty cradle (the bottle out): the bench check after it goes back together
+    rigid0, joints0 = planar_model(config, mech, 1.0, None)
+    empty, _ = statics(config, rigid0, joints0, ts)
+    out["drive"]["empty_handle_force_n"] = round(
+        float(np.abs(empty).max()) / (box.ratio * box.eta_static) / (grip_r / 1000.0), 2)
     if out["drive"]["handle_force_n"] > WARN_HANDLE_N:
         out.setdefault("warnings", []).append(
             f"the handle needs {out['drive']['handle_force_n']} N at its grip at worst")
@@ -375,12 +380,14 @@ weighs less."""
 
 def stability(config: BuildConfig, mech, design, ts) -> dict:
     """The whole cradle's centre of mass over the swing, each bottle full and empty, against
-    the base plate's feet (their pads' outer edges): its margin (mm) to the nearest tipping
-    edge, front, rear and sideways (the gearbox and the hand wheel weigh on the drive side),
-    the tilt it tips at and the push at the bottle's highest point that tips it, each the
-    worst over the swing (the box's parts measured as ``mech`` was built, turned with it)."""
+    the base board's feet (their pads' outer edges; the board :func:`cradle.base_z` off the
+    bay's middle): its margin (mm) to the nearest tipping edge, front, rear and each side (the
+    gearbox and the hand wheel weigh on the drive side, -z), the tilt it tips at and the push
+    at the bottle's highest point that tips it, each the worst over the swing (the box's parts
+    measured as ``mech`` was built, turned with it); and per edge (``edges``) its worst tilt
+    and least push, with the bottle that sets each."""
     lk = config.lk
-    stand = cr.stand_of(lk)
+    stand_ = cr.stand_of(lk)
     by = {b.name: b for b in mech.bodies}
     link = cr.cradle_link(lk)
     pts = _world_joints(config, ts)
@@ -413,11 +420,13 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
             still_c += m * c
     box_rel0 = (box_c / box_m)[:2] - lip0 if box_m else np.zeros(2)
     box_z = float(box_c[2] / box_m) if box_m else 0.0
-    inset, pad = 25.0, 12.0                    # the feet (construction.cradle._base_plate)
-    x_front = float(lip0[0]) + stand.base[0] + inset - pad
-    x_rear = float(lip0[0]) + stand.base[1] - inset + pad
-    z_edge = cr.BASE_HALF - inset + pad
+    inset = cr.FOOT_INSET - cr.FOOT_PAD_R        # the feet (construction.cradle._base_plate)
+    x_front = float(lip0[0]) + stand_.base[0] + inset
+    x_rear = float(lip0[0]) + stand_.base[1] - inset
+    z_mid = cr.base_z(lk)
+    z_drive, z_passive = z_mid - (cr.BASE_HALF - inset), z_mid + (cr.BASE_HALF - inset)
     rows = []
+    edges: dict[str, dict] = {}
     for size in cr.SIZES:
         # the box's centre with its V blocks and base stop at this bottle's setting
         d = cr.offsets(size)
@@ -451,22 +460,44 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
                 cz = (still_c[2] + box_m * box_z) / m        # the bottle on the bay's middle
                 h = cy - table
                 for edge, margin in (("front", cx - x_front), ("rear", x_rear - cx),
-                                     ("side", z_edge - abs(cz))):
+                                     ("drive side", cz - z_drive),
+                                     ("passive side", z_passive - cz)):
                     got = {"tip": math.degrees(math.atan2(margin, h)),
                            "push": m * G * margin / max(float(top - table), 1.0),
                            "margin": margin}
                     for key, v in got.items():
                         if key not in least or v < least[key][0]:
                             least[key] = (v, edge)
+                    e = edges.setdefault(edge, {})
+                    for key, v in (("tip_deg", got["tip"]), ("push_at_top_n", got["push"])):
+                        if key not in e or v < e[key][0]:
+                            e[key] = (v, f"{size.name}, {state}")
             rows.append({"bottle": size.name, "state": state, "kg": round(mb, 2),
                          "margin_mm": round(least["margin"][0], 1), "edge": least["tip"][1],
                          "tip_deg": round(least["tip"][0], 1),
                          "push_at_top_n": round(least["push"][0], 1),
                          "push_edge": least["push"][1]})
-    return {"feet": {"x_mm": [round(x_front, 1), round(x_rear, 1)], "z_mm": round(z_edge, 1)},
+    return {"feet": {"x_mm": [round(x_front, 1), round(x_rear, 1)],
+                     "z_mm": [round(z_drive, 1), round(z_passive, 1)]},
+            "board_z_mm": z_mid,
             "device_kg": round(still_m + box_m, 3),
             "cases": rows, "worst_margin_mm": min(r["margin_mm"] for r in rows),
-            "worst_tip_deg": min(r["tip_deg"] for r in rows)}
+            "worst_tip_deg": min(r["tip_deg"] for r in rows),
+            "edges": {e: {"tip_deg": round(v["tip_deg"][0], 1), "tip_by": v["tip_deg"][1],
+                          "push_at_top_n": round(v["push_at_top_n"][0], 1),
+                          "push_by": v["push_at_top_n"][1]} for e, v in edges.items()}}
+
+
+def stand(linkage: str = "decanter_rcm", store=None) -> dict:
+    """:func:`stability` alone, for a quick re-run after a change to the masses, the bottles'
+    centres of mass or the board (``python -m spiderpig.cradle_report stand [linkage]``):
+    the cradle fabricated as :func:`report` does, its stand's verdict per edge."""
+    config = BuildConfig(linkage=linkage, robot=False)
+    tmpl = template_for(config)
+    design = design_side(tmpl, config)
+    mech = fabricate(tmpl, config, 1.0, store=store)
+    ts = np.linspace(0.0, 2.0 * math.pi, 360, endpoint=False)
+    return stability(config, mech, design, ts)
 
 
 PLA_ALLOW = 10.0        # MPa: a printed PLA part under a load that stays (a quarter of its
@@ -678,7 +709,7 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
                  "load_n": round(push, 1), "grip_n": round(grip, 1),
                  "sf": round(grip / push, 2)})
     _, neck, lip, (ww, _), _, _, _ = cr.TSLOT
-    wd = cr.WASHER[0]
+    wd = cr.LOCK_WASHER[0]
     reach = ww / 2 - (neck / 2 + wd / 2) / 2                   # the load's lever to the root
     width = wd + 2 * lip                                       # along the slot (45° spread)
     row("base stop's T-slot lips (bending)", "the lock's preload", preload,
@@ -988,7 +1019,9 @@ def room(config: BuildConfig, mech, n: int = 72) -> dict:
     the radius round the decanter's axis that no part of the cradle box or the bottle drawn
     (a 6 L methuselah, the V blocks at their lowest) enters over the whole swing (``room``),
     and from the pour on (the cradle past -20°, where an opened full bottle starts to pour:
-    ``room_pouring``). ``mech``: the cradle fabricated at crank angle 0. The side stacks
+    ``room_pouring``, reported only: since round 1 the guide and the cradle page give one jack
+    height for the whole swing, never raised mid-pour). ``mech``: the cradle fabricated at
+    crank angle 0. The side stacks
     stand outside the bay (``construction.cradle.BAY``), so only the bay's parts count. A
     thinner bottle's V blocks ride higher, away from the decanter at every tilt: the
     drawn setting bounds them."""
@@ -1040,3 +1073,13 @@ def room(config: BuildConfig, mech, n: int = 72) -> dict:
                          for h, r in zip(bands, pouring, strict=True)],
         "axis_x": axis_x, "mouth_over_table": cr.LIP_HEIGHT,
     }
+
+
+if __name__ == "__main__":       # python -m spiderpig.cradle_report stand [linkage]
+    import json
+    import sys
+
+    args = sys.argv[1:]
+    if not args or args[0] != "stand":
+        sys.exit("usage: python -m spiderpig.cradle_report stand [decanter_rcm|decanter_hinge]")
+    print(json.dumps(stand(*args[1:2]), indent=1))
