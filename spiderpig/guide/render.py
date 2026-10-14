@@ -204,10 +204,9 @@ def _dilate(m, r):
     return out
 
 
-def render(items: list[Item], view: View, ss: int = SS
-           ) -> tuple[Image.Image, dict[str, Mark]]:
-    """The picture of ``items`` from ``view`` (an RGB image of ``view.size``), and where
-    each marked item shows."""
+def _frame(items: list[Item], view: View, ss: int):
+    """The view's basis, each item's points in it, and the map from view coordinates to
+    the (supersampled) picture's pixels that frames them all (the arrows' ends too)."""
     basis = _basis(view)
     W, H = view.size[0] * ss, view.size[1] * ss
     pos = [(it.pos + np.asarray(it.offset)) @ basis.T for it in items]
@@ -225,6 +224,24 @@ def render(items: list[Item], view: View, ss: int = SS
         x = (p[..., 0] - centre[0]) * scale + W / 2
         y = H / 2 - (p[..., 1] - centre[1]) * scale
         return x, y
+
+    return basis, pos, to_px, scale
+
+
+def projector(items: list[Item], view: View):
+    """Where :func:`render` of ``items`` from ``view`` draws a point: a function of points
+    ``(..., 3)`` (the items' frame) to the picture's pixels ``(x, y)``, and the picture's
+    pixels per unit (an item with points but no triangles frames the picture unseen)."""
+    basis, _, to_px, scale = _frame(items, view, 1)
+    return (lambda p: to_px(np.asarray(p, float) @ basis.T)), scale
+
+
+def render(items: list[Item], view: View, ss: int = SS
+           ) -> tuple[Image.Image, dict[str, Mark]]:
+    """The picture of ``items`` from ``view`` (an RGB image of ``view.size``), and where
+    each marked item shows."""
+    basis, pos, to_px, _ = _frame(items, view, ss)
+    W, H = view.size[0] * ss, view.size[1] * ss
 
     tris, owner_of_tri, base = [], [], 0
     for i, (it, p) in enumerate(zip(items, pos, strict=True)):

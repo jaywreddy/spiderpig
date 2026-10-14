@@ -169,3 +169,8 @@ body:not(.side-open) #side { display: none; }
 #pack-info strong { color: #eef2f6; font-weight: 600; }
 #pack-info ol.pack-pieces { gap: 2px; }
 #pack-info ol.pack-pieces li { line-height: 1.25; }
+/* editing the packing (a piece moved and turned, the layout exported) */
+#pack-info .pack-edit { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+#pack-info .pack-edit-help { display: none; flex-basis: 100%; margin: 4px 0 0 0; color: #8a96a3;
+                             font-size: 12px; }
+body.pack-editing #pack-info .pack-edit-help { display: block; }

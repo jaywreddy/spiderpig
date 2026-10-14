@@ -1,5 +1,31 @@
 import { describe, expect, it } from 'vitest';
-import { packFraction, stagger, type PackData } from './pack';
+import { matmul, movedModule, packFraction, snappedDelta, stagger, type PackData } from './pack';
+
+const I = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
+
+function apply(m: number[][], p: number[]): number[] {
+  return [0, 1, 2].map((i) => m[i]![0]! * p[0]! + m[i]![1]! * p[1]! + m[i]![2]! * p[2]! + m[i]![3]!);
+}
+
+describe('editing the pack', () => {
+  it('moves a piece in 3 mm steps, its parts with it', () => {
+    const d = snappedDelta([10, 20, 30], [4.4, -1.4, 16.6]);
+    expect(apply(d, [10, 20, 30])).toEqual([13, 20, 48]);         // 4.4 -> 3, -1.4 -> 0, 16.6 -> 18
+    const m = movedModule({ key: 'k', label: '', how: '', parts: ['a', 'b'], matrix: I,
+                            part_matrix: { b: [[1, 0, 0, 5], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]] } }, d);
+    expect(apply(m.matrix, [0, 0, 0])).toEqual([3, 0, 18]);
+    expect(apply(m.part_matrix!['b']!, [0, 0, 0])).toEqual([8, 0, 18]);
+  });
+
+  it('turns it a quarter turn about the vertical through its centre, or tips it', () => {
+    const yaw = snappedDelta([10, 0, 0], [0, 0, 0], 1);
+    expect(apply(yaw, [10, 0, 0])).toEqual([10, 0, 0]);            // the centre stays
+    expect(apply(yaw, [11, 0, 0])).toEqual([10, 0, -1]);           // +x to -z (about +y)
+    const tip = snappedDelta([0, 0, 0], [0, 0, 0], 0, 1);
+    expect(apply(tip, [0, 1, 0])).toEqual([0, 0, 1]);              // up to +z (about +x)
+    expect(matmul(snappedDelta([0, 0, 0], [0, 0, 0], 4), I)).toEqual(I);   // four: none
+  });
+});
 
 function data(pose?: PackData['pose']): PackData {
   return {

@@ -548,10 +548,7 @@ they go in (`/api/cradle/{key}/pack`). B packs as three modules, A flat.
 **B: three modules** (`cradle_pack.module_pieces`, the user's of 2026-10-13; the steps
 rewritten in round 1 of 2026-10-14: `cradle.module_steps`, also the guide's last two steps;
 the hand crank rides in its stow clips since round 1's drive review, `cradle.STOWS`). No
-tool, no small part left loose: 702 x 604 x 514 mm outside, about 218 L, where its flat
-pack was 112. (With the crank loose, a fourth piece, it was 485 mm tall, 206 L: the passive
-panel had nested on the drive side's outer face beside the gearbox, where the stowed crank
-now lies; anywhere on that face costs the same. `cradle.STOWS` empty brings that back.)
+tool, no small part left loose: PACKSIZE, where its flat pack was 112.
 1. Crank it to the pack pose: from rest, turn the handle the way that swings the crank's arm
    down, until the arm lies along the drive side's outer plate's rear leg, straight down
    from the gearbox (`cradle.PACK_POSES`, `pack_pose`; `cradle_pack.pack_t`). Seen from
@@ -615,9 +612,12 @@ The pieces: the base board (its feet, cleats and jack locator, its bolts, washer
 knobs), the passive side panel (every part of that side but its cradle link, its brackets),
 the drive side with the cradle box (both cradle links, the ties, the saddles with their V
 blocks, knobs, post and lip gauge, the light, the base stop: the worm holds it as cranked)
-with the hand crank in its clips. The passive side's b5, hanging on J2, swings into its panel
-(`cradle_pack.tuck`). The two panels lie flat on the board, either face down; the drive side
-lies with the cradle box up or down, about 442 mm tall.
+with the hand crank in its stow clips. The passive side's b5, hanging on J2, swings into
+its panel (`cradle_pack.tuck`). B's plan (`cradle_pack.PACK_PLANS`) packs them as they come
+apart: the passive panel in first, flat on the board, its outer face up; the drive side
+over it as it lies once the panel is off, on its drive side, the gearbox down on the board
+beside the panel, its plates over the panel's, the cradle box up, 441 mm across the bay.
+Each rests on what is under it, no pads.
 
 The steps lift the cradle off the board before the panel comes off: its brackets' feet
 sit on the bolts, between the cleats. The carriage bolts' square holes stop them turning but
@@ -647,23 +647,63 @@ take a hex key, the tie screws threadlocker, pin E's E-ring pliers (round 1).
 A link left hanging on one joint once its cradle link is off swings into its panel
 (`cradle_pack.tuck`).
 
-**How it stacks** (`cradle_pack.pack`). It works on each part's bounding box, 3 mm apart
-(`CLEAR`):
-- **Levelled.** Every piece but the panels and the base board is turned in the
-  mechanism's plane to its least bounding box (`level`). It then lies in one of its six
-  axis orientations.
+**How it stacks** (`spiderpig/voxpack.py`, since 2026-10-14). It packs the parts' real
+shapes, not their bounding boxes: each part's tessellation filled solid on 3 mm voxels
+(`voxpack.voxelize`: every cell the surface passes through and every cell whose centre is
+inside), 3 mm of foam between two pieces (`CLEAR`, one cell all round).
+- **Levelled.** Every piece but the panels and the base board is turned in the mechanism's
+  plane to its least bounding box (`level`). A piece then lies in any of the cube's 24
+  turns of that frame (`voxpack.ROTATIONS`: the voxels transposed, exactly); a side's
+  pieces name their `outer` and `bay` faces.
 - **The base board** stays at the bottom, where it is. The box is as wide as the largest
   piece lying flat.
-- **The side panels** (B: the passive side and the drive side with the cradle box) drop
-  onto a heightmap, in both orders, either face down, either way round; the lowest pair
-  wins. A's nest: one panel's pillars stand between the other's gearbox and brackets.
-- **The rest fill in**, largest first, at the lowest free slot of a voxel grid. That
-  includes the cavities under a panel's plate. A slot is picked by:
-  - what raises the box least;
-  - then the lowest, the flattest;
-  - then the nearest a corner.
-  A piece never goes both over and under another: it couldn't go in.
-- **The order in**: bottom up, as the stack allows (what is under a piece goes in first).
+- **Dropped in order.** Each piece in turn drops straight down onto what is in, column by
+  column (its bottom over the box's heightmap), so it falls into another's open triangles,
+  between its links, into a bay; the order they drop in is an order they can be put in
+  (none is both over and under another).
+- **Where.** Of its orientations and slots, the one that grows the box least, then sits
+  lowest, then lies nearest a corner, where it rests on what is under it
+  (`voxpack.support`): its centre of mass over the convex hull of its contacts (dropped
+  straight a piece first meets one point; it may sink 6 mm onto the next ones, `SETTLE`),
+  else over foam pads cut to fill gaps of up to 60 mm under it (`PAD_MAX`; the pads are
+  reported), else it would tip.
+- **Plans** (`cradle_pack.PACK_PLANS`, `voxpack.Plan`): a human packer's intent per piece
+  (the face down, a quarter turn, a corner, the piece it rests on or nests into, what goes
+  in first, why). The packer honours it and picks what it leaves free; a piece it doesn't
+  name goes in after, largest first (the panels first, in every order).
+
+**Judging and searching it** (`spiderpig pack-inspect`, `docs/agentlib/TESTING.md`): a
+contact sheet per candidate (the top, front, side and isometric views, each piece in its
+colour and numbered in the order it goes in; slices at 25, 50 and 75 % of the height; the
+legend), and the metrics (`voxpack.metrics`, any layout voxelized afresh): the box, the
+true fill (the parts' own volumes over the box's inside), the air per layer, how each piece
+rests (on what, directly, on pads, or not), the real-shape overlaps (cells two pieces share,
+measured again on 1 mm cells), the order's faults, the mass centre's height. `--search`
+anneals the order, the orientations and the corners round the plan (`voxpack.search`, in
+worker processes); `--split` packs a what-if (some parts off their piece: a design change
+before it is made). The cradle page's pack view edits a layout by hand (Edit the packing:
+click a piece, drag its arrows in 3 mm steps, R turns it a quarter turn, T tips it; Export
+layout) for `--layout` to judge.
+
+No MuJoCo settling: per-part convex hulls fill a truss plate's triangles and a panel's bay,
+so every nested piece would start inside another's hull; an honest model needs a box per
+column of voxels (thousands of geoms for B's drive side). The voxel support check (centre
+of mass over real contacts, pads named) answers "does it float" without it.
+
+| round 1's design (2026-10-14), outside | before: the boxes' packer, judged on real shapes | after: the plan |
+|---|---|---|
+| B | 702 x 485 x 606 mm, 206.2 L, fill 3.8 %; the mass centre 52 % up | 700 x 478 x 604 mm, 201.9 L, fill 3.9 %; every piece resting directly; the mass centre 27 % up |
+| A | 698 x 295 x 602 mm, 123.9 L, fill 6.2 %; the hand crank and the rear saddle tip (the saddle floats on a box that isn't there) | 700 x 185 x 601 mm, 78.0 L, fill 10.1 %; the passive panel on 5 pads to 33 mm, two tie rods on pads to 42 mm |
+
+The search (60 s, 5 processes) found 77.8 L for A (698 mm long) and nothing better for B:
+B's box is its board's footprint times the drive side's 441 mm across the bay; A's is the
+board's times the drive panel's pillar G and stand columns, the hand crank and the rear
+saddle (148-153 mm). Before round 1's pack pose B's drive side packed cradle box down, on 7
+pads to 60 mm, its mass centre 55 % up: on its gearbox it tipped there.
+What-ifs (`--split`, on the design before round 1): B's cradle box off the drive side,
+754 x 316 x 602 mm, 143.5 L (searched; the cradle box on 4 pads over the two panels); B's
+gearbox off the drive side, no gain (its brackets and crank train stand as far out); A's
+stand columns off, no gain.
 
 The box's bounds per design are in `tests/test_cradle.py`: `PACK_BOX` (A) and
 `MODULE_BOX` (B, read off its base board's size).
