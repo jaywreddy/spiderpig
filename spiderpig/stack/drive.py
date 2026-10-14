@@ -18,8 +18,9 @@ none with ``SPIDERPIG_WORKERS=0``) and whenever it runs.
    (``quick_nodes``, each stopping at its first plan: ``StackSpec.quick_first``) from
    ``min_top`` up, every head placement side by side (and, with a hint, the plain search
    and a leg at a time side by side), jumping ahead in doubling steps past sizes their
-   budget leaves open, then back down the skipped sizes while they keep a plan; an idle
-   worker runs the next size up (a job asked twice runs once).
+   budget leaves open, then (on the height) back down the skipped sizes while they keep a
+   plan; idle workers run the size the search likely asks next (a job asked twice runs
+   once).
 2. **The proof**: the best of those plans bounds every other. Every size and placement the
    objective needs (on the height: each whose least height, :meth:`StackProblem.size_lb`,
    isn't over the plan's; on "layers": the plan's size and every thinner one) and whose
@@ -250,20 +251,21 @@ class _Drive:
             self.gave_up.setdefault(m, r["gave_up"])
         return r
 
-    def _size(self, top: int, up: bool = True) -> dict[str, dict]:
+    def _size(self, top: int, ahead: int | None = None) -> dict[str, dict]:
         """Every placement still searched (not given up) at stack size ``top``: a short job
-        each, side by side; ``up`` (the search climbing): idle workers run the next size's."""
+        each, side by side; idle workers run size ``ahead``'s, the size the search likely
+        asks next (its answer is the same whenever it runs)."""
         spec = self.spec
         modes = [m for m in self.modes if m not in self.gave_up]
         jobs = {m: self._quick(m, top) for m in modes}
         for js in jobs.values():
             for job in js:
                 self.runner.submit(job, front=True)
-        if up and self.runner.free() >= len(modes) and top < spec.max_top:
-            # (the next size up, which the search asks next while sizes are ruled out)
-            for m in modes:
-                if top + 1 not in self.tried[m]:
-                    self.runner.submit(self._quick(m, top + 1)[0])
+        if ahead is not None and ahead != top and spec.min_top <= ahead <= spec.max_top:
+            nxt = [job for m in modes if ahead not in self.tried[m]
+                   for job in self._quick(m, ahead)]
+            for job in nxt[:self.runner.free()]:
+                self.runner.submit(job)
         out = {}
         for m, js in jobs.items():
             first = self.runner.result(js[0])
@@ -307,9 +309,9 @@ class _Drive:
         turn while the short
         jobs rule them out; once one exhausts its budget instead, in doubling steps (a plan
         is then likely far thicker, and every size in between costs its whole budget), then,
-        a plan found, back down the skipped sizes while they keep one. The placements go
-        size by size together, so which sizes are searched depends on the jobs' answers
-        alone."""
+        a plan found, back down the skipped sizes while they keep one (not on "layers" with
+        a proof to come: the proof searches every thinner size). The placements go size by
+        size together, so which sizes are searched depends on the jobs' answers alone."""
         spec = self.spec
 
         def spent() -> int:
@@ -322,7 +324,9 @@ class _Drive:
 
         top, jump, found = spec.min_top, 0, None
         while True:
-            rs = self._size(top)
+            # (ahead: the next size if this one is left open; ruled out, it is top + 1, the
+            # same while nothing was left open)
+            rs = self._size(top, min(top + (1 << jump), spec.max_top))
             if any(r["best"] is not None for r in rs.values()):
                 found = top
                 break
@@ -333,11 +337,15 @@ class _Drive:
             else:
                 top, jump = min(top + (1 << jump), spec.max_top), jump + 1
         if found is not None:
+            if spec.prove and spec.objective == "layers":
+                # (the proof searches every thinner size anyway, thinnest first, and on
+                # "layers" any plan there beats this one whatever its bound)
+                return found
             for top in range(found - 1, spec.min_top - 1, -1):
                 if any(top in self.tried[m] for m in self.modes) or \
                         spent() >= spec.max_total_nodes:
                     break
-                rs = self._size(top, up=False)
+                rs = self._size(top, top - 1)
                 if all(r["best"] is None for r in rs.values()):
                     break
                 found = top
@@ -348,7 +356,7 @@ class _Drive:
                 break
             if all(top in self.tried[m] for m in self.modes if m not in self.gave_up):
                 continue
-            rs = self._size(top)
+            rs = self._size(top, top + 1)
             if any(r["best"] is not None for r in rs.values()):
                 return top
             if stop(rs):

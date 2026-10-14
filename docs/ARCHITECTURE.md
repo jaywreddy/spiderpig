@@ -922,8 +922,9 @@ the planner's own process with the same answer. The search spends its effort in 
    placement (1,500 nodes, stopping at its first plan: `StackSpec.quick_first`), side by
    side, and for a multi-leg module the plain search and a leg at a time side by side too.
    Sizes the short jobs rule out are done; once a size exhausts its short budget instead,
-   the search jumps ahead in doubling steps until a size has a plan, then goes back down
-   the sizes it skipped. An idle worker runs the next size up.
+   the search jumps ahead in doubling steps until a size has a plan, then, on the height,
+   goes back down the sizes it skipped (on `"layers"` the proof searches them, thinnest
+   first). Idle workers run the size the search likely asks next.
 2. **The proof.** The best plan so far bounds the rest. Every size and head placement the
    objective needs (on the height: each size whose least height isn't over the plan's; on
    `"layers"`: the plan's own size, for a cheaper route, and every thinner one) that no

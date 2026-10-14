@@ -26,6 +26,9 @@ import os
 if os.environ.get("PYTEST_XDIST_WORKER"):
     for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
         os.environ.setdefault(_var, "1")
+    # the planner's jobs in this process too (its plans are the same with any number of
+    # workers; a test asking for workers sets ``StackSpec.workers``)
+    os.environ.setdefault("SPIDERPIG_PLAN_WORKERS", "1")
     # OCCT's parallel booleans and meshing share its default pool (every core by default)
     from OCP.OSD import OSD_ThreadPool
 
