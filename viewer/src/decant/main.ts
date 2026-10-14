@@ -263,15 +263,24 @@ function renderPackInfo(d: PackData): void {
   size.className = 'pack-size';
   size.textContent = `One box, ${x} × ${z} × ${y} mm outside (${d.box.volume_l} L).`;
   const how = document.createElement('p');
-  const turns = d.pose?.turns_from_rest;
   how.textContent = d.mode === 'modules'
-    ? `It comes apart in modules, by hand, in this order${turns ? ` (cranked ${turns} turns from rest first)` : ''}:`
+    ? 'It comes apart in modules, by hand, in this order:'
     : 'It comes apart where it is already screwed together, in this order:';
-  const ol = document.createElement('ol');
-  for (const step of d.steps) {
-    const li = document.createElement('li');
-    li.textContent = step;
-    ol.appendChild(li);
+  const list = (steps: string[]): HTMLOListElement => {
+    const ol = document.createElement('ol');
+    for (const step of steps) {
+      const li = document.createElement('li');
+      li.textContent = step;
+      ol.appendChild(li);
+    }
+    return ol;
+  };
+  const ol = list(d.steps);
+  const back: HTMLElement[] = [];
+  if (d.reassembly?.length) {
+    const p = document.createElement('p');
+    p.textContent = 'It goes back together in this order:';
+    back.push(p, list(d.reassembly));
   }
   // the pieces as they go in the box: what is under another goes in first
   const h2 = document.createElement('h3'); h2.textContent = `In the box, from the floor up (${d.modules.length} pieces)`;
@@ -283,7 +292,7 @@ function renderPackInfo(d: PackData): void {
     li.title = m.how;
     pieces.appendChild(li);
   }
-  info.append(h, size, how, ol, h2, pieces, editPanel());
+  info.append(h, size, how, ol, ...back, h2, pieces, editPanel());
   info.hidden = false;
 }
 

@@ -28,8 +28,11 @@ export interface PackData {
   modules: PackModule[];    // in the order they go in the box, bottom up
   box: { inside_mm: number[]; outside_mm: number[]; floor: number[]; volume_l: number };
   steps: string[];          // how it comes apart, in order
+  /** How it goes back together, in order (modules only). */
+  reassembly?: string[];
   mode?: 'flat' | 'modules';
-  /** The pose the transforms start from: the crank cranked to it (B: 4 turns from rest). */
+  /** The pose the transforms start from: the crank cranked to it (B: its arm along the
+   * outer plate's rear leg, about 5½ turns from rest). */
   pose?: { crank_t: number; clip_fraction: number; tilt_deg: number; turns_from_rest: number | null };
   linkage?: string;
   plan?: string;            // the plan it was packed by (``cradle_pack.PACK_PLANS``)

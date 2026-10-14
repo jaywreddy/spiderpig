@@ -8,6 +8,7 @@ pass the cut rules, and the guide has an order for every part."""
 
 from __future__ import annotations
 
+import itertools
 import math
 
 import numpy as np
@@ -410,23 +411,30 @@ def test_bs_x_and_y_are_clevis_pins_its_clips_over_the_cradle_link():
 
 @pytest.mark.construction
 @pytest.mark.no_fabricate
-def test_a_base_bracket_takes_a_thumb_nut_and_the_hand_crank_a_thumb_screw():
-    """The base board comes off by hand: each bracket's carriage bolt (M6 x 25) a knurled
-    thumb nut on it, its knurl clear of the bracket's upright and the upright's M5 screw
-    head, a thread past it; the hand crank's hub an M3 thumb screw down to the input key,
-    its head clear of the hub."""
+def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
+    """The base board comes off by hand: each bracket's carriage bolt (M6 x 25) through its
+    foot's oversize hole (the side settles where the linkage puts it), an 18-8 fender washer
+    over the hole, an 18-8 M6 nut in a printed thumb knob, the knob clear of the bracket's
+    upright and the upright's M5 screw head, a thread past the nut and the bolt's end in the
+    knob; the hand crank's hub an M3 thumb screw down to the input key, its head clear of
+    the hub."""
     from spiderpig.construction.handcrank import HANDLE_THUMB, HandCrank
 
-    bracket, parts, _ = cr._bracket((0.0, 0.0), 0.0, 0.0, 1, 4.75)
-    by = {key: part for part, key in parts}
-    assert set(by) >= {"m6_carriage_25", "m6_thumb_nut", "m5_nut"}
-    nut, bolt = by["m6_thumb_nut"], by["m6_carriage_25"]
-    side = next(part for part, key in parts if key.startswith("m5_bhcs"))
-    for other in (bracket, side, bolt):
-        inter = nut & other
+    bracket, parts, _ = cr._bracket((0.0, 12.5), 0.0, 0.0, 1, 4.75)   # (its screw 12.5 up)
+    by = {suffix: (part, key) for part, key, suffix in parts}
+    assert {key for _, key in by.values()} >= {"m6_carriage_25", "m6_nut", "m6_washer_wide",
+                                                "m5_nut", None}
+    assert by["knob"][1] is None                                           # printed
+    knob, nut, washer = by["knob"][0], by["nut1"][0], by["washer1"][0]
+    bolt, side = by["screw1"][0], by["screw0"][0]
+    for a, b in itertools.combinations((bracket, side, bolt, knob, nut, washer), 2):
+        inter = a & b
         assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3
     assert bolt.bounding_box().max.Y - nut.bounding_box().max.Y >= 3.0     # thread past it
-    assert nut.bounding_box().min.Z >= side.bounding_box().max.Z + 2.0      # the knurl clear
+    assert knob.bounding_box().max.Y > bolt.bounding_box().max.Y          # its end covered
+    assert knob.bounding_box().min.Z >= side.bounding_box().max.Z + 2.0     # the knob clear
+    assert cr.BRACKET_HOLE - cr.CARRIAGE[0] >= 2.0                           # oversize
+    assert cr.WASHER[1] / 2 - (cr.BRACKET_HOLE - cr.CARRIAGE[0]) / 2 > cr.BRACKET_HOLE / 2
     hc = HandCrank()
     bodies = {b.name: b for b in hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame")}
     thumb = bodies["handle_thumb_screw"]
@@ -435,6 +443,153 @@ def test_a_base_bracket_takes_a_thumb_nut_and_the_hand_crank_a_thumb_screw():
     assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3
     reach = thumb.part.bounding_box().max.Z
     assert reach > hc.box.crank_hub_r + HANDLE_THUMB[2]
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_base_board_is_rounded_offset_and_locates_its_jack():
+    """The base board (round 1's stand review): B's sits 40 mm toward its drive side
+    (``cradle.BASE_Z``), its corners and the notch's mouth rounded, each carriage bolt's
+    hole a routed square (its neck locks by shape) with a dog-bone in each corner, two bays
+    in the notch; the jack locator's two layers lie in the notch with play, their ears in
+    the bays (it can't slide out forward), a square pocket for a 100 mm jack's base under
+    the mouth; a rail's cleats either side of it with play, between its brackets."""
+    from build123d import Location
+
+    from spiderpig.shapes import moved
+
+    lip = np.array([0.0, cr.LIP_HEIGHT])
+    stand = cr.STANDS["decanter_rcm"]
+    y_top = lip[1] + cr.BASE_TOP
+    holes = [(-110.0, 231.7), (386.0, -231.7)]
+    z_mid = cr.BASE_Z["decanter_rcm"]
+    assert z_mid < 0.0                                   # toward the drive side (-z)
+    board, feet = cr._base_plate(lip, stand, y_top, holes, z_mid)
+    bb = board.bounding_box()
+    assert pytest.approx((z_mid - cr.BASE_HALF, z_mid + cr.BASE_HALF)) == (bb.min.Z, bb.max.Z)
+    assert pytest.approx(stand.base) == (bb.min.X, bb.max.X)
+    y = y_top - cr.BASE_T / 2
+
+    def solid_at(x: float, z: float, shape=board, at: float = y, r: float = 0.2) -> bool:
+        probe = moved(cr._rod_y(0.0, 0.0, r, at - 0.5, at + 0.5), Location((x, 0.0, z)))
+        inter = shape & probe
+        return inter is not None and sum(p.volume for p in inter.solids()) > 1e-3
+
+    x0 = stand.base[0]
+    za = z_mid - cr.BASE_HALF
+    assert not solid_at(x0 + 2.0, za + 2.0)              # a rounded corner
+    assert solid_at(x0 + cr.BASE_CORNER_R, za + 2.0)
+    assert not solid_at(x0 + 1.0, cr.NOTCH_R + 1.0)      # the notch's rounded mouth
+    h = cr.CARRIAGE_HOLE / 2
+    for x, z in holes:              # a square hole, a dog-bone past each corner (its relief)
+        assert not any(solid_at(x + sx * (h + 0.25), z + sz * (h - 1.13), r=0.05)
+                       for sx in (-1, 1) for sz in (-1, 1))
+        assert solid_at(x + h + 1.0, z)
+        assert solid_at(x + h + 0.3, z)                  # (no relief mid-side)
+        assert cr.CARRIAGE_HOLE - 0.13 > 6.48            # the neck (6.48 across) goes in
+    # the feet's pads clear the carriage bolts' heads (their circles in plan)
+    for fx, fz in feet:
+        for x, z in holes:
+            assert math.hypot(fx - x, fz - z) > cr.FOOT_PAD_R + cr.CARRIAGE[2] / 2 + 2.0
+    layers = cr._jack_locator(lip, lip[1] - cr.LIP_HEIGHT)
+    assert len(layers) == 2
+    for part in layers:
+        inter = part & board
+        assert inter is None or sum(p.volume for p in inter.solids()) < 1e-3
+        lb = part.bounding_box()
+        yl = (lb.min.Y + lb.max.Y) / 2
+        assert not solid_at(0.0, 0.0, part, yl)           # the pocket under the mouth
+        assert solid_at(0.0, cr.JACK_BASE / 2 + cr.JACK_PLAY + 2.0, part, yl)
+    top = layers[-1].bounding_box()
+    assert y_top - cr.BASE_T + 8.0 < top.max.Y          # it meets the board's edge
+    xe = cr.NOTCH_BAY[0]
+    ear = (layers[-1] & cr._box(xe - 5.0, xe + 5.0, top.min.Y, top.max.Y,
+                                cr.NOTCH_R + 1.0, cr.NOTCH_R + 10.0))
+    assert ear is not None                               # its ear
+    assert sum(p.volume for p in ear.solids()) > 1.0
+    cleats = cr._cleats([-110.0, 386.0], y_top, 209.7, 1, 4.775)
+    assert len(cleats) == 2
+    for c in cleats:
+        b = c.bounding_box()
+        assert -110.0 + cr.BRACKET[0] / 2 <= b.min.X
+        assert 386.0 - cr.BRACKET[0] / 2 >= b.max.X
+        gap = min(abs(b.min.Z - 209.7), abs(b.max.Z - (209.7 - 4.775)))
+        assert gap == pytest.approx(cr.CLEAT[1])
+        assert b.max.Z - b.min.Z >= 25.4                  # SendCutSend's least birch part
+
+
+@pytest.mark.linkage
+def test_b_packs_at_a_mark_inside_its_clear_range():
+    """B's pack pose (``cradle.pack_pose``): the crank's arm along the drive side's outer
+    plate's rear leg, a mark seen without counting turns; the bottle between 44° and 20°
+    neck up there, where the passive cradle link clears its inner bar and the box doesn't
+    grow (round 1's stand review: "4 turns" was 35° one way and 39° the other). The steps
+    lay it on its drive side before the clips come out and the passive panel lifts off; the
+    way back sets the links by the paint marks and snugs the passive side last."""
+    lk = linkage.get("decanter_rcm")
+    t, tilt, turns = cr.pack_pose(lk)
+    assert -44.0 < tilt < -20.0
+    assert 5.0 < abs(turns) < 6.5
+    pts = lk.solve().evaluate(np.array([t]))
+    arm = pts[lk.crank[1]][0] - pts[lk.crank[0]][0]
+    a, b = cr.PACK_POSES["decanter_rcm"].member
+    leg = (pts[cr.mouth_frame(lk)[0]][0] + np.asarray(cr.STANDS["decanter_rcm"].nodes[b])
+           - pts[a][0])
+    cos = float(arm @ leg / np.linalg.norm(arm) / np.linalg.norm(leg))
+    assert cos > math.cos(math.radians(0.5))
+    breakdown, back = cr.module_steps(lk, ["X", "Y"])
+    tags = [tag for _, tag in breakdown]
+    assert tags.index("lay") < tags.index("clips") < tags.index("lift")
+    assert tags.index("hand_crank") < tags.index("base")
+    assert "arm down" in breakdown[0][0]
+    assert "about 5½ turns" in breakdown[0][0]
+    assert any("knobs loose" in s for s in back)
+    assert any("paper check" in s for s in back)
+    assert cr.pack_pose(linkage.get("decanter_hinge")) is None
+
+
+@pytest.mark.no_fabricate
+def test_a_cradles_bom_says_what_its_total_leaves_out():
+    """A cradle's BOM and ORDER.md say plainly what their totals leave out: each unpriced
+    cutting line with its area and, where a fitted sheet bounds it, an estimate marked as
+    one with its basis (the 7075 off the 0.187 in 5052 fit, x1 to x2); the birch stays
+    unpriced. A walker's BOM (no ``cut_ranges``) says nothing new."""
+    from spiderpig.hardware.bom import (
+        CRADLE_CUT_FITS,
+        CRADLE_CUT_PROXIES,
+        CRADLE_CUT_SOURCE,
+        Bom,
+        CutRow,
+        MadeRow,
+        cut_estimate,
+        cut_ranges,
+    )
+    from spiderpig.hardware.order import order_markdown
+
+    made = [MadeRow("L.b2", "laser", "7075", "", 40.0 * 0.4826, 2, sheet="al7075_4p8mm"),
+            MadeRow("base_plate", "laser", "birch", "", 3000.0 * 0.9, 1, sheet="birch_9mm"),
+            MadeRow("L.frame_outer", "laser", "5052", "", 600.0 * 0.47625, 2,
+                    sheet="al5052_4p8mm")]
+    cutting = [CutRow("SendCutSend", "al5052_4p8mm", "5052 0.187 in", 2, 1200.0, 100.0),
+               CutRow("SendCutSend", "al7075_4p8mm", "7075 0.190 in", 2, 80.0, None),
+               CutRow("SendCutSend", "birch_9mm", "Baltic birch 9 mm", 1, 3000.0, None)]
+    ranges = cut_ranges(cutting, made, CRADLE_CUT_PROXIES)
+    base = cut_estimate("al5052_4p8mm", [(40.0, 2)], CRADLE_CUT_FITS["al5052_4p8mm"])
+    assert ranges["al7075_4p8mm"][:2] == pytest.approx((base, 2 * base), abs=0.02)
+    assert ranges["birch_9mm"] is None
+    bom = Bom([], made, cutting=cutting, cut_source=CRADLE_CUT_SOURCE, cut_ranges=ranges)
+    md = bom.markdown()
+    assert "The total excludes 2 unpriced cut lines" in md
+    assert "an estimate of USD" in md
+    assert "Baltic birch 9 mm (1 part, 3000 cm²: no fitted" in md
+    assert "cradle A's files" in CRADLE_CUT_SOURCE
+    assert "359-368" not in CRADLE_CUT_SOURCE
+    assert bom.as_dict()["unpriced_cutting"][1]["estimate_usd"] is None
+    order = order_markdown(bom, [], [])
+    assert "The total excludes 2 unpriced cut lines" in order
+    walker = Bom([], made, cutting=cutting)
+    assert "unpriced cut line" not in walker.markdown()
+    assert "unpriced_cutting" not in walker.as_dict()
 
 
 @pytest.mark.construction
@@ -568,6 +723,13 @@ def test_b_stands_turns_easily_and_holds():
     assert r["drive"]["handle_force_n"] < 25.0
     assert r["rod"]["sf_jam"] >= 1.5
     assert r["crankpin"]["sf_jam"] >= 1.5
+    # the empty cradle turns with a fingertip (the guide's check after it goes back together)
+    assert r["drive"]["empty_handle_force_n"] < cr.EMPTY_GRIP_N
+    # every edge (the board sits 40 mm toward the drive side: cradle.BASE_Z)
+    edges = r["stand"]["edges"]
+    assert set(edges) == {"front", "rear", "drive side", "passive side"}
+    assert all(e["tip_deg"] >= 25.0 and e["push_at_top_n"] >= 25.0 for e in edges.values()), \
+        edges
     rows = r["strength"]["rows"]
     walk = [x["walk_sf"] for x in rows if x["walk_sf"] is not None]
     assert min(walk) >= 2.0, [(x["joint"], x["walk_sf"]) for x in rows]
@@ -621,8 +783,22 @@ def test_the_cradle_has_an_assembly_order(key):
     assert steps.index(hand) == steps.index(base) + 1
     assert {b for s in steps for b in s.adds if b.startswith("L.handle")} <= set(hand.adds)
     assert steps[-1].stage == USE
-    assert set(steps[-1].adds) == {"bottle", "decanter", "decanter_riser"}
+    (use,) = [s for s in steps if "bottle" in s.adds]
+    assert use.stage == USE
+    assert set(use.adds) == {"bottle", "decanter", "decanter_riser"}
+    assert all(not s.adds for s in steps[steps.index(use) + 1:])
     assert steps.index(passive) > steps.index(ties)
+    # the board's cleats with their side's brackets, the jack locator with the board
+    adds = {a for s in steps for a in s.adds}
+    assert {"jack_locator_0", "jack_locator_1"} <= set(base.adds)
+    assert {a for a in adds if a.startswith("base_cleat_L")} <= set(base.adds)
+    (base_r,) = [s for s in steps if any(a.startswith("base_cleat_R") for a in s.adds)]
+    assert steps.index(base_r) > steps.index(base)
+    assert "knobs last" in " ".join(base_r.text)
+    titles = [s.title for s in steps]
+    packs = key in cr.PACK_POSES
+    assert ("Taking it apart for the trip" in titles) == packs
+    assert ("Putting it back together" in titles) == packs
     # the drive side on the base plate before the box; the passive inner plate after the
     # passive stack has met its cradle link; the tie screws after the link
     (saddles,) = [s for s in steps if "front_saddle" in s.adds]
@@ -1089,16 +1265,19 @@ about 78 L where the boxes' packer had 124)."""
 MODULE_BOX = (30.0, 500.0, 600.0)
 """A cradle packed as modules (B): its box, outside, over its base board's length and width
 (x, z: the board lies at the bottom, the other pieces over it) at most 30 mm (its walls and
-clearances take 16), at most 500 mm tall (the drive side with the cradle box lies cradle box
-down, 441 mm across the bay, on the 33 mm board and its thumb nuts), and across no more than
-30 mm over the larger of the board's width and 600 mm (the drive side's height in its plane
-at the pack pose, 595). B, 2026-10-14: 700 x 478 x 610 mm on its 684 x 584 board, about
-204 L. Read off the board, so a larger board moves the bound with it."""
+clearances take 16), at most 500 mm tall (the drive side with the cradle box lies on its
+drive side, the gearbox down, 441 mm across the bay, over the passive panel on the board),
+and across no more than 30 mm over the larger of the board's width and 600 mm (the drive
+side's height in its plane at the pack pose, 596). B, 2026-10-13: 643 x 478 x 611 mm on its
+626 x 530 board, about 188 L (its flat pack had been 112); 2026-10-14 (round 1: the knobs
+and cleats on the board, the pack pose at the rear leg): 702 x 485 x 606 on its 684 x 584
+board, 206 L; the real-shape packer's plan: 700 x 478 x 604, 202 L. Read off the board, so
+a larger board moves the bound with it."""
 PACK_JOINTS = {"decanter_hinge": ("Pin E ", "pillar G"), "decanter_rcm": ("Pins X and Y ", None)}
 """Where each cradle link comes off its side: its pins and its pillar (the steps name them)."""
 MODULES = {"decanter_hinge": None,
            "decanter_rcm": {"base", "drive", "passive", "hand_crank"}}
-"""The pieces a cradle that packs as modules comes apart into (``cradle_pack.PACK_TURNS``),
+"""The pieces a cradle that packs as modules comes apart into (``cradle.PACK_POSES``),
 besides the spare bottles' adapters and collars; None: it packs flat."""
 
 
@@ -1115,11 +1294,15 @@ def test_the_cradle_packs_in_one_box(key):
     bigger than :data:`PACK_BOX` (modules: :data:`MODULE_BOX`, off the base board's size);
     the steps name where the cradle link comes off its side. A packs flat, from crank angle
     0. B packs as three modules and its hand crank (:data:`MODULES`, the spare adapters
-    loose), cranked 4 turns from rest first: there its passive side panel, its two clips
-    out, slides straight off its cradle link and meets nothing of the drive side or the
-    cradle box (``slide_off``), where at rest the inner bar would meet the cradle link."""
+    loose), cranked first until the crank's arm lies along its outer plate's rear leg (about
+    5 1/2 turns from rest, 31° neck up): there its passive side panel, its two clips out,
+    comes straight off its cradle link's pins and meets nothing of the drive side or the
+    cradle box (``slide_off``), where at rest the inner bar would meet the cradle link; the
+    cradle is laid on its drive side first and the panel lifted off (standing, the drive
+    module would tip onto its cradle box; on its passive side, the pins would drop out of
+    their links), and the steps say how it goes back together."""
     from spiderpig import voxpack as vp
-    from spiderpig.cradle_pack import PACK_PLANS, PACK_TURNS, flat_pack, pack_t
+    from spiderpig.cradle_pack import PACK_PLANS, flat_pack, pack_t
     from spiderpig.fabricate import fabricate, template_for
     from spiderpig.mechanism import Pose
     from spiderpig.mesh import tessellate_many
@@ -1197,13 +1380,21 @@ def test_the_cradle_packs_in_one_box(key):
     base = set(by["base"]["parts"])
     assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_nut1")} <= base
     assert {shipped[n].bom_key for n in base if n.startswith("foot_bracket")} == {
-        "m6_carriage_25", "m6_thumb_nut"}
-    assert p["pose"]["turns_from_rest"] == PACK_TURNS[key]
-    assert p["pose"]["tilt_deg"] == pytest.approx(-34.8, abs=1.0)
+        "m6_carriage_25", "m6_washer_wide", "m6_nut", None}         # (None: the knobs)
+    assert {n for n in shipped if n.startswith(("base_cleat", "jack_locator"))} <= base
+    assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_knob")} <= base
+    assert 5.0 <= p["pose"]["turns_from_rest"] <= 6.5
+    assert -44.0 < p["pose"]["tilt_deg"] < -20.0             # b6 clears; the box doesn't grow
     assert p["slide_off"] == {"hits": [], "clips_out": ["R.pin_X_clip", "R.pin_Y_clip"]}
-    for words in ("4 handle turns", "R-clip", "slide it straight off", "thumb nuts",
-                  "thumb screw"):
+    for words in ("rear leg", "about 5½ turns", "R-clip", "on its drive side",
+                  "lift it straight up", "thumb knobs", "thumb screw", "paint pen"):
         assert words in text, (words, p["steps"])
+    assert text.index("on its drive side") < text.index("R-clip") < text.index(
+        "lift it straight up")
+    back = " ".join(p["reassembly"])
+    for words in ("paint marks", "pin X through its spacer into its hole first",
+                  "Both R-clips in", "cleats", "knobs loose", "paper check"):
+        assert words in back, (words, p["reassembly"])
 
 
 @pytest.mark.construction
