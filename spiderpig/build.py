@@ -605,6 +605,8 @@ def _write_manifest(out: Path, config, args=None) -> None:
     from spiderpig.stages.resolve import resolve, spec_of
 
     stored = getattr(args, "stored", None)
+    if stored is not None and stored.config != config:
+        stored = None               # (--side-only of a stored robot: the side's spec)
     spec = spec_of(config) if stored is None else stored.spec.to_dict()
     kerf = getattr(args, "kerf", None)
     size = getattr(args, "sheet_size", None)
@@ -612,11 +614,12 @@ def _write_manifest(out: Path, config, args=None) -> None:
         spec.setdefault("fit", {})["kerf_mm"] = kerf
     if size:
         spec.setdefault("fit", {})["sheet_size_mm"] = list(size)
-    own = (stored is not None and config == stored.config
-           and kerf == stored.spec.fit.kerf_mm
-           and (list(size) if size else None) == (list(stored.spec.fit.sheet_size_mm)
-                                                  if stored.spec.fit.sheet_size_mm else None))
-    design = stored if own else resolve(spec, store=None)
+    design = resolve(spec, store=None) if stored is None else stored
+    if stored is not None:      # built as recorded: itself; with another kerf or sheet: not
+        fit = stored.spec.fit
+        if (kerf != fit.kerf_mm or (list(size) if size else None)
+                != (list(fit.sheet_size_mm) if fit.sheet_size_mm else None)):
+            design = resolve(spec, store=None)
     (out / "manifest.json").write_text(json.dumps(
         {"design": design.id, "engine_version": design.engine_version,
          "written_by": "spiderpig build", "kerf_mm": kerf,
