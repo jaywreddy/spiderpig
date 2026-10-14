@@ -245,7 +245,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
             _push(rows, target_row(design, target_field("motion", "transmission_angle_deg"),
                                    angle, "check", detail=f"the least over the closures is at "
                                    f"{at}, folded about 90°; the ranges are on the card"))
-    if design.kind != "walker" and cr.output is not None:
+    if not design.lk.walks and cr.output is not None:
         rows.append(Row("output.promises", "check", cr.output["broken"] or "hold", None,
                         not cr.output["broken"], "proven"))
         for name in OUTPUT_METRICS:
@@ -270,7 +270,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     rows.append(_stage_row("static.crank_route", "check", static,
                            f"{len(cr.clearances)} static clearances, every link has a "
                            "crank point"))
-    if design.kind == "walker":
+    if design.lk.walks:
         _push(rows, target_row(design, target_field("motion", "ground_clearance_mm"),
                                cr.ground_clearance_mm, "static",
                                detail=(f"the body's lowest point is {cr.lowest_body_part}"
@@ -390,11 +390,11 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     rows += _cut_rule_rows(br.cut_rules or api.cut_rules_of(mech, cfg.sheet), rep)
 
     # -- joint strength -----------------------------------------------------------
-    if design.kind == "walker":
+    if design.lk.walks:
         rows += _strength_rows(design, rep, level)
 
     # -- sim (full) --------------------------------------------------------------
-    if level == "full" and design.kind == "walker":
+    if level == "full" and design.lk.walks:
         rows += _sim_rows(design, rep)
     return _done(design, rep, t0)
 
@@ -546,7 +546,7 @@ def stack_floor_note(design: Design, pr) -> str:
     note = (f"{pr.height_mm:g} mm is proven the thinnest for {cfg.linkage}'s {cfg.module} "
             f"module on {cfg.pitch:g} mm layers ({pr.n_layers} layers, the frame plates "
             f"included)")
-    if design.kind == "walker":
+    if design.lk.walks:
         lk = design.lk
         legs = len(lk.leg_modules[cfg.module])
         fewer = [m for m, ls in lk.leg_modules.items() if len(ls) < legs]

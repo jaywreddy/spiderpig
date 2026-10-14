@@ -244,7 +244,7 @@ def compliance(lk: Linkage, values: tuple[float, ...], section: Section, *,
     with np.errstate(all="ignore"):
         pts = LegSolution(1, 0.0, values, lk.key).at(*ins)
     n = next(iter(pts.values())).reshape(-1, 2).shape[0]
-    drives = {lk.drives[k][0]: lk.drives[k][1] for k in lk.inputs} if lk.kind == "arm" else {}
+    drives = {lk.drives[k][0]: lk.drives[k][1] for k in lk.inputs} if lk.ranged else {}
     lever = np.array([0.0, -drop, 0.0])
     segments = {b: segs for b, (_, segs) in lk.links.items()}
     worst = np.zeros(3)

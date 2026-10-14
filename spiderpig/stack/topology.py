@@ -287,7 +287,7 @@ def _arm_of(tmpl):
         lk = get(meta["linkage"])
     except KeyError:
         return None
-    return lk if lk.kind == "arm" else None
+    return lk if lk.ranged else None
 
 
 def topology_from_template(tmpl, samples: int = 1440) -> Topology:

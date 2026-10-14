@@ -1493,9 +1493,10 @@ def test_stack_floor_note_names_the_modules_with_fewer_legs_that_walk(monkeypatc
     strides = {"single": 0.0, "double": 40.0}
     monkeypatch.setattr(api, "module_stride", lambda key, module: strides.get(module))
     pr = SimpleNamespace(height_mm=66.5, n_layers=14)
-    lk = SimpleNamespace(leg_modules={"single": [0], "double": [0, 1], "quad": [0, 1, 2, 3]})
+    legs = {"single": [0], "double": [0, 1], "quad": [0, 1, 2, 3]}
 
     def note(module, kind="walker"):
+        lk = SimpleNamespace(leg_modules=legs, walks=kind == "walker")
         d = SimpleNamespace(config=replace(BuildConfig(), module=module), kind=kind, lk=lk)
         return vf.stack_floor_note(d, pr)
 

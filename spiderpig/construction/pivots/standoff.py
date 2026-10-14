@@ -448,7 +448,7 @@ class StandoffAxle:
                           "columns"))
         if inner:
             lk = getattr(getattr(view.ctx, "config", None), "lk", None)
-            where = ("from outside the inner plate" if lk is not None and lk.kind == "arm"
+            where = ("from outside the inner plate" if lk is not None and lk.ranged
                      else "from the servo bay (a ball-end key)")
             ops.append(Op(JOIN, (1,), whole(*inner), "",
                           f"Each pillar's inner screw and washer {where}, threadlocker, to "

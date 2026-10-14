@@ -82,7 +82,7 @@ def _inputs(lk: Linkage, n: int = 720) -> list[np.ndarray]:
     """What a stage check samples: ``n`` crank angles; with two inputs, a grid of
     ``(n/4)²`` over their torus; an arm's, a grid over its inputs' box (``n`` along one
     input, ``n/4`` a side over two)."""
-    if lk.kind == "arm":
+    if lk.ranged:
         return list(lk.box(n if len(lk.inputs) == 1 else n // 4))
     if len(lk.inputs) == 1:
         return [2.0 * math.pi * np.arange(n) / n]

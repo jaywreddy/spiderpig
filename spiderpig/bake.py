@@ -816,7 +816,7 @@ def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animati
         scene.extras["output"] = asdict(lk.output)
     if ref.mech.meta.get("tree"):      # an arm's spatial joints (the viewer's joint sliders)
         scene.extras["tree"] = ref.mech.meta["tree"]
-    if lk.kind == "arm":               # its inputs at the clip's first frame (the sliders')
+    if lk.ranged:                      # its inputs at the clip's first frame (the sliders')
         q0 = lk.tour(np.array([T_REF]))
         scene.extras["inputs0"] = {n: math.degrees(float(v[0]))
                                    for n, v in zip(lk.inputs, q0, strict=True)}

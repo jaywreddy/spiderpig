@@ -1329,7 +1329,10 @@ robot is an entry rather than an edit across the stages:
   bake see the poses they sample on the tour, no more. The arm checks refuse a link that
   isn't rigid, an input that doesn't turn its link, and a parallelogram that flattens
   (`linkage/constraints.py`, the linearised constraints' condition number).
-  `LegSolution.at` evaluates explicit inputs. The first arm
+  `LegSolution.at` evaluates explicit inputs. A stage branches on what a linkage does,
+  never on its kind's name: `Linkage.ranged` (no crank: inputs over ranges, a tour,
+  drives) and `Linkage.walks` (feet on a floor: the gait, the walk model, MuJoCo); the
+  kind is their label, and the robot a kind makes is `config.robot_layout`. The first arm
   is `linkages/palletizer.py`, an MT4-like palletizer side (130 / 150 mm, two
   parallelograms keep the tool level, the elbow driven from the shoulder).
 - **Precision** (`spiderpig/precision.py`, `spiderpig precision`): the error budget at a

@@ -108,7 +108,7 @@ def model(mech: Mechanism, config: BuildConfig, t: float) -> UrdfModel:
     from spiderpig import walk
 
     lk = config.lk
-    if lk.kind != "arm":
+    if not lk.ranged:
         raise ValueError(f"{lk.key} is a {lk.kind}: the URDF is an arm's (its inputs drive "
                          "links over ranges)")
     values = config.values

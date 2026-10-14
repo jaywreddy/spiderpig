@@ -70,7 +70,7 @@ def node_poses(config: BuildConfig, glb: Path, q_deg: dict[str, float]) -> dict[
     from spiderpig import walk
 
     lk = config.lk
-    if lk.kind != "arm":
+    if not lk.ranged:
         raise ValueError(f"{lk.key} is a {lk.kind}: joint poses are an arm's")
     unknown = sorted(set(q_deg) - set(lk.inputs) - {"q1", "q4"})
     if unknown:
