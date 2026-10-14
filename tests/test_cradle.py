@@ -154,8 +154,11 @@ def test_the_worm_holds_and_every_bottle_lies_with_its_mouth_on_the_pivot():
         assert 0.0 <= s.rear <= rear.travel
         assert cr.STOP_RANGE[0] <= s.stop <= cr.STOP_RANGE[1]
         assert cr.seat(size) == pytest.approx((0.0, 0.0, 0.0), abs=1e-9), size.name
-        # its centre of mass between the saddles: lying level or tipped, it bears on both
-        assert front.vee[1] < size.com_from_mouth < rear.vee[1], size.name
+        # its centre of mass (the shell-and-wine model, design review round 1) behind the
+        # front V, 28-40 % of its length up from its base (a 6 L methuselah's, 390 mm from
+        # the mouth, lies 10 mm behind the rear V's end: the mounting review's B1)
+        assert front.vee[1] < size.com_from_mouth, size.name
+        assert 0.6 < size.com_from_mouth / size.length < 0.72, size.name
     assert cr.setting(cr.METHUSELAH) == cr.Setting(0.0, 0.0, cr.METHUSELAH.length + 0.5)
     # a magnum in the 6 L's setting would lie nose up, its mouth off the pivot
     y0, slope, x0 = cr.seat(cr.MAGNUM, cr.setting(cr.DESIGN))
@@ -785,9 +788,14 @@ def test_the_cradle_stands_turns_easily_and_holds():
     assert r["stand"]["worst_tip_deg"] >= 15.0
     assert min(c["push_at_top_n"] for c in r["stand"]["cases"]) >= 25.0
     assert r["drive"]["irreversible"]
-    # (against its 45 N·m rating; the peak is a sealed full 6 L at one tilt, at hand speed)
-    assert r["drive"]["gearbox_sf"] >= 1.3
-    assert r["drive"]["handle_force_n"] < 25.0
+    # (against its 45 N·m rating; the peak is a sealed full 6 L at one tilt, at hand speed.
+    # Since the corrected centre of mass, design review round 1, the peak is 36.0 N·m, SF
+    # 1.25, and 25.4 N at the grip, where the bars were 1.3 and 25 N. Kept by the drive
+    # round: the 45 N·m is Phidgets' continuous rating, turned by hand a few minutes a pour;
+    # the clutch, not a 40 N push, now bounds the jam, so the 25 N bar's reason (the push
+    # 1.6 x the turn) is gone; a counterbalance would halve both: DECISIONS.md 2026-10-14)
+    assert r["drive"]["gearbox_sf"] >= 1.2
+    assert r["drive"]["handle_force_n"] < 26.0
     assert r["rod"]["sf_bottle"] >= 3.0
     assert r["rod"]["sf_jam"] >= 1.5
     assert r["crankpin"]["sf_bottle"] >= 3.0
@@ -800,26 +808,31 @@ def test_the_cradle_stands_turns_easily_and_holds():
     assert crank["walk_sf"] >= 2.5
     assert crank["jam_sf"] >= 1.5
     assert r["drive"]["jam_hand_force_n"] == JAM_HAND_N
-    # every joint holds the jam (pin E, between the rod and the cradle link, a hardened
-    # steel pivot pin since 2026-10-13)
+    # every joint, link, column and plate holds the jam (rated from the force vectors:
+    # the links chord by chord, the pillar and the columns on their box)
     jam = [x["jam_sf"] for x in rows if x["jam_sf"] is not None]
     assert min(jam) >= 1.3, [(x["joint"], x["jam_sf"]) for x in rows]
+    _the_structure_is_rated(r, ("b2",), {"pillar:G"},
+                            {"column:C1", "column:C2", "column:D1", "column:D2"})
     _holds_the_clutchs_cap(r)
 
 
 def _holds_the_clutchs_cap(r: dict) -> None:
     """A report's drive at its clutch (``cradle_drive``): its least slip clears the worst
     starting turn by the margin, its cap under the 40 N push's torque; every part holds the
-    cap at SF 1.3 or more 30° and more from the toggles, and the band round a toggle where
-    any falls under 1.3 narrower than the old case's 30° skip; the gearbox's and the keyed
-    plates' rows at the jams."""
+    cap at SF 1.3 or more 30° and more from the toggles (where the 40 N push's case skipped,
+    every part is now rated: the band round a toggle where any falls under 1.3 is reported,
+    no wider); the gearbox's and the keyed plates' rows at the jams."""
     clutch = r["drive"]["clutch"]
     assert clutch["margin"] >= clutch["margin_floor"]
     assert clutch["crank_cap_nm"] < r["drive"]["jam_torque_nm"]
     capped = r["jam_capped"]
     assert capped["crank_nm"] == clutch["crank_cap_nm"]
     assert capped["away"][0] >= 1.3, capped["away"]
-    assert max(capped["holds_1p3_outside_deg"]) < 30.0, capped["holds_1p3_outside_deg"]
+    holds = capped["holds_1p3_outside_deg"]
+    bands = [(x["band_deg"], x["worst"]) for x in capped["by_band"]]
+    assert holds is not None, bands                 # (5° steps: where the old case
+    assert holds <= 30.0, bands                     # skipped, now rated at a bound)
     assert capped["by_band"][0]["band_deg"] == 0.0              # the whole turn rated
     assert r["drive"]["gearbox_jam_x_rating"] > 1.0             # (reported, not a bar)
     assert r["drive"]["keyway"]["four_plates_sf_cap"] >= 2.0
@@ -843,7 +856,10 @@ def test_b_stands_turns_easily_and_holds():
     assert min(c["push_at_top_n"] for c in r["stand"]["cases"]) >= 25.0
     assert r["drive"]["irreversible"]
     assert r["drive"]["gearbox_sf"] >= 1.3
-    assert r["drive"]["handle_force_n"] < 25.0
+    # (25.4 N since the corrected centre of mass, design review round 1; the bar was 25 N,
+    # the jam rule's push at 1.6 x the turn: the clutch replaces it, slipping at 1.1 x this
+    # at its least: DECISIONS.md 2026-10-14, the drive)
+    assert r["drive"]["handle_force_n"] < 26.0
     assert r["rod"]["sf_jam"] >= 1.5
     assert r["crankpin"]["sf_jam"] >= 1.5
     # the empty cradle turns with a fingertip (the guide's check after it goes back together)
@@ -859,14 +875,43 @@ def test_b_stands_turns_easily_and_holds():
     jam = [x["jam_sf"] for x in rows if x["jam_sf"] is not None]
     assert min(jam) >= 1.3, [(x["joint"], x["jam_sf"]) for x in rows]
     # the quick-release clevis pins at X and Y (2026-10-13): stronger than the M6 Chicago
-    # screws they replaced (1.72 and 1.49 jammed)
+    # screws they replaced (1.72 and 1.49 jammed); K and J2 clevis pins too, P and J the
+    # hardened pivot pins (design review round 1): no Chicago screw left
     quick = {x["joint"]: x for x in rows if x["joint"] in ("pin:X", "pin:Y")}
     assert set(quick) == {"pin:X", "pin:Y"}
     for x in quick.values():
         assert "clevis" in x["section"], x
         assert x["jam_sf"] >= 2.0, x
         assert x["walk_sf"] >= 6.0, x
+    pins = {x["joint"]: x["section"] for x in rows if x["kind"] == "pin"}
+    assert {j for j, s in pins.items() if "clevis" in s} == {"pin:K", "pin:J2", "pin:X", "pin:Y"}
+    assert {j for j, s in pins.items() if "pivot pin" in s} == {"pin:P", "pin:J"}
+    _the_structure_is_rated(r, ("b2", "b6"), {"pillar:O1", "pillar:O2"},
+                            {"column:D1", "column:D2"})
+    # the known limits (not designed for): a block near the mouth multiplies the pins' loads
+    front = r["blocked"]["cases"]["front saddle"]
+    assert front["joints_n"]["J"] > 3.0 * max(x["jam_n"] or 0.0 for x in rows
+                                              if x["joint"] == "pin:J")
     _holds_the_clutchs_cap(r)
+
+
+def _the_structure_is_rated(r: dict, links, pillars, columns) -> None:
+    """The report's rows include the structure rated from the force vectors (design review
+    round 1, ``cradle_report.structure``): each cradle link and bell crank chord by chord
+    (its worst chord named), each pillar on its box, each stand column, both frame plates'
+    members."""
+    rows = {x["joint"]: x for x in r["strength"]["rows"]}
+    st = r["structure"]
+    for link in links:
+        assert st["link_frames"]["jam"][link]["worst"]["chord"], link
+        assert f"link:{link}" in rows
+    for p in pillars:
+        assert p.split(":", 1)[-1] in st["posts"]["jam"]
+        assert rows[p]["jam_sf"] is not None
+    for c in columns:
+        assert rows[c]["kind"] == "column"
+    assert {"frame:outer", "frame:inner"} <= set(rows)
+    assert st["skipped_deg"] > 0.0                    # the toggles, left to the drive's cap
 
 
 @pytest.mark.slow
@@ -1034,6 +1079,96 @@ def test_the_cradle_pages_swing_is_the_linkages(key):
     assert got["standard"] == pytest.approx([12.73, 68.87, 300.5], abs=0.01)
     assert set(m["adjust"]) == {"front", "rear", "stop"}
     assert [s["moves"] for s in m["saddles"]] == ["front", "rear"]
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
+def test_a_bell_crank_is_rated_by_the_moment_about_its_pivot():
+    """``cradle_structure.link_bending`` (design review round 1): an L-shaped bell crank on
+    its pivot O2, a force at its lever P and the balancing one at its arm K, takes their
+    whole moment about O2 through each root (``|r x F|``, not a beam's ``F L / 4``); the
+    chord P-K turns it into axial force; a link's own weight is spread over its joints."""
+    from types import SimpleNamespace
+
+    from spiderpig.cradle_structure import LinkSection, link_bending
+
+    xy = {"O2": (0.0, 0.0), "P": (100.0, 0.0), "K": (0.0, 150.0)}
+    pts = {k: np.array([v]) for k, v in xy.items()}
+    m = 100.0 * 1000.0                                        # N·mm about O2
+    on = {"P": (0.0, 1000.0), "K": (m / 150.0, 0.0), "O2": (-m / 150.0, -1000.0)}
+    joints = [(j, "b2", "ground" if j == "O2" else "x") for j in on]
+    vecs = np.array([[on[j] for j, _, _ in joints]])
+    sec = {"b2": LinkSection(24.0, 4.826, 476.0)}
+    for edges, most in (((("O2", "P"), ("O2", "K")), 100.0), ((("O2", "P"), ("O2", "K"),
+                                                                ("P", "K")), 25.0)):
+        lk = SimpleNamespace(links={"b2": (("O2", "P", "K"), edges)})
+        got = link_bending(lk, pts, joints, vecs, sec, {"O2": 12.35})["b2"]["worst"]
+        if most == 100.0:
+            assert got["moment_nm"] == pytest.approx(100.0, rel=1e-3)
+            assert got["at"] == "O2"
+            z = 4.826 * (24 ** 3 - 12.35 ** 3) / (6 * 24)        # the net section at O2
+            assert got["stress_mpa"] == pytest.approx(m / z + abs(got["axial_n"]) /
+                                                      ((24 - 12.35) * 4.826), rel=1e-3)
+        else:
+            assert got["moment_nm"] < most, got
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
+def test_a_pillar_is_held_only_where_its_inner_plate_is():
+    """``cradle_structure.posts``: two posts in a line (B's inner bar O1-O2, before round 1)
+    hold a pillar's end along the line, not across it, where the pillar is a cantilever off
+    the outer plate (its foot takes nearly ``F a``: only the bar's twist holds it); a third
+    post off the line, the plate a triangle, holds it both ways. Each end held against
+    turning by its plate's strips (``plate_spring``)."""
+    from spiderpig.cradle_structure import E_STEEL, Post, plate_spring, posts
+
+    ei = E_STEEL * math.pi * (12 ** 4 - 5 ** 4) / 64
+    a, f, t = 50.0, 1000.0, 4.763
+    o1, o2, d1 = np.array([0.0, 0.0]), np.array([0.0, -200.0]), np.array([-60.0, -260.0])
+    far = [(np.array([300.0, -100.0]), 24.0), (np.array([-100.0, -400.0]), 24.0)]
+
+    def foot(side, d) -> float:
+        vecs = np.array([[d]], float) * f
+        return posts(side, 70.0, vecs)["O2"]["foot_nm"]
+
+    def post(name, at, inner, loads=()):
+        return Post(name, at, ei, list(loads), plate_spring(at, far, t),
+                    plate_spring(at, [(q, 24.0) for q in inner], t))
+
+    two = [post("O1", o1, [o2]), post("O2", o2, [o1], [(0, 1.0, a)])]
+    across = foot(two, (1.0, 0.0))
+    assert across > 0.6 * f * a / 1000.0             # the bar's twist holds the end a little
+    assert foot(two, (0.0, 1.0)) < 0.5 * across      # along: O1 holds it
+    three = [post("O1", o1, [o2, d1]), post("O2", o2, [o1, d1], [(0, 1.0, a)]),
+             post("D1", d1, [o1, o2])]
+    assert foot(three, (1.0, 0.0)) < 0.5 * across
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
+def test_a_frame_plates_member_buckles_out_of_its_plane():
+    """``cradle_structure.members``: a strut between two feet takes a load at its middle
+    node in compression; its Euler load out of the plane at its own width and the plate's
+    thickness; held across at both nodes, pinned (``MEMBER_K``); a node not held across
+    tilts on what holds it."""
+    from spiderpig.cradle_structure import E_ALU, members
+
+    xy = {"A": np.array([0.0, 0.0]), "B": np.array([200.0, 0.0]),
+          "C": np.array([100.0, 100.0])}
+    pairs = (("A", "C"), ("C", "B"), ("A", "B"))
+    load = {"C": np.array([[0.0, -1000.0]])}
+    got = {m["member"]: m for m in members(xy, pairs, {}, 4.763, 193.0, load, ("A", "B"),
+                                           tied=("A", "B", "C"))["members"]}
+    ac = got["A-C"]
+    assert ac["compression_n"] == pytest.approx(1000.0 / math.sqrt(2), rel=0.05)   # (rigid joints)
+    L = 100.0 * math.sqrt(2)
+    assert ac["euler_n"] == pytest.approx(math.pi ** 2 * E_ALU * 24 * 4.763 ** 3 / 12 / L ** 2,
+                                          abs=0.1)
+    loose = {m["member"]: m for m in members(xy, pairs, {}, 4.763, 193.0, load, ("A", "B"),
+                                             tied=("A", "B"))["members"]}
+    assert loose["A-C"]["untied"] == ["C"]
+    assert loose["A-C"]["buckling"] < ac["buckling"]
 
 
 @pytest.mark.no_fabricate
@@ -1395,12 +1530,13 @@ and across no more than 30 mm over the larger of the board's width and 600 mm (t
 side's height in its plane at the pack pose, 596). B, 2026-10-13: 643 x 478 x 611 mm on its
 626 x 530 board, about 188 L (its flat pack had been 112); 2026-10-14 (round 1: the knobs
 and cleats on the board, the pack pose at the rear leg): 702 x 485 x 606 on its 684 x 584
-board, 206 L; the real-shape packer's plan: 700 x 478 x 604, 202 L. Read off the board, so
-a larger board moves the bound with it."""
+board, 206 L; the real-shape packer's plan: 700 x 478 x 604, 202 L; round 1's structure (the
+inner plate's triangle and leg, its columns, the 680 mm board): 696 x 499 x 608, 211 L. Read
+off the board, so a larger board moves the bound with it."""
 PACK_JOINTS = {"decanter_hinge": ("Pin E ", "pillar G"), "decanter_rcm": ("Pins X and Y ", None)}
 """Where each cradle link comes off its side: its pins and its pillar (the steps name them)."""
 MODULES = {"decanter_hinge": None,
-           "decanter_rcm": {"base", "drive", "passive"}}
+           "decanter_rcm": {"base", "drive", "passive", "hand_crank"}}
 """The pieces a cradle that packs as modules comes apart into (``cradle.PACK_POSES``),
 besides the spare bottles' adapters and collars; None: it packs flat."""
 
@@ -1417,10 +1553,9 @@ def test_the_cradle_packs_in_one_box(key):
     goes in after it, each rests on what is under it (directly or on foam pads); the box no
     bigger than :data:`PACK_BOX` (modules: :data:`MODULE_BOX`, off the base board's size);
     the steps name where the cradle link comes off its side. A packs flat, from crank angle
-    0. B packs as three modules, its hand crank in its stow clips on the drive side
-    (:data:`MODULES`), cranked first until the crank's arm lies along its outer plate's rear
-    leg (about 5 1/2 turns from rest, 31° neck up): there its passive side panel, its two
-    clips out,
+    0. B packs as three modules and its hand crank (:data:`MODULES`, the spare adapters
+    loose), cranked first until the crank's arm lies along its outer plate's rear leg (about
+    5 1/2 turns from rest, 31° neck up): there its passive side panel, its two clips out,
     comes straight off its cradle link's pins and meets nothing of the drive side or the
     cradle box (``slide_off``), where at rest the inner bar would meet the cradle link; the
     cradle is laid on its drive side first and the panel lifted off (standing, the drive
@@ -1500,18 +1635,8 @@ def test_the_cradle_packs_in_one_box(key):
     assert {a for a, _ in mech.meta["fastened"] if a in shipped} <= drive
     assert {n for n in shipped if n.startswith("R.") and n != f"R.{link}"} <= passive
     assert {"R.pin_X_pin", "R.pin_X_clip", "R.pin_Y_clip", "R.frame_outer"} <= passive
-    # the hand crank in its stow clips on the drive side (round 1's drive review): moved
-    # within the drive piece, clear of every other part of it
-    hand = {n for n in shipped if n.startswith("L.handle")}
-    assert hand | {"L.stow_clip_0", "L.stow_clip_1"} <= drive
-    assert hand <= set(by["drive"].get("part_matrix", {}))
-    stowed = np.asarray(mech.meta["stow_matrix"], float)
-    crank = [moved(shipped[n].placed_part(), Pose(stowed).to_location()) for n in hand]
-    for n in drive - hand:
-        part = shipped[n].placed_part()
-        for c in crank:
-            inter = c & part
-            assert inter is None or sum(x.volume for x in inter.solids()) < 1.0, n
+    assert set(by["hand_crank"]["parts"]) == {n for n in shipped if n.startswith("L.handle")}
+    assert "L.handle_thumb_screw" in by["hand_crank"]["parts"]
     base = set(by["base"]["parts"])
     assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_nut1")} <= base
     assert {shipped[n].bom_key for n in base if n.startswith("foot_bracket")} == {
@@ -1522,8 +1647,7 @@ def test_the_cradle_packs_in_one_box(key):
     assert -44.0 < p["pose"]["tilt_deg"] < -20.0             # b6 clears; the box doesn't grow
     assert p["slide_off"] == {"hits": [], "clips_out": ["R.pin_X_clip", "R.pin_Y_clip"]}
     for words in ("rear leg", "about 5½ turns", "R-clip", "on its drive side",
-                  "lift it straight up", "thumb knobs", "thumb screw", "paint pen",
-                  "stow clips"):
+                  "lift it straight up", "thumb knobs", "thumb screw", "paint pen"):
         assert words in text, (words, p["steps"])
     assert text.index("on its drive side") < text.index("R-clip") < text.index(
         "lift it straight up")

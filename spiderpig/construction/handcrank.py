@@ -888,8 +888,7 @@ class HandCrank(Group):
                "washer with a little end play (about 0.3 mm): if it binds, sand "
                "its printed spacer down (never shim it up: the washer keeps it off the screw "
                "heads over it).", "layer"),
-            Op(FINISH, (2,), whole(*view.named(r"handle(_\w+)?"),
-                                   *view.named(r"stow_clip_\d+")),
+            Op(FINISH, (2,), whole(*view.named(r"handle(_\w+)?")),
                "Hand crank",
                "Print the hub (with its tube, flange and journal) solid, 100 % infill: it "
                "carries the input's key; ream its bore with an 11 mm drill by hand. Two M3 "
@@ -922,11 +921,7 @@ class HandCrank(Group):
                "way. Where the head is over the rod, press the rod up against its washer and "
                "slide a sheet of paper between them: it must pass. If it drags, take the "
                "crankpin's top screw and washer off, file 0.1 mm off the crankpin's top end, "
-               "sand the rod's spacer to keep its play, and check again. "
-               + ("The two printed stow clips snap onto the outer plate's strut in front of "
-                  "the gearbox, outside (a drop of super glue under each): the crank rides "
-                  "in them for the trip. " if view.named(r"stow_clip_\d+") else "")
-               + "Then the worm's "
+               "sand the rod's spacer to keep its play, and check again. Then the worm's "
                "hold: with a full bottle (or about 11 kg of water bottles) in the cradle, "
                "turn it to level, let go, tap the table and watch a pencil line across the "
                "crank's arm and the outer plate for 10 minutes: it must not move. If it creeps "

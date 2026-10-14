@@ -1077,6 +1077,99 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/hardware/cradle_catalog.py`, `viewer/src/decant/{pour,pack,main}.ts`,
   `tests/test_cradle.py`.
 
+### 2026-10-14: the cradles' structure, rated from the force vectors (design review round 1: structure and strength)
+
+- **What:** the review's linkage and laser-cut-parts reports
+  (`/root/scratch/decant/review5/r1/`) found the strength check blind where it mattered
+  most, and the bottles' centres of mass too far forward. Fixed, in this order:
+  - **The bottles' centres of mass** (`cradle.SIZES`): from a glass-shell-and-wine model
+    scaled to each empty mass, 31-36 % of the length up from the base. The 6 L
+    methuselah's is 390 mm from the mouth, not 331 (42 % from the base had been assumed).
+  - **The checks** (`spiderpig/cradle_structure.py`, `cradle_report.structure`, fed to
+    `strength.check` through the loads document): every link a plane frame of its chords
+    under the statics' force vectors (`cradle_report.statics_vectors`), rated at each
+    chord's end on the net section of its hole, and in Euler for a chord in compression;
+    the posts (pillars and columns) solved as one box with the inner plate rigid in its
+    plane and each end held by its plate's strips; the frame plates' members in-plane, in
+    Euler out of the plane, and where a node isn't held across (the gearbox's O), its
+    tilt. `link_rows`' `F L / 4` and the pillars' "between plates" stay for walkers.
+  - **B:** b2 a triangle (the chord P-K); b6 0.187 in with the chord X-Tf1, its rear arm
+    X-Tr1 40 mm wide and X-Y 32 mm (`config.PRODUCT_CHORD_R`); the inner plate a triangle
+    O1-O2-D1 and a leg D1-D2 on two columns; the outer plate's O2-O 64 mm wide; clevis
+    pins at K and J2 (P and J hardened pivot pins: no Chicago screw); the base board 680 mm
+    long (with the stand round's 40 mm offset toward the drive side, `cradle.BASE_Z`: the
+    least that keeps the rear edge past 25°, at 25.2°).
+  - **B's pack** (`cradle_pack.PACK_PLANS`): the panel's new inner triangle, leg and
+    columns stand where the drive side's gearbox had dropped past it, so the drive side
+    landed on the panel and tipped. The panel now lies turned the other way, at the board's
+    +x end, the drive side on its drive side over it: 696 x 499 x 608 mm, 211 L (202 L
+    before), every piece supported.
+  - **A:** b2's E-Tr1 32 mm wide; a fifth column, D3, down the front leg; G-O 48 mm wide.
+  - **Both:** the columns 12 mm (NETRF12 on M6, `Stand.column_d`); the strength check's
+    holes the cut ones (`strength.cut_hole`: 8.2 mm, not 8.35).
+- **Why:**
+  - **Bending from `|r x F|`:** a link of three pins isn't a beam between its farthest two.
+    B's b2 is a bell crank on O2: the whole jammed cradle moment, 230 N·m, passes its
+    lever's root. Rated so, it held 0.80 at its pillar's hole, where the old rule read
+    2.61. b6's rear arm, a cantilever off X, held 0.32 in 0.125 in; it had only been rated
+    in net tension.
+  - **The box, not "between plates":** the inner plate is held in its plane by nothing but
+    the posts' bending. B's inner plate was the bar O1-O2 on its two pillars: it turns
+    about one and holds the other only along itself. Across it O2 was a cantilever off
+    the outer plate, about 0.4 jammed (the old rule: 1.33). A triangle and a leg on
+    columns make a box; then every post shares the net force the jam puts on the pivots
+    (about the rod's), and every post is rated, the columns too (never rated before). The
+    plates' strips hold a post's end far less than a clamp would, so the posts are solved
+    with each end's spring (`cradle_structure.plate_spring`) rather than assumed clamped or
+    pinned. A post's tapped ends are rated on the tube the tap leaves, the rest on the bar.
+  - **The frame members:** B's O2-O carries the rod's push back to the gearbox, 1.45 kN
+    jammed; 24 mm wide it buckled out of the plate at 0.72. A's front leg carries 2 kN from
+    D2 to its foot and buckled at 0.59. The gearbox's node O is held across the plate only
+    by its members, which the tilt check counts (B's rear leg had read 1.25).
+  - **The blocked cradle** (`cradle_report.blocked`) is a known limit, not designed for:
+    at 66 N·m against a block at the front tie, 72 mm from the mouth, B's J takes 6.6 kN
+    and O1 6.2 kN, its weakest part (the outer plate) 0.17; at the rear saddle, 0.73. A:
+    0.21 and 0.84. The use limits keep the decanter out of the cradle box's path; a torque
+    limiter at the hand is the cure, for the drive's next round.
+- **Numbers** (2026-10-14, `cradle_report.report`, a full 6 L walking, a 40 N push jammed):
+  - B: every row at jam SF 1.31 or more (pillars O1 and O2 1.31, b6 1.33, pin K 1.43,
+    b4 1.44, the outer plate's members 1.5); walking 3.85 or more. Its stack 84.23 mm a
+    side (79.68: the clevis pin at K takes a layer under b2, and b6 is thicker).
+  - A: every row at jam SF 1.61 or more (b2 1.61, pillar G 1.63, the crank's keyway 1.9,
+    the outer plate 2.01, column C2 2.17); walking 3.66 or more. Its stack unchanged, 65.53.
+  - Before (the old rules, the old centre of mass): B's least jam SF 1.33 (pillar O2), A's
+    1.7 (b2).
+- **Open, for the other streams** (the corrected centre of mass, not the structure):
+  - **The drive:** the crank's peak rose to 34.3 N·m on B (the NRV040 at SF 1.31) and
+    36.0 on A (1.25: under its 1.3 bar), and the worst turn to 25.4 N at the grip on both
+    (the bar was 25 N). The jam is fixed at 40 N at the grip, so a handle or a ratio that
+    eases the turn raises the jam with it: the 25 N bar, the gearbox, or a counterweight
+    is the drive's call. The tests carry the bars at 26 N and (A) 1.2 meanwhile, saying so.
+  - **The stand:** A tips at 24.4° over its rear edge (25.3° before; its test's bar is
+    15°, B's 25°); 10 mm more of A's board would bring it past 25° (25.3°). B's board is
+    680 mm: every edge past 25° (rear 25.2°, the drive side 29.7°, the passive side 28.9°,
+    the front 40.1°).
+  - **The saddles:** the methuselah's centre now lies 10 mm behind the rear V's end (the
+    mounting review's B1); the text that says the rear V reaches behind it is theirs to fix.
+- **Not done:**
+  - **Fillets on the links and the crank plates** (the frames' grow-then-shrink closing):
+    a link's planner claims are pills on its joints, and a fillet's material lies outside
+    them; claiming it needs points fixed to a link (the topology has them only for the
+    crank: `Topology.add_crank_point`). B's b6 window is split by the chord X-Tf1 instead;
+    its corners stay sharp. The crank plates are the drive's (`handcrank.py`).
+  - **The passive side planned on its own** (about 35 mm thick instead of 84): written up
+    in DECANTER.md, B's stand; left for later.
+  - **J as a clevis pin:** its clip and end would stand in b6's layer, which its rear arm
+    sweeps right over J; the planner finds no plan. J stays a pivot pin.
+- **Tried and dropped:**
+  - **A column between O1 and D1** on B (a third, to share more): it stands in the lever
+    b2's sweep, and nothing plans.
+  - **Wider members round O2** to stiffen the post ends: the moment moves to the ends
+    rather than falling.
+- **Where:** `spiderpig/cradle_structure.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/cradle_pack.py`, `spiderpig/strength.py`, `spiderpig/construction/cradle.py`,
+  `spiderpig/construction/plates.py`, `spiderpig/config.py`, `spiderpig/materials.py`,
+  `spiderpig/linkages/decanters.py`, `tests/test_cradle.py`.
 ### 2026-10-14: the cradles' drive (design review round 1)
 
 - **What:** the fixes to round 1's drive review (`/root/scratch/decant/review5/r1/drive.md`),
@@ -1125,10 +1218,8 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   - **The minors:** the keyed plates' slots cut at the key's 6.0 mm and filed together on
     the key, the block built and tied on the bench first; the grip 60 x 24 mm (was a 25 mm
     knob); the hub 21 mm on the shaft, printed solid, its bore 11.1 reamed to 11; an M3
-    heat-set insert (Accu HTBI-M3-BR) under the thumb screw and the input key glued in;
-    B's crank stows in two printed clips snapped onto its outer plate's strut O-O2
-    (`cradle.STOWS`, `_stow_clip`, `stow_matrix`: B packs as three modules,
-    `cradle_pack` moves the crank there within the drive piece); the guide's run-in and
+    heat-set insert (Accu HTBI-M3-BR) under the thumb screw and the input key glued in
+    (the hand crank comes off with nothing loose); the guide's run-in and
     wipe, the crankpin greased, the worm's 10-minute creep test and the O-ring's drag,
     where to stand; the 4 x 4 x 16 key (it said 3 x 3); `VERDICT`'s numbers gone (the
     tests' bars instead, the report's own numbers in its `verdict`); A's loads note at its
@@ -1137,40 +1228,54 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   through, so the parts need upgrading anyway"): the point is a true bound, not a lower
   number. The 40 N push the parts were rated at is no bound (a hand on a crank that feels
   stuck pushes 60-150 N); the clutch's cap is, and the parts already hold it.
-  - **Sized:** its least slip, 28.4 N at the grip, is 1.1 x a sealed full 6 L's worst
+  - **Sized:** its least slip, 28.4 N at the grip, is 1.12 x a sealed full 6 L's worst
     starting turn (the worm's static efficiency) with the corrected centres of mass (25.4 N
-    on either cradle: the structure round's), running it is 1.36 x; the cap is then 0.87 x
-    the old 40 N push's torque. A lower slip would ratchet starting a full 6 L near level.
-  - **Where it doesn't help:** within ±26° of crank of B's rest (the last 4.6° of tilt, 2.2
-    handle turns) and ±16° of its full tilt, some part falls under 1.3 at the cap; within
-    ±20° and ±12° pillar O2 yields and then the rod buckles (elastically). A: ±20° and ±9°.
-    Round a toggle the rod's force goes as the cap over the sine of the crank's angle to the
-    rod: no torque bounds it. Only clearance protects there (the use limits), or a
-    force limiter in the rod (not done).
+    on either cradle: the structure round's); running, it is 1.36 x. The cap is then 1.67 x
+    the walking peak and 0.87 x the old 40 N push's torque. A lower slip would ratchet
+    starting a full 6 L near level; the counterbalance below would let it halve.
+  - **Where it doesn't help:** round a toggle the rod's force goes as the cap over the sine
+    of the crank's angle to the rod: no torque bounds it. Rated by the structure round's
+    model with nothing skipped, B holds 1.3 everywhere 30° and more from the toggles (pillar
+    O2 1.23 at 25°, 1.00 at 20°, 0.49 at 10°); its rod buckles, elastically, within 16° of
+    rest and 9° of full tilt. A holds 1.3 outside 25° (b2 0.87 at 15°; the rod buckles
+    within 11° and 6°). Only clearance protects there (the use limits), or a force limiter
+    in the rod (not done). Blocked at the front tie, the cap leaves B's outer plate at 0.19
+    and its pillars at 0.34-0.39 (0.17 and 0.30-0.34 at the push), A's plate at 0.23: a
+    known limit, kept out by the use limits.
   - **The ball detent over a friction clutch:** its slip depends on the seats' angle and the
     springs, not on a friction coefficient that greasing or a humid day can halve; its set
     screws let it be set to a scale reading; a printed detent's ±25 % becomes ±10 % once set.
-- **Numbers** (this branch, before the structure round's centres of mass; B, A):
+  - **The open bars of the structure round:** the grip's 25.4 N (the bar was 25) and A's
+    gearbox at 1.25 (the bar was 1.3) are kept at 26 N and 1.2. The 25 N bar was the jam
+    rule's: a 40 N push about 1.6 x the turn, now replaced by the clutch. The 45 N·m is
+    Phidgets' continuous rating at 1400 rpm, turned by hand a few minutes a pour, and the cap
+    puts at most 1.33 x on it as a momentary peak. The counterbalance would cure both.
+- **Numbers** (B, A; the structure round's centres of mass and model):
 
   | | before | after |
   |---|---|---|
-  | gearbox SF walking | 1.52, 1.44 | the same (1.31 and 1.25 with the corrected centres of mass) |
-  | grip at the worst start | 21.9, 22.1 N | the same (25.4 N corrected) |
+  | gearbox SF walking | 1.31, 1.25 | the same |
+  | grip at the worst start | 25.4, 25.4 N | the same; the clutch slips at 31.5 (28.4 least) |
   | crank torque bound | none (66, 69.3 N·m at a 40 N push) | 57.2, 60.0 N·m at the clutch's slip |
   | gearbox at the jam | unreported (1.47, 1.54 x) | 1.27, 1.33 x its 45 N·m at the cap |
-  | jam SF, 30° and more from the toggles | B O2 1.33; A 1.6 | B O2 1.48; A 1.85 (the crankpin) |
-  | in the toggle zones | not rated | B at ±20°: O2 0.99, rod 1.22; ±10°: 0.50, 0.63; ±5°: 0.24, 0.31 |
-  | keyway | 2.0 at 66 N·m (four, as if they all bore) | 2.3 x the cap filed together; one plate 0.58 |
+  | jam SF, 30° and more from the toggles | B pillars 1.31; A b2 1.61 (at the push) | B pillars 1.46; A b2 1.84 |
+  | in the toggle zones | not rated | B at 20°: O2 1.00, rod 1.22; 10°: 0.49, 0.63; 5°: 0.24, 0.31 |
+  | blocked at the front tie | B plate 0.17, pillars 0.30-0.34; A 0.21 | 0.19, 0.34-0.39; A 0.23 |
+  | keyway | 2.0 at 66 N·m (as if the four all bore) | 2.3 x the cap filed together; one plate 0.58 (0.96 walking) |
   | the riser | 3 discs on an assumed 2.5 mm spigot | 4 spacers on the machined face, 9.5 mm clear |
   | the block's clamp | a PLA sleeve at 3 N·m | steel and aluminium, 8 N·m |
 
-- **The pack:** B's box is 702 x 604 x 514 mm, 218 L (it was 485 tall, 206 L, with the
-  crank loose: the passive panel had nested on the drive side's outer face beside the
-  gearbox; a stowed crank anywhere on that face costs the same, so `cradle.STOWS` empty is
-  the way back). A's flat pack is 698 x 321 x 602 (305 tall before): the clutch's crank is
-  189 x 135 x 52 mm where the old one was 123 x 118 x 28.
-- **Cost** (B, the BOM's estimate): USD 633.53, from 659.05 (purchases 388.12 from 382.23,
-  cutting 245.41 from 276.82); A likewise less its stow clips. The drive's new lines: the
+- **No stow clip** (the review's packing note, not done): the crank's only place on the drive
+  side where nothing moves is its outer plate's outside, and B's pack plan lays that face
+  on the passive panel. Built and packed (two printed clips snapped round the strut O-O2),
+  the stowed crank, 54 mm proud, lifted the drive side by as much: 478 mm to 532 on the plan
+  before the structure round, over the 500 mm bound. The crank stays a piece of its own,
+  with nothing loose on it. The clutch's crank (189 x 135 x 52 mm, the old one 123 x 118 x
+  28) packs in the panels' openings: A's box is unchanged (185 mm tall), B's too.
+- **Cost** (B, the BOM's estimate): the drive's changes take USD 25.52 off (on the stand
+  round's base, 659.05 to 633.53: purchases 382.23 to 388.12, cutting 276.82 to 245.41);
+  with the structure round's parts B is now 708.58 (purchases 407.00, cutting 301.58). The
+  drive's new lines: the
   spacers 6.48, the shims 6.40, the clutch 16.54 (balls 7.89 for a pack of 50, three used:
   MISUMI sells 52100 balls singly at 2.08 by its price API; springs 4.58 for five; set
   screws 0.63; an insert and a thumb screw), the grip's bolt, nut and washers 1.94, the
@@ -1184,7 +1289,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   UPS shipping, the brokerage and the checkout fee show only at checkout (the cart wasn't
   run): about USD 135-165 landed on assumed shipping (25-45) and fees (10-20). Not in the
   BOM's total.
-- **Proposed, not built: a counterbalance** (the coordinator's lever). A gas spring on a
+- **Proposed, not built: a counterbalance** (asked for in round 1). A gas spring on a
   second crank on the output shaft's far end, outboard of the gearbox: from far off, a
   near-constant force on a pin b from O puts a sine torque on the crank, which is the
   crank-rocker's gravity torque's first harmonic (it changes sign only at the toggles).

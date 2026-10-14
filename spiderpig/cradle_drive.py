@@ -9,13 +9,12 @@ whole turn, the crank-rocker's toggles included (design review round 1, 2026-10-
   by ``handcrank.CLUTCH_MARGIN``, and its most, through the worm at a hand's speed, is the
   crank torque no push at the grip exceeds (its cap: ``config.PRODUCT_CLUTCH_NM``).
 * **The capped jam** (:func:`clutch_case`): the cap on a blocked cradle (held by a couple,
-  as the jam case) at every crank angle. Each part's safety factor per angle scales from its
-  jam case row (:mod:`spiderpig.strength` rates stresses linear in their loads: a pin's or a
-  pillar's by its joint's force, a link's by its pins', the crank's by the torque), the
-  rod's buckling and the crankpin's bending from the rod's force. Round each toggle the
-  rod's force goes as the cap over the crank's sine to the rod: no torque bounds it there,
-  so the case reports, for an excluded band narrowing to nothing, the least safety factor
-  outside it, and the band within which each part falls under 1.3 and under 1.
+  as the jam case) over the whole turn, rated by the report's own model
+  (``cradle_report.structure``, its joint rows and :func:`spiderpig.strength.check`) outside
+  a band round the toggles narrowing to nothing. Round each toggle the rod's force goes as
+  the cap over the sine of the crank's angle to the rod: no torque bounds it there, so the
+  case reports each part's least safety factor outside each band, and the band each holds
+  1.3 and 1 outside.
 """
 
 from __future__ import annotations
@@ -79,79 +78,87 @@ def _offsets(ts, tilt) -> tuple[np.ndarray, np.ndarray]:
     return rest, full
 
 
-def clutch_case(config, ts, tilt, joints, rows: list[dict], strength_rows: list[dict],
-                cap_f: np.ndarray, rod: dict, crankpin: dict, jam_nm: float, cap: float
+def clutch_case(config, mech, ts, tilt, cap: float, rod: dict, crankpin: dict, jam_nm: float
                 ) -> dict:
-    """The clutch's cap ``cap`` (N·m) on a blocked cradle at every crank angle ``ts``
-    (``tilt`` the bottle's, degrees; ``cap_f`` every joint's force there, from
-    ``cradle_report.statics``): each part's safety factor per angle, from its jam case row
-    (``strength_rows``, at ``rows``' jam forces and ``jam_nm`` on the crank), the rod's
-    buckling (``rod``) and the crankpin's bending (``crankpin``). Returns, per excluded band
-    round the toggles (:data:`BANDS`), each part's least safety factor outside it and the
-    worst; per part the band (crank degrees from each toggle) within which it falls under
-    :data:`JAM_FLOOR` and under 1; the band outside which every part holds 1.3, in crank
-    degrees, the tilt from each end of the swing and handle turns."""
+    """The clutch's cap ``cap`` (N·m) on a blocked cradle (``mech`` fabricated; ``ts`` the
+    crank angles, ``tilt`` the bottle's there, degrees) over the whole turn: for each
+    excluded band round the toggles (:data:`BANDS`, crank degrees; 0: none) every part rated
+    outside it at the cap by the report's own model (``cradle_report.structure`` with that
+    ``skip``, its joint rows, :func:`spiderpig.strength.check`, the crank's row at ``cap``),
+    the rod's buckling (``rod``) and the crankpin's bending (``crankpin``) from the rod's force;
+    each part's least safety factor and the worst. Per part, the least band it holds
+    :data:`JAM_FLOOR` and 1 outside; the band outside which every part holds 1.3, in crank
+    degrees, tilt from each end and handle turns; the rod's force round each toggle at 1°
+    (``rod_by_deg``). ``jam_nm``: the 40 N push's torque, for comparison."""
+    from spiderpig import strength
+    from spiderpig.construction import cradle as cr
+    from spiderpig.cradle_report import (
+        joint_rows,
+        loads_doc,
+        planar_model,
+        statics,
+        structure,
+    )
+
     lk = config.lk
+    ts = np.asarray(ts, float)
     rest, full = _offsets(ts, tilt)
     off = np.minimum(rest, full)
-    turns_per_deg = 30.0 / 360.0                 # the worm's 30:1
-    ref = {}                                      # each joint's jam case force (N)
-    per = {}                                      # and its force at the cap per angle
-    for jk, (j, _b1, _b2) in enumerate(joints):
-        ref[j] = max(ref.get(j, 0.0), float(rows[jk]["jam_n"]))
-        per[j] = np.maximum(per.get(j, 0.0), cap_f[:, jk])
-    sf: dict[str, np.ndarray] = {}
-    for r in strength_rows:
-        name, jam_sf = r["joint"], r.get("jam_sf")
-        if not jam_sf:
-            continue
-        stem = name.split(":", 1)[-1]
-        if r.get("kind") in ("pin", "pillar") or name.startswith(("pin:", "pillar:")):
-            if stem in per and ref.get(stem):
-                sf[name] = jam_sf * ref[stem] / np.maximum(per[stem], 1e-9)
-        elif name.startswith("link:"):
-            pins = list(dict.fromkeys(j for (j, b1, b2) in joints
-                                      if stem in (b1, b2) and ref.get(j)))
-            if pins:
-                worst = np.max([per[j] / ref[j] for j in pins], axis=0)
-                sf[name] = jam_sf / np.maximum(worst, 1e-9)
-        elif name == "crank":
-            sf[name] = np.full(len(ts), jam_sf * jam_nm / cap)
+    rigid, joints = planar_model(config, mech, 1.0, cr.DESIGN)
+    torque, forces = statics(config, rigid, joints, ts)
+    _, cap_f = statics(config, rigid, joints, ts, jam_nm=cap)
+    peak = float(np.abs(torque).max())
+    rider = next(b for b, (js, _) in lk.links.items() if lk.crank[1] in js)
     rod_jk = next(jk for jk, (j, *_) in enumerate(joints) if j == lk.crank[1])
     f_rod = np.maximum(cap_f[:, rod_jk], 1e-9)
-    sf["rod (buckling)"] = rod["euler_n"] / f_rod
-    sf["crankpin"] = crankpin["capacity_nm"] * 1000.0 / (f_rod * crankpin["lever_mm"])
+    rod_sf = rod["euler_n"] / f_rod
+    pin_sf = crankpin["capacity_nm"] * 1000.0 / (f_rod * crankpin["lever_mm"])
+
+    def outside(b: float) -> dict:
+        skip = off < b - 1e-9
+        jam_f = np.where(skip[:, None], 0.0, cap_f)
+        rows = joint_rows(config, rider, joints, forces, jam_f)
+        struct = structure(config, mech, crank_nm=cap, ts=ts, skip=skip)
+        doc = loads_doc(config, rows, peak, struct)
+        doc["torque_limit_nm"] = cap
+        st = strength.check(mech.meta.get("wobble") or {}, mech.meta, config, doc)
+        least = {r["joint"]: round(float((r.get("jam") or {})["safety"]), 2)
+                 for r in st["rows"] if (r.get("jam") or {}).get("safety") is not None}
+        keep = ~skip
+        least["rod (buckling)"] = round(float(rod_sf[keep].min()), 2)
+        least["crankpin"] = round(float(pin_sf[keep].min()), 2)
+        worst = min(least, key=least.__getitem__)
+        return {"band_deg": b, "worst": [least[worst], worst], "parts": least,
+                "rod_n": round(float(f_rod[keep].max()), 1)}
+
+    by_band = [outside(b) for b in BANDS]
+    names = by_band[-1]["parts"]
+    parts = {n: {"holds_1p3_outside_deg": next((r["band_deg"] for r in by_band
+                                                if r["parts"].get(n, 0.0) >= JAM_FLOOR), None),
+                 "holds_1_outside_deg": next((r["band_deg"] for r in by_band
+                                              if r["parts"].get(n, 0.0) >= 1.0), None)}
+             for n in names}
+    holds = next((r["band_deg"] for r in by_band if r["worst"][0] >= JAM_FLOOR), None)
+    ends = (float(np.min(tilt)), float(np.max(tilt)))
+    tilt_in = ([round(float(np.max(np.abs(tilt[side <= holds] - end))), 2)
+                for side, end in ((rest, ends[0]), (full, ends[1]))]
+               if holds else [0.0, 0.0])
 
     def band(v: np.ndarray, floor: float, side: np.ndarray) -> float:
         """How far from a toggle (crank degrees) ``v`` falls under ``floor`` nearest it."""
         near = (side < 90.0) & (v < floor)
         return round(float(side[near].max()), 1) if near.any() else 0.0
 
-    def outside(b: float) -> dict:
-        """Each part's least safety factor ``b`` crank degrees and more from the toggles."""
-        keep = off >= b - 1e-9
-        least = {n: round(float(v[keep].min()), 2) for n, v in sf.items()}
-        worst = min(least, key=least.__getitem__)
-        return {"band_deg": b, "worst": [least[worst], worst],
-                "rod_buckling_sf": least["rod (buckling)"],
-                "pillars": {n: v for n, v in least.items() if n.startswith("pillar:")},
-                "parts": least, "rod_n": round(float(f_rod[keep].max()), 1)}
-
-    by_band = [outside(b) for b in BANDS]
-    parts = {n: {"under_1p3_deg": [band(v, JAM_FLOOR, rest), band(v, JAM_FLOOR, full)],
-                 "under_1_deg": [band(v, 1.0, rest), band(v, 1.0, full)]}
-             for n, v in sf.items()}
-    holds = [max(p["under_1p3_deg"][i] for p in parts.values()) for i in (0, 1)]
-    ends = [float(np.min(tilt)), float(np.max(tilt))]
-    tilt_in = [round(float(np.max(np.abs(tilt[side <= h] - end))), 2) if h else 0.0
-               for side, h, end in ((rest, holds[0], ends[0]), (full, holds[1], ends[1]))]
     return {"crank_nm": cap, "jam_push_nm": jam_nm,
             "basis": "the clutch's most through the worm at a hand's speed, on a blocked cradle "
-                     "(a couple on the cradle link) at every crank angle; each part's jam row "
-                     "scaled to its load per angle",
+                     "(a couple on the cradle link), every part rated outside each band round "
+                     "the toggles by the report's own structure and strength model",
             "by_band": by_band, "parts": parts,
             "holds_1p3_outside_deg": holds, "holds_1p3_tilt_deg": tilt_in,
-            "holds_1p3_turns": [round(h * turns_per_deg, 2) for h in holds],
+            "holds_1p3_turns": round(holds * 30.0 / 360.0, 2) if holds is not None else None,
+            "rod_buckles_within_deg": [band(rod_sf, 1.0, rest), band(rod_sf, 1.0, full)],
+            "rod_under_1p3_within_deg": [band(rod_sf, JAM_FLOOR, rest),
+                                         band(rod_sf, JAM_FLOOR, full)],
             "away": by_band[-1]["worst"]}
 
 

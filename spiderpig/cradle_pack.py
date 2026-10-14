@@ -3,11 +3,10 @@
 **As modules** (:func:`module_pieces`: B, ``construction.cradle.PACK_POSES``, the user's of
 2026-10-13). It is cranked to its pack pose first (:func:`pack_t`: the crank's arm along the
 drive side's outer plate's rear leg, a mark seen without counting turns), then comes apart
-by hand into three modules (``construction.cradle.module_steps``, round 1's stand review):
+by hand into three modules and its hand crank (``construction.cradle.module_steps``, round
+1's stand review):
 
-1. the hand crank off (its thumb screw) and into its stow clips on the drive side's outer
-   plate (``construction.cradle.STOWS``, round 1's drive review: it travels with the drive
-   side, moved there within that piece): nothing turns without it;
+1. the hand crank off (its thumb screw): nothing turns without it;
 2. the cradle off the base board (the brackets' thumb knobs: the carriage bolts stay in the
    board, the washers and knobs back on them), by its outer plates' top members;
 3. the cradle laid on its drive side (the gearbox down), on a towel;
@@ -394,10 +393,8 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
     panel (every part of that side but its cradle link, its brackets: it lifts off the
     cradle link's pins, the cradle lying on its drive side, once their clips are out); the
     drive side with the cradle box (both cradle links, the tie rods, the saddles and what is
-    in them, the light, the base stop: the worm holds it as it was cranked) and the hand
-    crank in its stow clips (or a piece of its own where the cradle has none:
-    ``construction.cradle.STOWS``). ``lk`` the cradle's linkage; the rest as
-    :func:`pieces`."""
+    in them, the light, the base stop: the worm holds it as it was cranked); the hand crank.
+    ``lk`` the cradle's linkage; the rest as :func:`pieces`."""
     out: dict[str, Piece] = {}
 
     def put(key: str, label: str, role: str, name: str) -> None:
@@ -408,11 +405,10 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
     through = _through_board(parts)
     drive = ("drive", "Drive side with the cradle box", "panel")
     passive = ("passive", "Passive side panel", "panel")
-    stows = lk.key in cr.STOWS          # its hand crank rides in clips on the drive side
     for n in sorted(parts):
         p = parts[n]
         s, stem = _side(n)
-        if s == crank_side and stem.startswith("handle") and not stows:
+        if s == crank_side and stem.startswith("handle"):
             put("hand_crank", "Hand crank", "fill", n)
         elif s:
             put(*(passive if s == other and stem != link else drive), n)
@@ -429,8 +425,7 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
                    for mine, o, j in ((a, b, ja), (b, a, jb))
                    if mine == f"{other}.{link}" and o in parts and not is_frame(o)})
     breakdown, reassembly = cr.module_steps(lk, pins)
-    frees = {"base": ["base"], "lift": ["passive", "drive"],
-             **({} if stows else {"hand_crank": ["hand_crank"]})}
+    frees = {"hand_crank": ["hand_crank"], "base": ["base"], "lift": ["passive", "drive"]}
     steps: list[tuple[str, list[str]]] = []
     for text, tag in breakdown:
         if tag == "base" and "base" in out:
@@ -555,21 +550,25 @@ PACK_PLANS: dict[str, vp.Plan] = {
     "decanter_rcm": vp.Plan(
         "B: the passive panel flat on the board, the drive side on its gearbox over it",
         steps=(
-            vp.Step("passive", down="bay", spin=180,
+            vp.Step("passive", down="bay", spin=0, corner="+x-z",
                     why="in first, as it comes off the pins: flat on the board, its outer "
-                        "face up"),
-            vp.Step("drive", down="outer", spin=0, on="passive",
+                        "face up, to the board's +x end"),
+            vp.Step("drive", down="outer", spin=180, corner="-x-z",
                     why="as it lies when the panel comes off (round 1's breakdown: on its "
-                        "drive side): the gearbox down on the board beside the passive "
-                        "panel, its plates over the panel's, the cradle box up; it rests on "
-                        "both, no pads, the heaviest piece low"),
+                        "drive side): the gearbox down, its plates over the panel's, the "
+                        "cradle box up; it rests on the panel, no pads, the heaviest piece "
+                        "low"),
+            vp.Step("hand_crank",
+                    why="on the board under the drive side's plates, wherever it drops lowest"),
         ),
-        note="B's pieces: the board and the two side modules, the hand crank in its stow "
-             "clips on the drive side (round 1's drive review: cradle.STOWS). The drive side "
+        note="B's pieces: the board, the two side modules, the hand crank. The drive side "
              "with its cradle box is 441 mm across the bay whichever way it lies: with the "
-             "board at the bottom the box is about 202 L, the board's footprint times that. "
+             "board at the bottom the box is about 211 L, the board's footprint times that. "
              "(Before round 1's pack pose the drive side went cradle box down, on 7 pads: "
-             "on its gearbox it tipped.)"),
+             "on its gearbox it tipped. Since round 1's structure the panel's inner plate "
+             "has a triangle and a leg on two columns where the gearbox had dropped past it, "
+             "the panel turned the other way and to the +x end: turned as before, the "
+             "drive side lands on the panel and tips.)"),
     "decanter_hinge": vp.Plan(
         "A: both side panels face down on the board, end to end, the loose parts in their "
         "open triangles",
@@ -705,16 +704,20 @@ def gather(mech, lk, t: float = 0.0, config=None) -> dict:
            "joints": {f"{b.name}|{j.name}": [float(v) for v in
                                              (b.pose.matrix @ j.pose.matrix)[:2, 3]]
                       for b in mech.bodies for j in b.joints},
-           "slide_off": None, "stow": mech.meta.get("stow_matrix")}
+           "slide_off": None}
     if turns is not None:
         pcs, _, _ = _pieces_of(out, lk)
         by = {pc.key: pc for pc in pcs}
         placed = dict(zip([b.name for b in bodies], shapes, strict=True))
-        panel = {n: placed[n] for n in by["passive"].parts if not n.endswith("_clip")}
+        # the clips out are the cradle link's pins' (X and Y on B); a clevis pin inside the
+        # side (B's K and J2) keeps its clip and slides off with the panel
+        on_link = set(lk.links[cr.cradle_link(lk)][0])
+        out_ = sorted(n for n in by["passive"].parts if n.endswith("_clip")
+                      and n.rsplit(".pin_", 1)[-1].removesuffix("_clip") in on_link)
+        panel = {n: placed[n] for n in by["passive"].parts if n not in out_}
         unit = {n: placed[n] for n in by["drive"].parts}
         out["slide_off"] = {"hits": [list(h) for h in slide_hits(panel, unit)],
-                            "clips_out": sorted(n for n in by["passive"].parts
-                                                if n.endswith("_clip"))}
+                            "clips_out": out_}
     return out
 
 
@@ -770,15 +773,6 @@ def pack_items(inp: dict, splits: dict[str, Sequence[str]] | None = None
                 com[n] = m[:3, :3] @ com[n] + m[:3, 3]
                 pc.moved[n] = m @ pc.moved.get(n, np.eye(4))
                 moved[n] = pc.moved[n]
-    if inp.get("stow") is not None:     # the hand crank in its stow clips on the drive side
-        m = np.asarray(inp["stow"], float)
-        for pc in pcs:
-            for n in pc.parts:
-                if pc.key == "drive" and _side(n)[1].startswith("handle"):
-                    mesh[n] = (mesh[n][0] @ m[:3, :3].T + m[:3, 3], mesh[n][1])
-                    com[n] = m[:3, :3] @ com[n] + m[:3, 3]
-                    pc.moved[n] = m @ pc.moved.get(n, np.eye(4))
-                    moved[n] = pc.moved[n]
     items = []
     for pc in pcs:
         ms = [mesh[n] for n in pc.parts if len(mesh[n][1])]
