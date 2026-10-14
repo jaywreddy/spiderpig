@@ -43,7 +43,7 @@ plates"). Bottom up, in the turret's frame (:class:`.turret.TurretPlan`):
   the flag is just past the yaw's lower end: homing turns down until the beam breaks, as
   the MT4 homes to a limit switch (the camera then fixes the zero: :mod:`control.vision`);
 * **the feet**: the frame plates' feet held to the turntable by stock steel angle brackets
-  (:data:`STOCK_BRACKET`) in place of the printed ones.
+  (:func:`stock_bracket`) in place of the printed ones.
 
 The base stays inside a keep-out round the axis (:func:`keep_radius`: the turntable, the
 switch, the base's round front; behind, its tail round the motor): only the side's links
@@ -70,12 +70,21 @@ TOP_SHEET = "al5052_3p2mm"      # the top plate: the columns stand off it as can
 #                                 review), the motor's heat and the belt's pull on it
 TABLE_SHEET = "al5052_3p2mm"    # the turntable: the arm's moment bends it; 5052 as stiff as
 #                                 6061 (its strength unused) at a cheaper rate
-STOCK_BRACKET = {"w": 12.0, "h": 16.0, "d": 16.0, "t": 1.6, "hole": 8.8}
-"""The stock steel angle bracket (``key``): its width, its legs (``h`` up the frame plate,
-``d`` out along the turntable), its thickness and each leg's hole from the corner (the
-16 mm ones in place of the 20 mm: the turntable, round the brackets' far corners, the
-smaller; the user's "an elegant machine", 2026-10-14)."""
-BRACKET_KEY = "angle_bracket_16"
+BRACKET_KEY = "angle_bracket_16"   # the 16 mm ones in place of the 20 mm: the turntable,
+#                                    round the brackets' far corners, the smaller (the
+#                                    user's "an elegant machine", 2026-10-14)
+
+
+def stock_bracket() -> dict[str, float]:
+    """The stock steel angle bracket (:data:`BRACKET_KEY`, its catalog item's dims): its
+    width, its legs (``h`` up the frame plate, ``d`` out along the turntable), its
+    thickness and each leg's hole from the corner."""
+    from spiderpig.hardware.catalog import get
+
+    d = get(BRACKET_KEY).dims
+    leg = float(d["leg"])
+    return {"w": float(d["w"]), "h": leg, "d": leg, "t": float(d["t"]),
+            "hole": float(d["hole_at"])}
 SHIM = 0.5                      # a shim under a collar on an inner ring (clear of the seal)
 FOOT = 6.0                      # the bench spacers under the bottom plate (m4_spacer_6)
 SHAFT_KEY = "shaft_8mm_h6_tapped"
@@ -94,6 +103,8 @@ YAW_MIN_MESH = 5.0              # teeth in mesh on the yaw's 16-tooth pulley: 5 
 #                                 loop, the motor 17 mm nearer the axis
 BASE_RIM = 4.0                  # the base's lobe past the yaw motor's far corners
 LOBE_R = 8.0                    # the lobe's back corners' radius
+STOP_POST_R = 3.0               # the hard stop's post (a 6 mm round standoff), its screw's
+#                                 head under the top plate inside it
 CENTRE_R = 18.0                 # three more columns round the bearings: they close the
 #                                 preload's loop by the axis, the acrylic plates' bending
 #                                 out of it (round 2's review)
@@ -225,7 +236,7 @@ def keep_radius(ctx: Context, tr, motor, c: float, faces: dict[str, float],
     hard stop's: :func:`stop_radius`, no board)."""
     from .turret import FOOT_R
 
-    bk = STOCK_BRACKET
+    bk = stock_bracket()
     half = (faces["inner"] - faces["outer"]) / 2
     feet = max(math.hypot(foot_l - 1.0, half + bk["d"]),     # a bracket's far corner, on
                math.hypot(foot_l + FOOT_R, half)) + 3.0       # the foot; the foot's end
@@ -261,13 +272,29 @@ OUTER_COLUMNS_FLAG = (45.0, -45.0, 150.0, -150.0)   # with an endstop's board at
 def columns_xy(tp, motor) -> list[tuple[float, float]]:
     """The seven columns (the turret's frame): four on a circle near the round core's rim
     (:data:`OUTER_COLUMNS`), three round the bearings at :data:`CENTRE_R` (the acrylic plate
-    held flat by the axis, where the wave washer's preload bears)."""
+    held flat by the axis, where the wave washer's preload bears); each turned in 5 deg
+    steps past the yaw motor and the hard stop's post, where it would meet them."""
     r = tp.h["front"] - HEX_R - TAIL_EDGE
-    angles = OUTER_COLUMNS if tp.preset.sensor == "hard_stop" else OUTER_COLUMNS_FLAG
-    outer = [(r * math.cos(math.radians(a)), r * math.sin(math.radians(a))) for a in angles]
-    centre = [(CENTRE_R * math.cos(math.radians(a)), CENTRE_R * math.sin(math.radians(a)))
-              for a in (0.0, 120.0, 240.0)]
-    return outer + centre
+    stop = tp.preset.sensor == "hard_stop"
+    post = (tp.sensor_r * math.cos(math.radians(tp.range_deg[0] - 3.0)),
+            tp.sensor_r * math.sin(math.radians(tp.range_deg[0] - 3.0))) if stop else None
+
+    def clear(xy) -> bool:          # of the motor's body and the hard stop's post
+        dx = max(abs(xy[0] + tp.c) - motor.frame / 2, 0.0)
+        dy = max(abs(xy[1]) - motor.frame / 2, 0.0)
+        if math.hypot(dx, dy) < HEX_R + 1.0:
+            return False
+        return post is None or math.dist(xy, post) >= HEX_R + STOP_POST_R + 1.0
+
+    def at(radius: float, a: float) -> tuple[float, float]:
+        for d in (0.0, *(s * k for k in range(5, 35, 5) for s in (1.0, -1.0))):
+            xy = (radius * math.cos(math.radians(a + d)), radius * math.sin(math.radians(a + d)))
+            if clear(xy):           # turned past them, if need be (the motor's check: parts)
+                return xy
+        return radius * math.cos(math.radians(a)), radius * math.sin(math.radians(a))
+
+    angles = OUTER_COLUMNS if stop else OUTER_COLUMNS_FLAG
+    return ([at(r, a) for a in angles] + [at(CENTRE_R, a) for a in (0.0, 120.0, 240.0)])
 
 
 def table_reach(design, tool_plan, x_a: float, y_ground: float, keep_r: float
@@ -606,7 +633,7 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
             fab="purchased", bom_key="m2_nut", color=STEEL)
 
     # the stock angle brackets on the frame plates' feet (robot coordinates)
-    bk = STOCK_BRACKET
+    bk = stock_bracket()
     for i, (plate, x) in enumerate(tp.brackets):
         face = tp.faces[plate]
         sgn = -1.0 if plate == "outer" else 1.0

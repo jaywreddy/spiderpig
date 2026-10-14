@@ -51,6 +51,7 @@ class BeltDrive(Transmission):
     """A GT2 belt, ``small`` to ``large`` teeth (module docstring)."""
 
     key: str = "belt"
+    family: str = "belt"
     label: str = ("GT2 6 mm timing belt, 16 to 80 teeth (5:1): plate pulley bolted to the "
                   "link, stock loop, the motor on a slider tensioned from outside")
     small_key: str = "pulley_gt2_16t_5mm"

@@ -78,7 +78,7 @@ def axes(config, design=None) -> dict[str, Axis]:
         if not isinstance(g, DriveGroup):
             continue
         hub = g.hub(design.ctx)
-        sense = (1 if hub.down else -1) * (-1 if g.transmission.key == "capstan" else 1)
+        sense = (1 if hub.down else -1) * (-1 if g.transmission.reverses else 1)
         lo, hi = lk.ranges[g.input]
         out[g.input] = Axis(g.input, hub.ratio, g.motor.step_deg, g.motor.microsteps, sense,
                             0.0, g.motor.key, (math.radians(lo), math.radians(hi)),
@@ -88,7 +88,7 @@ def axes(config, design=None) -> dict[str, Axis]:
 
         tp, tool = Turret().plans(design, config)
         _, tr, motor, _ = tp.preset.parts
-        sense = -1 if tp.preset.transmission == "capstan" else 1
+        sense = -1 if tr.reverses else 1
         lo, hi = (math.radians(v) for v in tp.range_deg)
         out["q1"] = Axis("q1", tr.ratio(None), motor.step_deg, motor.microsteps, sense, 0.0,
                          motor.key, (lo, hi), tp.error_terms().backlash_deg)

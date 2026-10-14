@@ -177,7 +177,8 @@ def test_the_mt4_base_keeps_the_arm_out_of_it_and_the_tool_reaches_its_plate():
 
     cfg = BuildConfig(linkage="palletizer_reach", roles=(("turntable", "mt4_base"),))
     _, tp, _ = _plans(cfg)
-    _, classic, _ = _plans(BuildConfig(linkage="palletizer_reach"))
+    _, classic, _ = _plans(BuildConfig(linkage="palletizer_reach",
+                                       roles=(("turntable", "belt_preload"),)))
     assert -tp.y_ground < 0.6 * -classic.y_ground          # the shoulder over the ground
     assert tp.h["reach_hi"] - tp.h["reach_lo"] >= 110.0
     assert tp.h["reach_lo"] > tp.keep_r
@@ -249,8 +250,10 @@ def test_the_turntable_joins_the_precision_budget():
 @pytest.mark.parametrize("roles", [(), (("turntable", "capstan_preload"),),
                                    (("turntable", "mt4"), ("tool", "suction_wrist")),
                                    (("turntable", "mt4_base"),),
-                                   (("turntable", "mt4_base_stall"), ("angle_sensor", "stall"))],
-                         ids=["belt", "capstan", "mt4-wrist", "mt4-base", "mt4-base-stall"])
+                                   (("turntable", "mt4_base_stall"), ("angle_sensor", "stall")),
+                                   (("turntable", "mt4_compact"), ("angle_sensor", "stall"))],
+                         ids=["belt", "capstan", "mt4-wrist", "mt4-base", "mt4-base-stall",
+                              "mt4-compact"])
 def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(roles):
     from spiderpig.construction.contract import clashes
     from spiderpig.fabricate import split_parts
@@ -272,11 +275,14 @@ def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(rol
     rows = {r.key: r.qty for r in bom_from_mechanism(mech).purchased}
     if dict(roles).get("turntable") == "capstan_preload":     # the cord's two anchors
         assert {"yaw_anchor0", "yaw_anchor1"} <= {b.name for b in mech.bodies}
-    if dict(roles).get("turntable", "").startswith("mt4_base"):   # the base's bearings
+    from spiderpig.construction.rotary import PRESETS
+
+    preset = PRESETS[cfg.role("turntable")]
+    if preset.support == "base_pair":                       # the base's bearings
         from spiderpig.construction.rotary.base_pair import SHAFT_KEY
 
         assert rows["bearing_f608zz"] == 2
-        if dict(roles)["turntable"] == "mt4_base_stall":   # no switch anywhere: hard stops
+        if preset.sensor == "hard_stop":                    # no switch anywhere: hard stops
             assert "optical_endstop" not in rows
             assert {"yaw_stop", "yaw_stop_post"} <= {b.name for b in mech.bodies}
         assert rows["collar_8mm"] == 3
@@ -296,7 +302,7 @@ def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(rol
 
     for key, qty in controller(cfg.role("controller")).bom:
         assert rows[key] == qty, key
-    if dict(roles).get("turntable") != "mt4_base_stall":
+    if preset.sensor != "hard_stop":                        # the yaw's switch
         assert rows["optical_endstop"] == 1
     steppers = sum(q for k, q in rows.items()
                    if k.startswith("stepper_") and not k.startswith("stepper_cable"))

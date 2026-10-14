@@ -29,6 +29,8 @@ import math
 
 from spiderpig.hardware.cad import CadRef, register_part_cad
 from spiderpig.hardware.catalog import Item, Offer, register
+from spiderpig.hardware.catalog import amazon_offer as _amazon
+from spiderpig.hardware.catalog import unpriced_offer as _unpriced
 
 _MCM = "McMaster-Carr"
 _SO = "StepperOnline"
@@ -52,15 +54,6 @@ def pitch_d(teeth: int) -> float:
 
 def gt2_loop(length: int) -> str:
     return f"belt_gt2_6mm_{length}"
-
-
-def _unpriced(vendor: str, url: str, note: str) -> Offer:
-    return Offer(vendor, url, None, note=f"{note}; not fetched: unpriced")
-
-
-def _amazon(asin: str, pack: int, usd: float, note: str) -> Offer:
-    return Offer("Amazon", f"https://www.amazon.com/dp/{asin}", asin, pack_qty=pack,
-                 price_usd=usd, note=f"{note}; search-result price 2026-10-12")
 
 
 AMAZON: dict[str, Offer] = {

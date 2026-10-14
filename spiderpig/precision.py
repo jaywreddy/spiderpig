@@ -668,6 +668,18 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
                      turret_acc, across, stiff, rp)
 
 
+def _slips(config: BuildConfig, axis: str) -> bool:
+    """Whether input ``axis``'s transmission is a friction drive (a capstan's cord): a
+    planar input's role, else the turntable's preset (``q1``)."""
+    from spiderpig import construction
+
+    if axis in config.lk.inputs:
+        return construction.transmission(config.role("transmission", axis)).slips
+    from spiderpig.construction.rotary import PRESETS
+
+    return PRESETS[config.role("turntable")].parts[1].slips
+
+
 def _iso(config: BuildConfig, pm: PlayMap, inputs: dict[str, InputBudget],
          lev: dict[str, float], across: OutOfPlane | None, payload_g: float,
          clamped: frozenset = frozenset(), snap_all: bool = False) -> Rp:
@@ -696,7 +708,7 @@ def _iso(config: BuildConfig, pm: PlayMap, inputs: dict[str, InputBudget],
     return iso_rp(config.lk, config.values, pm.clearance_mm, loads,
                   {k: b.backlash_deg for k, b in inputs.items()}, deg,
                   {k: b.resolution_deg for k, b in inputs.items()},
-                  {k: snap_all or "capstan" not in b.source for k, b in inputs.items()},
+                  {k: snap_all or not _slips(config, k) for k in inputs},
                   across.worst_mm if across is not None else 0.0, lev.get("q1", 0.0),
                   clamped=clamped, slips=slips, nonlin_deg=nonlin)
 

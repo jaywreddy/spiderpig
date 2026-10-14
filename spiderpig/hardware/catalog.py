@@ -59,6 +59,18 @@ class Offer:
         return n, round(cost(n), 2)
 
 
+def unpriced_offer(vendor: str, url: str, note: str) -> Offer:
+    """A seller's listing not fetched: no price (the BOM lists it, its total leaves it out)."""
+    return Offer(vendor, url, None, note=f"{note}; not fetched: unpriced")
+
+
+def amazon_offer(asin: str, pack: int, usd: float, note: str,
+                 seen: str = "2026-10-12") -> Offer:
+    """An Amazon listing by its ASIN at a search result's price (``seen``: that day)."""
+    return Offer("Amazon", f"https://www.amazon.com/dp/{asin}", asin, pack_qty=pack,
+                 price_usd=usd, note=f"{note}; search-result price {seen}")
+
+
 @dataclass(frozen=True)
 class Item:
     """A purchasable item. ``dims`` holds modelling dimensions in mm."""

@@ -1033,3 +1033,19 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   - The tail-swing check is back for the lobe.
 - **Cost:** the 60-tooth pulley and the 158 mm loop are priced as estimates.
   `palletizer_turret` keeps `belt_preload` (the gate is identical).
+
+### 2026-10-14: the approved arm named and gated (merge hardening, round 1)
+
+- **The arm by name:** `--linkage palletizer_reach` is the user's approved arm.
+  - It gets its pivots from `config.LINKAGE_PIVOTS` (`ball_pair`, `ball_pair_pillar`).
+  - It gets its roles from `config.LINKAGE_ROLES`, read by `roles.default_key`: `mt4_compact`, stall homing and the camera.
+  - It gets its links' sheets from `materials.LINK_SHEETS`.
+  - It was a script's flags before. The identity gate now builds it as `palletizer_reach`.
+- **A clash the builds didn't check:** on `mt4_compact`, a column round the bearings touched the hard stop's post screw (0.115 mm³, found by the robot clash test).
+  - The fix: `base_pair.columns_xy` now turns a column in 5° steps past the motor and the post.
+- **Declared, not inferred:**
+  - A transmission now declares `family`, `reverses` and `slips`. Before, `key == "belt"` / `startswith("belt")` and `"capstan" in source` disagreed, and on a classic hub `belt_60` would have taken the capstan's branch.
+  - The bracket's dimensions are read from its catalog item (`base_pair.stock_bracket`).
+- **Bugs:** `verify.cost_floor` priced a servo and a crank on an arm and raised `ConstructionError`. It now prices the arm's steppers.
+- **Hull checks:** `shapes.hull` refuses clockwise, nested or coincident circles.
+- **Catalog:** the unused `angle_bracket_20` and `rubber_feet_12mm` are gone.

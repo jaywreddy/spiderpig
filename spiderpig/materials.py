@@ -113,6 +113,10 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # (0.125 in, the user's allowance); its end grows round the hex crank's 8.8 mm bore to
     # 1 x t of web (plates.rider_bosses), the rest of it keeps Params.link_radius
     "klann_lego": {"b1": FOOT_SHEET},
+    # the user's arm (2026-10-13): every link 5.4 mm acrylic (stiff across the plane, its
+    # bearings' seats inside it) but b4, the elbow's long lever, in 1/8 in 5052
+    "palletizer_reach": {**dict.fromkeys(("b1", "b2", "b3", "b5", "b6", "b7", "b8"),
+                                         "acrylic_5p4mm"), "b4": "al5052_3p2mm"},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links
 (:func:`default_link_sheets`); ``BuildConfig.link_sheets`` overrides the lot."""

@@ -155,7 +155,7 @@ class TurretPlan:
 
         support = self.preset.parts[0]
         brg = get(support.bearing).dims
-        pcd = TIE_PCD[self.preset.transmission] / 2
+        pcd = TIE_PCD[self.preset.parts[1].family] / 2
         od = float(brg["od"])
         ops = [Op("pocket", od + SLIP_FIT, depth=float(brg["w"]), purpose="the bearing's seat",
                   fit=f"{od:g} +0.01/+0.04 (a slip fit: try the bearing)"),
@@ -191,7 +191,7 @@ class TurretPlan:
     @property
     def bracket(self) -> dict[str, float]:
         """The feet's brackets: printed (:data:`BRACKET`) or the base_pair's stock steel
-        angles (:data:`.base_pair.STOCK_BRACKET`)."""
+        angles (:func:`.base_pair.stock_bracket`)."""
         return bracket_of(self.preset.support)
 
     def anchor_angles(self) -> list[float]:
@@ -227,9 +227,9 @@ class TurretPlan:
 
 def bracket_of(support: str) -> dict[str, float]:
     if support == "base_pair":
-        from spiderpig.construction.rotary.base_pair import STOCK_BRACKET
+        from spiderpig.construction.rotary.base_pair import stock_bracket
 
-        return STOCK_BRACKET
+        return stock_bracket()
     return BRACKET
 
 
@@ -353,11 +353,11 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
 
     # the drive: where the motor goes, what it leaves the hub's floor
     half_diag = motor.frame / math.sqrt(2)
-    key = preset.transmission
+    key = tr.family                     # a belt's layout or a capstan's, whatever its teeth
     lo, hi = preset.range_deg
     travel = hi - lo
     loop = None
-    if key.startswith("belt"):
+    if key == "belt":
         clear_r, reach_r = BOSS_R, half_diag
         mesh = MIN_MESH
         if support.key == "base_pair":      # the motor square to the arm: its flat face
@@ -388,7 +388,7 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
     foot_l = FOOT_L
     bk = bracket_of(support.key)
     if support.key == "base_pair":          # the bearings in the base, the shaft turning
-        if not key.startswith("belt"):
+        if key != "belt":
             raise ConstructionError("turret: the base_pair support takes a belt")
         h, columns, spacing_mm, protrude = bp.heights(ctx, support, tr, motor)
         foot_l = bp.BASE_FOOT_L
@@ -487,7 +487,7 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
             if sym:
                 pair = (x_a - sym[0], x_a + sym[0])
         brackets += [(plate, float(pair[0])), (plate, float(pair[1]))]
-    hub_r = TIE_PCD.get(key, TIE_PCD["belt"]) / 2 + SCREW_HOLE / 2 + 2 * t
+    hub_r = TIE_PCD[key] / 2 + SCREW_HOLE / 2 + 2 * t
     head_r = screw("shcs", "3").head_d / 2
     reach = bk["hole"]
     depth = (bk["d"] if support.key == "base_pair"
@@ -616,7 +616,7 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
     from spiderpig.hardware.crank_catalog import m3_round_standoff
 
     support, tr, motor, sensor = tp.preset.parts
-    key = tp.preset.transmission
+    key = tr.family
     frame_sheet = ctx.sheet("frame")
     t = ctx.sheet_t("frame")
     pitch = ctx.pitch
@@ -993,7 +993,7 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
             if post in names:
                 fastened.append((b.name, post))
     info = {"preset": tp.preset.key, "support": tp.preset.support,
-            "transmission": key, "motor": motor.key,
+            "transmission": tp.preset.transmission, "motor": motor.key,
             "sensor": tp.preset.sensor, "ratio": round(tr.ratio(None), 4),
             "range_deg": [round(v, 2) for v in tp.range_deg],
             "axis": [tp.x_a, round(tp.y_ground, 3), tp.z_a],

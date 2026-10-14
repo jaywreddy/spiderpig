@@ -13,17 +13,10 @@ is marked so in the item's notes (measure the part).
 from __future__ import annotations
 
 from spiderpig.hardware.catalog import Item, Offer, register
+from spiderpig.hardware.catalog import amazon_offer as _amazon
+from spiderpig.hardware.catalog import unpriced_offer as _unpriced
 
 _MCM = "McMaster-Carr"
-
-
-def _unpriced(vendor: str, url: str, note: str) -> Offer:
-    return Offer(vendor, url, None, note=f"{note}; not fetched: unpriced")
-
-
-def _amazon(asin: str, pack: int, usd: float, note: str) -> Offer:
-    return Offer("Amazon", f"https://www.amazon.com/dp/{asin}", asin, pack_qty=pack,
-                 price_usd=usd, note=f"{note}; search-result price 2026-10-12")
 
 
 register(Item(
@@ -270,22 +263,8 @@ register(Item(
     (Offer("Amazon", "https://www.amazon.com/s?k=uxcell+16x16mm+angle+bracket+black",
            pack_qty=12, price_usd=8.0, note="search: uxcell 16 x 16 mm black L brackets, "
            "12 pcs; the price an estimate (2026-10-14)"),),
-    dims={"w": 12.0, "leg": 16.0, "t": 1.6, "hole": 3.4},
+    dims={"w": 12.0, "leg": 16.0, "t": 1.6, "hole": 3.4, "hole_at": 8.8},
     notes="A frame plate's foot held to the turntable, the compact turret's (its turntable "
-          "four millimetres less round than the 20 mm brackets'). Width, thickness and the "
+          "four millimetres less round than 20 mm brackets'). Width, thickness and the "
           "holes UNVERIFIED (a listing's photo): measure; a hole under 3.4 mm drilled out for "
           "M3."))
-register(Item(
-    "angle_bracket_20", "Steel L angle bracket 20 x 20 x 16 mm, 3.4 mm holes (corner brace)",
-    "bracket",
-    (Offer("Amazon", "https://www.amazon.com/s?k=20mm+L+corner+brace+bracket+M3",
-           pack_qty=20, price_usd=8.0, note="search; zinc-plated corner braces, an estimate"),),
-    dims={"w": 16.0, "leg": 20.0, "t": 2.0, "hole": 3.4},
-    notes="A frame plate's foot held to the turntable (in place of the printed brackets)."))
-register(Item(
-    "rubber_feet_12mm", "Adhesive rubber bumper feet 12 x 4 mm", "foot",
-    (Offer("Amazon", "https://www.amazon.com/s?k=rubber+bumper+feet+12mm", pack_qty=50,
-           price_usd=6.0, note="search; an estimate"),),
-    dims={"d": 12.0, "h": 4.0},
-    notes="Not used: round 7's review screws the base_pair turret to the bench (on "
-          "rubber a light base rocks under the arm's moment)."))

@@ -73,6 +73,24 @@ standoff column; D1, 2026-10-07); an arm's ball bearings at every pivot (the use
 2026-10-11 for the palletizer: plain holes' play, at the arm's levers, is millimetres at the
 tool; ``spiderpig precision --compare``)."""
 
+LINKAGE_PIVOTS: dict[str, tuple[str, str]] = {
+    # the user's arm (2026-10-13/14, docs/agentlib/DECISIONS.md): each pivot a preloaded
+    # bearing pair on a ground pin, ISO 9283 RP 0.047 mm in a session (ball: 0.2 mm)
+    "palletizer_reach": ("ball_pair", "ball_pair_pillar"),
+}
+"""Per linkage: the ``(pin, pillar)`` it gets when it names none, where its kind's
+:data:`DEFAULT_PIVOTS` aren't its own design's (each with why)."""
+
+LINKAGE_ROLES: dict[str, dict[str, str]] = {
+    # the user's arm as approved on 2026-10-14: sensorless homing on hard stops, the camera
+    # sets every zero, the compact turret (a tight core under the turntable, the motor's
+    # lobe out the back)
+    "palletizer_reach": {"turntable": "mt4_compact", "angle_sensor": "stall",
+                         "homing_reference": "vision_fiducial_ov5647"},
+}
+"""Per linkage: the keys its roles (:mod:`spiderpig.roles`) get when the config names none,
+where the role's own default isn't its design's (:func:`roles.default_key`)."""
+
 KIND_FIT: dict[str, dict[str, float]] = {
     "arm": {"link_radius": 6.6},
 }
@@ -84,14 +102,15 @@ default doesn't build its :data:`DEFAULT_PIVOTS` (each with why): an arm's links
 
 
 def default_pin(lk: linkage.Linkage) -> str:
-    """The pin construction ``lk`` gets when the config names none (:data:`DEFAULT_PIVOTS`)."""
-    return DEFAULT_PIVOTS[lk.kind][0]
+    """The pin construction ``lk`` gets when the config names none (:data:`LINKAGE_PIVOTS`,
+    else :data:`DEFAULT_PIVOTS`)."""
+    return LINKAGE_PIVOTS.get(lk.key, DEFAULT_PIVOTS[lk.kind])[0]
 
 
 def default_pillar(lk: linkage.Linkage) -> str:
     """The pillar construction ``lk`` gets when the config names none
-    (:data:`DEFAULT_PIVOTS`)."""
-    return DEFAULT_PIVOTS[lk.kind][1]
+    (:data:`LINKAGE_PIVOTS`, else :data:`DEFAULT_PIVOTS`)."""
+    return LINKAGE_PIVOTS.get(lk.key, DEFAULT_PIVOTS[lk.kind])[1]
 
 
 def default_params(lk: linkage.Linkage, given: Mapping[str, float] | None = None) -> Params:

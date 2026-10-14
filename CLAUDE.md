@@ -46,8 +46,8 @@ mise run kill-port -- --port 5173   # force-stop whoever is on a port (orphan re
 mise run clean
 ```
 
-`build`, `bake`, `guide`, `audit`, `explain`, `tune`, `sim`, `export`, `report`, `mcp` and `view` are
-the subcommands of the `spiderpig` console script (`spiderpig/cli.py`; `spiderpig <command>
+`build`, `bake`, `guide`, `audit`, `explain`, `tune`, `sim`, `export`, `report`, `mcp`, `view`,
+`precision`, `control` (an arm's kinematics, homing, Klipper config) and `cad` are the subcommands of the `spiderpig` console script (`spiderpig/cli.py`; `spiderpig <command>
 --help`; from a checkout `uv run python -m spiderpig.cli <command>`, or `mise run <command>
 -- <options>`; `spiderpig mcp --store PATH` for an agent). E.g. `spiderpig bake --module
 single --side`, `spiderpig bake --linkage
@@ -79,7 +79,10 @@ robot; a mechanism's `single`, one side).
 - Per-linkage overrides are data in `spiderpig/config.py`: `LINKAGE_CRANKS` (TrotBot's heel
   and toe on `bolt_round`), `MODULE_CRANKS` (empty), `LINKAGE_CRANK_SHEETS`
   (`hoecken_pantograph` on 0.080 in 6061), `LINKAGE_TORQUE_LIMITS`; Klann variants' quads at
-  `linkage.KLANN_QUAD`. `config.default_crank` / `default_crank_sheet` read them. The
+  `linkage.KLANN_QUAD`. `config.default_crank` / `default_crank_sheet` read them. A
+  linkage's own pivots and roles: `LINKAGE_PIVOTS`, `LINKAGE_ROLES` (`roles.default_key`),
+  its links' sheets `materials.LINK_SHEETS`: `palletizer_reach` is the user's approved arm
+  (ball_pair pivots, the `mt4_compact` turret, stall homing and the camera). The
   Chicago barrels a linkage stocks on a crank: `chicago.BARRELS` (the Strider's bolt crank),
   beside `MAX_BARREL`.
 - Heads: `StackSpec.heads` "best" (sunk first); a single-plate crank plans "gap_sink".
@@ -112,7 +115,9 @@ robot; a mechanism's `single`, one side).
 - Dev servers: `VITE_PORT`, `API_PORT`, `VITE_ALLOWED_HOSTS`, `SPIDERPIG_NO_BROWSER`.
 
 Nothing in the environment changes a design's parts: a design's id holds everything that
-shapes it. In a sandbox, set TMPDIR to a roomy disk (pytest, OCCT and the gate write there).
+shapes it. (The vendor-CAD switches, `SPIDERPIG_PART_CAD`, `SPIDERPIG_OFFLINE` and the CAD
+cache's contents, change how bought parts are drawn, not what is bought or cut; the fab
+cache and the build skip key on them.) In a sandbox, set TMPDIR to a roomy disk (pytest, OCCT and the gate write there).
 
 ## Ports and the viewer
 
@@ -211,7 +216,7 @@ precision | guide) → (api | control) → (mcp | server | cli).
 | `spiderpig/stages/` | under bake/build and the API (which re-exports them): `resolve.py` (`resolve`, `spec_of`), `records.py`, `reports.py`, `planning.py` (`check`, `plan`, `plan_config`) |
 | `spiderpig/mcp/` | the MCP server over the API (`jobs.py`, `outputs.py`, `guide.md`) |
 | `spiderpig/server/app.py`, `view.py` | the viewer's FastAPI app; `spiderpig view` |
-| `spiderpig/cli.py`, `tools/` | the console script; audit, tune, sim, export, report, dev, remote |
+| `spiderpig/cli.py`, `tools/` | the console script; audit, tune, sim, export, report, dev, remote, cad |
 | `viewer/` | the Vite + TypeScript three.js client (`src/drive/`: drive mode) |
 | `tests/` | `conftest.py` (factories), `cache.py`, `_ctx.py` (seams), `tiers.py`, `gate/`, `doc_check.py`, `scorecard.py` |
 

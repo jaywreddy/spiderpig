@@ -109,8 +109,8 @@ that leaves open.
 There are three ways to drive it, all calling one engine, and a browser viewer for looking
 at the result:
 
-- **a command line**, `spiderpig <command>` (`build`, `bake`, `explain`, `audit` and six
-  more);
+- **a command line**, `spiderpig <command>` (`build`, `bake`, `explain`, `audit` and the
+  rest: `spiderpig --help`);
 - **a Python API**, `spiderpig.api`, designed for AI agents: a validated JSON *spec* goes
   in, typed reports come out, and an agent can reach the live CAD solids and edit them;
 - **an MCP server** that offers the same operations to AI agents speaking the Model

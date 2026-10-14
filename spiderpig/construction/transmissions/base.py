@@ -93,11 +93,17 @@ class Transmission:
     plate, clamped by screws from outside (a belt: tensioned after the stack is built),
     else bolted straight to the plate from inside. ``bolts`` / ``bolt_pcd``: the screws
     that hold the hub to the link and their circle; ``nuts``: nuts beyond the hub (else
-    they thread into it).
+    they thread into it). ``family``: what kind it is whatever its key (``belt``,
+    ``capstan``: a turntable's layout follows it); ``reverses``: the output turns against
+    the motor; ``slips``: a friction drive, so a homing can't trust the driver's phase
+    alone.
     """
 
     key: str = ""
     label: str = ""
+    family: str = ""
+    reverses: bool = False
+    slips: bool = False
     bolts: int = 4
     bolt_pcd: float = 30.0
     nuts: bool = False

@@ -633,7 +633,8 @@ FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws and the pivots' hardw
 
 def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     """What the design buys whatever its parts turn out to be, priced from the catalog before
-    any build: the servos (one per side), a spool of filament (the printed parts), one
+    any build: the servos (one per side; an arm's steppers, one per input and the
+    turntable's), a spool of filament (the printed parts), one
     blank of each sheet the parts are cut from that no service cuts, the cutting of at
     least one part on each sheet a service cuts (its least charge, the material included:
     :func:`hardware.bom.cut_estimate`), and what
@@ -643,20 +644,33 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     lines, unpriced names)``: a lower bound on the BOM's total; :data:`FLOOR_LEAVES_OUT`
     says what a build adds."""
     from spiderpig import construction
+    from spiderpig import roles as rolemod
 
     cfg = design.config
     sides = cfg.sides
+    kind = cfg.lk.kind
+    cranked = rolemod.applies("crank", kind)        # a servo on a crank, else a motor a drive
     from spiderpig.materials import link_sheets
 
-    sheets = dict.fromkeys([cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values(),
-                            cfg.crank_sheet])
-    lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1)]
+    named: list[str] = [cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values()]
+    sheets = dict.fromkeys(named + ([cfg.crank_sheet] if cranked else []))
+    if cranked:
+        motors = [servos.get(cfg.servo).bom_key] * sides
+    else:                                           # each input's, and the turntable's
+        from spiderpig import actuators
+
+        motors = [actuators.get(cfg.role("actuator", n)).bom_key for n in cfg.lk.inputs]
+        if cfg.robot and rolemod.applies("turntable", kind) and cfg.role("turntable"):
+            from spiderpig.construction.rotary import PRESETS
+
+            motors.append(PRESETS[cfg.role("turntable")].parts[2].bom_key)
+    lines = [(k, motors.count(k)) for k in dict.fromkeys(motors)] + [("pla_filament", 1)]
     lines += [(k, 1) for k in sheets]             # one blank of each sheet at least
     # (not the deck's captive nuts: a robot whose deck doesn't fit buys none, and a
     # floor is what every build of the design buys)
     if cfg.pin in EPOXY_PINS:
         lines.append(("epoxy_2part", 1))
-    locks = {construction.crank(cfg.crank).lock_key}
+    locks = {construction.crank(cfg.crank).lock_key} if cranked else set()
     if cfg.pin in LOCKED_PINS or cfg.pillar in LOCKED_PILLARS:
         locks.add("threadlocker_222")
     lines += [(k, 1) for k in sorted(k for k in locks if k)]

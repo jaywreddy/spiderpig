@@ -410,3 +410,33 @@ def test_a_stall_arms_klipper_config_homes_on_its_drivers_with_every_pin_filled(
     assert "virtual_endstop" not in text
     assert "SGTHRS" not in text
     assert "<" not in text
+
+
+@pytest.mark.no_fabricate
+def test_the_control_cli_prints_axes_homing_fk_ik_and_writes_klipper(monkeypatch, capsys,
+                                                                     tmp_path):
+    """``spiderpig control``: the arm's commands through their entry point (the design
+    from the test cache, not planned afresh)."""
+    from spiderpig import fabricate
+    from spiderpig.control import cli
+
+    _, design, model = _model()
+    monkeypatch.setattr(fabricate, "design_side", lambda tmpl, side: design)
+    arm = ["--linkage", "palletizer"]
+    assert cli.main(["axes", *arm]) == 0
+    out = capsys.readouterr().out
+    assert {"q1:", "q2:", "q3:"} <= {line.split()[0] for line in out.splitlines()}
+    assert cli.main(["homing", *arm]) == 0
+    assert capsys.readouterr().out.startswith("1. [")
+    q = {k: (lo + hi) / 2 for k, (lo, hi) in model.ranges.items()}
+    q["q1"] = 0.0
+    assert cli.main(["fk", *arm, "--q", *(f"{k}={math.degrees(v)}" for k, v in q.items())]) == 0
+    tip = [float(v) for v in capsys.readouterr().out.split()[1:4]]
+    assert tip == pytest.approx(list(model.fk(q)), abs=1e-3)
+    assert cli.main(["ik", *arm, "--at", *map(str, tip)]) == 0
+    back = dict(kv.split("=") for kv in capsys.readouterr().out.split())
+    assert model.fk({k: math.radians(float(v)) for k, v in back.items()}) == pytest.approx(
+        tuple(tip), abs=1e-2)
+    assert cli.main(["klipper", *arm, "--out", str(tmp_path)]) == 0
+    assert (tmp_path / "printer.cfg").read_text().count("[manual_stepper ") == 3
+    assert cli.main(["fk", *arm, "--q", "q1=0"]) == 2          # missing joints

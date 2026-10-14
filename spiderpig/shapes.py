@@ -131,15 +131,23 @@ def hull(circles: Sequence[tuple[XY, float]], z0: float, z1: float) -> Shape3D:
     if len(cs) == 1:
         return disc(c0, r0, z0, z1)
     n_ = len(cs)
+    if n_ > 2:                          # the centres counter-clockwise (shoelace)
+        xs = [c[0] for c, _ in cs]
+        ys = [c[1] for c, _ in cs]
+        area = sum(xs[i] * ys[(i + 1) % n_] - xs[(i + 1) % n_] * ys[i] for i in range(n_))
+        if area <= 0.0:
+            raise ValueError("hull: give the circles counter-clockwise round it")
     tangents = []                       # the outward normal of the tangent from i to i + 1
     for i in range(n_):
         (p, rp), (q, rq) = cs[i], cs[(i + 1) % n_]
         d = q - p
-        L = float(np.hypot(*d))
-        u = d / L
+        dist = float(np.hypot(*d))
+        if dist - abs(rp - rq) <= 1e-9:
+            raise ValueError("hull: one circle inside its neighbour (or on its centre)")
+        u = d / dist
         w = np.array([u[1], -u[0]])     # right of the way round: outward
-        k = (rp - rq) / L
-        tangents.append(k * u + math.sqrt(max(0.0, 1.0 - k * k)) * w)
+        k = (rp - rq) / dist
+        tangents.append(k * u + math.sqrt(1.0 - k * k) * w)
 
     def v(xy):
         return Vector(float(xy[0]), float(xy[1]), z0)

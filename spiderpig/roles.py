@@ -118,7 +118,13 @@ def choices(name: str) -> list[str]:
 
 
 def default_key(name: str, config) -> str:
-    """The key role ``name`` gets in ``config`` when the config names none."""
+    """The key role ``name`` gets in ``config`` when the config names none: its linkage's
+    (:data:`config.LINKAGE_ROLES`), else the role's."""
+    from spiderpig.config import LINKAGE_ROLES
+
+    own = LINKAGE_ROLES.get(getattr(config, "linkage", "") or "", {}).get(name)
+    if own is not None:
+        return own
     d = get(name).default
     if ":" in d:
         return str(_load(d)(config))

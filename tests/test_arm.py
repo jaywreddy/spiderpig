@@ -216,3 +216,14 @@ def test_spiderpig_build_builds_an_arm(tmp_path):
     assert build(["--linkage", "palletizer", "--side-only", "--out", str(tmp_path / "b"),
                   "--store", str(tmp_path / "store")]) == 0
     assert (tmp_path / "b" / "laser").is_dir()
+
+
+def test_an_arms_cost_floor_prices_its_steppers_and_no_crank():
+    from spiderpig import api
+    from spiderpig.verify import cost_floor
+
+    d = api.resolve({"kind": "arm", "linkage": {"key": "palletizer"}}, store=None)
+    total, priced, _ = cost_floor(d)            # (it priced a servo and a crank: 2026-10-14)
+    assert total > 0
+    assert any("stepper" in line.lower() for line in priced)
+    assert not any("STS3215" in line for line in priced)

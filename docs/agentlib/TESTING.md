@@ -203,7 +203,7 @@ template and config, the crank angle, the plan itself, the servo model in play) 
 write it there after a cold fabrication (one `flock` per entry, atomic rename). The test
 suite turns it off (`SPIDERPIG_FAB_CACHE=off`, the `_offline` session fixture): tests use
 `tests/cache.py`, and `fresh=True` builds stay fresh. `Store.gc` removes other keys'
-folders. Fidelity (`tests/test_fabcache.py`, slow): on the gate's six designs a loaded
+folders. Fidelity (`tests/test_fabcache.py`, slow): on the gate's designs a loaded
 fabrication equals a fresh one on the gate's part table, the BOM and every DXF entity.
 `spiderpig build` into a folder that already holds that very build does nothing
 (`spiderpig/uptodate.py`; `--force` builds).
@@ -385,7 +385,7 @@ Cache entries, loaded vs built (one process, OCCT pool 1):
 
 The whole suite fills ~23 MB per engine version (25 fabrications, the plans).
 
-The identity gate: ~5 min wall for the six designs at once (the Strider quad 290 s, the
+The identity gate: ~5 min wall for the walkers' six designs at once (the Strider quad 290 s, the
 Strider double 150 s, the Klann quads 180-200 s, the mechanisms 45-50 s).
 
 

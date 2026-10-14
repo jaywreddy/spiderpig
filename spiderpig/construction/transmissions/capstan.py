@@ -59,6 +59,9 @@ class CapstanDrive(Transmission):
     docstring)."""
 
     key: str = "capstan"
+    family: str = "capstan"
+    reverses: bool = True               # the cord crosses: the drum turns against the capstan
+    slips: bool = True
     label: str = ("Dyneema cord capstan, 8.7:1: a laser-cut drum bolted to the link, the cord "
                   "wrapped on a sleeve on the motor's shaft, no backlash")
     drum_r: float = 30.0
