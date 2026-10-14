@@ -102,10 +102,18 @@ class Pool(Here):
         """Drop every job waiting or running but those in ``keep`` (a worker running one is
         stopped, and another forked when a job needs it)."""
         keep = set(keep)
-        self.queue = [j for j in self.queue if j in keep]
+        self._stop(lambda j: j not in keep)
+
+    def drop(self, jobs) -> None:
+        """Drop ``jobs`` if they are waiting or running (:meth:`cancel`'s converse)."""
+        gone = set(jobs)
+        self._stop(lambda j: j in gone)
+
+    def _stop(self, stop) -> None:
+        self.queue = [j for j in self.queue if not stop(j)]
         for p, conn in list(self.procs):
             job = self.busy.get(conn)
-            if job is not None and job not in keep:
+            if job is not None and stop(job):
                 p.terminate()
                 p.join()
                 conn.close()

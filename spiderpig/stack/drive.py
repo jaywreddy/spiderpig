@@ -69,6 +69,10 @@ PARTS = 4
 """The most parts a proof job splits into (:meth:`_Drive._split`): each its run of the first
 link's layers, its share of the job's budget."""
 
+DEAR = 200
+"""Nodes over which a stack size's short jobs count as dear (:meth:`_Drive._size`): the next
+size's then run a leg at a time beside the plain search, and the size after ahead."""
+
 MAX_WORKERS = 8
 """The most workers a plan forks by default: a module's jobs at once (B, a cradle, has about
 ten: five sizes, two head placements; the Strider double about twenty)."""
@@ -166,6 +170,9 @@ class Here:
     def cancel(self, keep: Iterable[Job]) -> None:
         pass
 
+    def drop(self, jobs: Iterable[Job]) -> None:
+        pass
+
     def ready(self, job: Job) -> bool:
         return job in self.results
 
@@ -258,10 +265,15 @@ class _Drive:
         spec = self.spec
         modes = [m for m in self.modes if m not in self.gave_up]
         jobs = {m: self._quick(m, top) for m in modes}
+        # (sizes get dear once the last one took more than a few hundred nodes or was left
+        # open: then a leg at a time beside the plain search, and the next size ahead;
+        # before, the plain search alone, a leg at a time only where it is left open)
+        last = [r for m in modes if (r := self.tried[m].get(top - 1)) is not None]
+        dear = any(r["nodes"] > DEAR or not r["done"] for r in last)
         for js in jobs.values():
-            for job in js:
+            for job in js if dear else js[:1]:
                 self.runner.submit(job, front=True)
-        if ahead is not None and ahead != top and spec.min_top <= ahead <= spec.max_top:
+        if dear and ahead is not None and ahead != top and spec.min_top <= ahead <= spec.max_top:
             nxt = [job for m in modes if ahead not in self.tried[m]
                    for job in self._quick(m, ahead)]
             for job in nxt[:self.runner.free()]:
@@ -272,6 +284,8 @@ class _Drive:
             if len(js) > 1 and first["best"] is None and not first["done"] \
                     and not first["gave_up"] and not first["expired"]:
                 first = combine([first, self.runner.result(js[1])], cover=False)
+            else:
+                self.runner.drop(js[1:])    # (its answer isn't read: no need to finish it)
             out[m] = self._take(m, top, first)
         return out
 
