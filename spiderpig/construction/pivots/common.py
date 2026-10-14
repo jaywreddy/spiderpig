@@ -222,6 +222,14 @@ def stock_tubes(out: Realized, build: Build, group: AxleGroup, tube_key: str,
     # claims there (a bearing's); else from the next layer's floor (2026-10-14)
     inside = (dims.seat or dims.axle) + EPS >= od / 2
     elements = [link_z(build, m) if inside else build.z(build.layers[m]) for m in members]
+    col = Column.of(build, group)           # where the column claims less than the tube (a
+    mine = {build.layers[m] for m in members}   # drive's or a crank's hub round it, a neck)
+    elements += [build.z(k) for k, (_, r) in col.roles.items()
+                 if k not in mine and r + EPS < od / 2]
+    elements += [build.plan.gap_z(k) for k, (_, r, _) in col.gaps.items() if r + EPS < od / 2]
+    lo_k, hi_k = min(col.roles), max(col.roles)
+    elements += [build.z(k) for k in range(lo_k, hi_k + 1)
+                 if k not in col.roles and k not in mine]       # nothing of its own there
     for b in out.bodies:            # a hub; a pillar's end shims
         if b.part is not None and ("_hub_" in b.name or "_shims" in b.name):
             bb = cast(Any, b.part).bounding_box()

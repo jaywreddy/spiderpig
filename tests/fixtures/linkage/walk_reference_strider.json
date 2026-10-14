@@ -18,7 +18,7 @@
    ],
    "foot_bob_mm": 1.5396552878797678,
    "mean_contacts": 4.022222222222222,
-   "min_margin_mm": 28.468282984590903,
+   "min_margin_mm": 28.481792103983274,
    "pitch_deg": [
     -3.987151261232546,
     3.987151261232681
@@ -40,8 +40,8 @@
   },
   "walk": {
    "com": [
-    -0.6747364933252923,
-    2.036016190354909,
+    -0.6634697008905655,
+    2.0020186638576827,
     0.0
    ],
    "feet": [
@@ -11637,11 +11637,11 @@
    "theta_samples": 360
   }
  },
- "engine_version": "0.1.0+653e7a01f3ff",
+ "engine_version": "0.1.0+8fce6102622f",
  "generator": "tests/test_walk.py::test_strider_walk_reference_fixture_is_current",
  "source": {
   "file": "tests/_linkage.py",
   "name": "strider_walk_reference_doc"
  },
- "source_key": "gen-339128493875139b"
+ "source_key": "gen-64b91b062c1672d1"
 }

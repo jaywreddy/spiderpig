@@ -131,8 +131,8 @@ def test_klann_lego_sets_a_lower_servo_torque_limit():
 def test_the_pillar_rings_close_the_columns_air():
     """``klann_lego``'s 6061 links make their layers 3.175 mm, so a 60 mm pillar segment
     stood 0.70 mm over the 3 mm rings' stack: 0.8 mm of play, 5.0 deg of tilt. The printed
-    rings in those layers now fill them (``StandoffAxle.ring_fill``): the pillars keep only
-    the 0.1 mm assumed play (0.61 deg, the Strider double's)."""
+    rings in those layers filled them (``StandoffAxle.ring_fill``), and the stock tubes now
+    do: the pillars keep only the 0.1 mm assumed play (0.61 deg, the Strider double's)."""
     from spiderpig import api
     from tests import cache
 
@@ -145,8 +145,7 @@ def test_the_pillar_rings_close_the_columns_air():
         assert note["segments_mm"] == [60.0], name
         assert note["play_mm"] == pytest.approx(0.1), name
         assert max(lk["tilt_deg"] for lk in note["links"]) < 1.0, name
-    rings = [b for b in mech.bodies if "pillar" in b.name and "_ring" in b.name]
-    tall = [b for b in rings if b.part.bounding_box().size.Z > 3.1]
-    assert tall
-    for b in tall:
-        assert abs(b.part.bounding_box().size.Z - 3.175) < 1e-3, b.name
+    # since 2026-10-14 the column between its links is stock tubes cut face to face, which
+    # close the air whatever the layers' thickness; nothing on a pillar is printed
+    assert [b for b in mech.bodies if "pillar" in b.name and "_tube" in b.name]
+    assert not [b.name for b in mech.bodies if "pillar" in b.name and b.fab == "printed"]

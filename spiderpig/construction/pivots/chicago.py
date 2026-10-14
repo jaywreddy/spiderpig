@@ -82,7 +82,9 @@ PTFE washer at the review, a printed spacer since 2026-10-05) carries only axial
 even a 155 N jam on a 36 mm^2 face is 4.3 MPa, and the walking axial load is a small
 fraction of that.
 
-The construction: plain 4.2 mm running holes in the links, printed spacer rings between
+The construction (since 2026-10-14 the rings and head spacers below are stock: tubes cut to
+length between the links, DIN 988 shims for a head spacer: ``spacers``,
+:class:`.common.Stock`): plain 4.2 mm running holes in the links, printed spacer rings between
 (a 4.2 mm bore; an 8.5 mm laser-cut ring is under both services' smallest part), a
 **printed head spacer** under the screw's head (and under the barrel's where the take-up
 needs it): the head turns against it.
@@ -556,12 +558,12 @@ class ChicagoAxle:
         return [
             Op(STACK, (k_lo, 0, 1), lo, "",
                "Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its "
-               "head under the link and its printed head spacer under that; set the gap "
+               "head under the link and its head spacer (shims) under that; set the gap "
                "with a feeler gauge as it cures.", "layer"),
             # the screw is the barrel's (counted with it); its head spacer is a part of its own
             Op(STACK, (k_hi, 2), (Piece(pin, "screw", (cut, z1)),), "",
                "Each Chicago screw into its barrel from the cap side once the links above "
-               "are on (threadlocker), its printed top spacer under the head.", "layer",
+               "are on (threadlocker), its top spacer (shims) under the head.", "layer",
                count=False),
             Op(STACK, (k_hi, 2), top, "",
                "The land washer on the top link's bearing, on its inner ring only, then the "
