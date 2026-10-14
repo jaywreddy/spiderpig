@@ -56,6 +56,7 @@ thousands of geoms a module. :func:`support` answers whether a piece floats with
 
 from __future__ import annotations
 
+import copy
 import itertools
 import math
 import time
@@ -396,6 +397,8 @@ class Shape:
     ghi: np.ndarray
     com: np.ndarray
     rects: np.ndarray
+    _cols: tuple[np.ndarray, np.ndarray, np.ndarray] | None = field(
+        default=None, repr=False, compare=False)
 
     @property
     def span(self) -> tuple[int, int, int]:
@@ -426,11 +429,10 @@ class Shape:
     @property
     def cols(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Its columns (x, z indices) and each one's bottom."""
-        got = self.__dict__.get("_cols")
-        if got is None:
+        if self._cols is None:
             ii, kk = np.nonzero(self.lo < BIG)
-            got = self.__dict__["_cols"] = (ii, kk, self.lo[ii, kk])
-        return got
+            self._cols = (ii, kk, self.lo[ii, kk])
+        return self._cols
 
     def signature(self) -> bytes:
         """Equal for two orientations with the same voxels (a symmetric piece's)."""
@@ -631,8 +633,7 @@ class Bin:
         self._pyr: _MaxPyramid | None = None
 
     def copy(self) -> Bin:
-        b = Bin.__new__(Bin)
-        b.__dict__.update(self.__dict__)
+        b = copy.copy(self)
         b.top, b.real, b.who = self.top.copy(), self.real.copy(), self.who.copy()
         b.placed = list(self.placed)
         b._pyr = None               # (this one's own top from now on)
