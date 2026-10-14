@@ -14,6 +14,7 @@ import re
 import warnings
 from dataclasses import replace
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pytest
@@ -1600,7 +1601,7 @@ def test_a_fixed_designs_full_verify_holds_it_in_mujoco(monkeypatch):
             "sag_max": 0.04, "torque_fraction": {"q2": 0.08, "q3": 0.0}, "loop_error": 0.009}
     asked = []
     monkeypatch.setattr(run, "hold", lambda config: asked.append(config) or held)
-    d = _design()
+    d: Any = _design()          # (a design's stand-in: its config and spec)
     d.config = BuildConfig(linkage="palletizer_reach")
     (row,) = vf._hold_rows(d, VerifyReport("full"))
     assert asked == [d.config]
