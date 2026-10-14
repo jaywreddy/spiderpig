@@ -92,12 +92,12 @@ def _stepper_files(config, out: Path, side=None) -> list[Path]:
 
 
 WRITERS: dict[str, Callable[..., list[Path]]] = {
-    "bus_servo": _servo_files,
-    "stepper": _stepper_files,
+    "servo": _servo_files,
+    "actuator": _stepper_files,
 }
 """What drives a design (:func:`actuators.controllers.motors_of`) -> its files' writer."""
 
-FILES = {"bus_servo": ("servos.json", HOMING), "stepper": ("printer.cfg", HOMING)}
+FILES = {"servo": ("servos.json", HOMING), "actuator": ("printer.cfg", HOMING)}
 """The files each writer makes, by what drives the design."""
 
 

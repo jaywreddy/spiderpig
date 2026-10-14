@@ -231,7 +231,9 @@ def test_verify_fails_an_arms_overloaded_joint(monkeypatch, arm_loads):
 
 
 @pytest.mark.no_fabricate
-def test_a_cranked_mechanism_is_not_rated(monkeypatch):
+def test_a_cranked_mechanism_is_rated_at_its_own_static_loads():
+    """No longer "not rated" (2026-10-14): a cranked mechanism's jam is the arm's crash, its
+    output blocked while its servo pushes at its torque limit (tests/test_machines.py)."""
     from spiderpig import verify
 
     design = SimpleNamespace(mech=SimpleNamespace(meta={}), store=None,
@@ -239,11 +241,10 @@ def test_a_cranked_mechanism_is_not_rated(monkeypatch):
                              spec=SimpleNamespace(payload_g=None))
     rep = verify.VerifyReport("standard")
     rows = verify._strength_rows(cast(Any, design), rep, "standard")
-    assert len(rows) == 1
-    assert rows[0].value is None
-    assert rows[0].passed
-    assert rows[0].detail.startswith("not rated")
-    assert rep.failures == []
+    assert rows[0].requirement == "strength.joints"
+    assert rows[0].value is not None
+    assert rows[0].hard
+    assert "over a turn of the crank" in rows[0].detail
 
 
 @pytest.mark.no_fabricate

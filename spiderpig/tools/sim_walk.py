@@ -24,8 +24,9 @@ the first ``--skip`` seconds.
 A design that doesn't walk (an arm, a mechanism: :attr:`linkage.Linkage.walks`) has the
 same model (:mod:`sim.mjcf`), fixed to the world: it is held at its pose under gravity for
 ``--seconds`` by its motors (:func:`sim.run.hold`), and the sag of its tool's tip and
-output, its joints' drift, its motors' torques and its loops' closure are printed (exit
-status 1 when it doesn't hold).
+output, its joints' drift, its motors' torques and its loops' closure are printed; a
+cranked one's crank is then turned once at full speed (:func:`sim.run.turn`), its torque
+against the stall (exit status 1 when it doesn't hold or the crank stalls).
 """
 
 from __future__ import annotations
@@ -44,7 +45,14 @@ from spiderpig.config import (
     config_from_args,
 )
 from spiderpig.sim.mjcf import RPM, SimParams, build_mjcf, drive_limits
-from spiderpig.sim.run import compare_with_walk, hold, kinematic_gait, simulate, walk_metrics
+from spiderpig.sim.run import (
+    compare_with_walk,
+    hold,
+    kinematic_gait,
+    simulate,
+    turn,
+    walk_metrics,
+)
 
 
 def parse_speed(text: str, vmax: float) -> float:
@@ -250,11 +258,17 @@ def main(argv=None) -> int:
     xml_in, meta_in = args.model or (None, None)
     if not cfg.lk.walks:            # nothing to walk: held at its pose
         held = hold(cfg, args.seconds, params=params, model_xml=xml_in, model_meta=meta_in)
+        turned = turn(cfg, params=params, model_xml=xml_in, model_meta=meta_in)  # a crank
         if args.json:
-            print(json.dumps({"hold": held}, indent=1))
+            print(json.dumps({"hold": held, "turn": turned}, indent=1))
         else:
             _hold_report(cfg, held, args.seconds)
-        return 0 if held["holds"] else 1
+            if turned is not None:
+                print(f"  turned    one turn at full speed: peak {turned['torque_peak']:.3f} "
+                      f"N·m, mean {turned['torque_mean']:.3f} of {turned['torque_limit']:g} "
+                      "stall" + ("" if turned["completed"] else
+                                 f"; STALLED at {turned['revolutions']:.2f} of a turn"))
+        return 0 if held["holds"] and (turned is None or not turned["saturates"]) else 1
     vmax, _ = drive_limits(servos.get(cfg.servo))
     left, right = parse_speed(args.left, vmax), parse_speed(args.right, vmax)
     controls = [(0.0, 0.0, 0.0), (args.settle, left, right)]

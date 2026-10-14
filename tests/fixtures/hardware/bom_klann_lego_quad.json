@@ -1864,11 +1864,11 @@
   "purchases_usd": 270.38,
   "title": ""
  },
- "engine_version": "0.1.0+20b872c8002c",
+ "engine_version": "0.1.0+2ee05f78651a",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[klann_lego_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-f18d8391e1dc680c"
+ "source_key": "gen-57da78af2074bc74"
 }

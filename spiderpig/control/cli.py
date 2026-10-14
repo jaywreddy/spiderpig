@@ -69,7 +69,7 @@ def _parse(argv):
         except (KeyError, ValueError) as e:
             p.error(str(e))
         args.config = design.config.side_config() if args.side_only else design.config
-        if motors_of(args.config) == "stepper" and plan(design).ok:
+        if motors_of(args.config) == "actuator" and plan(design).ok:
             args.side = design.side     # its stored plan (re-made and verified), not a new one
     else:
         args.config = config_from_args(args, robot=False if args.side_only else None)
@@ -93,16 +93,16 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         print(f"wrote {', '.join(str(f) for f in written)} ({cfg.linkage}: {motors})")
         return 0
-    if motors == "bus_servo" and args.action in STEPPER_ONLY:
+    if motors == "servo" and args.action in STEPPER_ONLY:
         print(f"error: {args.action} is a stepper-driven design's (an arm's); "
               f"{cfg.linkage}'s cranks turn on bus servos: axes, servo, homing",
               file=sys.stderr)
         return 2
-    if motors == "stepper" and args.action in SERVO_ONLY:
+    if motors == "actuator" and args.action in SERVO_ONLY:
         print(f"error: {args.action} is a bus-servo design's (a crank's); {cfg.linkage}'s "
               "joints turn on steppers: axes, fk, ik, klipper, homing", file=sys.stderr)
         return 2
-    if motors == "stepper":
+    if motors == "actuator":
         return _stepper_main(args)
     try:
         return _servo_main(args)

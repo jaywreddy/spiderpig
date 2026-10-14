@@ -196,7 +196,7 @@ def test_the_deck_carries_the_controllers_kit(strider):
     ctl = controller(DECK_KIT)
     assert cfg.role("controller") == DECK_KIT
     assert ctl.mount == "deck"
-    assert ctl.drives == "bus_servo"
+    assert ctl.drives == "servo"
     kit = dict(ctl.bom)
     got = Counter(b.bom_key for b in mech.bodies if b.bom_key in kit)
     for x in mech.bom_extras:
@@ -383,13 +383,16 @@ def test_no_deck_carries_its_mass_as_a_payload():
     p = SimParams()
     assert p.payload_g == 0.0
 
+    own = BuildConfig(roles=(("controller", "none"),))
+
     def robot(**meta):
-        return cast(Any, SimpleNamespace(meta=meta, walks=True))
+        return cast(Any, SimpleNamespace(meta=meta, walks=True, config=own))
 
     assert payload_g(robot(deck={"fitted": True}), p) == 0.0
     assert payload_g(robot(deck={"fitted": False}), p) == DECK_FALLBACK_G
     assert math.isclose(payload_g(robot(), p), DECK_FALLBACK_G)
-    # a bare deck (controller none): the kit's catalogued electronics ride as a payload
+    # a bare deck (controller none): the kit's catalogued electronics ride as a payload (a
+    # named controller's own carried parts instead: tests/test_machines.py)
     assert payload_g(robot(deck={"fitted": True, "electronics": False}), p) == \
         pytest.approx(kit_mass_g())
     # a fixed design (an arm, a mechanism) carries no deck: only what it is given

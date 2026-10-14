@@ -273,6 +273,24 @@ LINKAGE_TORQUE_LIMITS: dict[str, float] = {
     # over its 0.18 is 4.7 x) and puts every joint and link at jam SF >= 2 with no part
     # added or changed.
     "klann_lego": 0.60,
+    # the mechanisms (2026-10-14, when their jam was first rated: strength.crank_loads, the
+    # output blocked while the servo pushes): at the STS3215's 0.85 N·m every one of them
+    # failed (jam SF 0.22-0.85: small cranks on acrylic links, levers up to 10 x near the
+    # output's dead points). Each limit is the largest (rounded down) that puts every joint
+    # and link at jam SF >= 2 with no part changed; a turn at full speed in MuJoCo
+    # (sim.run.turn) peaks at 0.006-0.031 N·m, so each keeps 6.8 x (hoecken_pantograph) or
+    # more of headroom over its own motion (klann_lego's rule: 4.2 x). What a mechanism
+    # drives beyond its own links needs its limit raised and its links rated again.
+    "hoecken": 0.36,
+    "watt_crank": 0.19,
+    "peaucellier_crank": 0.17,
+    "parallelogram_lift": 0.19,
+    "watt_table_lift": 0.19,
+    "hoecken_pantograph": 0.21,
+    "crank_rocker": 0.19,
+    "rocker_amplifier": 0.09,
+    "dwell_rocker": 0.11,
+    "hoecken_table": 0.21,
 }
 """Per linkage: a servo torque limit (N·m) under the servo's own
 (:attr:`servos.spec.ServoSpec.torque_limit_nm`), where a joint or link holds a jam at SF 2
@@ -646,9 +664,14 @@ class BuildConfig:
     def side_config(self) -> BuildConfig:
         """The config of the side alone: ``robot`` off, the robot-level roles
         (:attr:`roles.Role.robot`: the turntable, the tool) dropped, so every robot of one
-        side shares its design and plan."""
+        side shares its design and plan. A linkage that makes no robot (a mechanism: its
+        side is the whole machine, :func:`robot_layout`) keeps them: there is no robot round
+        its side to hold them (its controller's lines are the side's,
+        :func:`construction.robot.controller_lines`)."""
         from spiderpig import roles as rolemod
 
+        if not robot_layout(self.lk):
+            return replace(self, robot=False)
         roles = tuple((k, v) for k, v in self.roles
                       if not rolemod.get(rolemod.split(k)[0]).robot)
         return replace(self, robot=False, roles=roles)

@@ -148,11 +148,28 @@ def applies(name: str, kind: str) -> bool:
     return kind in get(name).kinds
 
 
-register(Role("pillar", "frame pivot", "spiderpig.construction:AXLES", ("walker", "mechanism"),
+MOTOR_ROLES = ("servo", "actuator")
+"""The roles a design's motors fill, by what they turn (:func:`motor_role`): a crank's
+serial-bus servo, or a ranged input's stepper. The drive groups
+(:data:`construction.DRIVES`) and the controllers (:attr:`actuators.controllers.Controller.drives`)
+are keyed on these names: one drive vocabulary."""
+
+
+def motor_role(lk) -> str:
+    """The motor role of linkage ``lk``'s drive (:data:`MOTOR_ROLES`), from its inputs: a
+    crank (full turns: :attr:`linkage.Linkage.ranged` false) is the role ``servo``'s, ranged
+    inputs each the role ``actuator``'s. The one place a design's motors are chosen
+    (2026-10-14: a kind test in each stage before); the roles' ``kinds`` agree with it
+    (``tests/test_roles.py``)."""
+    return "actuator" if lk.ranged else "servo"
+
+
+register(Role("pillar", "frame pivot", "spiderpig.construction:AXLES",
+              ("walker", "mechanism", "arm"),
               field="pillar", default="spiderpig.config:config_pillar",
               help="the axles that join links to the frame plates"))
 register(Role("pin", "pin between links", "spiderpig.construction:AXLES",
-              ("walker", "mechanism"), field="pin", default="spiderpig.config:config_pin",
+              ("walker", "mechanism", "arm"), field="pin", default="spiderpig.config:config_pin",
               help="the axles that join links to links"))
 register(Role("servo", "drive servo", "spiderpig.servos:REGISTRY", ("walker", "mechanism"),
               field="servo", default="sts3215",
@@ -189,11 +206,13 @@ register(Role("tool", "tool", "spiderpig.construction.tools:TOOLS", ("arm",),
               default="suction_cup", optional=True, robot=True,
               help="what the arm holds on its flange: a vacuum cup, fixed or on a wrist"))
 register(Role("controller", "controller", "spiderpig.actuators.controllers:CONTROLLERS",
-              ("walker", "arm"), default="spiderpig.actuators.controllers:default_key",
+              ("walker", "mechanism", "arm"),
+              default="spiderpig.actuators.controllers:default_key",
               optional=True, robot=True, implicit="esp32_bus_servo",
-              help="the electronics that drive the motors: a walker's serial-bus servo "
-                   "board, battery and harness on its deck (esp32_bus_servo; a DYNAMIXEL "
-                   "servo's USB interface and power hub, u2d2_dynamixel), an arm's "
-                   "stepper board running Klipper with its host computer, supply and cables "
-                   "(skr_pico_pi_zero); none: your own (a walker's deck bare, an arm's "
-                   "Klipper pins left to fill)"))
+              help="the electronics that drive the motors (every design that has motors): "
+                   "a serial-bus servo board, battery and harness (esp32_bus_servo: on a "
+                   "walker's deck, bought as lines for a mechanism; a DYNAMIXEL servo's USB "
+                   "interface and power hub, u2d2_dynamixel), a stepper board running "
+                   "Klipper with its host computer, supply and cables (skr_pico_pi_zero); "
+                   "none: your own (a walker's deck bare, an arm's Klipper pins left to "
+                   "fill)"))

@@ -118,7 +118,7 @@ def test_the_loads_say_where_they_came_from():
     assert over["jam_n"] == 50.0
     mech = strength.design_loads(BuildConfig(linkage="parallelogram_lift", module="single",
                                              robot=False))
-    assert mech["source"] == "none"
+    assert mech["source"] == "static"       # a mechanism's own static loads (crank_loads)
 
 
 def test_a_jam_that_did_not_stall_says_so(monkeypatch):

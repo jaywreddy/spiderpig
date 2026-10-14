@@ -639,7 +639,8 @@ def test_strength_design_loads_falls_back_when_the_sim_fails_or_has_nothing(monk
     assert (over["source"], over["note"]) == ("override", "--pin-load 5,50 N on every joint")
     mech = strength.design_loads(BuildConfig(linkage="parallelogram_lift", module="single",
                                              robot=False))
-    assert (mech["source"], mech["walk_n"], mech["jam_n"]) == ("none", 0.0, 0.0)
+    assert mech["source"] == "static"                   # (2026-10-14: no longer "none")
+    assert 0 < mech["walk_n"] < mech["jam_n"]
 
 
 def test_strength_joint_loads_match_the_sim_joint_by_stem_kind_and_links():
@@ -1592,25 +1593,37 @@ def test_sim_rows_without_mujoco_say_how_to_get_it(monkeypatch):
 
 def test_a_fixed_designs_full_verify_holds_it_in_mujoco(monkeypatch):
     """``verify("full")`` of a design that doesn't walk: the same MuJoCo model, held at its
-    pose (``sim.run.hold``): one soft ``sim.holds`` row, the worst sag its value; a
+    pose (``sim.run.hold``) with its payload: one soft ``sim.holds`` row, the worst sag its
+    value; a cranked one's crank turned too (``sim.run.turn``), a soft ``sim.torque`` row; a
     failure to run is ``sim_failed``."""
     pytest.importorskip("mujoco")
+    from spiderpig.repeatability import PAYLOAD_G
     from spiderpig.sim import run
 
     held = {"finite": True, "holds": True, "sag": {"tool0": 0.04, "output": 0.03},
             "sag_max": 0.04, "torque_fraction": {"q2": 0.08, "q3": 0.0}, "loop_error": 0.009}
     asked = []
-    monkeypatch.setattr(run, "hold", lambda config: asked.append(config) or held)
+    monkeypatch.setattr(run, "hold", lambda config, params: asked.append(
+        (config, params.payload_g)) or held)
+    monkeypatch.setattr(run, "turn", lambda config, params=None: None)
     d: Any = _design()          # (a design's stand-in: its config and spec)
     d.config = BuildConfig(linkage="palletizer_reach")
+    d.lk = d.config.lk
     (row,) = vf._hold_rows(d, VerifyReport("full"))
-    assert asked == [d.config]
+    assert asked == [(d.config, PAYLOAD_G)]               # the arm's payload rides its tool
     assert (row.requirement, row.value, row.target, row.passed, row.hard, row.unit) == (
         "sim.holds", 0.04, f"<= {run.HOLD_SAG_MM:g}", True, False, "mm")
     assert "tool0 sags 0.040 mm" in row.detail
+    assert f"a {PAYLOAD_G:g} g payload" in row.detail
     assert "q2 at 8 % of its torque" in row.detail
+    turned = {"torque_peak": 0.03, "torque_mean": 0.01, "torque_limit": 1.91,
+              "saturates": False, "completed": True, "revolutions": 1.0}
+    monkeypatch.setattr(run, "turn", lambda config, params=None: turned)
+    _, torque = vf._hold_rows(d, VerifyReport("full"))
+    assert (torque.requirement, torque.value, torque.target, torque.passed, torque.hard) == (
+        "sim.torque", 0.03, "<= 1.91", True, False)
 
-    def broken(config):
+    def broken(config, params=None):
         raise RuntimeError("bad model")
 
     monkeypatch.setattr(run, "hold", broken)

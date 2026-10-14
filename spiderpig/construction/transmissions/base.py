@@ -239,7 +239,7 @@ class JointDrive(Group):
         lo, hi = lk.ranges.get(self.input, (0.0, 360.0))
         pts = lk.solve(params=dict(zip(lk.params, ctx.config.values, strict=True))).at(
             *[np.array([math.radians((a + b) / 2)]) for a, b in
-              (lk.ranges[k] for k in lk.inputs)])
+              (lk.ranges.get(k, (0.0, 360.0)) for k in lk.inputs)])    # (a crank's: a turn)
         joints = lk.links[self.link][0]
         other = next(j for j in joints if j != self.about)
         d = pts[other][0] - pts[self.about][0]
