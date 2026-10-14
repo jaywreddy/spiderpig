@@ -72,6 +72,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_rounding.py": "hardware",
     # strength / wobble / loads (P4)
     "test_strength.py": "strength",
+    "test_task_targets.py": "strength",
     "test_wobble.py": "strength",
     "test_seam_reports.py": "strength",
     # API / store / verify / MCP / CLI build (P5)

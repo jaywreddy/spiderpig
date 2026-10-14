@@ -23,6 +23,7 @@ from spiderpig.materials import link_sheets
 from spiderpig.spec import (
     ALLOWANCE,
     FIT_FIELDS,
+    PAYLOAD,
     SECTIONS,
     Spec,
     SpecError,
@@ -199,6 +200,8 @@ def _resolved(spec: Spec, config: BuildConfig, module: str, sides: int) -> dict:
         targets[f.section][f.name] = t.to_dict(hard=effective_hard(t, f))
     if spec.allowance_usd is not None:      # the budget's one plain number
         targets["budget"][ALLOWANCE] = spec.allowance_usd
+    if spec.payload_g is not None:          # the precision section's
+        targets["precision"][PAYLOAD] = spec.payload_g
     return {
         "version": spec.version, "kind": spec.kind,
         "linkage": {"key": config.linkage, "params": design["proportions"]},
@@ -213,4 +216,6 @@ def _resolved(spec: Spec, config: BuildConfig, module: str, sides: int) -> dict:
                           "heads": config.heads, **config.applied_roles()},
         "fit": fit,
         "outputs": list(spec.outputs),
+        # (only when the spec asks: a design without precision targets keeps its id)
+        **({"precision": targets["precision"]} if targets["precision"] else {}),
     }

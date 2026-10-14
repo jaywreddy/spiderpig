@@ -64,6 +64,8 @@ TILT_HYSTERESIS = 0.1   # the share of the pairs' elastic tilt that varies betwe
 HARDWARE_G = 3.0        # each joint's hardware on a link (a bearing pair, hub, shaft share)
 DRUM_G = 25.0           # a drive's driven drum or pulley on its link (g)
 TOOL_G = 15.0           # the tool (a cup and its holder) at the output (g)
+PAYLOAD_G = 50.0        # the load at the output a design assumes unless its spec says
+#                         (``precision.payload_g``): a few glass slides
 CYCLES = 30             # ISO 9283's
 TRIALS = 400
 POSES = ((0.5, 0.5), (0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9))   # the box's share
@@ -131,6 +133,93 @@ def gravity_loads(lk: linkage.Linkage, values, *, link_g_per_mm: float | dict[st
         for k, b in enumerate(lay.driven):
             torque[b][s] = float(lam[base + k] * scale / 1000)
     return GravityLoads(force, torque)
+
+
+BOX_FRACTIONS = (0.1, 0.3, 0.5, 0.7, 0.9)   # the strength check's poses: a grid over the box
+SINGULAR_COND = 1e6     # a pose whose drives can't place the output's force (near a lock)
+
+
+def box_inputs(lk: linkage.Linkage) -> tuple[np.ndarray, ...]:
+    """A grid of poses over the inputs' box at :data:`BOX_FRACTIONS` (the ISO poses' 10 / 90 %
+    corners and between: away from the box's edges, where a toggle has no limit)."""
+    f = np.array(BOX_FRACTIONS)
+    if len(lk.inputs) == 1:
+        return lk.inputs_at(f)
+    a, b = np.meshgrid(f, f, indexing="ij")
+    return lk.inputs_at(a.ravel(), b.ravel())
+
+
+@dataclass(frozen=True)
+class StaticLoads:
+    """A ranged linkage's pin loads (N) per interface, worst over the box (:func:`static_loads`):
+    ``operating`` its weight and the payload's at rest x :data:`ACCEL_FACTOR` (the moves'
+    accelerations); ``gravity`` and ``crash`` the two terms of a crash (the output blocked,
+    every drive at its capacity, each sign: the joint's ``jam`` load is their sum, worst
+    pose); ``drive_nm`` each input's largest gravity torque; ``crash_force_n`` the largest
+    force the drives push the output with; ``singular`` the poses left out (the drives
+    can't set the output's force there)."""
+
+    operating: dict[tuple[str, str], float]
+    gravity: dict[tuple[str, str], float]
+    crash: dict[tuple[str, str], float]
+    drive_nm: dict[str, float]
+    crash_force_n: float
+    singular: int = 0
+
+
+def static_loads(lk: linkage.Linkage, values, *, link_g_per_mm: float | dict[str, float],
+                 payload_g: float, capacity_nm: dict[str, float]) -> StaticLoads:
+    """The strength check's loads on a ranged linkage (no floor, no sim): over
+    :func:`box_inputs`, the static gravity solve (:func:`gravity_loads`) and the crash, the
+    output held while each drive turns at its ``capacity_nm`` (its motor's holding torque x
+    its ratio, N·m at the joint), every combination of their senses. The crash is linear in
+    the output's reaction: a unit force along x and along y at the output point gives each
+    interface's force and each drive's torque per newton; the drives' torques fix the
+    reaction (least squares for one input: the force along its lever)."""
+    ins = box_inputs(lk)
+    grav = gravity_loads(lk, values, link_g_per_mm=link_g_per_mm, payload_g=payload_g, ins=ins)
+    lay = layout(lk)
+    with np.errstate(all="ignore"):
+        pts = linkage.LegSolution(1, 0.0, values, lk.key).at(*ins)
+    scale = scale_of(pts)
+    names = (*lay.bodies, *(f"axle:{j}" for j in lay.axles))
+    col = {n: 3 * i for i, n in enumerate(names)}
+    n = next(iter(pts.values())).reshape(-1, 2).shape[0]
+    caps = np.array([capacity_nm.get(k, 0.0) for k in lk.inputs])
+    crash = {i: np.zeros(n) for i in lay.interfaces}
+    force, singular = 0.0, 0
+    signs = np.array(np.meshgrid(*[[-1.0, 1.0]] * len(caps))).reshape(len(caps), -1).T
+    for s in range(n):
+        a, row_of = _matrix(lay, pts, s, scale)
+        p = np.asarray(pts[lay.output_point]).reshape(-1, 2)[s]
+        k = col[lay.output_body]
+        unit = np.zeros((a.shape[1], 2))
+        unit[k, 0], unit[k + 2, 0] = 1.0, -p[1] / scale          # a newton along x at p
+        unit[k + 1, 1], unit[k + 2, 1] = 1.0, p[0] / scale        # and along y
+        try:
+            lam = -np.linalg.solve(a.T, unit)                    # (rows, 2)
+        except np.linalg.LinAlgError:
+            singular += 1
+            continue
+        base = 2 * len(row_of) + len(lay.axles) + 3
+        per_n = lam[base:base + len(lay.driven)] * scale / 1000  # N·m per N, each drive
+        if not np.all(np.isfinite(per_n)) or np.linalg.cond(per_n) > SINGULAR_COND:
+            singular += 1
+            continue
+        for sg in signs:
+            f = np.linalg.lstsq(per_n, sg * caps, rcond=None)[0]   # the output's reaction
+            force = max(force, float(np.hypot(*f)))
+            for i, r in row_of.items():
+                v = lam[r:r + 2] @ f
+                crash[i][s] = max(crash[i][s], float(np.hypot(*v)))
+    worst = {i: float(np.max(grav.force_n[i] + crash[i])) for i in lay.interfaces}
+    return StaticLoads(
+        {i: float(np.max(v)) * ACCEL_FACTOR for i, v in grav.force_n.items()},
+        {i: float(np.max(grav.force_n[i])) for i in lay.interfaces},
+        {i: worst[i] - float(np.max(grav.force_n[i])) for i in lay.interfaces},
+        {k: float(np.max(np.abs(grav.torque_nm[b]))) for k, b in zip(lk.inputs, lay.driven,
+                                                                    strict=True)},
+        force, singular)
 
 
 @dataclass(frozen=True)

@@ -13,12 +13,17 @@ whether the joints hold, per joint:
   one bearing model, :func:`construction.crank.hex_bearing_nm`, and the standoff's torsion;
   the round standoff's friction clamp).
 
-The loads (:func:`design_loads`): the design's own from MuJoCo (:mod:`sim.loads`: a
+The loads (:func:`design_loads`): a walker's own from MuJoCo (:mod:`sim.loads`: a
 walking percentile and a jam at the servo's torque limit, per joint and link, cached per
 design in the store); ``override`` (``--pin-load WALK,JAM``) puts one walking and one
 jam load on every joint; without MuJoCo, or for a design the sim can't model, the
 family's conservative measured value (:data:`FALLBACK_PIN_LOADS`, else
-:data:`GENERIC_PIN_LOADS`, with a note saying so).
+:data:`GENERIC_PIN_LOADS`, with a note saying so). A linkage with ranged inputs (an arm:
+no floor, no crank) has its own from the quasi-static model the precision budget's ISO RP
+solves (:func:`arm_loads`, :func:`repeatability.static_loads`, per joint as the sim's):
+operating (the ``walk`` column) its weight and the payload over the inputs' box x the
+moves' accelerations, jammed a crash (the output blocked, the drives at their holding
+torque). A cranked mechanism's loads are what it drives (``none``: no rows).
 
 Findings (:func:`findings`): a joint whose jam safety factor is under
 :data:`JAM_ERROR` (1.0) is an **error** (it yields, or slips, at a jam the firmware
@@ -33,6 +38,8 @@ from __future__ import annotations
 
 import math
 import re
+
+import numpy as np
 
 from spiderpig.config import BuildConfig
 from spiderpig.construction.crank.capacity import crank_capacity  # (its home since W5)
@@ -52,6 +59,9 @@ the Klann's the demo Klann quad's, which bounds the variants (``klann_lego`` qua
 0,0,180,180 measures 12 N walking, 80 N jammed in :mod:`sim.loads`)."""
 GENERIC_PIN_LOADS = (119.0, 155.0)
 """A family nobody measured: the most loaded family's (the demo Klann's)."""
+PER_JOINT = ("sim", "static")
+"""The loads' sources that are per joint (``joints``): the sim's, a ranged linkage's static
+model's (:func:`arm_loads`)."""
 
 
 
@@ -82,15 +92,20 @@ def uniform_loads(walk: float, jam: float, source: str, note: str) -> dict:
 
 
 def design_loads(config: BuildConfig, store=None, *, override: tuple[float, float] | None
-                 = None, sim: bool | str = True) -> dict:
+                 = None, sim: bool | str = True, payload_g: float | None = None) -> dict:
     """The loads the strength check uses for ``config`` (see the module doc): ``source``
-    ``sim`` / ``override`` / ``fallback`` / ``none`` (a mechanism: what it drives sets its
-    loads), a ``note`` saying where they came from, the largest walking and jam joint
-    loads (``walk_n``, ``jam_n``), the sim's ``joints`` and the crank's torques.
-    ``sim="cached"``: the design's simulated loads only if the store has them."""
+    ``sim`` / ``override`` / ``static`` (a ranged linkage's: :func:`arm_loads`) /
+    ``fallback`` / ``none`` (a cranked mechanism: what it drives sets its loads), a
+    ``note`` saying where they came from, the largest walking and jam joint loads
+    (``walk_n``, ``jam_n``), the sim's (or the static model's) ``joints`` and the crank's
+    torques. ``sim="cached"``: the design's simulated loads only if the store has them.
+    ``payload_g``: a ranged linkage's load at the output (default
+    :data:`repeatability.PAYLOAD_G`)."""
     from spiderpig import linkage as lk
     from spiderpig.config import torque_limit_nm
 
+    if override is None and lk.get(config.linkage).ranged:
+        return arm_loads(config, payload_g)
     limit = torque_limit_nm(config)
     if override is not None:
         out = uniform_loads(*override, "override", f"--pin-load {override[0]:g},{override[1]:g} "
@@ -140,6 +155,75 @@ def design_loads(config: BuildConfig, store=None, *, override: tuple[float, floa
     return out
 
 
+def drive_capacity(config: BuildConfig) -> dict[str, float]:
+    """Each ranged input's drive capacity at its joint (N·m): its motor's holding torque x
+    its transmission's ratio (the side's :class:`construction.transmissions.JointDrive`
+    groups, as :func:`precision.drive_budgets` reads them)."""
+    from spiderpig.construction.transmissions import JointDrive
+    from spiderpig.fabricate import design_side, template_for
+
+    side = config.side_config() if config.robot else config
+    d = design_side(template_for(side), side)
+    return {g.input: g.motor.holding_nm * g.hub(d.ctx).ratio for g in d.groups
+            if isinstance(g, JointDrive)}
+
+
+def link_g_per_mm(config: BuildConfig) -> dict[str, float]:
+    """Each link's mass per mm of its length (g): its sheet's density x thickness x
+    ``2 link_radius`` (as the precision budget's ISO RP weighs them)."""
+    from spiderpig.materials import sheet, sheet_of
+
+    out = {}
+    for b in config.lk.links:
+        rec = sheet(sheet_of(config, "link", b))
+        out[b] = rec.density * rec.thickness * 2 * config.params.link_radius / 1000
+    return out
+
+
+def arm_loads(config: BuildConfig, payload_g: float | None = None) -> dict:
+    """A ranged linkage's loads (source ``static``): the quasi-static model of
+    :func:`repeatability.static_loads` over the inputs' box, as the sim's are laid out (per
+    joint, ``walk`` and ``jam``). ``walk``: operating, the links' weight, their hardware,
+    the tool and ``payload_g`` at rest x :data:`repeatability.ACCEL_FACTOR`; ``jam``: a
+    crash, the output blocked while every drive turns at its holding torque x its ratio
+    (:func:`drive_capacity`), gravity added. Every joint's load is its most loaded
+    interface's. No crank and no servo limit (``torque_limit_nm`` None): the drives' run
+    current is the lever."""
+    from spiderpig import repeatability as rep
+    from spiderpig.linkage.constraints import layout
+
+    payload = rep.PAYLOAD_G if payload_g is None else float(payload_g)
+    caps = drive_capacity(config)
+    st = rep.static_loads(config.lk, config.values, link_g_per_mm=link_g_per_mm(config),
+                          payload_g=payload, capacity_nm=caps)
+    lay = layout(config.lk)
+    joints = []
+    for j in lay.axles:
+        ifs = [i for i in lay.interfaces if i[0] == j]
+        worst = max(ifs, key=lambda i: st.gravity[i] + st.crash[i])
+        joints.append({
+            "stem": j, "links": sorted(b for _, b in ifs if b != "torso"),
+            "frame": any(b == "torso" for _, b in ifs), "crank": False,
+            "walk": {"n": round(max(st.operating[i] for i in ifs), 3), "patterns": []},
+            "jam": {"n": round(st.gravity[worst] + st.crash[worst], 3), "patterns": [],
+                    "gravity_n": round(st.gravity[worst], 3),
+                    "crash_n": round(st.crash[worst], 3)}})
+    walks = [g["walk"]["n"] for g in joints]
+    jams = [g["jam"]["n"] for g in joints]
+    cap = ", ".join(f"{k} {v:.2f}" for k, v in caps.items()) or "none"
+    note = (f"the static model over the inputs' box: operating, the arm's weight and a "
+            f"{payload:g} g payload x {rep.ACCEL_FACTOR:g} for the moves; jammed, a crash: the "
+            f"output blocked while the drives push at their holding torque x ratio ({cap} "
+            f"N·m at the joints; up to {st.crash_force_n:.1f} N at the output), gravity added")
+    if st.singular:
+        note += f"; {st.singular} poses left out (the drives can't set the force there)"
+    return {"source": "static", "note": note, "walk_n": max(walks, default=0.0),
+            "jam_n": max(jams, default=0.0), "joints": joints, "payload_g": payload,
+            "capacity_nm": {k: round(v, 4) for k, v in caps.items()},
+            "drive_gravity_nm": {k: round(v, 4) for k, v in st.drive_nm.items()},
+            "crash_force_n": round(st.crash_force_n, 2), "torque_limit_nm": None}
+
+
 # -- per joint --------------------------------------------------------------------------
 
 
@@ -148,9 +232,10 @@ def _stem(name: str) -> str:
 
 
 def joint_loads(name: str, note: dict, loads: dict) -> dict:
-    """``name``'s walking and jam load and patterns: its own sim joint (same name stem,
-    most links shared), else the uniform ones (``basis`` says which)."""
-    if loads.get("source") == "sim" and loads.get("joints"):
+    """``name``'s walking and jam load and patterns: its own sim (or static model's) joint
+    (same name stem, most links shared), else the uniform ones (``basis`` says which)."""
+    src = loads.get("source")
+    if src in PER_JOINT and loads.get("joints"):
         links = {e["link"] for e in note["links"]}
         pillar = name.startswith("pillar:")
         cands = [j for j in loads["joints"] if j["stem"] == _stem(name) and not j["crank"]
@@ -160,10 +245,11 @@ def joint_loads(name: str, note: dict, loads: dict) -> dict:
             return {"walk_n": best["walk"]["n"], "jam_n": best["jam"]["n"],
                     "walk_patterns": best["walk"]["patterns"] or None,
                     "jam_patterns": best["jam"]["patterns"] or None,
-                    "basis": "sim"}
+                    "basis": src, "crash_n": best["jam"].get("crash_n"),
+                    "gravity_n": best["jam"].get("gravity_n")}
         return {"walk_n": loads["walk_n"], "jam_n": loads["jam_n"], "walk_patterns": None,
                 "jam_patterns": None,
-                "basis": "sim, the design's largest (no sim joint matched)"}
+                "basis": f"{src}, the design's largest (no {src} joint matched)"}
     return {"walk_n": loads.get("walk_n", 0.0), "jam_n": loads.get("jam_n", 0.0),
             "walk_patterns": None, "jam_patterns": None, "basis": loads.get("source", "")}
 
@@ -228,6 +314,16 @@ def rider_hole(config: BuildConfig) -> float:
     return config.params.hole(crank.for_sheet(config.crank_sheet).rider_d(config.params))
 
 
+def link_hole(config: BuildConfig, frame: bool) -> float:
+    """The hole a link has at a pivot (mm): a bearing construction's seat (the link holds
+    the bearing), else :data:`LINK_HOLE` (a pin's running fit). ``frame``: a pillar's."""
+    from spiderpig import construction
+
+    c = construction.AXLES.get(config.pillar if frame else config.pin)
+    seat = getattr(c, "seat", None)
+    return float(seat.seat_d()) if seat is not None else LINK_HOLE
+
+
 def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
     """Every link plate's stress at the design's own pin loads (``loads["joints"]``, the
     sim's), against its sheet's allowable: the net section at the most loaded hole
@@ -243,15 +339,22 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
     from spiderpig.materials import FOOT_SHEET, link_sheets, sheet
 
     joints = loads.get("joints") or []
-    if loads.get("source") != "sim" or not joints:
+    if loads.get("source") not in PER_JOINT or not joints:
         return []
     lk = lk_mod.get(config.linkage)
-    pts = lk.solve(params=dict(config.proportions) or None).joints_at(0.0)
+    if lk.ranged:       # (no crank angle: a pose inside the box; a link's pins are rigid)
+        sol = lk_mod.LegSolution(1, 0.0, config.values, lk.key)
+        pts = {k: tuple(float(c) for c in np.asarray(v).reshape(-1, 2)[0])
+               for k, v in sol.at(*lk.inputs_at(*[np.array([0.5])] * len(lk.inputs))).items()}
+    else:
+        pts = lk.solve(params=dict(config.proportions) or None).joints_at(0.0)
     feet = dict(lk.feet)
     sheets = link_sheets(config)
     w = 2 * config.params.link_radius
     crank_pins = set(lk.crank[1:])
     bore = rider_hole(config)
+    hole = {False: link_hole(config, False), True: link_hole(config, True)}
+    framed = {j["stem"]: bool(j["frame"]) for j in joints}
     rows = []
     for key in sorted(lk.links):
         at: dict[str, tuple[float, float]] = {}
@@ -263,13 +366,14 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
             continue
         sh = sheet(sheets.get(key, config.sheet))
         t = sh.thickness if sheets.get(key) else config.pitch
-        an = (w - LINK_HOLE) * t
-        zn = t * (w ** 3 - LINK_HOLE ** 3) / (6 * w)
+        d_max = max(hole[framed.get(pin, False)] for pin in at)
+        zn = t * (w ** 3 - d_max ** 3) / (6 * w)
         # the net section (mm^2) at each pin's hole: a crank rider's bore is the crank's
         # (an aluminium rider's end grown to a boss of 1 x t of web round it,
-        # plates.rider_bosses), else LINK_HOLE
+        # plates.rider_bosses), else the pivot's hole (LINK_HOLE, a bearing's seat)
         boss_w = max(w, bore + 2 * (RIDER_BOSS_T * t + 0.1)) if sh.metal else w
-        net = {pin: (boss_w - bore) * t if pin in crank_pins else an for pin in at}
+        net = {pin: (boss_w - bore) * t if pin in crank_pins
+               else (w - hole[framed.get(pin, False)]) * t for pin in at}
         zg = t * w * w / 6
         pins = [n for n in at if n in pts]
         span = max((math.dist(pts[a], pts[b]) for a in pins for b in pins), default=0.0)
@@ -443,6 +547,9 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         if jam_sf is not None and jam_sf < JAM_WARN and limit:
             out.append(f"a servo torque limit of {limit * jam_sf / JAM_WARN:.2f} N·m (now "
                        f"{limit:g}) for jam SF {JAM_WARN:g}")
+        if jam_sf is not None and jam_sf < JAM_WARN and loads.get("source") == "static":
+            out.append("lower the drives' holding torque (their run current): a crash's load "
+                       "scales with it")
         return out or ["a wider link (Params.link_radius) or a stronger sheet"]
     assert note is not None  # a pin's or pillar's row is made from its note (joint_strength)
     jl = joint_loads(row["joint"], note, loads)
@@ -491,6 +598,14 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
     if jam_sf is not None and jam_sf < JAM_WARN and limit:
         out.append(f"a servo torque limit of {limit * jam_sf / JAM_WARN:.2f} N·m (now "
                    f"{limit:g}: the jam loads scale with it) for jam SF {JAM_WARN:g}")
+    if jam_sf is not None and jam_sf < JAM_WARN and jl.get("crash_n"):
+        # a crash's load scales with the drives' holding torque (their run current); the
+        # payload's and the arm's weight stay: the share that leaves jam SF JAM_WARN
+        need = jl["jam_n"] * jam_sf / JAM_WARN
+        share = (need - (jl.get("gravity_n") or 0.0)) / jl["crash_n"]
+        if 0 < share < 1:
+            out.append(f"the drives' holding torque cut to {share:.0%} (their run current: a "
+                       f"crash's load scales with it) for jam SF {JAM_WARN:g}")
     if not out:
         out.append("no listed pin or pillar construction clears it at this load: a lower "
                    "servo torque limit, or a linkage scaled up (stiffer links, shorter "

@@ -1113,7 +1113,13 @@ is at the plan's own z (`wobble.column_wobble`'s `layer_z`, `wobble.layer_mid`):
 at its layer's mid-plane, a pillar's supports at the plates' faces, clearance gaps and
 thicker plates included. Every link plate is rated too (`strength.link_rows`: net section
 at the most loaded hole, plus bending for a link of three or more pins), naming the
-aluminium sheet a link would need. The audit also reports each link's tilt out of plane
+aluminium sheet a link would need. A linkage with ranged inputs (an arm: no floor, no
+sim loads) is rated at its own static loads (`strength.arm_loads`, the quasi-static model
+of `repeatability.static_loads` over the inputs' box): operating, its weight and the
+payload (`precision.payload_g`) x 1.5 for the moves' accelerations; jammed, a crash, the
+tool blocked while every drive pushes at its holding torque x ratio, gravity added. A link's
+hole is its pivot's bearing seat where the link holds one (`strength.link_hole`). A
+cranked mechanism's loads are what it drives: not rated. The audit also reports each link's tilt out of plane
 (`construction/wobble.py`): free (bore clearance over bearing length) and held by the faces
 beside it; a link beside a clearance gap bears on what the column holds there (an end's
 head or printed spacer, a gap ring).
@@ -1340,7 +1346,11 @@ robot is an entry rather than an edit across the stages:
   rigid-body constraints of the planar linkage (`linkage/constraints.py`: each pin an axle,
   each body on it an interface; worst case and root sum square); each input's lever says
   the resolution it needs; every hole's tolerance through the same gains, and the link
-  sheet's expansion, are the accuracy rows. `--compare` runs the pivot options.
+  sheet's expansion, are the accuracy rows. `--compare` runs the pivot options. It is a
+  stage too (`api.precision`, `precision.json`): the spec's `precision.*` targets
+  (`repeatability_mm` and `accuracy_mm` for any output; `rp_mm`, `rp_powerup_mm`,
+  `out_of_plane_mm`, `payload_sag_mm` for ranged inputs, each field naming the capability
+  it needs, `spec.CAPABILITIES`) become `verify` rows.
 - **Drives for an arm** (`construction/transmissions/`, `spiderpig/actuators/`): each
   input a stepper (role `actuator`) and a transmission (role `transmission`, per drive:
   `transmission@q3=belt`): a GT2 belt (5:1, `belt`), its motor on a slider plate outside
@@ -1904,9 +1914,13 @@ a pass or fail, whether it is hard, and a **tier** saying how the value was obta
 - **estimated**: from nominal inputs: speed at the servo's no-load rpm, mass before a
   build, prices.
 
-`quick` uses only check, plan and walk, plus estimates of mass, size and a cost floor.
-`standard` adds a build, the plan re-checked on 2,880 fresh samples, the contract at two
-crank angles, OCCT clashes and solid validity, sheet packing and the full cost. `full`
+`quick` uses only check, plan and walk, plus estimates of mass, size and a cost floor,
+and the output's precision without fabricating (a mechanism's whole budget; an arm's
+accuracy, its tilt-dependent rows left unverified). `standard` adds a build, the plan
+re-checked on 2,880 fresh samples, the contract at two crank angles, OCCT clashes and solid
+validity, sheet packing and the full cost, the whole precision budget (an arm's links'
+tilt from the build), and every kind's joint strength (a walker's at its sim or family
+loads, an arm's at its static loads). `full`
 adds two more contract angles, a second clash angle and, for walkers, a MuJoCo run. A
 design is `ok` when every hard row passes; its `score` is a weighted mean over the soft
 targets.
@@ -1923,7 +1937,8 @@ the current directory:
 ```
 designs/<id>/spec.json            the spec as given
              resolved.json        every default written in; engine version; parent and patch
-             check.json plan.json walk.json export.json verify.<level>.json
+             check.json plan.json walk.json precision.json export.json
+             verify.<level>.json
              build/manifest.json  and build/parts/*.step, one STEP file per distinct part
              exports/             export()'s default folder
              log.jsonl            every operation, its time, cached or not
@@ -1945,9 +1960,9 @@ engine version match. Writes are atomic.
 ### 9.6 Processes, jobs and the MCP server
 
 The MCP server (`spiderpig/mcp/`, built on the official MCP Python SDK 2.x, talking over
-stdio) offers 20 tools: `list_linkages`, `describe` and `catalog` for the catalogs;
-`resolve`, `check`, `plan`, `explain`, `recommend` (which runs `advise`), `walk`, `build`,
-`verify` and `export`; `get_job` and `wait_job`; `compare`, `derive`, `get_design`,
+stdio) offers 21 tools: `list_linkages`, `describe` and `catalog` for the catalogs;
+`resolve`, `check`, `plan`, `explain`, `recommend` (which runs `advise`), `walk`,
+`precision`, `build`, `verify` and `export`; `get_job` and `wait_job`; `compare`, `derive`, `get_design`,
 `list_designs` and `gc`; and `view`. There is no `recheck` tool, because it needs live
 solids. It also serves 33 resources (a guide whose vocabulary tables are generated from
 the code, the spec's schema, a card per linkage, and pages of the parts catalog) and 3
@@ -1955,8 +1970,8 @@ prompts. Across this boundary a design is its id, and a part is the path of its 
 in the store.
 
 Short tools run one at a time in a worker thread behind one lock, because the engine's
-caches aren't thread-safe. `build`, `verify` at the standard and full levels, and `export`
-become **jobs** in a pool of spawned processes (two by default; spawning is safe here,
+caches aren't thread-safe. `build`, `verify` at the standard and full levels, `export`
+and `precision` become **jobs** in a pool of spawned processes (two by default; spawning is safe here,
 because the server's entry point has the guard a spawned process needs): the tool waits up
 to `wait_seconds` (15 by default) and otherwise returns a job id to poll. Job records live
 only in the server's memory.

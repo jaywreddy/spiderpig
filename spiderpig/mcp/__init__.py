@@ -11,11 +11,12 @@ numbers, blockers, recommendations, notes}``, under ``failures`` of a result who
 ``ok`` is false: never an exception's text. The store (decision 4: ``--store``, else
 ``$SPIDERPIG_STORE``, else ``./.spiderpig``) is the state shared between calls; the
 server keeps nothing else but its job pool (:mod:`spiderpig.mcp.jobs`: ``build``,
-``verify`` at standard or full, and ``export`` run in worker processes and come back
-as jobs when they outlast a grace period).
+``verify`` at standard or full, ``export`` and ``precision`` run in worker processes and
+come back as jobs when they outlast a grace period).
 
 Tools: ``list_linkages``, ``describe``, ``catalog``, ``resolve``, ``check``, ``plan``,
-``explain``, ``recommend``, ``walk``, ``build``, ``verify``, ``export``, ``compare``,
+``explain``, ``recommend``, ``walk``, ``precision``, ``build``, ``verify``, ``export``,
+``compare``,
 ``derive``, ``get_design``, ``list_designs``, ``gc``, ``get_job``, ``wait_job``, and
 ``view`` (the viewer's URL for a design: a ``spiderpig view --serve-only`` child
 process over the store, started once and reused, :mod:`spiderpig.view`).
@@ -70,7 +71,8 @@ SERVER_NAME = "spiderpig"
 LEVELS = Literal["quick", "standard", "full"]
 FORMATS = Literal["step", "stl", "print", "dxf", "bom", "glb", "mjcf", "urdf"]
 DESIGN_STAGES = ("summary", "spec", "resolved", *STAGES, "log")
-STAGE_TOOL = {"check": "check", "plan": "plan", "walk": "walk", "build": "build",
+STAGE_TOOL = {"check": "check", "plan": "plan", "walk": "walk", "precision": "precision",
+              "build": "build",
               "recheck": "recheck (Python API only)", "verify": "verify", "export": "export"}
 CATEGORIES = ("servos", "sheets", "constructions")
 GRACE_SECONDS = 15.0
@@ -82,7 +84,8 @@ INSTRUCTIONS = (
     "verify -> export; explain -> recommend -> derive). Every tool returns {ok, failures, ...}; "
     "a failing stage is an ordinary result with ok=false and failures as data, each with "
     "checked recommendations and the spec patch that applies them (derive takes it). A design "
-    "is its id (from resolve); build, verify(standard|full) and export are jobs: follow them "
+    "is its id (from resolve); build, verify(standard|full), export and precision are jobs: "
+    "follow them "
     "with wait_job or get_job. Parts are STEP files inside the store, never solids. "
     "view(design) returns the URL of the viewer for a design."
 )
@@ -416,7 +419,8 @@ def _targets_table() -> str:
              "|---|---|---|---|---|---|---|"]
     for section, table in TARGET_FIELDS.items():
         for name, f in table.items():
-            lines.append(f"| `{section}.{name}` | {'/'.join(f.kinds)} | {f.unit} | "
+            kinds = "/".join(f.kinds) + (f" ({f.needs})" if f.needs else "")
+            lines.append(f"| `{section}.{name}` | {kinds} | {f.unit} | "
                          f"{'**hard**' if f.hard else 'soft'} | {f.source} | {f.tier} | "
                          f"{f.doc} |")
     return "\n".join(lines)
@@ -668,6 +672,22 @@ def _register_tools(server: MCPServer, state: State) -> None:
         return _shaped(await _long(state, "verify", design, {"level": level}, wait_seconds),
                        o.VerifyOut)
 
+    @tool
+    async def precision(design: DesignArg, wait_seconds: Annotated[float, Field(
+            description="how long to wait before returning the running job", ge=0)]
+            = GRACE_SECONDS) -> o.PrecisionOut:
+        """The error budget at the design's output (a mechanism's point, an arm's tool):
+        ``metrics`` are the spec's ``precision.*`` targets measured (``repeatability_mm``,
+        the worst-case bound; ``accuracy_mm``, what calibrates out; an arm's ``rp_mm`` /
+        ``rp_powerup_mm``, ISO 9283 pose repeatability, ``out_of_plane_mm`` and
+        ``payload_sag_mm``), ``rows`` each target's verdict, ``budget`` every term (each
+        joint's share, the inputs' levers and the resolution they need, the drives),
+        ``text`` the budget in prose. An arm's side is fabricated for its links' tilt (the
+        fabrication cache's): a long operation, a job when it outlasts ``wait_seconds``.
+        A walker is skipped (its foot is no placement). ``verify`` reports the same rows."""
+        return _shaped(await _long(state, "precision", design, {}, wait_seconds),
+                       o.PrecisionOut)
+
     @tool(mutates=True)
     async def export(design: DesignArg, formats: Annotated[list[FORMATS] | None, Field(
             description="the files to write (default: the spec's outputs)")] = None,
@@ -733,13 +753,13 @@ def _register_tools(server: MCPServer, state: State) -> None:
 
     @tool
     async def get_design(design: DesignArg, stage: Literal[
-            "summary", "spec", "resolved", "check", "plan", "walk", "build", "recheck",
-            "verify", "export", "log"] = "summary") -> o.StageOut:
+            "summary", "spec", "resolved", "check", "plan", "walk", "precision", "build",
+            "recheck", "verify", "export", "log"] = "summary") -> o.StageOut:
         """Any stored stage of a design as JSON: ``summary`` (what it is, which stages it
         holds, the latest verify verdict), ``spec`` (as given), ``resolved`` (the record:
         id, engine version, every inferred value), a stage report (``check``, ``plan``,
-        ``walk``, ``build`` = the manifest with part file paths, ``recheck``, ``verify``,
-        ``export``), or the ``log`` of operations. Also ``spiderpig://designs/{id}/{stage}``."""
+        ``walk``, ``precision``, ``build`` = the manifest with part file paths, ``recheck``,
+        ``verify``, ``export``), or the ``log`` of operations. Also ``spiderpig://designs/{id}/{stage}``."""
         return {"ok": True, "failures": [], "design": design, "stage": stage,
                 "report": await _run(stage_doc, state, design, stage)}
 

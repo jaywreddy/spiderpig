@@ -36,9 +36,10 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | `constructions.pillar`, `.pin` | pillar `standoff` (a 6 mm round standoff column screwed through both frame plates, printed rings: a stock goBILDA M4 standoff where one length fills it, else one MISUMI steel standoff made to its length, M3 ends, never spliced); pin `chicago` (an M3 Chicago screw, printed rings and head spacers). The other pivots were removed on 2026-10-07: naming one is a `bad_parameter` / `invalid_spec` failure naming its replacement (`config.REMOVED_CONSTRUCTIONS`) | pillar `standoff`, pin `chicago` (an M3 Chicago screw, printed rings and head spacers, the lowest link bonded) |
 | `constructions.crank` | `bolt` (laser-cut aluminium, one plate per web, each crankpin a steel M3 hex standoff in hex pockets retained by a screw and wide washer at each end, the riders on a printed sleeve), `bolt_round` (the same on round standoffs clamped by friction; TrotBot's heel and toe). The printed, keyed and acrylic cranks and the hex crank's variants were removed on 2026-10-07; `materials.crank_sheet` must be aluminium | the linkage's (`config.default_crank`): `bolt`; `bolt_round` for TrotBot's heel and toe |
 | `fit.*` | every `construction.base.Params` field (`margin`, `link_radius`, `frame_radius`, `min_wall`, `running_fit`, `glue_fit`, `print_fit`, `axle_d`, `spacer_d`, `neck_d`, `head_d`, `crankpin_d`, `web_radius`, `journal_d`, `stub_d`, `hub_thickness`, `servo_screw_web_t`), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults; kerf each sheet's service's (0 SendCutSend, 0.2 Ponoko); the sheet stock's size |
+| `precision.payload_g` | an arm's load at the tool in grams (a plain number beside the precision targets, not a target; refused for a linkage without ranged inputs) | 50 (`repeatability.PAYLOAD_G`): the payload sag, the ISO RP's gravity seating and the strength check's static loads assume it |
 | `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf`, `urdf` (an arm's URDF, its MuJoCo model and joint map) | `[step, stl, print, dxf, bom]` |
 
-Every metric under `motion`, `size` and `budget` is a **Target**
+Every metric under `motion`, `size`, `budget` and `precision` is a **Target**
 `{min?, max?, value?, tol?, weight: 1, hard?}` (a bare number is rejected). `value` is
 met within `tol` (default 5 % of the value). A **hard** miss fails `verify`; a **soft**
 miss lowers its score. Defaults (`TARGET_FIELDS`), overridden per target with `hard`:
@@ -59,7 +60,17 @@ miss lowers its score. Defaults (`TARGET_FIELDS`), overridden per target with `h
 | `budget.cost_usd` | both | USD | **hard** | bom (a catalog floor at `quick`) | estimated | purchase total at the preferred offers; unpriced items make it a lower bound, which cannot verify a `max` (the row fails and names them) |
 | `budget.print_g` | both | g | **hard** | bom | measured | filament at 100 % infill |
 | `budget.sheets` | both | sheets | **hard** | layout | measured | sheets the laser parts pack onto |
+| `precision.repeatability_mm` | an output | mm | **hard** | precision | estimated | the worst-case bound on the output's lost motion: every pin's clearance the same way at the worst pose, the drives' backlash and homing, the turntable's tilt, the links' rise out of the plane in quadrature (`Precision.repeatability_mm`); an arm's needs its links' tilt (`standard`) |
+| `precision.accuracy_mm` | an output | mm | soft | precision | estimated | what calibrates out, added up: every hole off by its laser tolerance, a 10 K swing over the reach, the turntable's and the drives' systematic errors and a step each (`Precision.accuracy_mm`) |
+| `precision.rp_mm`, `rp_powerup_mm` | ranged inputs | mm | **hard**, soft | precision | estimated | ISO 9283 pose repeatability by Monte Carlo (30 cycles to each of 5 poses, mean + 3 sigma, gravity seating the pins), within a session and across power-ups (`repeatability.iso_rp`) |
+| `precision.out_of_plane_mm`, `payload_sag_mm` | ranged inputs | mm | soft | precision | estimated | the tool's tip out of the plane in the links' tilt and end float; the links bending under the payload |
 | `motion.transmission_angle_deg` | both | deg | soft | check | measured | the least transmission angle over every loop closure, folded about 90° (140° is as poor as 40°; under about 40° a joint binds); the per-closure ranges are on the card's `closures` |
+
+A `precision` metric names the **capability** it needs (`TargetField.needs`,
+`spec.CAPABILITIES`), not a kind: `output` (an output point: a mechanism's or an arm's; a
+walker's foot is no placement) or `ranged` (inputs that turn over ranges: an arm's drives).
+A spec asking a linkage without it is refused with the reason ("strider has feet, no
+output: repeatability_mm needs a linkage that has an output ...").
 
 One plain number lives under `budget` beside the targets: **`budget.allowance_usd`**, what
 to allow, in all, for the items the catalog doesn't price (the M2 tapping screws, M3 x 16 / x 18 / x 50 and
@@ -88,11 +99,12 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 | `explain(design)` | text | `explain.explain_config` on the design's full config, from its own plan (a recorded failure is printed, not re-solved); then, for a design that plans, `4. targets`: each spec target `check` and `plan` can read (a mechanism's output numbers, a walker's lift and ground clearance, the stack) as ok / missed, and what `advise` would do about a miss | ms after plan |
 | `advise(design)` | `AdviceReport`: `stage` (the failing stage; `target` when every stage passes but a target is missed; `None` when nothing is), `recommendations` with their `patch`, `notes` | a stage that fails answers with its checked recommendations and notes (below). Every stage passing: a missed `motion.stroke_mm`, `straightness_mm` or `lift_mm` is met by `recommend.target_scale`, the least practical scale of the linkage that meets every such target, measured again and planned (the design's own module) before it is offered; a missed `size.stack_mm` that is proven the thinnest gets the floor note (what could be thinner), a missed `ground_clearance_mm` a note naming its lowest part and the levers | ms; up to the planner's deadline for the check |
 | `recommend(design)` | `[Recommendation]` (`advise(design).recommendations`) | the failing stage's checked recommendations: a thickness for a construction that can't be built that thin; a scale or thinner parts for a link-to-axle gap; the linkage's default scale for a plan that ran into the stack's own room after a scale-down. `verified` says what was re-run: a plan failure is re-planned with the design's own module ("plans (quad module, the design's own) in ..."); a static failure of a `decker` / `quad` design is checked with its **single** module's plan (plan the derived design for its own) | 1-60 s |
+| `precision(design)` | `PrecisionReport`: `metrics` (the `precision.*` targets measured), `rows` (each target's verdict), `budget` (`Precision.as_dict`: every joint's share, each input's lever and the resolution it needs, the drives, the ISO RP), `text` (its lines), `complete` (the links' tilt counted), `payload_g`, `notes`; `skipped` for a walker | `precision.precision` on the planned side; an arm's links' tilt from the build's wobble notes when the handle holds a build, else its side fabricated at `t = 0` (the fabrication cache's); stored as `precision.json` | 1 s (a mechanism); 40 s cold, ms stored (the approved arm) |
 | `walk(design)` | `WalkReport`: `metrics`, `mass_g`, `rows`, `notes` (a stride near zero: why, and which module of the linkage walks) | `walk.api_payload` (feet at their planned layers) | 0.1 s |
 | `build(design, t=1.0)` | `BuildReport`: `parts` manifest, `mass_g`, `envelope_mm`, `counts`, `warnings`; `design.parts[name]` | `fabricate.fabricate` | 8 s |
 | `attach_build(design, mech, t)` | `BuildReport` | adopt a fabricated mechanism (a store, a test fixture) | 2 s |
 | `recheck(design, all_parts=False)` | `RecheckReport`: `edited`, `checked`, `contract`, `clashes`, `bad_solids`, `notes` (an edited part whose volume is still the build's: the cut missed it) | `contract.bad_solids`, `clashes`, edited parts inside their claims | 1-5 s |
-| `verify(design, level)` | `VerifyReport` (below) | quick: check + plan + walk; standard: + build, contract at t = 0 and 3.2, clash and solids at the build's t, `verify_plan`, DXF pack, BOM; full: the audit's four contract angles, clashes at 1 and 4.38, and MuJoCo when it imports (its own rows: `sim.speed_mm_s` and `sim.stride_mm` measured over 4 s at the drives' full speed, beside the walk model's `motion.*` rows, `sim.stays_up`, `sim.torque`; a purchased model the mesher can't triangulate everywhere, the XL330's, meshes face by face as the bake does) | 1 s / 30-45 s / 85 s |
+| `verify(design, level)` | `VerifyReport` (below) | quick: check + plan + walk + the output's precision without fabricating (a stored `precision` report when there is one); standard: + build, the whole precision budget, the joints' strength (every kind), contract at t = 0 and 3.2, clash and solids at the build's t, `verify_plan`, DXF pack, BOM; full: the audit's four contract angles, clashes at 1 and 4.38, and MuJoCo when it imports (its own rows: `sim.speed_mm_s` and `sim.stride_mm` measured over 4 s at the drives' full speed, beside the walk model's `motion.*` rows, `sim.stays_up`, `sim.torque`; a purchased model the mesher can't triangulate everywhere, the XL330's, meshes face by face as the bake does) | 1 s / 30-45 s / 85 s |
 | `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest`, `warnings` (what the bake and the constructions warned about: a purchased model's faces the mesher skipped) | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf` as the packed sheets, `bom`; not `ORDER.md` or the per-part DXFs of `laser/parts/`, which only `spiderpig build` writes) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where; a recorded export of these formats or more into the same folder, its files all still there, is returned as is | 5-60 s (the BOM's grouping dominates) |
 | `load(id, store=PROJECT)` | `Design` | the recorded design (the id must hash to its record); reports load as the operations ask | ms |
 | `derive(design, patch)` | `Design` | `resolve(apply_patch(spec, patch))` with `derived_from` and the patch recorded | ms |
@@ -169,7 +181,8 @@ recomputes from `resolved.json`. Several users share one folder (writes are atom
   spec.json            the spec as given
   resolved.json        id, engine_version, spec_hash, created_at, derived_from, patch,
                        warnings, and `resolved` (every inferred value written in)
-  check.json, plan.json, walk.json, recheck.json, verify.json, export.json
+  check.json, plan.json, walk.json, precision.json, recheck.json, verify.json,
+  export.json
                        one file per stage: the report's JSON plus stage, design,
                        engine_version, written_at; verify.<level>.json keeps a copy
                        per level beside the latest
@@ -237,7 +250,19 @@ informational (every metric the level measured is reported); `unverified` lists 
 spec's targets the level didn't measure (budget at `quick`). At `quick` the mass and the
 envelope are pre-build estimates (tier `estimated`, never hard, not a bound): a hard target
 on them stays in `unverified` and out of `score` until `standard` measures the build; a soft
-one is scored on the estimate. What a row's `detail`
+one is scored on the estimate. The output's
+precision rows (`precision.*`, tier `estimated`: a model of nominal clearances) come from
+`api.precision`: at `quick` without fabricating, so a cranked mechanism's whole budget and
+an arm's `accuracy_mm`, its tilt-dependent targets (`repeatability_mm`, the ISO RP, the
+out-of-plane, the sag) `unverified` until `standard` (or a stored `precision` report);
+a singular pose makes a row's value null and fails it ("unbounded"). The strength rows
+(`strength.joints`, `strength.warnings`, after the build, every kind) rate each pin,
+pillar and link (a walker's crank and centre plates too) at the design's loads: a walker's
+simulated or its family's, an arm's from the static model (`strength.arm_loads`:
+operating, its weight and `precision.payload_g` over the inputs' box x 1.5; jammed, a crash
+with the tool blocked while the drives push at their holding torque x ratio), which are
+its own, so a jam safety factor under 1 fails (`strength` / `joint_overload`); a cranked
+mechanism's loads are what it drives, so its row says "not rated". What a row's `detail`
 says: the ground clearance names the body part that sets it; the envelope at `quick`
 is the joints' sweep plus the plates (x, y) and the stacks, the chassis and the axle
 heads outside the outer plates (z), at `standard` the built extent at the build's
@@ -349,12 +374,14 @@ A design argument is the id `resolve` returned.
 | `check(design)`, `plan(design)`, `walk(design)` | the `CheckReport` / `PlanReport` / `WalkReport` as JSON (`walk` plans first so the feet sit at their layers) |
 | `explain(design)` | `text` |
 | `recommend(design)` | `api.advise`: `stage` (the failing one; `target` when every stage passes but a target is missed; null when nothing is), `recommendations` with their `patch` (a failing stage's; a scale that meets a missed stroke, straightness or lift, checked), and `notes` (what can't help, what wasn't checked, the floor of a stack that is proven the thinnest) |
+| `precision(design, wait_seconds?)` | the `PrecisionReport` (`metrics`, `rows`, `budget`, `text`, `complete`); **a job** (an arm's side is fabricated for its links' tilt) |
 | `build(design, t?, wait_seconds?)` | the manifest: every part with `path` (its STEP in the store's `build/parts/`), `dir`, masses, envelope; **a job** |
 | `verify(design, level?, wait_seconds?)` | the `VerifyReport` (rows with `pass`, `tier`, `hard`); `quick` inline, `standard` / `full` **jobs** |
 | `export(design, formats?, out_dir?, wait_seconds?)` | `files` (paths) and `manifest`; **a job** |
 | `get_job(job)`, `wait_job(job, seconds?)` | the same shape as the long tool itself: while it runs, `job` alone (`{job, op, design, args, state, started_at, finished_at, seconds}`; its `job` field is the id these take); once done, the tool's own result flat beside `job`; failed, `ok: false` with the failure |
 | `compare(a, b)`, `derive(design, patch)` | as the Python API |
-| `get_design(design, stage?)` | `{ok, failures, design, stage, report}`: the stage's document under `report`, for `stage` one of `summary`, `spec`, `resolved`, `check`, `plan`, `walk`, `build` (the manifest with paths), `recheck`, `verify`, `export`, `log` |
+| `get_design(design, stage?)` | `{ok, failures, design, stage, report}`: the stage's document under `report`, for `stage` one of `summary`, `spec`, `resolved`, `check`, `plan`, `walk`, `precision`,
+`build` (the manifest with paths), `recheck`, `verify`, `export`, `log` |
 | `list_designs()` | the store's cards |
 | `gc(keep?, older_than_seconds?)` | `removed`; refuses to run without either argument |
 | `view(design)` | `url` of the viewer for the design (`?design=<id>`), `server` (its base URL) and `mode`: a `spiderpig view --serve-only` child process over the store, started on a free port on the first call and reused (stopped with the server); the page's first load bakes the design unless it was exported (`ok: false`, code `viewer_not_built`, when the package has no built viewer) |
@@ -377,7 +404,7 @@ server.
 
 **Long operations.** The installed SDK carries the wire types of task-augmented
 execution but its server doesn't run tools as tasks, so `build`, `verify` at
-`standard` / `full` and `export` run in a process pool (one per store, workers
+`standard` / `full`, `export` and `precision` run in a process pool (one per store, workers
 spawned fresh: a clean `fabricate._DESIGNS` per process, no fork of the threaded
 server). Each waits `wait_seconds` (default 15) and returns the finished result with
 its `job` record, or the running `job` alone (`{ok: true, failures: [], job: {job: <id>,

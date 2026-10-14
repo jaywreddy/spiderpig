@@ -31,7 +31,8 @@ reports, :func:`list_designs` and :func:`gc` manage the folder.
 
 The package (a pure move of the former ``api.py``, W5): :mod:`.reports`, :mod:`.store_ops`
 (load, derive, compare, the store's designs), :mod:`.cards` (linkage cards), :mod:`.planning`
-(explain, recommend, advise), :mod:`.walking`, :mod:`.building` (build, recheck) and
+(explain, recommend, advise), :mod:`.walking`, :mod:`.accuracy` (precision: the error
+budget at the output), :mod:`.building` (build, recheck) and
 :mod:`.exports` (verify, export); not ``plan.py`` / ``build.py`` / ``export.py``, which the
 functions' re-exports would shadow. Resolve, the stage records, check and plan sit a layer
 lower, in :mod:`spiderpig.stages` (2026-10-08: ``spiderpig bake`` / ``build`` plan through
@@ -43,6 +44,7 @@ goes on the module that reads the name (``api.building.fabricate_at``, which ``e
 
 from spiderpig import linkage, servos
 from spiderpig import walk as walk_model
+from spiderpig.api.accuracy import precision
 from spiderpig.api.building import (
     CLAIMED_GROUPS,
     _build,
@@ -110,6 +112,7 @@ from spiderpig.api.reports import (
     CheckReport,
     ExportReport,
     PlanReport,
+    PrecisionReport,
     RecheckReport,
     Report,
     WalkReport,
@@ -229,8 +232,9 @@ from spiderpig.stages.resolve import (
 from spiderpig.store import PROJECT, Store, _read_json, _write_json, diff_json, report_doc
 
 __all__ = [
-    "BuildReport", "CheckReport", "ExportReport", "PlanReport", "RecheckReport", "Report",
-    "WalkReport", "attach_build", "build", "check", "compare", "derive", "describe", "explain",
-    "export", "fabricate_at", "foot_path", "gc", "list_designs", "list_linkages", "load",
-    "plan", "recheck", "recommend", "resolve", "verify", "walk",
+    "BuildReport", "CheckReport", "ExportReport", "PlanReport", "PrecisionReport",
+    "RecheckReport", "Report", "WalkReport", "attach_build", "build", "check", "compare",
+    "derive", "describe", "explain", "export", "fabricate_at", "foot_path", "gc",
+    "list_designs", "list_linkages", "load", "plan", "precision", "recheck", "recommend",
+    "resolve", "verify", "walk",
 ]

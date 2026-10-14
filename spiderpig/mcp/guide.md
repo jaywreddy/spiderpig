@@ -33,8 +33,9 @@ Current store: `<<STORE>>`. Engine: `<<ENGINE>>`.
 | check | `check(design)` | **program**: every loop closes over the cycle (margins, transmission angles); **output**: a mechanism keeps its promises; **drive**: one servo turns the crank; **static**: every link has a crank point (a crankpin or a detour the body's underside allows); the ground clearance | 0.5 s |
 | plan | `plan(design)` | a layer plan of one side exists: the planner guarantees the claims of different groups never meet over the whole cycle; `optimal` says whether it is proven the thinnest (`proof` says what a budget left open); `warnings` is what the constructions warned about (a printed snap that overstrains) | 0.4 s on the Klann quad; up to the 60 s deadline on a large or scaled-down design (cached: a re-check) |
 | walk | `walk(design)` | the quasi-static walk model's metrics (stride, bob, slip, tipping, speed at the servo's no-load rpm) with the feet at their planned layers; a stride near zero comes with a `note` saying why and which module walks | 0.1 s |
+| precision | `precision(design)` | the error budget at the output (a mechanism's point, an arm's tool; a walker is skipped): `metrics` are the `precision.*` targets measured (the worst-case `repeatability_mm` bound, the `accuracy_mm` that calibrates out; an arm's ISO 9283 `rp_mm` / `rp_powerup_mm`, `out_of_plane_mm`, `payload_sag_mm`), `rows` their verdicts, `budget` every term (each joint's share, each input's lever and the resolution it needs, the drives), `text` the budget in prose | a mechanism's: 1 s; an arm's fabricates its side for the links' tilt (a job, ~40 s cold) |
 | build | `build(design)` | every part fabricated at crank angle `t`, inside its claims; masses, the envelope, one STEP per distinct part in the store | 8 s (a job) |
-| verify | `verify(design, level)` | pass/fail per requirement with an evidence tier: `quick` = check + plan + walk; `standard` adds the build, the contract at two crank angles, OCCT clashes and solids, the plan re-verified on fresh sampling, the DXF pack and the BOM; `full` adds two more contract angles, a second clash angle and a MuJoCo run | 1 s / 30-45 s / 85 s on the Klann quad; `quick` plans first, so its first run on another design can take a minute |
+| verify | `verify(design, level)` | pass/fail per requirement with an evidence tier: `quick` = check + plan + walk; `standard` adds the build, the contract at two crank angles, OCCT clashes and solids, the plan re-verified on fresh sampling, the DXF pack and the BOM; `full` adds two more contract angles, a second clash angle and a MuJoCo run; every kind's output precision (`quick`: what needs no fabrication, an arm's tilt-dependent rows at `standard`) and, after the build, its joints' strength (a walker's at its sim or family loads, an arm's at its static loads: operating and a crash at the drives' holding torque) | 1 s / 30-45 s / 85 s on the Klann quad; `quick` plans first, so its first run on another design can take a minute |
 | export | `export(design, formats)` | the files: `step`, `stl`, `print` (one STL per printed part), `dxf` (kerf-compensated sheets), `bom` (csv/md/json), `glb` (the viewer's animated bake), `mjcf`; always `manifest.json` (not the shopping list `ORDER.md` or the per-part DXFs `laser/parts/`: `spiderpig build` writes those); an export that already wrote these formats (or more) into the folder is returned as is | 5-60 s (a job) |
 
 **The planner's clock.** A plan search is bounded by a 60 s wall-clock deadline and node
@@ -123,7 +124,8 @@ design: there is no search in v1.
 | `constructions.crank` | `bolt` (laser-cut aluminium, one plate per web, each crankpin a steel M3 hex standoff in hex pockets, M3 screws and wide washers retaining it, the riders on a printed sleeve), `bolt_round` (the same on round standoffs clamped by friction; TrotBot's heel and toe default to it). The printed, keyed and acrylic cranks and the hex crank's variants were removed on 2026-10-07 (a `bad_parameter` failure naming `bolt`); `materials.crank_sheet` must be aluminium | the linkage's (`config.default_crank`): `bolt`, `bolt_round` for TrotBot's heel and toe |
 | `fit.*` | part sizes and fits in mm (below), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults |
 | `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf` | `[step, stl, print, dxf, bom]` |
-| `motion.*`, `size.*`, `budget.*` | **targets** (below) | none |
+| `motion.*`, `size.*`, `budget.*`, `precision.*` | **targets** (below) | none |
+| `precision.payload_g` | an arm's load at the tool in grams (a plain number, not a target): what the payload sag, the ISO RP's gravity seating and the strength check's static loads assume | 50 |
 
 **Modules** are legs per side, and the robot has two sides: `single` is one leg (a
 two-legged machine that doesn't walk in the model), `double` two legs as a mirrored
@@ -145,6 +147,11 @@ bound)` over the soft targets). Physical limits are hard by default, gait qualit
 soft; `hard: true|false` on any target flips it.
 
 <<TARGETS>>
+
+A metric's capability, in brackets beside its kinds, is what the linkage must have, and a
+spec asking a linkage without it is refused with the reason: `(output)` an output point
+(a walker's foot is no placement), `(ranged)` inputs that turn over ranges (an arm's
+drives: a cranked mechanism has no ISO pose, no payload on its drives).
 
 What the rows measure, where it isn't obvious: `size.mass_g` before a build is the
 nominal model's total for what the design builds, and its detail says what it is made
@@ -185,6 +192,24 @@ that doesn't fit says it: a standoff pillar's end screw (an M4 button head and w
 layer outside the frame plate) names the least pitch that holds it as a checked
 recommendation.
 
+**Precision** (`precision.*`, from `spiderpig precision`'s model): `repeatability_mm`
+is the worst-case bound (every pin's clearance the same way at the worst pose, the
+drives' backlash and homing, the links' rise out of the plane); a maker's figure is
+ISO 9283's `rp_mm` (30 cycles to each of 5 poses, mean + 3 sigma, gravity seating the
+pins), much smaller. `accuracy_mm` is what calibrates out (holes off their drawing, a
+10 K swing, the turntable's and the drives' systematic errors). All are tier
+`estimated` (a model of nominal clearances). `verify("quick")` reports what needs no
+fabrication (a mechanism's whole budget, an arm's `accuracy_mm`); an arm's
+`repeatability_mm`, RP, out-of-plane and sag stay `unverified` until `standard` (or a
+`precision` run, whose stored report `quick` then reads).
+
+**Strength** rows (`strength.joints`, after a build) rate every pin, pillar, link (and a
+walker's crank): a jam safety factor under 1 at the design's own loads fails `verify`
+(`strength / joint_overload`, with fixes). An arm's loads are its static model's:
+operating (its weight and the payload over the box x 1.5 for the moves) and jammed (a
+crash: the tool blocked while the drives push at their holding torque); a fix may be a
+lower run current. A cranked mechanism's loads are what it drives: not rated.
+
 `fit` defaults (mm): <<FIT>>
 
 ### Linkages
@@ -212,7 +237,8 @@ needs no spec to be looked at.
 
 ## Long operations
 
-`build`, `verify` at `standard`/`full` and `export` run in worker processes. Each
+`build`, `verify` at `standard`/`full`, `export` and `precision` run in worker
+processes. Each
 waits `wait_seconds` (default 15) and returns the finished result when the job is
 done; otherwise it returns `{ok: true, failures: [], job: {...}}` with the job's record
 alone, and you follow it with `wait_job(job, seconds)` or `get_job(job)`, passing the
