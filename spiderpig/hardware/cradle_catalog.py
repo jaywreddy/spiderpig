@@ -36,6 +36,7 @@ the variant drawing ux1920_d02 fetched 2026-10-10): barrel 8 mm, heads 13.5 mm, 
 CHICAGO_M6_LENGTHS = tuple(float(L) for L in HARF_CHICAGO_M6)
 
 BD = "https://boltdepot.com/Product-Details?product="
+SERVOCITY = "https://www.servocity.com/"
 BD_NOTE = "18-8 (A-2); page rendered 2026-10-10 (WebFetch refused); sold singly"
 M6_BHCS_BD = {8: ("6642", 0.17, 11.27), 10: ("6643", 0.18, 12.06), 12: ("6644", 0.19, 12.84),
               16: ("6645", 0.20, 13.54), 20: ("6646", 0.23, None), 25: ("6647", 0.28, None),
@@ -188,9 +189,13 @@ register(
          (Offer("Phidgets", "https://www.phidgets.com/?prodid=869", "TRM4401_0",
                 price_usd=62.90, verified=True, tiers=((1, 62.90), (5, 60.38), (10, 57.87)),
                 note="30:1 only. 11 mm input with 4 mm keyway; 19 mm bore with 6 mm keyway; "
-                     "45 N·m; 3.5 kN radial; backlash 1/2°; 27 in stock. Ships from "
-                     "Calgary, Canada: check the shipping, duties and brokerage at checkout "
-                     "(not in the total); page fetched 2026-10-13"),),
+                     "45 N·m; 3.5 kN radial; backlash 1/2°; 27 in stock; country of origin "
+                     "China, US HTS 8483.40.50.10 (page re-rendered 2026-10-14, the price "
+                     "unchanged). Ships from Calgary, Canada by UPS; since 2025-05-02 Phidgets "
+                     "collects US duties, tariffs and brokerage at checkout (UPS Global "
+                     "Checkout, a fee of its own): the duty on this code from China is 40 % "
+                     "(2.5 % + 25 % Section 301 + 12.5 % since 2026-07; tariffs.wove.com, "
+                     "2026-10-14), the shaft's 50 %, no de minimis: not in the total"),),
          dims={"ratio": 30, "centre_distance": 40.0, "input_d": 11.0, "input_len": 23.0,
                "input_shoulder": 53.0, "bore": 19.0, "pcd": 75.0, "face_thread": "M6x11",
                "spigot_d": 60.0, "width": 73.0, "mass_g": 2100.0},
@@ -293,23 +298,55 @@ register(
                 note="18-8, M6-1.0, DIN 934, 10 mm across flats, 4.7-5.0 high; page "
                      "rendered 2026-10-13"),),
          dims={"af": 10.0, "h": 5.0}),
-    Item("m8_tap_bolt_150", "M8 x 150 hex tap bolt, fully threaded, 18-8", "fastener",
-         (Offer("Bolt Depot", BD + "11110", "11110", price_usd=2.87, verified=True,
-                tiers=((1, 2.87), (25, 2.208), (250, 1.944)),
-                note="18-8 (A-2), M8-1.25 x 150, fully threaded, 13 mm across flats, head "
-                     "5.15-5.45 (no standard named: DIN 933's); the longest Bolt Depot "
-                     "stocks fully threaded; page rendered 2026-10-13"),),
-         dims={"d": 8.0, "length": 150.0, "af": 13.0, "head_h": 5.3},
-         notes="The rear saddle's thumbscrew: it stands in its carrier's blind bore, a "
-               "printed knob on its head, the coupling nut in the V block riding it."),
-    Item("m8_coupling_nut_24", "M8 coupling nut, 24 mm long (DIN 6334), 18-8", "nut",
-         (Offer("Bolt Depot", BD + "27224", "27224", price_usd=2.52, verified=True,
-                tiers=((1, 2.52), (10, 1.641), (100, 1.48)),
-                note="18-8, M8-1.25 x 24, 13 mm across flats, DIN 6334 (the only M8 length "
-                     "stocked); page rendered 2026-10-13"),),
-         dims={"af": 13.0, "h": 24.0},
-         notes="In the rear V block's boss: 24 mm of thread on the lead screw guides it as "
-               "well as lifting it."),
+    # the rear saddle's lead screw (construction.cradle: its V block rides it at 8 mm a turn;
+    # ServoCity pages rendered 2026-10-14, /root/scratch/decant/review5/r1_mounting/pages/ on
+    # the development box)
+    Item("lead_screw_8x8_150", "Lead screw, 8 mm, 8 mm lead (2 mm pitch, 4 starts), 150 mm, "
+         "stainless steel", "fastener",
+         (Offer("ServoCity", SERVOCITY + "3501-series-lead-screw-8mm-lead-4-start-150mm-length/",
+                "3501-0804-0150", price_usd=6.99, verified=True,
+                note="3501 Series lead screw: stainless steel, 8 mm, 2 mm pitch, 4 starts, "
+                     "150 mm, 46 g; page rendered 2026-10-14 (the common 3D printer T8 x 8; "
+                     "any 150 mm one with its nut fits)"),),
+         dims={"d": 8.0, "lead": 8.0, "pitch": 2.0, "starts": 4, "length": 150.0,
+               "root": 5.5},
+         notes="The rear saddle's thumbscrew: 9 turns over its V block's 72 mm. It isn't "
+               "self-locking: its clamping collar, on a TPU brake washer under the block's "
+               "load, holds it (cradle_report.saddles)."),
+    Item("lead_nut_8x8_barrel", "Lead screw barrel nut, 8 mm lead, 4 starts, 12 mm OD x 16 mm, "
+         "bronze", "nut",
+         (Offer("ServoCity", SERVOCITY + "3500-series-lead-screw-barrel-nut-8mm-lead-4-start-"
+                "12mm-od-16mm-length/", "3500-0804-1216", price_usd=4.99, verified=True,
+                note="3500 Series barrel nut: bronze, 2 mm pitch, 4 starts, 12 mm OD x 16 mm, "
+                     "10 g; page rendered 2026-10-14"),),
+         dims={"od": 12.0, "length": 16.0, "material": "brass"},
+         notes="In the rear V block's boss from below, an M3 set screw on it: the block bears "
+               "down on it."),
+    Item("lead_collar_8x8", "Lead screw clamping collar, 8 mm lead, 4 starts, 21 mm OD x 9 mm, "
+         "aluminium", "fastener",
+         (Offer("ServoCity", SERVOCITY + "3504-series-lead-screw-clamping-collar-8mm-lead-4-"
+                "start-21mm-od-9mm-length/", "3504-0804-2109", price_usd=6.99, verified=True,
+                note="3504 Series clamping collar: aluminium, clear anodized, its bore threaded "
+                     "to the lead screw, a pinch bolt; 21 mm OD x 9 mm, 8.2 g; page rendered "
+                     "2026-10-14"),),
+         dims={"od": 21.0, "length": 9.0},
+         notes="On the rear lead screw's foot in the carrier's pocket, on the TPU brake "
+               "washer: the block's load on it holds the coarse screw from turning back."),
+    *(Item(f"m5_tap_bolt_{n}", f"M5 x {n} hex tap bolt, fully threaded, 18-8", "fastener",
+           (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
+                  tiers=((1, each), (100, per100 / 100)),
+                  note="18-8 (A-2), M5-0.8, fully threaded, 8 mm across flats; the M5 tap "
+                       "bolt list page rendered 2026-10-14"),),
+           dims={"d": 5.0, "length": float(n), "af": 8.0, "head_h": 3.5})
+      for n, (pn, each, per100) in {25: ("5952", 0.22, 14.52),
+                                    40: ("5955", 0.34, 22.84)}.items()),
+    Item("m5_nylon_nut", "M5 nylon-insert lock nut (DIN 985), 18-8", "nut",
+         (Offer("Bolt Depot", BD + "4794", "4794", price_usd=0.09,
+                tiers=((1, 0.09), (100, 0.0554)), verified=True,
+                note="18-8, M5-0.8, nylon insert; listed with the M5 tap bolts, rendered "
+                     "2026-10-14"),),
+         dims={"af": 8.0, "h": 5.0},
+         notes="On the lip gauge's pin behind its back knuckle: snug, it stays where it's set."),
     # the M6 Chicago pins' washers' sizes: what their printed head spacers and gap rings are
     # drawn to (materials.WASHERS; they are printed, not bought)
     Item("ptfe_washer_8x14x0p5", "PTFE flat washer 8.2 x 14 x 0.5 mm", "washer",
@@ -480,17 +517,10 @@ register(
          dims={"d": 6.0, "length": 25.0, "head_d": 16.55, "head_h": 3.88, "neck": 6.48,
                "neck_h": 4.6},
          notes="A decanting cradle's base-board bolt (as m6_carriage_20), long enough for a "
-               "thumb nut and a thread past it."),
-    Item("m6_thumb_nut", "M6 low-profile knurled-head thumb nut (DIN 467 form), head 24 x 5, "
-         "black-oxide steel", "nut",
-         (Offer("McMaster-Carr", MCM + "92815A203/", "92815A203", price_usd=1.69, verified=True,
-                note="black-oxide steel, M6 x 1, knurled head 24 mm x 6 mm overall, collar 12 x "
-                     "1; the metric thumb-nut listing rendered 2026-10-13 (Bolt Depot lists no "
-                     "metric thumb nut; its M6 wing nuts, 6898 and 29213, span 28-33 mm and "
-                     "would hit the bracket's upright 14 mm off the bolt)"),),
-         dims={"d": 6.0, "head_d": 24.0, "h": 6.0, "collar_d": 12.0, "collar_h": 1.0},
-         notes="On a decanting cradle's base-board bolts, by hand: the side panels lift off "
-               "the board with no tool (cradle._bracket)."),
+               "fender washer, an M6 nut in a printed thumb knob and a thread past it "
+               "(cradle._bracket). (McMaster's 18-8 M6 carriage bolts, 97248A311-316, list "
+               "no price to a scripted page: the zinc one is kept, its head under the "
+               "board.)"),
     Item("m3_thumb_screw_9", "M3 x 9 knurled-head thumb screw, 18-8 (head 8 x 5)", "fastener",
          (Offer("McMaster-Carr", MCM + "92545A115/", "92545A115", price_usd=1.76,
                 verified=True,
@@ -511,4 +541,99 @@ register(
                      "0.8 mm thick; page rendered 2026-10-13 (two come with each pivot pin: a "
                      "spare only)"),),
          dims={"d": 7.0, "od": 14.0, "t": 0.8}),
+)
+
+
+# -- the drive's round 1 (design review round 1, 2026-10-14; construction.handcrank): the
+# riser's spacers, the seat's shims, the hand crank's slip clutch and grip pin. Pages rendered
+# 2026-10-14, saved under /root/.cache/spiderpig/tmp/r1drive/pages/ on the development box -----
+
+MCM_SPACERS = "https://www.mcmaster.com/products/unthreaded-spacers/screw-size~m6/" \
+              "aluminum-unthreaded-spacers-2~~/"
+M6_SPACERS_AL = {11.0: ("94669A348", 1.60, 1.36, 1.20), 12.0: ("94669A349", 1.62, 1.38, 1.22),
+                 13.0: ("94669A178", 1.21, 1.03, 0.91)}
+"""McMaster's aluminium unthreaded spacers for M6, 13 mm OD, 6.300 mm bore: length -> (part,
+USD each at 1-24, 25-99, 100 up) (the M6 aluminium listing rendered 2026-10-14)."""
+
+register(
+    *(Item(f"m6_spacer_al_{L:g}", f"Round spacer for M6, aluminium, 13 mm OD x 6.3 mm bore, "
+           f"{L:g} mm long", "spacer",
+           (Offer("McMaster-Carr", MCM + pn + "/", pn, price_usd=p1, verified=True,
+                  tiers=((1, p1), (25, p25), (100, p100)),
+                  note="aluminium unthreaded spacer for M6, 13 mm OD, ID 6.300 mm; the M6 "
+                       f"aluminium listing rendered 2026-10-14 ({MCM_SPACERS})"),),
+           dims={"od": 13.0, "id": 6.3, "length": L, "material": "aluminium"},
+           notes="The gearbox's riser (construction.handcrank.SPACER): one on each face screw, "
+                 "bearing on the machined output face outside its spigot ring. The guide's "
+                 "go/no-go swaps the drawn length for its neighbour.")
+      for L, (pn, p1, p25, p100) in M6_SPACERS_AL.items()),
+    Item("shim_din988_6x12_0p2", "DIN 988 shim ring 6 x 12 x 0.2 mm, A2 stainless, 8 pieces",
+         "washer",
+         (Offer("Accu", "https://accu-components.com/us/shim-washers/62878-HSHN-6-12-0-2-A2",
+                "HSHN-6-12-0.2-A2", pack_qty=8, price_usd=6.40, verified=True,
+                note="sold singly: 1 $1.88, 2 $1.25, 4 $0.95, 6 or more $0.80 each (eight: "
+                     "$6.40); page rendered 2026-10-14"),),
+         dims={"id": 6.0, "od": 12.0, "t": 0.2},
+         notes="Under the crank block's top plate on the output shaft's end "
+               "(construction.handcrank.SHIM): as many as the guide's go/no-go says, up to "
+               "1.6 mm."),
+    Item("steel_ball_6", "Steel ball 6 mm, 304 stainless, grade 100, 50 pieces", "misc",
+         (Offer("McMaster-Carr", MCM + "9291K77/", "9291K77", pack_qty=50, price_usd=7.89,
+                verified=True,
+                note="304 stainless, 6 mm +-0.0127, cold worked, Rockwell C25, grade 100 "
+                     "(ISO 3290); 50 a pack; the 6 mm steel balls listing rendered 2026-10-14 "
+                     "(https://www.mcmaster.com/products/steel-balls/diameter~6-mm/). Three are "
+                     "used: MISUMI sells 52100 balls singly (BLMJ6, USD 2.08 each by its price "
+                     "API, 2026-10-14; not a rendered page)"),),
+         dims={"d": 6.0, "material": "steel"},
+         notes="The hand crank's slip clutch's balls (construction.handcrank.CLUTCH)."),
+    Item("compression_spring_clutch", "Compression spring 0.24 in OD x 0.813 in, spring steel, "
+         "60 lbf/in, 5 pieces", "misc",
+         (Offer("McMaster-Carr", MCM + "9434K49/", "9434K49", pack_qty=5, price_usd=4.58,
+                verified=True,
+                note="spring steel, closed and ground ends: OD 0.24 in (6.1 mm), ID 0.156 in, "
+                     "wire 0.042 in (1.07 mm), 0.813 in (20.65 mm) long, 60 lbf/in (10.5 "
+                     "N/mm), 15 lbf (66.7 N) at 0.554 in (14.07 mm); 5 a pack; the 0.24 in OD "
+                     "compression springs listing rendered 2026-10-14 (https://www.mcmaster.com"
+                     "/products/compression-springs/od~0-24/compression-springs-1~~/)"),),
+         dims={"od": 6.1, "free": 20.65, "rate": 10.5, "wire": 1.07},
+         notes="Behind each clutch ball, set by an M8 set screw (construction.handcrank."
+               "CLUTCH_SPRING). Spring steel rusts wet: the clutch is dry inside its print."),
+    Item("m8_set_screw_8", "M8 x 8 socket set screw, cup point, 18-8", "fastener",
+         (Offer("Bolt Depot", BD + "8743", "8743", price_usd=0.21, verified=True,
+                tiers=((1, 0.21), (100, 0.1386)),
+                note="18-8 (A-2), M8 x 1.25 x 8, Allen, cup point (no 18-8 flat point listed); "
+                     "the M8 18-8 set screw list rendered 2026-10-14"),),
+         dims={"d": 8.0, "length": 8.0},
+         notes="Sets a clutch spring's preload: self-taps into a 6.9 mm printed pilot."),
+    Item("m3_heat_set_insert", "M3 heat-set threaded insert for plastic, brass, 5.7 mm long",
+         "insert",
+         (Offer("Accu", "https://accu-components.com/us/brass-threaded-inserts/"
+                "845137-HTBI-M3-BR", "HTBI-M3-BR", price_usd=2.35, verified=True,
+                tiers=((1, 2.35), (2, 1.68), (4, 1.36), (6, 1.20), (12, 1.09), (100, 0.69)),
+                note="brass, M3, 5.7-5.8 mm long, about 4.4 mm over the knurls, for a 4.0 mm "
+                     "hole (+0.1: a search snippet; the page shows the insert and its prices); "
+                     "sold singly; page rendered 2026-10-14"),),
+         dims={"d": 3.0, "length": 5.7, "hole": 4.0},
+         notes="The hand crank's hub (its thumb screw onto the input key) and its journal's "
+               "end (the arm's cap): brass threads where the crank comes off at every pack."),
+    Item("m8_hex_bolt_85", "M8 x 85 hex bolt, partially threaded, 18-8", "fastener",
+         (Offer("Bolt Depot", BD + "5826", "5826", price_usd=1.53, verified=True,
+                tiers=((1, 1.53), (100, 0.9736)),
+                note="18-8 (A-2), M8 x 1.25 x 85, 13 mm across flats, head 5.15-5.45, thread "
+                     "at least 22 mm; page rendered 2026-10-14"),),
+         dims={"d": 8.0, "length": 85.0, "thread": 22.0, "af": 13.0, "head_h": 5.3},
+         notes="The hand crank's grip pin: the printed grip spins on its plain shank "
+               "(round 1: it replaced a NETRF10 standoff and two button heads)."),
+    Item("m8_nyloc_nut", "M8 nylon-insert lock nut, 18-8", "nut",
+         (Offer("Bolt Depot", BD + "4797", "4797", price_usd=0.17, verified=True,
+                tiers=((1, 0.17), (100, 0.1187)),
+                note="18-8, M8 x 1.25, 13 mm across flats, 8 mm high; page rendered "
+                     "2026-10-14"),),
+         dims={"af": 13.0, "h": 8.0}),
+    Item("m8_washer", "M8 flat washer (DIN 125, 8.4 x 16 x 1.6), 18-8", "washer",
+         (Offer("Bolt Depot", BD + "4518", "4518", price_usd=0.08, verified=True,
+                tiers=((1, 0.08), (100, 0.0529)),
+                note="18-8, M8, 16 mm OD; page rendered 2026-10-14"),),
+         dims={"id": 8.4, "od": 16.0, "t": 1.6}),
 )

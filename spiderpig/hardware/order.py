@@ -144,11 +144,12 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
     cut = {c.service: 0.0 for c in getattr(bom, "cutting", ())}
     for c in getattr(bom, "cutting", ()):
         cut[c.service] += c.usd or 0.0
+    left_out = getattr(bom, "unpriced_cuts", "")     # (a cradle's: what the total leaves out)
     if cut:
         lines += [f"Cutting (the material included): **≈{_money(sum(cut.values()))}** ("
                   + ", ".join(f"{s} ≈{_money(v)}" for s, v in cut.items())
                   + f"; {source}). **Total ≈{_money(total + sum(cut.values()))}**, "
-                  "before shipping.", ""]
+                  "before shipping." + (f" **{left_out}**" if left_out else ""), ""]
     if on_hand:
         boxes = any(r.key in SERVO_BOX for r in on_hand)
         lines += [f"## From the shop{' and the servo boxes' if boxes else ''} (on hand, not "
@@ -173,8 +174,11 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
                                          kerf_note(service, kerfs)) if x)
             lines += [note + ".", ""]
             if service in cut:
-                lines += [f"Estimate: ≈{_money(cut[service])} for these parts ({source}).",
-                          ""]
+                unpriced = [c.name for c in getattr(bom, "cutting", ())
+                            if c.service == service and c.usd is None] if left_out else []
+                lines += [f"Estimate: ≈{_money(cut[service])} for these parts ({source})"
+                          + (f", without {', '.join(unpriced)}: unpriced, see the total above"
+                             if unpriced else "") + ".", ""]
             lines += ["| qty | file | material | thickness | size mm | makes |",
                       "|---:|---|---|---:|---|---|"]
             for r in rows:

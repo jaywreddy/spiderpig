@@ -102,12 +102,14 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # other made taller (a thin link there would slide on its pin); the arms b2, b3 and the
     # bar b4 in 7075 (cradle_report's jam: 6061 held 0.83); the 336 mm rod 0.250 in, alone
     # in its layer (Euler, at the cradle's 24 mm links: 1.6 x its jam force); the cradle
-    # link b6, alone under the inner plate, 0.125 in (jam SF 3.5): a thinner stack
+    # link b6, alone under the inner plate, 0.187 in 5052 (design review round 1,
+    # 2026-10-14: rated in bending, its rear arm a cantilever off X, the 0.125 in held the
+    # jam at SF 0.3; config.PRODUCT_CHORD_R widens that arm)
     # the A cradle's cradle link b2 0.187 in (2026-10-13: its 12 mm pillar G's hole leaves a
     # 0.125 in 5052 link at jam SF 1.13 under a 6 L's 69.3 N.m; the frame plates' sheet)
     "decanter_hinge": {"b2": "al5052_4p8mm"},
     "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al7075_4p8mm", "b3": "al7075_4p8mm",
-                     "b4": "al7075_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_3p2mm"},
+                     "b4": "al7075_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_4p8mm"},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links
 (:func:`default_link_sheets`); ``BuildConfig.link_sheets`` overrides the lot."""

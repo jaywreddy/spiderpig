@@ -269,27 +269,68 @@ since 2026-10-13: a 6 L bottle's jam bent the M6 Chicago screw's stainless barre
 ``chicago6`` is still there, ``--pin chicago6``), but at :data:`PRODUCT_PIN_JOINTS`."""
 
 PRODUCT_PIN_JOINTS: dict[str, dict[str, str]] = {
-    "decanter_rcm": {**dict.fromkeys(("J", "J2"), "chicago6"),
-                     **dict.fromkeys(("X", "Y"), "clevis8")},
+    "decanter_rcm": dict.fromkeys(("K", "J2", "X", "Y"), "clevis8"),
 }
 """Per product linkage, with its product's own pin (:data:`PRODUCT_PINS`): the joints that take
-another pin instead. B's J and J2 hold a 6 L's jam on an M6 Chicago screw at a fortieth of a
-pivot pin's price (2026-10-13: the user's cost); its X and Y, where its cradle link meets
-each side, take a quick-release clevis pin (``clevis8``, 2026-10-13: the passive side panel
-slides off its cradle link once their two clips are out, ``cradle_pack``); its rod's pin P
-and its arm's K take the steel, as A's one pin E does."""
+another pin instead. B's X and Y, where its cradle link meets each side, take a
+quick-release clevis pin (``clevis8``, 2026-10-13: the passive side panel slides off its
+cradle link once their two clips are out, ``cradle_pack``); so do its K and J2 (design
+review round 1, 2026-10-14: the 18-8 pin holds their jam at SF 1.4 or more, where J2's M6
+Chicago screw had held 1.40 on an unstated alloy, with threadlocker and pliers). Its rod's
+pin P keeps the hardened steel (as a clevis pin it would hold 1.1), as A's one pin E does,
+and so does J: a clevis pin's clip and end stand in the cradle link's layer, and b6's rear
+arm X-Tr1 passes right over J (the planner finds no plan). Two pin types, no Chicago
+screw, nothing threadlocked."""
+
+PRODUCT_CHORD_R: dict[str, dict[str, dict[tuple[str, str], float]]] = {
+    "decanter_rcm": {"b6": {("X", "Tr1"): 20.0, ("X", "Y"): 16.0}},
+    "decanter_hinge": {"b2": {("E", "Tr1"): 16.0}},
+}
+"""Per product linkage, per link: a chord (a pair of its joints, either way round) cut wider
+than ``Params.link_radius``, its own half-width (mm), each from the cradle's links rated
+in bending (design review round 1, 2026-10-14; ``cradle_report.structure``):
+- B's cradle link b6: its rear arm X-Tr1, a cantilever off X carrying the rear saddle, 40
+  mm wide (24 held the jam's couple at SF 0.3 in 0.125 in); its chord X-Y, 284 mm in
+  compression under the jam, 32 mm wide against buckling out of its plane.
+- A's cradle link b2: its chord E-Tr1, in compression from the rod's pin to the rear tie
+  under the jam, 32 mm wide against buckling.
+The planner claims each at its width (:class:`construction.plates.LinkPlates`)."""
+
+
+def chord_r(config, link: str, a: str, b: str) -> float:
+    """The half-width (mm) ``config`` cuts link ``link``'s chord ``a``-``b`` (joint or
+    topology point names: a lone point is ``link.joint``): :data:`PRODUCT_CHORD_R`'s, else
+    ``Params.link_radius``."""
+    from spiderpig.stack import body_class
+
+    own = PRODUCT_CHORD_R.get(config.linkage, {}).get(body_class(link), {})
+    if own:
+        a, b = a.rsplit(".", 1)[-1], b.rsplit(".", 1)[-1]
+        r = own.get((a, b), own.get((b, a)))
+        if r is not None:
+            return r
+    return config.params.link_radius
 
 PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 """Per product: the default sheet (the layer pitch, the printed rings' and the order's
 material) when the config names the default (:data:`SHEET`): a decanting cradle is all
 aluminium, its links' 0.125 in 5052 (:data:`materials.CRADLE_LINK_SHEET`)."""
 
-PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 69.3, "decanter_rcm": 66.0}
+PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 61.3, "decanter_rcm": 61.3}
 """Per product linkage: the crank torque its joints are rated at in a jam, in place of a
-servo's firmware limit (:func:`torque_limit_nm`): a decanting cradle's, a firm 40 N push at
-its grip (B's 100 mm out, A's 105: ``construction.handcrank.HANDLE_RS``) through its
-NRV040's 30:1 worm at a hand's speed (:func:`spiderpig.cradle_report.jam_nm`, which a test
-holds these to)."""
+servo's firmware limit (:func:`torque_limit_nm`): a decanting cradle's, the most its hand
+crank's slip clutch lets through, however hard the push (:data:`PRODUCT_CLUTCH_NM`, since
+design review round 1; a firm 40 N push at the grip had been the case:
+:func:`spiderpig.cradle_report.jam_nm`, which a test holds these to)."""
+
+PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 61.3, "decanter_rcm": 61.3}
+"""Per product linkage: the most its hand crank's slip clutch lets onto the crank, however
+hard the push (design review round 1, 2026-10-14): set to slip at
+``construction.handcrank.CLUTCH_SLIP_NM`` at the input, at the top of its
+``CLUTCH_SCATTER``, through the NRV040's 30:1 worm at a hand's speed (``handcrank.clutch``,
+which a test holds these to). The crank torque to re-run a strength check at: a bound, unlike
+the push (``cradle_report``'s ``jam_capped`` rates it over the whole turn, the toggles
+included)."""
 
 
 def product_defaults(product: str) -> dict:

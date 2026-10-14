@@ -138,8 +138,23 @@ cm^2 disc 10.08; 0.187 in 5052 the 820 cm^2 frame plates 104.23 (74.69 at two), 
 plate 15.21 (9.84), a 55 cm^2 rod 12.03; 0.125 in 6061 a 25 cm^2 crank plate 7.79-7.99
 (5.67 at three). USD 367.50 in all; the fit says 352."""
 CRADLE_QTY_FACTOR = 0.72
-CRADLE_CUT_SOURCE = ("a fit to SendCutSend's live quotes of 2026-10-10 for this cradle's "
-                     "files (USD 359-368 in all); upload the files for the real quote")
+CRADLE_CUT_SOURCE = ("a fit, per sheet, to SendCutSend's live quotes of 2026-10-10 for cradle "
+                     "A's files (A's eleven came to USD 367.50, the fit says 352; no other "
+                     "cradle has been quoted), a sheet with no fit at the walkers' per-area "
+                     "rate; upload the files for the real quote")
+"""Where a cradle's cutting estimate comes from (its BOM and ORDER.md print it): the fit was
+A's quote, so it names A's total as A's (it had printed "USD 359-368 in all" in B's order
+as if it were B's: round 1's parts review)."""
+CRADLE_CUT_PROXIES: dict[str, tuple[str, float, float, str]] = {
+    "al7075_4p8mm": ("al5052_4p8mm", 1.0, 2.0,
+                     "the 0.187 in 5052 fit's price for the same parts, x1 (7075 is the "
+                     "dearer alloy, so no less) to x2 (SendCutSend's quotes of 2026-10-08 ran "
+                     "6061 at twice 5052's rate per area, and 7075 may run dearer still)"),
+}
+"""A cradle's sheets that have no fitted price, and what bounds an estimate of their cutting:
+``(the nearest fitted sheet, its price's low and high factor, the basis)``. Only an estimate
+(the BOM and ORDER.md say so, and leave it out of the total); a sheet not here (the birch:
+no wood was ever quoted) stays unpriced, its area given."""
 
 
 def cut_estimate(key: str, parts: list[tuple[float, int]],
@@ -186,7 +201,57 @@ def cutting_rows(made: list[MadeRow], fits: dict[str, tuple[float, float]] | Non
     return sorted(out, key=lambda c: (c.service, c.sheet))
 
 
-SAW_KERF = 1.0     # mm lost to each cut of rod stock (a hacksaw or a cut-off disc)
+def cut_ranges(cutting: list[CutRow], made: list[MadeRow],
+               proxies: dict[str, tuple[str, float, float, str]] | None = None
+               ) -> dict[str, tuple[float, float, str] | None]:
+    """Each unpriced cutting line's estimate (``cutting``'s rows with no ``usd``), by sheet:
+    ``(low, high, basis)`` from its proxy (:data:`CRADLE_CUT_PROXIES`: the nearest fitted
+    sheet's price for the same parts, times its factors), ``None`` where none bounds it."""
+    out: dict[str, tuple[float, float, str] | None] = {}
+    for c in cutting:
+        if c.usd is not None:
+            continue
+        proxy = (proxies or {}).get(c.sheet)
+        fit = CRADLE_CUT_FITS.get(proxy[0]) if proxy else None
+        if proxy is None or fit is None:
+            out[c.sheet] = None
+            continue
+        t_cm = float(get(c.sheet).dims.get("thickness", 3.0)) / 10.0
+        parts = [(m.volume_cm3 / t_cm, m.qty) for m in made
+                 if m.method == "laser" and m.sheet == c.sheet]
+        usd = cut_estimate(proxy[0], parts, fit) or 0.0
+        out[c.sheet] = (round(usd * proxy[1], 2), round(usd * proxy[2], 2), proxy[3])
+    return out
+
+
+def unpriced_cut_note(cutting: list[CutRow], ranges: dict[str, tuple[float, float, str] | None]
+                      ) -> str:
+    """What a total leaves out (a cradle's BOM and ORDER.md): "excludes N unpriced cut
+    lines: ...", each with its area and, where it has one, its estimate and the estimate's
+    basis; empty when every line is priced."""
+    rows = [c for c in cutting if c.usd is None]
+    if not rows:
+        return ""
+    each = []
+    for c in rows:
+        got = ranges.get(c.sheet)
+        what = f"{c.name} ({c.parts} part{'s' if c.parts != 1 else ''}, {c.area_cm2:g} cm²"
+        if got is None:
+            each.append(what + ": no fitted price, quoted at upload)")
+        else:
+            each.append(what + f": an estimate of USD {got[0]:.0f}-{got[1]:.0f}, from {got[2]})")
+    low = sum(g[0] for c in rows if (g := ranges.get(c.sheet)))
+    high = sum(g[1] for c in rows if (g := ranges.get(c.sheet)))
+    still = [c.name for c in rows if ranges.get(c.sheet) is None]
+    tail = ""
+    if low or high:
+        tail = (f" The estimates add USD {low:.0f}-{high:.0f}"
+                + (f"; {', '.join(still)} still unpriced." if still else "."))
+    return (f"The total excludes {len(rows)} unpriced cut line{'s' if len(rows) > 1 else ''}: "
+            + "; ".join(each) + "." + tail)
+
+
+SAW_KERF = 1.0    # mm lost to each cut of rod stock (a hacksaw or a cut-off disc)
 
 
 @dataclass(frozen=True)
@@ -294,6 +359,17 @@ class Bom:
     filaments: dict[str, float] = field(default_factory=dict)   # grams per filament (name)
     cutting: list[CutRow] = field(default_factory=list)   # per service and sheet
     cut_source: str = CUT_SOURCE        # where the cutting's estimate comes from
+    cut_ranges: dict[str, tuple[float, float, str] | None] | None = None
+    """A cradle's unpriced cutting lines' estimates (:func:`cut_ranges`; ``None``: a walker's
+    BOM, which doesn't say what its total leaves out)."""
+
+    @property
+    def unpriced_cuts(self) -> str:
+        """What the total leaves out of the cutting (:func:`unpriced_cut_note`; a cradle's
+        only)."""
+        if self.cut_ranges is None:
+            return ""
+        return unpriced_cut_note(self.cutting, self.cut_ranges)
 
     @property
     def purchases_usd(self) -> float:
@@ -381,11 +457,13 @@ class Bom:
                       "| service | sheet | parts | area cm² | est. cost |",
                       "|---|---|---:|---:|---:|"]
             lines += [f"| {c.service} | {c.name} | {c.parts} | {c.area_cm2:g} | "
-                      f"{'' if c.usd is None else f'${c.usd:.2f}'} |" for c in self.cutting]
+                      f"{self._cut_cost(c)} |" for c in self.cutting]
             lines += ["", f"The cutting is {self.cut_source}."]
         lines += ["", f"Estimated total: **${self.cost_usd:.2f}**: purchases "
                   f"${self.purchases_usd:.2f} (pack prices at the listed vendor) and cutting "
                   f"${self.cutting_usd:.2f}; excludes shipping and the shop supplies on hand."]
+        if self.unpriced_cuts:
+            lines.append(f"**{self.unpriced_cuts}**")
         if self.unpriced:
             lines.append(f"{len(self.unpriced)} item(s) have no listed price and are not in "
                          "the total: " + ", ".join(r.name for r in self.unpriced) + ".")
@@ -422,7 +500,28 @@ class Bom:
             lines += ["## Notes", ""] + [f"* {n}" for n in self.notes] + [""]
         return "\n".join(lines)
 
+    def _cut_cost(self, c: CutRow) -> str:
+        """A cutting line's cost cell: its price; unpriced, empty (a walker's) or said so,
+        with its estimate where it has one (a cradle's)."""
+        if c.usd is not None:
+            return f"${c.usd:.2f}"
+        if self.cut_ranges is None:
+            return ""
+        got = self.cut_ranges.get(c.sheet)
+        return "unpriced" + (f" (≈${got[0]:.0f}-{got[1]:.0f}, an estimate)" if got else "")
+
     def as_dict(self) -> dict:
+        if self.cut_ranges is not None:         # (a cradle's: what its total leaves out)
+            return dict(self._as_dict(), unpriced_cutting=[
+                {"sheet": c.sheet, "name": c.name, "parts": c.parts, "area_cm2": c.area_cm2,
+                 "estimate_usd": (list(got[:2]) if (got := self.cut_ranges.get(c.sheet))
+                                  else None),
+                 "basis": got[2] if got else "no fitted price: quoted at upload"}
+                for c in self.cutting if c.usd is None],
+                unpriced_cutting_note=self.unpriced_cuts)
+        return self._as_dict()
+
+    def _as_dict(self) -> dict:
         return {
             "title": self.title,
             # a shop supply on hand (ON_HAND) costs this build nothing: listed, its pack
@@ -835,16 +934,27 @@ takes a press with less creep and cracking than PLA (``construction.printed`` pr
 snap axles in PETG for the same strain); ``None`` here leaves it in the build's filament."""
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
-CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the V blocks' TPU liners and the feet"}
+CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer and the feet"}
 CRADLE_PRINT_NOTE = (
     "Print the saddles, their V blocks, the base stop and the brackets in PLA at 20 % infill "
-    "with 4 walls (the rear saddle's carrier stands 165 mm tall and the light's clip on its "
-    "tube's foot: a brim), the hand crank, the knobs, the lip gauge and the light's clip at "
-    "40 %, the crank's sleeve solid (the crank block clamps on it), the TPU parts at 15-20 %: "
-    "each STL is posed as it should print.")
+    "with 4 walls (the rear saddle's carrier stands 142 mm tall and the light's clip on its "
+    "tube's foot: a brim; support under the rear carrier's tower arm, the rear V block's "
+    "flats and bosses and the lip gauge's back knuckle), the hand crank, the knobs (the base "
+    "board's thumb knobs too), the lip gauge and the light's clip at 40 %, the crank's "
+    "sleeve solid (the crank block clamps on it), the TPU parts at 15-20 %: each STL is "
+    "posed as it should print. PLA softens at about 55 °C, as in a car in summer: for a "
+    "cradle that travels so, print the crank's sleeve, the brackets and the thumb knobs in "
+    "PETG.")
 """A decanting cradle's (:mod:`construction.cradle`)."""
-# a foot's sock; a decanting cradle's liners, its collar, its base plate's feet
-_SOCK = re.compile(r"_sock$|_liner$|_collar$|foot_boot_")
+CRADLE_GREASE_NOTE = (
+    "Grease the saddles' thumbscrews as they go in (a dab of PTFE or lithium grease, not "
+    "bought: a shop supply): the front M6 (stainless in a stainless nut galls dry) and the "
+    "rear lead screw in its bronze nut; keep it off the rear screw's collar and its TPU brake "
+    "washer, whose grip holds the coarse screw from turning back.")
+"""A decanting cradle's (:mod:`construction.cradle`; review round 1, m9)."""
+# a foot's sock; a decanting cradle's liners, its collar, its lead screw's brake washer, its
+# base plate's feet
+_SOCK = re.compile(r"_sock$|_liner$|_collar$|_brake$|foot_boot_")
 _SLEEVE = re.compile(r"crank_pin_sleeve_(.+)$")
 
 
@@ -1240,7 +1350,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
         notes.append(f"Printed parts need about {total:.0f} g of filament at 100 % infill "
                      f"({each}); less with sparse infill.")
         if (mech.meta or {}).get("cradle"):
-            notes.append(CRADLE_PRINT_NOTE)
+            notes += [CRADLE_PRINT_NOTE, CRADLE_GREASE_NOTE]
     lines.extend(mech.bom_extras)
     lines, shim_notes = split_shims(lines, by_name, (mech.meta or {}).get("shim_stacks"))
     notes += shim_notes
@@ -1290,10 +1400,12 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
             row.same_pack_as = lead.name
             lead.packs = max(lead.packs, row.packs)
     made.sort(key=lambda m: (m.method, m.name))
+    cutting = cutting_rows(made, CRADLE_CUT_FITS if cradle else None)
     return Bom(purchased=purchased, made=made, title=title, notes=notes,
                printed_g=total if filament else None,
                filament=fil_name.split()[0] if filament else "PLA", cuts=cut_list(lines),
                filaments={(_filament_name(f) if f else fil_name): g
                           for f, g in grams.items() if g > 0},
-               cutting=cutting_rows(made, CRADLE_CUT_FITS if cradle else None),
-               cut_source=CRADLE_CUT_SOURCE if cradle else CUT_SOURCE)
+               cutting=cutting,
+               cut_source=CRADLE_CUT_SOURCE if cradle else CUT_SOURCE,
+               cut_ranges=cut_ranges(cutting, made, CRADLE_CUT_PROXIES) if cradle else None)

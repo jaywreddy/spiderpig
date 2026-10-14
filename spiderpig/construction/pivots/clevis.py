@@ -1,7 +1,8 @@
 """``clevis8``: an 8 mm clevis pin, its head inside the stack and a hairpin cotter (an R-clip)
 through its cross hole from the bay: a decanting cradle's quick-release link pin (B's X and Y,
-``config.PRODUCT_PIN_JOINTS``, since 2026-10-13). Pull the two clips on the passive side and
-its panel slides off its cradle link, the pins with it (:mod:`spiderpig.cradle_pack`).
+``config.PRODUCT_PIN_JOINTS``, since 2026-10-13; its K and J2 too since 2026-10-14). Pull the
+two clips on the passive side and its panel slides off its cradle link, the pins with it
+(:mod:`spiderpig.cradle_pack`).
 
 **The part.** McMaster's 18-8 clevis pin, 8 mm, head 14 x 3, a 2 mm cotter hole at its usable
 length (the head's underside to the hole's near edge), the end 3 mm past the hole
@@ -300,8 +301,8 @@ class ClevisPinAxle(ChicagoAxle):
               "link), on the bench; the link goes on with the pin standing in it.")
         clip_on = ("Each clevis pin's hairpin cotter (R-clip) through the pin's hole from the "
                    "bay side, by hand, its bent leg over the pin: the links must turn freely "
-                   "and lift their play (about 0.3 mm). To take the side off, pull the clip; "
-                   "it goes back in the pin's hole.")
+                   "and lift their play (about 0.3 mm). Where the pin holds the cradle link, "
+                   "pull its clip to take the side off; it goes back in the pin's hole.")
         ops = [Op(STACK, (k_lo, 0, 1), whole(pin, *spacer), "", on, "layer")]
         if clip in view.z:
             ops.append(Op(STACK, (k_hi, 2), whole(clip), "", clip_on, "layer"))
@@ -310,4 +311,4 @@ class ClevisPinAxle(ChicagoAxle):
 
 CLEVIS8 = ClevisPinAxle()
 """The 8 mm clevis pin with a hairpin cotter (McMaster 90378A701 and 98350A131): a decanting
-cradle's quick-release pins (``config.PRODUCT_PIN_JOINTS``: B's X and Y)."""
+cradle's quick-release pins (``config.PRODUCT_PIN_JOINTS``: B's X and Y; its K and J2)."""
