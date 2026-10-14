@@ -672,10 +672,10 @@ grip jammed, 2026-10-13):
 | swing | −50.0° to +30.0°, the mouth still (0 mm), every bottle's mouth on the pivot |
 | transmission | 36.7° at worst (the rod's); the parallelograms 48.5° and 51.5° |
 | gearbox | 29.5 N·m peak: SF 1.52 on the NRV040's 45 N·m; 21.9 N at the 100 mm grip |
-| jam (66 N·m) | pillar O2 1.33, pin J2 1.39 (Chicago), pillar O1 1.41, links b3 and b4 1.73, the crank's keyway 2.0, pin J 2.19 (Chicago), pin Y 2.34 and pin X 2.70 (clevis), pin P 3.51 and pin K 4.48 (steel) |
+| jam (66 N·m) | pillar O2 1.33, pin J2 1.40 (Chicago), pillar O1 1.42, links b3 and b4 1.74, the crank's keyway 2.0, pin J 2.21 (Chicago), pin Y 2.36 and pin X 2.69 (clevis), pin P 3.51 and pin K 4.48 (steel) |
 | walking | every joint 7.0 or more; the crank's keyway 4.5 |
 | rod, crankpin | buckling 1.59 × its jam force; the crankpin 1.96 jammed |
-| stand | tips at 25.8° at worst (a full 6 L), a push of 31.6 N or more at a bottle's top |
+| stand | tips at 25.9° at worst (a full 6 L), a push of 32.0 N or more at a bottle's top |
 
 (For a 3 L on the NRV030, before 2026-10-13: the gearbox 1.38 on a 14.46 N·m peak, pin P
 1.36 at a 36 N·m jam, the stand 30.1°.)
