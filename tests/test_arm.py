@@ -180,10 +180,10 @@ def test_an_arm_is_refused_a_drive_servo_and_a_crank_sheet():
     from spiderpig.spec import validate
     from spiderpig.stages.resolve import spec_of
 
-    for kw, what in (({"servo": "xl330_m288"}, "drive servo"),
-                     ({"crank_sheet": "al6061_2mm"}, "no crank")):
-        with pytest.raises(ParamError, match=what):
-            BuildConfig(linkage="palletizer_reach", **kw)
+    with pytest.raises(ParamError, match="drive servo"):
+        BuildConfig(linkage="palletizer_reach", servo="xl330_m288")
+    with pytest.raises(ParamError, match="no crank"):
+        BuildConfig(linkage="palletizer_reach", crank_sheet="al6061_2mm")
     arm = BuildConfig(linkage="palletizer_reach", servo=servos.DEFAULT,
                       crank_sheet="al6061_2p5mm")             # the defaults: as stored
     assert arm == BuildConfig(linkage="palletizer_reach")

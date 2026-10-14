@@ -350,8 +350,8 @@ def unused_field(lk: linkage.Linkage, name: str, value) -> str | None:
     article = "an" if lk.kind[0] in "aeiou" else "a"
     return (f"{lk.key} is {article} {lk.kind}: it has no {r.title} ({name} {value!r}; the role "
             f"{role!r} is a {' or '.join(r.kinds)}'s"
-            + ("; an arm's motors are the role 'actuator'" if lk.kind == "arm"
-               and name == "servo" else "") + ")")
+            + ("; its motors are the role 'actuator'" if name == "servo"
+               and rolemod.applies("actuator", lk.kind) else "") + ")")
 
 
 ROBOT_LAYOUTS: dict[str, str] = {"walker": "mirrored_pair", "arm": "turret"}

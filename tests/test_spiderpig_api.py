@@ -968,7 +968,8 @@ def test_list_designs_cards_say_what_a_design_is_made_of(tmp_path):
     b = api.resolve({**base, "constructions": {"crank": "bolt_round"}}, store=tmp_path)
     cards = {c["id"]: c for c in api.list_designs(store=tmp_path)}         # entry 9
     assert cards[a.id]["constructions"] == {"pillar": "standoff", "pin": "chicago",
-                                            "crank": "bolt", "heads": "best"}
+                                            "crank": "bolt", "heads": "best",
+                                            "controller": "u2d2_dynamixel"}   # (its servo's)
     assert cards[b.id]["constructions"]["crank"] == "bolt_round"
     for c in (cards[a.id], cards[b.id]):
         assert c["servo"] == "xl330_m288"
