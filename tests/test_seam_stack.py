@@ -263,7 +263,8 @@ def test_the_jobs_in_worker_processes_give_the_answer_they_give_here():
 
 
 def test_no_workers_with_spiderpig_workers_off(monkeypatch):
-    """``SPIDERPIG_WORKERS=0``: the jobs run in this process, whatever ``workers`` asks."""
+    """``SPIDERPIG_WORKERS=0``: the jobs run in this process, whatever ``workers`` asks;
+    else ``workers``, ``SPIDERPIG_PLAN_WORKERS``, or the idle cores."""
     from spiderpig.stack import drive
 
     monkeypatch.setenv("SPIDERPIG_WORKERS", "0")
@@ -272,6 +273,12 @@ def test_no_workers_with_spiderpig_workers_off(monkeypatch):
     monkeypatch.setenv(drive.ENV_WORKERS, "3")
     assert drive.workers_for(StackSpec()) == 3
     assert drive.workers_for(StackSpec(workers=2)) == 2
+    # unset: as many as the idle cores, up to MAX_WORKERS, two at least
+    monkeypatch.delenv(drive.ENV_WORKERS)
+    monkeypatch.setattr(drive.os, "cpu_count", lambda: 20)
+    for load, n in ((2.0, drive.MAX_WORKERS), (15.5, 4), (40.0, 2)):
+        monkeypatch.setattr(drive.os, "getloadavg", lambda load=load: (load, 0.0, 0.0))
+        assert drive.workers_for(StackSpec()) == n
 
 
 # -- the search's z: a bound of every plan (links thicker than the pitch) -------------------

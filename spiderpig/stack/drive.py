@@ -192,7 +192,10 @@ class Here:
 
 def workers_for(spec) -> int:
     """How many worker processes a plan may fork: none with ``SPIDERPIG_WORKERS=0``, else
-    ``spec.workers``, else :data:`ENV_WORKERS`, else :data:`MAX_WORKERS` (or the cores)."""
+    ``spec.workers``, else :data:`ENV_WORKERS`, else :data:`MAX_WORKERS`, as many as the
+    machine has idle cores (its cores less its load average, two at least: a busy machine's
+    cores are no faster for more processes, and every worker warms its own caches). The plan
+    is the same with any number."""
     if os.environ.get("SPIDERPIG_WORKERS") == "0":
         return 1
     if spec.workers is not None:
@@ -200,7 +203,12 @@ def workers_for(spec) -> int:
     raw = os.environ.get(ENV_WORKERS)
     if raw not in (None, ""):
         return max(1, int(raw))
-    return max(1, min(os.cpu_count() or 1, MAX_WORKERS))
+    cores = os.cpu_count() or 1
+    try:
+        idle = int(cores - os.getloadavg()[0])
+    except OSError:                 # (no load average on this platform)
+        idle = cores
+    return max(min(2, cores), min(cores, MAX_WORKERS, idle))
 
 
 def solve(prob: StackProblem) -> StackPlan:
