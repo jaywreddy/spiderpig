@@ -328,7 +328,8 @@ def test_an_arm_buys_its_controller_and_a_walker_its_deck_kit():
     from spiderpig.actuators import controllers
     from spiderpig.hardware.catalog import get
 
-    assert roles.choices("controller") == ["esp32_bus_servo", "skr_pico_pi_zero", roles.NONE]
+    assert roles.choices("controller") == ["esp32_bus_servo", "skr_pico_pi_zero",
+                                           "u2d2_dynamixel", roles.NONE]
     assert BuildConfig(linkage="palletizer").role("controller") == "skr_pico_pi_zero"
     assert BuildConfig(linkage="palletizer",
                        roles=(("controller", "none"),)).role("controller") == ""
@@ -486,7 +487,46 @@ def test_the_servo_setup_writes_ids_mode_and_the_rated_torque_limit():
     assert mech["phase_lock"] is None
     dxl = servos.setup(BuildConfig(servo="xl330_m288"))
     assert dxl["bus"]["protocol"] == "dynamixel_2"
-    assert "dynamixel_2" in dxl["notes"][0]                # the deck's board can't drive it
+    assert dxl["controller"]["key"] == "u2d2_dynamixel"   # its own board: no note
+    assert not any("speaks" in n for n in dxl["notes"])
+    deck = servos.setup(BuildConfig(servo="xl330_m288",
+                                    roles=(("controller", "esp32_bus_servo"),)))
+    assert "dynamixel_2" in deck["notes"][0]               # the deck's board can't drive it
+    assert "u2d2_dynamixel" in deck["notes"][0]            # and the one that can is named
+
+
+@pytest.mark.no_fabricate
+def test_a_walkers_controller_speaks_its_servos_protocol():
+    """The role ``controller``'s default follows the servo's bus protocol
+    (``controllers.BUS_DEFAULTS``): the STS3215's deck kit (implicit: its ids stay), an XL330
+    or XL430's ROBOTIS U2D2 on its power hub, written into the resolved spec; the U2D2's
+    offers are priced from robotis.us's pages and dated."""
+    from spiderpig.actuators import controllers
+    from spiderpig.control import servos
+    from spiderpig.hardware.catalog import get
+
+    assert BuildConfig().role("controller") == controllers.DECK_KIT
+    assert "controller" not in BuildConfig().applied_roles()
+    for model in ("xl330_m288", "xl430_w250"):
+        cfg = BuildConfig(servo=model)
+        assert cfg.role("controller") == "u2d2_dynamixel"
+        assert cfg.applied_roles()["controller"] == "u2d2_dynamixel"
+        ctl = controllers.of(cfg)
+        assert ctl is not None
+        assert (ctl.protocol, ctl.mount) == ("dynamixel_2", "")
+        assert controllers.protocol_note(cfg, ctl) == ""
+    assert BuildConfig(linkage="klann", servo="xl430_w250",
+                       roles=(("controller", "u2d2_dynamixel"),)).roles == ()
+    ctl = controllers.get("u2d2_dynamixel")
+    assert ctl.baud in servos.BAUD_CODES["dynamixel_2"]
+    for key, _ in ctl.bom:
+        offer = get(key).offer
+        assert offer is not None, key
+        assert offer.verified, key
+        assert offer.price_usd, key
+        assert "robotis.us" in offer.url
+        assert "2026-10-14" in offer.note
+    assert BuildConfig(linkage="palletizer").role("controller") == "skr_pico_pi_zero"
 
 
 @pytest.mark.no_fabricate
