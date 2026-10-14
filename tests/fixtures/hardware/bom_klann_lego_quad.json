@@ -1,6 +1,6 @@
 {
  "data": {
-  "cost_usd": 410.48,
+  "cost_usd": 411.2,
   "cuts": [],
   "cutting": [
    {
@@ -1368,12 +1368,12 @@
    {
     "alternatives": [],
     "category": "standoff",
-    "cost_usd": null,
+    "cost_usd": 0.72,
     "cut_by": "",
     "key": "hex_standoff_m3_15",
     "name": "M3 x 15 mm hex standoff, 5.5 mm AF, female-female, zinc-plated steel (tapped through)",
     "on_hand": false,
-    "pack_price_usd": null,
+    "pack_price_usd": 0.36,
     "pack_qty": 1,
     "packs": 2,
     "qty": 2.0,
@@ -1965,14 +1965,14 @@
     ]
    }
   ],
-  "purchases_usd": 190.36,
+  "purchases_usd": 191.08,
   "title": ""
  },
- "engine_version": "0.1.0+87c31f12ee55",
+ "engine_version": "0.1.0+e5812d70d3bd",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[klann_lego_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-c3a3440236adcd85"
+ "source_key": "gen-3834db18384c6712"
 }
