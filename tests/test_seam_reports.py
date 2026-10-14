@@ -1265,6 +1265,7 @@ def test_link_rows_net_section_bending_foot_lever_and_needs(monkeypatch):
            "J7": (0.0, 50.0), "J8": (0.0, 90.0)}
     stand_in = SimpleNamespace(
         key="strider", family="strider", crank=("O", "J1"), feet=(("b3", "J4"), ("b7", "J8")),
+        ranged=False,
         links={"b2": (), "b3": (), "b7": (), "b5": ()},
         solve=lambda params: SimpleNamespace(joints_at=lambda t: pts))
     monkeypatch.setattr(linkage, "get", lambda key: stand_in)
@@ -1306,7 +1307,7 @@ def test_link_rows_net_section_bending_foot_lever_and_needs(monkeypatch):
 
 def _design(motion=None, budget=None, size=None, allowance=None, **kw):
     spec = SimpleNamespace(motion=motion or {}, budget=budget or {}, size=size or {},
-                           allowance_usd=allowance)
+                           allowance_usd=allowance, precision={}, payload_g=None)
     return SimpleNamespace(spec=spec, config=BuildConfig(), store=None, reports={}, **kw)
 
 
@@ -1399,7 +1400,7 @@ def test_strength_rows_fail_only_on_the_designs_own_loads(monkeypatch):
           "findings": [err, warn]}
     seen = {}
 
-    def loads(config, store, sim):
+    def loads(config, store, sim, payload_g=None):
         seen["sim"] = sim
         return {"source": seen["source"], "note": "n"}
 
@@ -1425,7 +1426,7 @@ def test_strength_rows_fail_only_on_the_designs_own_loads(monkeypatch):
     assert (rows[0].tier, rows[0].hard) == ("estimated", False)
     assert "(an estimate: verify full simulates the design's own)" in rows[0].detail
 
-    def broken(config, store, sim):
+    def broken(config, store, sim, payload_g=None):
         raise RuntimeError("no store")
 
     monkeypatch.setattr(strength, "design_loads", broken)

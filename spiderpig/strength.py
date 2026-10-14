@@ -354,7 +354,7 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
     crank_pins = set(lk.crank[1:])
     bore = rider_hole(config)
     hole = {False: link_hole(config, False), True: link_hole(config, True)}
-    framed = {j["stem"]: bool(j["frame"]) for j in joints}
+    framed = {j["stem"]: bool(j.get("frame")) for j in joints}
     rows = []
     for key in sorted(lk.links):
         at: dict[str, tuple[float, float]] = {}

@@ -16,11 +16,12 @@ the target, whether it passed, and its ``tier``:
   before a build, the envelope before a build, ``speed_mm_s`` (the servo's
   no-load rpm), prices with unverified links.
 
-Levels: ``quick`` (check + plan + walk; ~1 s), ``standard`` (+ build, the
-contract at two crank angles, clashes and solids at the build's, the DXF
-pack, the BOM), ``full`` (the audit's four contract angles, clashes at two,
-and a MuJoCo run when ``mujoco`` imports: its speed is reported beside the
-walk model's, informational).
+Levels: ``quick`` (check + plan + walk, and the output's precision where it
+needs no fabrication; ~1 s), ``standard`` (+ build, the contract at two crank
+angles, clashes and solids at the build's, the DXF pack, the BOM, the whole
+precision budget and every kind's joint strength), ``full`` (the audit's four
+contract angles, clashes at two, and a walker's MuJoCo run when ``mujoco``
+imports: its speed is reported beside the walk model's, informational).
 
 A hard target's miss fails the report (``ok``); a soft miss lowers ``score``
 (the weighted mean over the soft targets of ``max(0, 1 - miss / |bound|)``).

@@ -1107,3 +1107,51 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   parts, 187 before; 17 laser parts, 30 before; DXF sheets 4 -> 3, one of them now the
   base's 1/8 in 5052; BOM 54 lines, $477.75, $558.28 before; audit OK, 3 warnings).
   DESIGNS.md regenerated from it.
+
+### 2026-10-14: precision and strength are task targets for every kind (merge, wave 1)
+
+- **The decision:** the output's error budget and the parts' strength go through the same
+  spec, `verify`, API, MCP and scorecard for walkers, mechanisms and arms, chosen by what a
+  linkage can do, never by its kind's name. Before, `spiderpig/precision.py` was a CLI only,
+  and `strength.design_loads` gave an arm no loads ("a mechanism"), so `verify` rated
+  nothing that doesn't walk.
+- **The spec:** a `precision` section of targets (`spec.TARGET_FIELDS["precision"]`):
+  `repeatability_mm` (the worst-case bound) and `accuracy_mm` (what calibrates out) for any
+  linkage with an output; `rp_mm`, `rp_powerup_mm` (ISO 9283), `out_of_plane_mm` and
+  `payload_sag_mm` for ranged inputs; and one plain number, `precision.payload_g` (an arm's,
+  default `repeatability.PAYLOAD_G`). Each field names the capability it needs
+  (`TargetField.needs`, `spec.CAPABILITIES`: `output`, `ranged`), and a spec asking a
+  linkage without it is refused with the reason. `rp_mm` and `repeatability_mm` are hard by
+  default (what a task asks of the placement), the rest soft. A spec without the section
+  resolves as before (the same id).
+- **The stage:** `api.precision(design)` (`api/accuracy.py`, `PrecisionReport`,
+  `precision.json` in the store; an MCP tool, a job). An arm's budget is complete only with
+  its links' tilt, which reads a fabricated side's wobble notes, so `verify("quick")` reports
+  what needs no fabrication (a mechanism's whole budget; an arm's `accuracy_mm`) and leaves
+  an arm's tilt-dependent targets unverified until `standard` (the build's notes: no extra
+  fabrication) or a stored `precision` report. Measured on the approved arm at load ~30:
+  the budget without the tilt 0.8-1.8 s (the turntable's plans now made once a budget, they
+  were made three times), the complete one 44 s cold.
+- **Strength for an arm:** `strength.arm_loads`, from the quasi-static model the ISO RP
+  already solves (`repeatability.static_loads`, over a 5 x 5 grid of the inputs' box):
+  operating (the walker's `walk` column), the arm's weight and the payload x 1.5 for the
+  moves' accelerations; jammed, a crash, the tool blocked while every drive pushes at its
+  holding torque x ratio, gravity added (the walker's jam is its servo stalled at the torque
+  limit with a foot pinned: the same idea). These are the design's own loads, so a jam SF
+  under 1 fails `verify` and the audit; the fix may be a lower run current. A link's hole is
+  its pivot's bearing seat where it holds one (`strength.link_hole`; a plain pin's is the
+  6.35 mm it was). A cranked mechanism's loads are still what it drives: not rated (said).
+  Walkers' numbers are unchanged.
+- **Found on the way:** an arm spec with any target validated in about a minute: the
+  validator ran the arm's output check (its whole tour) for every section. It now runs only
+  for a motion output target.
+- **The scorecard** records the approved arm's RP (section `precision`, default on):
+  0.042 mm within a session, 0.065 mm across power-ups (the model's, 2026-10-14).
+- **The gate** (`platform-5396098` against `platform-77c117c`): the six walkers and the two
+  mechanisms identical; parts, plans, BOMs and DXFs identical everywhere. Only the arms'
+  audit strength sections differ, as intended: `palletizer_reach` is rated (static loads,
+  a 44 N crash at the tool; the worst joint the elbow `pin:E`, jam SF 1.67: one more
+  warning, the audit still OK); `palletizer_turret` (the older `palletizer`, acrylic `b4`
+  and single-bearing pins) fails at a crash: `pin:E` jam SF 0.44 and `link:b4` 0.48, with
+  the fixes the approved arm already has (an aluminium `b4`, the `ball_pair` pins, the
+  links adjacent). DESIGNS.md regenerated from it.
