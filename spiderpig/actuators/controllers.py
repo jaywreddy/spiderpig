@@ -23,11 +23,21 @@ and what it drives (``drives``, a capability: :func:`of` matches it to the desig
 
 The key :data:`roles.NONE` is your own electronics: nothing bought, a walker's deck bare
 (:func:`construction.deck.deck_parts`), an arm's Klipper pins left to fill.
+
+**Its wiring** is declared too (2026-10-14), so the assembly guide's wiring step and its
+diagram (:mod:`guide.wiring`, :func:`construction.assembly.controller_ops`) follow whichever
+controller a design names, never a kind: ``nodes`` say which bought part is which box of the
+diagram (a pattern over its catalog key, else its name), ``wiring`` the links between them
+(:class:`Wire`: the cables bought for each, or what makes it; a sentence for the guide when
+both ends are in the robot), ``wiring_text`` the step's own sentences and ``wiring_extras``
+the bought lines its parts list takes.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from spiderpig.hardware.electronics import HV_WARNING
 
 DRIVES = ("stepper", "bus_servo")
 """What a controller drives: step/dir stepper drivers, or servos on a serial bus."""
@@ -46,6 +56,24 @@ class AxisPins:
     enable: str
     uart_address: int
     diag: str               # the driver's DIAG (stall) on the port's endstop input
+
+
+@dataclass(frozen=True)
+class Wire:
+    """One link of a controller's wiring diagram: from the box ``a`` to ``b`` (roles of
+    :attr:`Controller.nodes`), the bought cables that make it (``cables``: a pattern over
+    their catalog keys and names) or, none bought, what does (``via``), and the guide's
+    sentence for it (``text``: said when both ends are in the robot)."""
+
+    a: str
+    b: str
+    cables: str = ""
+    via: str = ""
+    text: str = ""
+
+
+CABLE = r"cable|lead|pigtail|plug|harness|wire|extension"
+"""What a bought part's key or name says when it is a cable, not a box of the diagram."""
 
 
 @dataclass(frozen=True)
@@ -71,6 +99,11 @@ class Controller:
     bus_ports: int = 0              # its servo bus sockets
     baud: int = 0                   # the bus's speed (bit/s)
     mount: str = ""                 # "deck": its parts are the walker deck's bodies
+    nodes: tuple[tuple[str, str], ...] = ()     # (role, pattern): the diagram's boxes
+    wiring: tuple[Wire, ...] = ()               # the links between them
+    wiring_title: str = "Wiring"
+    wiring_text: tuple[str, ...] = ()           # the guide's wiring step's sentences
+    wiring_extras: tuple[str, ...] = ()         # the bought lines its parts list takes
 
     def __post_init__(self):
         if self.drives not in DRIVES:
@@ -90,6 +123,23 @@ class Controller:
     def output(self, name: str) -> str:
         return dict(self.outputs).get(name, "")
 
+    def role_of(self, key: str, name: str = "") -> str | None:
+        """The diagram's box a bought part is (:attr:`nodes`, first match: its catalog key,
+        else its name), or ``None``."""
+        import re
+
+        for text in (key, name):
+            for role, pat in self.nodes:
+                if text and re.search(pat, text, re.I):
+                    return role
+        return None
+
+    def port_text(self, joints) -> str:
+        """Which motor port each of ``joints`` takes (a stepper board's: its axes, in
+        order), or ``""``."""
+        ports = [f"{j} on {p.port}" for j, p in self.axes if j in set(joints)]
+        return ", ".join(ports)
+
 
 CONTROLLERS: dict[str, Controller] = {c.key: c for c in (
     Controller(
@@ -107,7 +157,42 @@ CONTROLLERS: dict[str, Controller] = {c.key: c for c in (
         source="BTT SKR-Pico manual, pin map and schematic (github.com/bigtreetech/SKR-Pico); "
                "Klipper's config/generic-bigtreetech-skr-pico-v1.0.cfg; the pump on HE "
                "(gpio23), the valve on HB (gpio21), a 1N5819 across each; the drivers' fan "
-               "on the 12 V input"),
+               "on the 12 V input",
+        nodes=(("supply", r"^psu_"), ("jack", r"^dc_jack"), ("board", r"^skr_"),
+               ("host", r"^pi_zero"), ("motor", r"^stepper_(?!cable)|17hs|nema"),
+               ("camera", r"^camera_"), ("pump", r"vacuum_pump"), ("valve", r"valve"),
+               ("fan", r"^fan_"), ("endstop", r"endstop|ee_sx|scl3300|inclinometer")),
+        wiring=(Wire("supply", "jack", via="the brick's 5.5 x 2.1 mm plug"),
+                Wire("jack", "board", via="12 V to the power terminal",
+                     text="The 12 V brick's plug into the DC jack adapter, its screw "
+                          "terminal to the SKR Pico's power input (+ to +: check before "
+                          "plugging the brick in)."),
+                Wire("board", "host", via="the Pi header: 5 V and the UART",
+                     text="The Pi Zero 2 W onto the SKR Pico's Pi header: its 5 V and the "
+                          "drivers' board's UART (Klipper's /dev/ttyAMA0)."),
+                Wire("board", "motor", cables=r"stepper_cable",
+                     text="Each stepper's cable from its motor to its port ({ports}); check "
+                          "each motor's coil pairs against the cable's first."),
+                Wire("board", "endstop", cables=r"endstop.*cable",
+                     via="its port's endstop input",
+                     text="Each joint's endstop on its port's endstop input (the port's DIAG "
+                          "jumper off)."),
+                Wire("board", "pump", cables=r"diode", via="HE (gpio23)",
+                     text="The vacuum pump on HE (gpio23) and the release valve on HB "
+                          "(gpio21), a 1N5819 across each (cathode to +12 V)."),
+                Wire("board", "valve", cables=r"diode", via="HB (gpio21)"),
+                Wire("board", "fan", via="the 12 V input", text="The fan over the drivers on "
+                     "the 12 V input (always on)."),
+                Wire("host", "camera", cables=r"csi",
+                     text="The camera's ribbon (the Pi Zero's 22-pin cable) from the tool to "
+                          "the Pi, looped with the motors' cables round the base.")),
+        wiring_title="Controller and cables",
+        wiring_text=("Flash Klipper onto the SKR Pico (its BOOT jumper, USB-C) and the Pi's "
+                     "card (Raspberry Pi OS Lite, Klipper's host, Moonraker) before closing "
+                     "anything up.",),
+        wiring_extras=("skr_pico_v1", "pi_zero_2w_header", "microsd_32gb",
+                       "psu_12v_5a_brick", "dc_jack_terminal", "stepper_cable_1m",
+                       "diode_1n5819", "fan_4010_12v")),
     Controller(
         "esp32_bus_servo", "Waveshare Servo Driver with ESP32 (two serial bus servo ports) "
         "on the electronics deck, a 2S 450 mAh HV LiPo with its USB-C charger, protection "
@@ -119,6 +204,22 @@ CONTROLLERS: dict[str, Controller] = {c.key: c for c in (
          ("resistor_33k", 1.0), ("xt30_pigtail_pair", 1.0), ("dc_plug_5521_pigtail", 1.0)),
         drives="bus_servo", protocol="feetech_sts", bus_ports=2, baud=1_000_000,
         mount="deck",
+        nodes=(("servo", r"servo_(?!driver)|^servo$|sts\d|xl\d"), ("battery", r"lipo|battery"),
+               ("charger", r"charger|ip2326"), ("protection", r"bms|protection"),
+               ("switch", r"switch|toggle"), ("board", r"driver|esp32|board|controller")),
+        wiring=(Wire("battery", "protection", cables=r"xt30|xt60|battery"),
+                Wire("charger", "protection"),
+                Wire("protection", "switch"),
+                Wire("switch", "board", cables=r"dc_plug|5521|barrel"),
+                Wire("board", "servo", cables=r"bus_cable|y_cable|bus|servo|3.?pin|extension",
+                     via="the servo's own bus cable")),
+        wiring_title="Bus cables and harness",
+        wiring_text=("The harness: the XT30 pigtail from the battery's lead to the protection "
+                     "board, the DC plug pigtail from the switch to the board's DC jack, and "
+                     "the battery divider (the 100k resistor from the switched battery to an "
+                     "ESP32 ADC pin, the 33k from that pin to ground). " + HV_WARNING,),
+        wiring_extras=("resistor_100k", "resistor_33k", "xt30_pigtail_pair",
+                       "dc_plug_5521_pigtail"),
         source="option 1 of the electronics review (2026-10-03, hardware.electronics); "
                "Waveshare's wiki: two bus servo ports, Feetech SCS/STS servos"),
 )}

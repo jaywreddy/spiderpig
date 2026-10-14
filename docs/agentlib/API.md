@@ -1,7 +1,9 @@
 # spiderpig as a compiler: the Python API (harness v1, steps 1-4)
 
-An agent writes a **Spec** and uses the engine as a compiler to verified geometry.
-Everything lives in the `spiderpig/` package: `spec.py` (the vocabulary), `api/`
+An agent writes a **Spec** and uses the engine as a compiler to verified geometry, or
+starts one step earlier from a **Task** (what the machine must do: `api.candidates`, below).
+Everything lives in the `spiderpig/` package: `spec.py` (the vocabulary), `task.py` (a
+task's), `api/`
 (the operations), `failure.py` (every engine exception as data), `verify.py` (the
 harness), `design.py` (the handle), `store.py` (the per-project store, below), `mcp/`
 (the MCP server over all of it), `cli.py` (the `spiderpig` command) and `view.py`
@@ -11,7 +13,57 @@ harness), `design.py` (the handle), `store.py` (the per-project store, below), `
 from spiderpig import api
 design = api.resolve({"kind": "walker", "linkage": {"key": "klann"}})
 report = api.verify(design, "quick")
+
+best = api.candidates({"do": "place", "area_mm": [200, 150], "repeatability_mm": 0.1})
+design = api.resolve(best.candidates[0].spec)       # the task's numbers as its targets
 ```
+
+## Tasks (`spiderpig.task`, `api.candidates`)
+
+A **Task** says what the machine must do before any linkage is named: `do` (`walk`,
+`place`, `trace`) and its numbers (`task.TASK_FIELDS`, `task_schema()`; validated whole
+like a Spec, `SpecErrors` with the nearest key). A bare number is the bound the task means
+(`TaskField.bound`: a stride's least, a repeatability's most); a target object says it
+exactly. The numbers that are Spec targets (`TaskField.spec`: `stride_mm` is
+`motion.stride_mm`; an arm's `repeatability_mm` is ISO 9283's `precision.rp_mm`, a cranked
+mechanism's the worst-case `precision.repeatability_mm`) become each candidate's spec
+targets; the task's own geometry (`area_mm`, `points_mm` (their extent), `height_mm`,
+`path_mm` (its principal-axis length a stroke, a straight one a straightness within
+`tol_mm`), `obstacle_mm` (a lift and a ground clearance)) is read by the checks.
+
+| field | task | bare number | spec target |
+|---|---|---|---|
+| `stride_mm`, `speed_mm_s`, `lift_mm` | walk | min | `motion.*` |
+| `obstacle_mm` | walk | (plain) | `motion.lift_mm`, `motion.ground_clearance_mm` min |
+| `area_mm` `[w, d]`, `points_mm`, `height_mm` | place | (geometry) | - |
+| `payload_g` | place | (plain) | `precision.payload_g` (ranged inputs) |
+| `repeatability_mm`, `accuracy_mm` | place, trace | max | `precision.rp_mm` (ranged) / `precision.repeatability_mm`; `precision.accuracy_mm` |
+| `motion`, `path_mm`, `tol_mm` | trace | (geometry) | - |
+| `stroke_mm`, `on_line_fraction`, `swing_deg`, `dwell_deg` / `straightness_mm`, `rotation_deg` | trace | min / max | `motion.*` (a cranked output's) |
+| `cost_usd`, `mass_g` | every task | max | `budget.cost_usd`, `size.mass_g` |
+
+`api.candidates(task, store=PROJECT, *, measure=0, limit=None)` returns a
+`CandidatesReport`: `task` (as read), `candidates` (each a `Candidate`: `linkage`, `module`,
+`kind`, `ok` (true: every check met; null: none fails, some unmeasured; false: one fails),
+`score`, `checks` (`Check`: `requirement`, `value`, `need`, `ok`, `tier`, `source`,
+`detail`), `numbers`, `spec` (resolve it as is), `design` (the stored design its numbers came
+from), `scale` (the factor of its proportions that would meet a missed length, or an arm's
+reach band an area: unchecked), `why`, `rank`), `excluded` (every other linkage and the
+capability it lacks), `notes`. The linkages are read by what they declare, never their
+kind's name: feet (`Linkage.walks`), an output and its motion (`spec.CAPABILITIES`), ranged
+inputs, their number, and the roles a design of theirs fills (a `turntable` adds a yaw: a
+place task needs three axes). Cheapest evidence first, nothing fabricated: the **screen**
+(a walker's card: each module's stride at nominal feet, the modules that don't walk left
+out, a foot's lift; a cranked mechanism's output check; an arm's output over its inputs'
+box about its yaw axis, a `bound`, tier of a necessary condition that refutes and never
+confirms, since the bench its turret stands on is the plan's), the **store** (a design of
+the candidate's spec, whatever its targets, lends this engine's walk, check, precision and
+verify reports: an arm's ISO RP from a stored `precision`), then **measure** (`measure=N`:
+the best N that pass resolved into the store, checked, planned, walked or budgeted, an
+arm's bench band read off its turret's plan, `base_pair.table_reach`; an arm's plan is
+minutes cold). They rank by verdict, a missed length a `scale` meets, score, then the
+task's merit (`tasks._MERIT`). `sector_fit(w, d, lo, hi, span_deg)` is the area check: a
+`w` x `d` rectangle in a band `lo`..`hi` out from an axis over a yaw, the better way round.
 
 ## The Spec (v1)
 
@@ -23,7 +75,7 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | field | values | default (inferred by `resolve`, written to `design.resolved`) |
 |---|---|---|
 | `version` | `"1"` | `"1"` |
-| `kind` | `walker` \| `mechanism` | required |
+| `kind` | `walker` (feet) \| `mechanism` (a crank, an output) \| `arm` (ranged inputs, no crank) | required |
 | `linkage.key` | a registered linkage (`api.list_linkages()`) | required; its kind must match |
 | `linkage.params` | `{name: number}` overrides of that linkage's parameters (`api.describe(key)` lists them: a length must be > 0; an angle, or a coordinate such as a fixed pivot's x or y, marked `signed` on the card, may be zero or negative) | the linkage's defaults |
 | `legs.module` | one of the linkage's modules, **legs per side** (the robot has two): `single` (1: a 2-legged side pair), `double` (2, a mirrored pair: 4 legs), `decker` (2 on one crankshaft: 4), `quad` (4: 8 legs), or its own; there is no three-leg module, and which modules walk is on the card (`describe(key).modules[m].walks`: a stride of at least 20 mm a turn; a few mm is a shuffle, and a stride under 1 mm gets `walk`'s "no net travel" note) | the linkage's own default module (Strider: `double`), else `quad` (walker), `single` (mechanism) |
@@ -94,6 +146,7 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 | op | returns | what it runs | cost (Klann quad) |
 |---|---|---|---|
 | `resolve(spec, store=PROJECT)` | `Design` (`id`, `resolved`, `config`, `engine_version`, `warnings`, `store`) | validation, inference, `BuildConfig`; `id = sha256(canonical resolved spec + engine version)[:16]`, engine version = package version + hash of `spiderpig/linkages/*.py` + `StackSpec` defaults; records the design in the store | ms |
+| `candidates(task, store=PROJECT, *, measure=0, limit=None)` | `CandidatesReport` (above, "Tasks"): the linkages that can do a task, ranked, each with its checks and a spec | the cards, kinematics and the store's reports; `measure`: check and plan | ms-seconds (the cards, then the store's); `measure`: the plans |
 | `list_linkages(kind?)`, `describe(key)` | linkage cards; a walker's card carries each module's `stride_mm` / `walks` (the walk model at the defaults) and a `sensitivity` table (what +10 % of each parameter, +5° of an angle, does to the foot path's lift, stride, height and width); a mechanism's carries its `output_check` and a `sensitivity` table of the output's numbers (stroke, straightness, extent, on-line fraction, rotation, swing, dwell: the ones it measures), so a stroke that only scales with `unit` is told from one a proportion moves; every parameter says whether it is an `angle`, `signed` (a coordinate) or a `scale` parameter | registry, `Linkage.check`, foot path / output check | ms (`describe`: ~1 s the first time (`trotbot_toe` ~6 s), the walk per module; then read from the store's `cache/`, per code version) |
 | `check(design)` | `CheckReport`: `steps`, `output`, `foot_path`, `drive`, `clearances`, `crank_facts`, `ground_clearance_mm`, `lowest_body_part` (which body shape sets the clearance); a construction that can't be built at these parameters is a `construction` failure whose `numbers` and checked `recommendations` name the lever (the sheet thickness) | `Linkage.check`, `output_check`, `side_problem`, `static_stage` | 0.5 s |
 | `plan(design)` | `PlanReport`: `layers`, `n_layers`, `height_mm`, `route`, `optimal`, `proof`, `table`, `warnings` (what the constructions warned about: a printed snap that overstrains) | `fabricate.design_side` (cached by the engine); a search is bounded by `StackSpec.max_seconds` (60 s) and the recommendation checks by one more | 0.4 s (Klann quad); up to a minute on a large or scaled-down design, one to three on one that fails |
@@ -373,6 +426,7 @@ A design argument is the id `resolve` returned.
 
 | tool | returns |
 |---|---|
+| `candidates(task, measure?, limit?)` | the `CandidatesReport` as JSON (`candidates` with `checks`, `spec`, `scale`; `excluded`); an invalid task: `ok: false`, code `invalid_spec`, `errors` (the `task` argument's schema is `task_schema()`) |
 | `list_linkages(kind?)`, `describe(key)` | `linkages` (the list) / `card` (one linkage's card) |
 | `catalog(category?)` | servos, sheets, constructions with prices, dims, rpm, torque, mass, hardware |
 | `resolve(spec)` | `design` (the id), `resolved`, `engine_version`, `warnings`; an invalid spec: `ok: false`, `failures[0].code = invalid_spec`, `errors: [{path, message, allowed, nearest}]` |
@@ -426,11 +480,13 @@ operations run in a worker thread, one at a time, so the loop keeps answering.
 |---|---|
 | `spiderpig://guide` | how to design with spiderpig (markdown): the passes and what each proves, the Spec vocabulary with defaults and hard/soft (generated from `TARGET_FIELDS`), the linkages, the catalog, the two loops, jobs, the limits of v1 |
 | `spiderpig://schema/spec` | the Spec's JSON Schema |
+| `spiderpig://schema/task` | the Task's JSON Schema (`candidates`' argument) |
 | `spiderpig://linkages/{key}` | a linkage's card (also listed per linkage) |
 | `spiderpig://catalog/{servos\|sheets\|constructions}` | the catalog |
 | `spiderpig://designs/{id}/{stage}` | a stored stage as JSON (`build` is the manifest with part paths) |
 
-Prompts: `design_walker(goal)` (resolve → check → plan → verify → export),
+Prompts: `design(task)` (a task → candidates → resolve → check → plan → verify → export,
+for any kind of machine; it replaced the walker-only "design a walker" prompt on 2026-10-14),
 `diagnose(design)` (explain → recommend → derive), `iterate(design, metric)` (a
 derive / compare loop on one metric).
 
@@ -479,6 +535,12 @@ into the store first (`api.spec_of(config)`: the config as a Spec, so the id is 
 same one `resolve` gives that spec) and says so on stderr, so what `spiderpig build`
 built can be looked at without a spec. What the page does with `?design=<id>`:
 
+- `GET /api/modes?linkage=KEY` (or `design=<id>`) is the views the linkage declares
+  (`server.app.modes_of`): its robot when it makes one (`config.robot_layout`: a walker's
+  two sides, an arm on its turntable, labelled per layout), then one side of each of a
+  walker's leg modules (their fixed ids, `klann`, `double`, ...) or its one `side` (an
+  arm's alone, a mechanism's); the page's view picker follows the linkage on screen, and
+  its machine picker lists every linkage without feet (arms and mechanisms).
 - `GET /api/design/{id}` is the design's card from its `resolved.json`: `kind`,
   `linkage`, `module`, `sides`, `mode` (`robot`, or `side` for a one-sided design),
   `phases_deg`, `params` (the linkage's proportions), `servo`, and `glb`, the URL of

@@ -31,7 +31,8 @@ reports, :func:`list_designs` and :func:`gc` manage the folder.
 
 The package (a pure move of the former ``api.py``, W5): :mod:`.reports`, :mod:`.store_ops`
 (load, derive, compare, the store's designs), :mod:`.cards` (linkage cards), :mod:`.planning`
-(explain, recommend, advise), :mod:`.walking`, :mod:`.accuracy` (precision: the error
+(explain, recommend, advise), :mod:`.tasks` (candidates: a task's linkages, ranked),
+:mod:`.walking`, :mod:`.accuracy` (precision: the error
 budget at the output), :mod:`.building` (build, recheck) and
 :mod:`.exports` (verify, export); not ``plan.py`` / ``build.py`` / ``export.py``, which the
 functions' re-exports would shadow. Resolve, the stage records, check and plan sit a layer
@@ -134,6 +135,7 @@ from spiderpig.api.store_ops import (
     list_designs,
     load,
 )
+from spiderpig.api.tasks import Candidate, CandidatesReport, candidates
 from spiderpig.api.walking import (
     _MODULE_STRIDES,
     NO_TRAVEL_MM,
@@ -232,8 +234,9 @@ from spiderpig.stages.resolve import (
 from spiderpig.store import PROJECT, Store, _read_json, _write_json, diff_json, report_doc
 
 __all__ = [
-    "BuildReport", "CheckReport", "ExportReport", "PlanReport", "PrecisionReport",
-    "RecheckReport", "Report", "WalkReport", "attach_build", "build", "check", "compare",
+    "BuildReport", "Candidate", "CandidatesReport", "CheckReport", "ExportReport",
+    "PlanReport", "PrecisionReport", "RecheckReport", "Report", "WalkReport", "attach_build",
+    "build", "candidates", "check", "compare",
     "derive", "describe", "explain", "export", "fabricate_at", "foot_path", "gc",
     "list_designs", "list_linkages", "load", "plan", "precision", "recheck", "recommend",
     "resolve", "verify", "walk",

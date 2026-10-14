@@ -1034,6 +1034,18 @@ def test_api_modes_are_the_dropdown(client, server_app):
     assert body["labels"]["klann"] == "single (one leg)"
     assert "side" in server_app.MODES                # an id for URLs, not for the dropdown
     assert "side" not in body["modes"]
+    assert (body["linkage"], body["kind"]) == ("strider", "walker")
+
+
+def test_api_modes_are_what_the_linkage_declares(client):
+    """An arm's robot stands on its turntable, or its side alone; a mechanism is one side
+    (no robot, no legs); a stored design's linkage answers for ``design=<id>``."""
+    arm = client.get("/api/modes", params={"linkage": "palletizer_reach"}).json()
+    assert (arm["kind"], arm["modes"], arm["default"]) == ("arm", ["robot", "side"], "robot")
+    assert arm["labels"]["robot"] == "robot (on its turntable)"
+    mech = client.get("/api/modes", params={"linkage": "crank_rocker"}).json()
+    assert (mech["modes"], mech["default"]) == (["side"], "side")
+    assert client.get("/api/modes", params={"linkage": "octopus"}).status_code == 422
 
 
 @pytest.mark.parametrize(("mode", "params"), [

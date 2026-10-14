@@ -399,3 +399,176 @@ def test_the_assembly_hooks_stay_out_of_the_fabrication_key():
     assert "spiderpig.construction.assembly" not in c.modules
     assert "spiderpig.labels" not in c.modules
     assert not [s for s in c.symbols if s[1] == "assembly" or re.search(r"\.assembly#", s[1])]
+
+
+# ---------------------------------------------------------------------------
+# an arm's robot: the turret's hooks and the controller's wiring (2026-10-14)
+# ---------------------------------------------------------------------------
+
+TURRET_PARTS = (
+    ["base_bottom", "base_top", "yaw_motor", "yaw_shaft", "yaw_clamp_washer",
+     "yaw_clamp_screw", "yaw_bearing_lower", "yaw_bearing_upper", "yaw_collar_mid",
+     "yaw_collar_under", "yaw_collar_over", "yaw_spring", "yaw_shim_under", "yaw_shim_over",
+     "yaw_pulley_large", "yaw_pulley_small", "yaw_belt", "turntable_centre_shims",
+     "turntable", "yaw_stop_post", "yaw_stop_post_screw", "yaw_stop", "yaw_stop_nut"]
+    + [f"base_spacer{i}" for i in range(3)] + [f"base_col{i}_0" for i in range(7)]
+    + [f"base_col_{w}{i}{x}" for i in range(7) for w, x in (("washer", ""), ("screw", "a"),
+                                                             ("screw", "b"))]
+    + [f"yaw_motor_screw{i}" for i in range(4)] + [f"turntable_lift{i}" for i in range(4)]
+    + [f"hub_screw{i}" for i in range(4)] + [f"foot_bracket{i}" for i in range(4)]
+    + [f"foot_screw{i}{x}" for i in range(4) for x in "ab"])
+"""The turret's parts (``construction.rotary.base_pair.turret_parts``' names)."""
+
+
+def _robot_view(names, keys=None, lines=(), meta=None):
+    from spiderpig.construction.assembly import RobotView
+
+    return RobotView(dict.fromkeys(names, (0.0, 1.0)), dict.fromkeys(names),
+                     dict.fromkeys(names, "purchased"), dict(keys or dict.fromkeys(names)),
+                     dict(meta or {}), tuple(lines))
+
+
+@pytest.mark.no_fabricate
+def test_the_turret_order_is_structured():
+    from spiderpig.construction.assembly import ARM_ORDER, LAYOUT_ORDERS, TURRET_ORDER
+
+    stages = [s.stage for s in TURRET_ORDER]
+    assert stages[:len(ARM_ORDER) - 1] == [s.stage for s in ARM_ORDER][:-1]     # the side first
+    assert stages[-4:] == ["turret", "mount", "wiring", "other"]
+    assert LAYOUT_ORDERS == {"mirrored_pair": ROBOT_ORDER, "turret": TURRET_ORDER}
+    wiring = next(s for s in ROBOT_ORDER if s.stage == "wiring")
+    assert "bus servo ports" in wiring.outro          # the walker's: after the harness
+
+
+@pytest.mark.no_fabricate
+def test_the_turret_hook_puts_every_part_on_once_with_its_sentence():
+    from spiderpig.construction.assembly import TURRET, _claimed
+    from spiderpig.construction.rotary import base_pair
+
+    texts = [(tag, f"sentence of {tag}") for tag, *_ in base_pair.ASSEMBLY]
+    ops = base_pair.assembly(_robot_view(TURRET_PARTS, meta={"turret": {"assembly": texts}}))
+    claimed = [p.name for op in ops for p in op.pieces]
+    assert sorted(claimed) == sorted(TURRET_PARTS)              # each once
+    assert [op.tag for op in ops] == [tag for tag, *_ in base_pair.ASSEMBLY]
+    assert all(op.text == f"sentence of {op.tag}" for op in ops)
+    assert {op.stage for op in ops} == {TURRET, "mount", "wiring"}
+    assert next(op for op in ops if op.tag == "cables").pieces == ()     # the wrap: a line
+    assert "spiral_wrap_6mm" in next(op for op in ops if op.tag == "cables").extras
+    assert _claimed(ops) == set(TURRET_PARTS)
+
+
+@pytest.mark.no_fabricate
+def test_the_wiring_step_is_the_design_controllers():
+    """One generic hook over each controller's declared wiring: the walker's deck board
+    says the harness (its sentence as the deck said it), the arm's stepper board its
+    power, host, ports (named for the design's joints) and the outputs present; none
+    (your own) has no step; a board missing (a deck that didn't fit) neither."""
+    from spiderpig.actuators.controllers import get
+    from spiderpig.construction.assembly import WIRING, controller_ops
+    from spiderpig.hardware.electronics import HV_WARNING
+
+    walker = controller_ops(_robot_view(["deck_board", "L.servo"],
+                                        {"deck_board": "esp32_servo_driver",
+                                         "L.servo": "servo_sts3215"}), get("esp32_bus_servo"))
+    assert [(op.stage, op.title, op.tag) for op in walker] == [
+        (WIRING, "Bus cables and harness", "wiring")]
+    assert walker[0].text.startswith("The harness: the XT30 pigtail")
+    assert HV_WARNING in \
+        walker[0].text
+    assert set(walker[0].extras) == {"resistor_100k", "resistor_33k", "xt30_pigtail_pair",
+                                     "dc_plug_5521_pigtail"}
+    assert controller_ops(_robot_view(["L.servo"], {"L.servo": "servo_sts3215"}),
+                          get("esp32_bus_servo")) == []          # no board: no harness
+    assert controller_ops(_robot_view(["deck_board"]), None) == []
+    skr = get("skr_pico_pi_zero")
+    arm = controller_ops(_robot_view(
+        ["drive_q2_motor", "yaw_motor"], {"drive_q2_motor": "stepper_17hs4401",
+                                          "yaw_motor": "stepper_17hs4401"},
+        lines=[k for k, _ in skr.bom] + ["vacuum_pump_12v", "solenoid_valve_12v_3way"]),
+        skr, joints=("q2", "q3", "q1"))
+    text = arm[0].text
+    assert arm[0].title == "Controller and cables"
+    assert "q1 on X, q2 on Y, q3 on Z" in text
+    assert "q4" not in text
+    assert "vacuum pump on HE (gpio23)" in text
+    assert "camera" not in text                       # none bought: its wire unsaid
+    assert set(arm[0].extras) == {k for k, _ in skr.bom}
+
+
+@pytest.mark.no_fabricate
+def test_the_wiring_diagram_follows_the_controller():
+    from build123d import Box
+
+    from spiderpig.actuators.controllers import get
+    from spiderpig.guide.wiring import columns, wiring_of
+    from spiderpig.hardware.bom import BomLine
+    from spiderpig.mechanism import Body, Mechanism
+
+    def bought(name, key):
+        return Body(name, part=Box(1, 1, 1), fab="purchased", bom_key=key)
+
+    skr = get("skr_pico_pi_zero")
+    arm = Mechanism("arm", [bought("drive_q2_motor", "stepper_17hs4401"),
+                            bought("yaw_motor", "stepper_17hs4401"),
+                            bought("tool_camera", "camera_ov5647_m12")], [],
+                    bom_extras=[BomLine(k, q, "") for k, q in skr.bom]
+                    + [BomLine("csi_cable_pi_zero_30", 1, ""), BomLine("vacuum_pump_12v", 1, "")])
+    nodes, links, left = wiring_of(arm, {"yaw_motor": "M1"}, skr)
+    roles = [n.role for n in nodes]
+    assert sorted(roles) == sorted(["motor", "motor", "camera", "board", "host", "supply",
+                                    "jack", "fan", "pump"])
+    edges = {(nodes[i].role, nodes[j].role): cs for i, j, cs in links}
+    assert edges[("board", "motor")] == ["Stepper motor cable 1 m x 3"]
+    assert edges[("host", "camera")] == ["Raspberry Pi Zero camera cable"]
+    assert edges[("board", "pump")] == ["Schottky diode 1N5819"]
+    assert ("supply", "jack") in edges
+    assert left == []
+    assert next(n for n in nodes if n.label == "M1").title.startswith("yaw motor: ")
+    col = columns(nodes, links)
+    assert col[roles.index("supply")] == 0
+    assert col[roles.index("camera")] == 4
+    walker = Mechanism("w", [bought("L.servo", "servo_sts3215"), bought("R.servo", "servo_sts3215"),
+                             bought("deck_board", "esp32_servo_driver"),
+                             bought("deck_battery", "lipo_2s_450")], [],
+                       bom_extras=[BomLine("lipo_strap_10mm", 1, ""),
+                                   BomLine("xt30_pigtail_pair", 1, "")])
+    nodes, links, left = wiring_of(walker, {}, get("esp32_bus_servo"))
+    assert sorted(n.role for n in nodes) == ["battery", "board", "servo", "servo"]  # no strap
+    assert {n.title.split(":")[0] for n in nodes if n.role == "servo"} == {"left servo",
+                                                                            "right servo"}
+    assert left == ["XT30 pigtail"]           # its link (battery -> protection) isn't drawn
+
+
+@pytest.fixture(scope="module")
+def arm_robot():
+    from tests import cache
+
+    cfg = BuildConfig(linkage="palletizer_reach")
+    return cfg, cache.cached_robot(cfg, 1.0), cache.cached_design(cfg)[1]
+
+
+@pytest.mark.slow
+def test_the_arm_robot_is_built_side_turret_wiring(arm_robot):
+    """The approved arm's guide: its side, then the turret's base step by step on the
+    bench, the side stood on its turntable, the controller's wiring step (its sentences,
+    its ports, its parts list), every part once."""
+    cfg, mech, design = arm_robot
+    st = assembly_steps(mech, design, config=cfg)
+    _check(mech, st)
+    first = {k: min(x.number for x in st if x.stage == k) for k in {x.stage for x in st}}
+    assert first["stack"] < first["join"] < first["turret"] < first["mount"] < first["wiring"]
+    titles = [x.title for x in st if x.stage == "turret"]
+    assert titles[0] == "Base: plates and columns"
+    assert "Hard stop" in titles
+    wiring = next(x for x in st if x.stage == "wiring")
+    text = " ".join(wiring.text)
+    assert not wiring.adds
+    assert "q1 on X, q2 on Y, q3 on Z" in text
+    assert "spiral wrap" in text
+    assert {"skr_pico_v1", "stepper_cable_1m", "spiral_wrap_6mm"} <= set(wiring.extras)
+    from spiderpig.labels import assembly_order, part_types, step_counts
+
+    types = part_types(mech, assembly_order(mech, design))
+    counts = step_counts(st, types, mech)[wiring.number - 1]
+    label = {t.key: t.label for t in types if t.key}
+    assert counts[label["stepper_cable_1m"]] == 3

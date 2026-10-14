@@ -77,6 +77,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_seam_reports.py": "strength",
     # API / store / verify / MCP / CLI build (P5)
     "test_spiderpig_api.py": "api",
+    "test_task.py": "api",
     "test_spiderpig_store.py": "api",
     "test_spiderpig_mcp.py": "api",
     "test_review_fixes.py": "api",

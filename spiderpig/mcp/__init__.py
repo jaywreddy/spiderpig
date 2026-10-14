@@ -14,16 +14,18 @@ server keeps nothing else but its job pool (:mod:`spiderpig.mcp.jobs`: ``build``
 ``verify`` at standard or full, ``export`` and ``precision`` run in worker processes and
 come back as jobs when they outlast a grace period).
 
-Tools: ``list_linkages``, ``describe``, ``catalog``, ``resolve``, ``check``, ``plan``,
+Tools: ``candidates`` (a task's linkages, ranked: :func:`spiderpig.api.candidates`),
+``list_linkages``, ``describe``, ``catalog``, ``resolve``, ``check``, ``plan``,
 ``explain``, ``recommend``, ``walk``, ``precision``, ``build``, ``verify``, ``export``,
 ``compare``,
 ``derive``, ``get_design``, ``list_designs``, ``gc``, ``get_job``, ``wait_job``, and
 ``view`` (the viewer's URL for a design: a ``spiderpig view --serve-only`` child
 process over the store, started once and reused, :mod:`spiderpig.view`).
 Resources: ``spiderpig://guide`` (how to design with spiderpig), ``spiderpig://schema/spec``,
+``spiderpig://schema/task``,
 ``spiderpig://linkages/{key}``, ``spiderpig://catalog/{servos|sheets|constructions}``,
-``spiderpig://designs/{design}/{stage}``. Prompts: ``design_walker``, ``diagnose``,
-``iterate``. ``tune`` and ``search`` are not in v1 (the guide says so).
+``spiderpig://designs/{design}/{stage}``. Prompts: ``design`` (from a task, any kind of
+machine), ``diagnose``, ``iterate``. ``tune`` and ``search`` are not in v1 (the guide says so).
 
 Engine calls run in a worker thread, one at a time (the engine's caches are per
 process and not thread-safe), so the loop keeps answering; the outputs are the
@@ -64,6 +66,7 @@ from spiderpig.mcp import outputs as o
 from spiderpig.mcp.jobs import Jobs
 from spiderpig.spec import TARGET_FIELDS, SpecErrors, nearest, sheet_keys, spec_schema
 from spiderpig.store import STAGES, Store, StoreError, report_doc
+from spiderpig.task import TASK_FIELDS, task_schema
 
 log = logging.getLogger("spiderpig.mcp")
 
@@ -79,9 +82,12 @@ GRACE_SECONDS = 15.0
 
 INSTRUCTIONS = (
     "spiderpig compiles a Spec (a linkage, a leg module, materials, constructions and "
-    "targets) into verified walking-linkage geometry. Read the resource spiderpig://guide "
-    "first: the passes, the Spec vocabulary, and the two loops (resolve -> check -> plan -> "
-    "verify -> export; explain -> recommend -> derive). Every tool returns {ok, failures, ...}; "
+    "targets) into verified linkage geometry: walkers, cranked mechanisms and arms. Read the "
+    "resource spiderpig://guide first: the passes, the Spec vocabulary, and the loops "
+    "(candidates(task) -> resolve(candidate.spec) -> check -> plan -> verify -> export; "
+    "explain -> recommend -> derive). A task (spiderpig://schema/task: walk, place or trace "
+    "and its numbers) names no linkage: candidates ranks the ones that can do it, each with "
+    "a spec. Every tool returns {ok, failures, ...}; "
     "a failing stage is an ordinary result with ok=false and failures as data, each with "
     "checked recommendations and the spec patch that applies them (derive takes it). A design "
     "is its id (from resolve); build, verify(standard|full), export and precision are jobs: "
@@ -238,6 +244,18 @@ PatchArg = Annotated[dict[str, Any], Field(
     description="a JSON merge patch over the design's spec (RFC 7386: objects merge key by "
                 "key, null removes a key), such as a recommendation's patch")]
 DesignArg = Annotated[str, Field(description="a design id (16 hex digits, from resolve)")]
+
+
+def _task_schema_extra(schema: dict) -> None:
+    """The ``task`` argument's schema is the Task's own JSON Schema."""
+    schema.clear()
+    schema.update({k: v for k, v in task_schema().items() if not k.startswith("$")})
+
+
+TaskArg = Annotated[dict[str, Any], Field(
+    description="the Task (spiderpig://schema/task): do (walk, place or trace) and its "
+                "numbers (a stride, an area and a repeatability, a stroke...)",
+    json_schema_extra=_task_schema_extra)]
 
 
 def _long_out(job) -> dict:
@@ -426,16 +444,29 @@ def _targets_table() -> str:
     return "\n".join(lines)
 
 
-def _linkages_table(store: Store | None = None) -> str:
-    lines = ["| key | kind | name | modules (legs per side) | scale params | output |",
+def _tasks_table() -> str:
+    lines = ["| field | task | unit | a bare number is | spec target | meaning |",
              "|---|---|---|---|---|---|"]
+    for name, f in TASK_FIELDS.items():
+        bare = {"min": "the least", "max": "the most"}.get(f.bound, "-")
+        lines.append(f"| `{name}` | {', '.join(f.does)} | {f.unit or '-'} | {bare} | "
+                     f"{f'`{f.spec}`' if f.spec else '-'} | {f.doc} |")
+    return "\n".join(lines)
+
+
+def _linkages_table(store: Store | None = None) -> str:
+    lines = ["| key | kind | name | modules (legs per side) | scale params | output | inputs |",
+             "|---|---|---|---|---|---|---|"]
     scales = api.scale_params_table(store)      # the store's per-code cache, else computed
     for key in linkage.available():
         lk = linkage.get(key)
         mods = ", ".join(f"{m} ({len(legs)})" for m, legs in lk.leg_modules.items())
         scale = ", ".join(scales[key]) or "-"
         out = lk.output.motion if lk.output else "feet"
-        lines.append(f"| `{key}` | {lk.kind} | {lk.name} | {mods} | {scale} | {out} |")
+        ins = (", ".join(f"{n} {lo:g}..{hi:g} deg" for n, (lo, hi) in lk.ranges.items())
+               if lk.ranged else ", ".join(lk.inputs) + " (full turns)")
+        lines.append(f"| `{key}` | {lk.kind} | {lk.name} | {mods} | {scale} | {out} | "
+                     f"{ins} |")
     return "\n".join(lines)
 
 
@@ -465,6 +496,12 @@ def _materials_table() -> str:
         hw = ", ".join(h["key"] for h in c["hardware"].values())
         lines.append(f"| crank | `{c['key']}` | {c['label']} | - | "
                      f"{'m3 screw, m3_nut, ' + hw if hw else 'm3 screw, m3_nut'} |")
+    for r in rolemod.extra():           # the later roles: an arm's drives, every robot's
+        #                                 controller (constructions.<role>)
+        for c in cards["constructions"].get(r.name, []):
+            hw = ", ".join(h["key"] for h in c["hardware"].values()) or "-"
+            lines.append(f"| {r.name} ({' / '.join(r.kinds)}) | `{c['key']}` | "
+                         f"{c['label'] or c['doc']} | - | {hw} |")
     return "\n".join(lines)
 
 
@@ -474,6 +511,7 @@ def render_guide(state: State | None = None) -> str:
         text = (_ROOT / "guide.md").read_text()
         store = state.store if state is not None else None
         _GUIDE_CACHE["text"] = (text.replace("<<TARGETS>>", _targets_table())
+                                .replace("<<TASKS>>", _tasks_table())
                                 .replace("<<LINKAGES>>", _linkages_table(store))
                                 .replace("<<FIT>>", _fit_defaults())
                                 .replace("<<MATERIALS>>", _materials_table())
@@ -537,6 +575,27 @@ def _register_tools(server: MCPServer, state: State) -> None:
 
         server.add_tool(wrapper, name=fn.__name__, annotations=ann)
         return fn
+
+    @tool
+    async def candidates(task: TaskArg, measure: Annotated[int, Field(
+            description="how many of the best that pass the screen to resolve into the store, "
+                        "check and plan (an arm's plan: minutes cold, then the store's)",
+            ge=0)] = 0,
+            limit: Annotated[int, Field(description="keep the best this many", ge=1)] = 8
+            ) -> o.CandidatesOut:
+        """Which registered linkages can do a task, ranked, with the numbers behind each
+        verdict: a task says what the machine must do (``walk``: stride, speed, an obstacle;
+        ``place``: an area or points on the bench, a payload, a repeatability; ``trace``: an
+        output motion, a stroke, a straightness, a path) and names no linkage. Linkages are
+        read by what they declare (feet, an output and its motion, ranged inputs, a
+        turntable's yaw), cheapest evidence first: their cards and kinematics (a bound where
+        the plan decides), then what the store already measured, then (``measure``) the
+        stages. Each candidate carries ``checks`` (value, need, ok, tier, source), a
+        ``spec`` with the task's numbers as targets (hand it to ``resolve``) and the
+        ``scale`` of its proportions that would meet a missed length (unchecked:
+        ``recommend`` plans one); ``excluded`` says what each other linkage lacks."""
+        rep = await _run(api.candidates, task, state.store, measure=measure, limit=limit)
+        return _shaped({"ok": True, "failures": [], **rep.to_dict()}, o.CandidatesOut)
 
     @tool
     async def list_linkages(kind: Literal["walker", "mechanism", "arm"] | None = None
@@ -827,6 +886,13 @@ def _register_resources(server: MCPServer, state: State) -> None:
     async def schema() -> str:
         return json.dumps(await _run(spec_schema), indent=1)
 
+    @server.resource("spiderpig://schema/task", name="task-schema", title="Task JSON Schema",
+                     description="the JSON Schema of a task (candidates' argument): what the "
+                                 "machine must do, before any linkage is named",
+                     mime_type="application/json")
+    async def task_schema_resource() -> str:
+        return json.dumps(await _run(task_schema), indent=1)
+
     @server.resource("spiderpig://linkages/{key}", name="linkage",
                      title="A linkage's card", mime_type="application/json",
                      description="one linkage's card (describe): parameters, links, "
@@ -877,29 +943,38 @@ def _json_card(fn, *args) -> str:
 
 
 def _register_prompts(server: MCPServer) -> None:
-    @server.prompt(name="design_walker", title="Design a walker",
-                   description="resolve -> check -> plan -> verify -> export for a goal")
-    def design_walker(goal: str) -> str:
+    @server.prompt(name="design", title="Design a machine for a task",
+                   description="a task -> candidates -> resolve -> check -> plan -> verify -> "
+                               "export, for any kind of machine")
+    def design(task: str) -> str:
         return (
-            f"Design a walking robot with spiderpig for this goal: {goal}\n\n"
-            "1. Read spiderpig://guide (the passes, the Spec vocabulary, the loops).\n"
-            "2. Call list_linkages(kind='walker') and describe(key) for the candidates; call "
-            "catalog() for the servos, sheets and constructions and their prices.\n"
-            "3. Write one Spec (spiderpig://schema/spec): kind 'walker', a linkage key, a "
-            "module (legs per side: single 1, double 2 as a mirrored pair, decker 2 one way, "
-            "quad 4; the card says which modules walk: a mirrored pair stands still in the "
-            "walk model for most linkages), materials and constructions, and the goal's "
-            "numbers as targets under motion, size and budget (objects with min/max/value; "
-            "physical limits are hard by default, gait quality soft).\n"
-            "4. resolve(spec) -> the design id. On errors, fix each path it names.\n"
-            "5. check(design), then plan(design). On ok=false read failures[].recommendations "
-            "and apply one with derive(design, patch); repeat on the new id.\n"
-            "6. verify(design, 'quick'); then verify(design, 'standard') as a job "
-            "(wait_job). Read every row: value, target, pass, tier, hard.\n"
+            f"Design a machine with spiderpig for this task: {task}\n\n"
+            "1. Read spiderpig://guide (the passes, the Task and Spec vocabularies, the "
+            "loops) and spiderpig://schema/task.\n"
+            "2. Write the task as a Task: do 'walk' (stride_mm, speed_mm_s, obstacle_mm), "
+            "'place' (area_mm [width, depth] or points_mm, height_mm, payload_g, "
+            "repeatability_mm) or 'trace' (motion, stroke_mm, straightness_mm, path_mm); a "
+            "bare number is the bound the task means (a stride's least, a repeatability's "
+            "most).\n"
+            "3. candidates(task): the linkages that can do it, ranked. Read each candidate's "
+            "checks (value, need, ok, tier, source: a 'bound' only refutes; ok null is "
+            "unmeasured, its source says what measures it) and why; excluded says what each "
+            "other linkage lacks. candidates(task, measure=2) plans the best two (an arm's "
+            "plan takes minutes cold).\n"
+            "4. resolve(candidate.spec): the spec carries the task's numbers as targets; "
+            "add materials, constructions (catalog()) and any other target. On errors, fix "
+            "each path it names.\n"
+            "5. check(design), then plan(design). On ok=false read "
+            "failures[].recommendations and apply one with derive(design, patch).\n"
+            "6. verify(design, 'quick'); a design with an output: precision(design) (a job for "
+            "an arm); then verify(design, 'standard') as a job (wait_job). Read every row: "
+            "value, target, pass, tier, hard. A missed length: recommend(design) (a checked "
+            "scale).\n"
             "7. Compare alternatives with compare(a, b); pick the best.\n"
             "8. export(design, formats) and report the file paths and the manifest.\n"
-            "Report the design id, the plan (layers, height, optimal), the verify verdict "
-            "with each target's row and tier, and what remains estimated."
+            "Report the candidates considered and why the one chosen, the design id, the plan "
+            "(layers, height, optimal), the verify verdict with each target's row and tier, "
+            "and what remains estimated."
         )
 
     @server.prompt(name="diagnose", title="Diagnose a failing design",
