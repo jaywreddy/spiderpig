@@ -685,16 +685,15 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
         preload / 2 * reach / (width * lip ** 2 / 6), PLA_ALLOW)
     # the rails: the body's share on the flanges at worst, each rail a cantilever from its
     # socket; the socket's floor under the tongue's back end
-    hi = cr.REAR_FLANGE[1]
+    lo, hi, _ = cr.REAR_FLANGE
     yb, ft = cr.FLANGE
-    keel = cr.TSLOT[6]
     apex = rear.apex
 
     def zv(y: float) -> float:
         return y - apex
 
-    _, rail_i, far = _section([(zv(hi), hi), (cr.RAIL_Z, hi), (cr.RAIL_Z, keel),
-                               (zv(keel) + ft, keel), (zv(yb) + ft, yb), (zv(yb), yb)])
+    _, rail_i, far = _section([(zv(hi), hi), (cr.RAIL_Z, hi), (cr.RAIL_Z, lo),   # (the -z
+                               (zv(lo) + ft, lo), (zv(yb) + ft, yb), (zv(yb), yb)])  # one's)
     xr, xf = rear.vee[1], sum(front.vee) / 2
     m_rail, case = 0.0, ""
     for z in cr.SIZES:
@@ -713,10 +712,9 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
                 m_rail, case = m, f"a full {z.name} {name}: its body on the flanges' end (N·m)"
     row("base stop's rails (bending at their sockets)", case, m_rail / 1000,
         m_rail * far / rail_i, PLA_ALLOW)
-    tx0_, tz0_, tz1_, tbot = cr.TONGUE
+    tx0_, tz0_, tz1_, _ = cr.TONGUE
     bear = m_rail / ((xr - tx0_) * 2 / 3)                      # the tongue's ends' bearing
-    sbot = cr.SOCKET[3]
-    t_floor = tbot - cr.CLEAR - sbot - cr.RAIL_HEAD_SINK / 2
+    t_floor = cr.SOCKET[3] - cr.RAIL_HEAD_SINK / 2
     span_f = tz1_ - tz0_ + 2 * cr.CLEAR
     row("base stop's sockets (their floors under the tongues)", "the same", bear,
         3 * bear * span_f / (2 * (xr - tx0_) / 2 * t_floor ** 2), PLA_ALLOW)

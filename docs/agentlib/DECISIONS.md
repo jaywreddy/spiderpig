@@ -980,6 +980,10 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   - Clash-free on A and B at rest, full tilt and mid-swing, every size at its setting.
   - About USD 14.70 more bought per cradle (the lead screw, its nut and collar from
     ServoCity, pages rendered 2026-10-14).
+  - 0.3 kg more on the cradle box (solid, the rails' flanges most of it; they were slimmed
+    from 0.46 kg to 0.28: a 12 mm bar, a keel only round the T-slot): the crank's peak with
+    a full 6 L at its old centre of mass 29.5 -> 30.4 N·m on B (gearbox SF 1.52 -> 1.48),
+    31.3 -> 32.2 on A (1.44 -> 1.40); the stand's tipping unchanged.
 - **Tried and dropped:**
   - **The free lead screw guarded by a sleeve** (the review's M2 fix): the block's boss
     rides up the screw, so a sleeve round it blocks the travel; the tower holds the screw's

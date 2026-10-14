@@ -1169,7 +1169,7 @@ its first x, the neck's width and the lips' thickness under the groove, the wash
 (width, height), the nut's width (the M5 nut can't turn in it) down to the floor, the floor,
 the keel's bottom under it (the rails' bars' too)."""
 REAR_PEGS = ((280.0, -95.0), (355.0, -95.0))    # the rear liner's pegs (x, the face's y)
-STOP_MARKS = (88.5, 92.0, 96.0)     # the base stop's scale across the +z flat and rail's top:
+STOP_MARKS = (87.0, 89.5, 92.0)     # the base stop's scale across the +z flat and rail's top:
 #                                     a named groove's inner end, a graded one's, the outer
 STOP_EVERY = 10.0             # its graded grooves, every 10 mm of a bottle's length
 
@@ -1291,8 +1291,8 @@ def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
                   s.bottom + 6.0, -12.0, 12.0) for n in s.ties]
     wx, wz0, wz1, wz2, wtop = LEAD_WEB
     keel = TSLOT[6]
-    sx0, sz0, sz1, sbot = SOCKET
-    sockets = [_box(sx0, x1, sbot, lo + 0.01, *sorted((sign * sz0, sign * sz1)))
+    sx0, sz0, sz1, _ = SOCKET
+    sockets = [_box(sx0, x1, _socket_bottom(sign), lo + 0.01, *sorted((sign * sz0, sign * sz1)))
                for sign in (-1, 1)]
     block = union([shell, _box(x0, x1, lo, hi, -w, w), *gussets, *seats,
                    _rod_y(xp, zp, rp, REAR_BOSS[1], REAR_BOSS[2]),
@@ -1303,7 +1303,7 @@ def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
                    *sockets])
     g0, g1, depth = GROOVE
     nd, nl = LEAD_NUT
-    tx0, tz0, tz1, tbot = TONGUE
+    tx0, tz0, tz1, th = TONGUE
     cuts = [_rod_y(xp, zp, POST_D / 2 + 0.2, REAR_BOSS[1] - 1.0, REAR_BOSS[2] + 1.0),
             *[Cylinder(SEAT_R, 40.0).moved(Location((*ties[n], 0.0))) for n in s.ties],
             _rod_y(xs, zs, LEAD_SCREW[0] / 2 + 0.5, LEAD_BOSS[1] - 1.0, LEAD_BOSS[2] + 1.0),
@@ -1313,12 +1313,14 @@ def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
             _box(x0 - 1.0, x1 + 1.0, hi - depth, hi + 1.0, -g1, -g0),
             *_tslot(TSLOT[0], x1 + 1.0),
             *_stop_scale(x0, x1, hi),
-            *[_box(tx0 - CLEAR, x1 + 1.0, tbot - CLEAR, keel, *sorted(
-                (sign * (tz0 - CLEAR), sign * (tz1 + CLEAR)))) for sign in (-1, 1)],
-            *[_rod_y(x, sign * (tz0 + tz1) / 2, TIE_HOLE / 2, sbot - 1.0, tbot)
-              for x in RAIL_SCREW_X for sign in (-1, 1)],
-            *[_rod_y(x, sign * (tz0 + tz1) / 2, M5.head_d / 2 + 0.5, sbot - 1.0,
-                     sbot + RAIL_HEAD_SINK) for x in RAIL_SCREW_X for sign in (-1, 1)]]
+            *[_box(tx0 - CLEAR, x1 + 1.0, _tongue_top(sign) - th - CLEAR,
+                   _tongue_top(sign), *sorted((sign * (tz0 - CLEAR), sign * (tz1 + CLEAR))))
+              for sign in (-1, 1)],
+            *[_rod_y(x, sign * (tz0 + tz1) / 2, TIE_HOLE / 2, _socket_bottom(sign) - 1.0,
+                     _tongue_top(sign) - th) for x in RAIL_SCREW_X for sign in (-1, 1)],
+            *[_rod_y(x, sign * (tz0 + tz1) / 2, M5.head_d / 2 + 0.5,
+                     _socket_bottom(sign) - 1.0, _socket_bottom(sign) + RAIL_HEAD_SINK)
+              for x in RAIL_SCREW_X for sign in (-1, 1)]]
     vee, liner = _vee_block(s, difference(block, *cuts), REAR_PEGS)
     nut = difference(_rod_y(xs, zs, nd / 2, LEAD_BOSS[1], LEAD_BOSS[1] + nl),
                      _rod_y(xs, zs, LEAD_SCREW[0] / 2, LEAD_BOSS[1] - 1.0,
@@ -1365,13 +1367,26 @@ def _post_y(xz: tuple[float, float], y0: float, y1: float) -> Shape3D:
 # --- the base stop: a gate on the rear V block's flats and the rails behind it -----------
 
 RAIL_END = 600.0              # the rails' end (cradle x): the 6 L's gate locked short of it
-RAIL_Z = 96.0                 # the rails' outer faces (the flats': their inner the V's edge)
+RAIL_Z = 92.0                 # the rails' outer faces (their inner the V's edge)
 FLANGE = (-85.0, 8.5)         # each rail's 45° flange continuing the V behind the block (the
 #                               body of a 3 L or more rests on it: review round 1, B1): its
 #                               bottom (cradle y) and its thickness across
-TONGUE = (352.0, 74.0, 94.0, -90.0)     # each rail's tongue into its socket under the flats:
-#                                         its front x, |z| span, bottom (its top the keel's)
-SOCKET = (340.0, 71.0, 97.0, -102.0)    # the sockets: front x, |z| span, bottom
+TONGUE = (352.0, 74.0, 90.0, 12.0)      # each rail's tongue into its socket under the flats:
+#                                         its front x, |z| span, height (its top the flats'
+#                                         underside, the +z one's keel's)
+SOCKET = (340.0, 71.0, 93.0, 10.7)      # the sockets: front x, |z| span, the floor under the
+#                                         tongue's cavity
+
+
+def _tongue_top(sign: int) -> float:
+    """A rail's tongue's top (cradle y, the V block at its lowest): under the flats, or on the
+    +z side (``sign`` > 0) under the keel round the T-slot."""
+    return TSLOT[6] if sign > 0 else REAR_FLANGE[0]
+
+
+def _socket_bottom(sign: int) -> float:
+    """A socket's bottom under its tongue's cavity (:data:`SOCKET`'s floor)."""
+    return _tongue_top(sign) - TONGUE[3] - CLEAR - SOCKET[3]
 RAIL_SCREW_X = (358.0, 374.0)           # the two M5 x 16 up through each socket into its tongue
 RAIL_SCREW = 16.0
 RAIL_HEAD_SINK = 3.5                    # their heads sunk this far into the socket's floor
@@ -1397,26 +1412,31 @@ def _rails(s: Saddle) -> tuple[list[Shape3D], list[Shape3D], list[Shape3D]]:
     g0, g1, depth = GROOVE
     yb, ft = FLANGE
     keel = TSLOT[6]
+    lo = REAR_FLANGE[0]
     xr = s.vee[1]
-    tx0, tz0, tz1, tbot = TONGUE
-    sbot = SOCKET[3]
+    tx0, tz0, tz1, th = TONGUE
 
     def zv(y: float) -> float:                 # the V's face (the liners' backs) at y
         return y - s.apex
 
-    zy = [(zv(hi), hi), (RAIL_Z, hi), (RAIL_Z, keel), (zv(keel) + ft, keel),
-          (zv(yb) + ft, yb), (zv(yb), yb)]
+    zy = [(zv(hi), hi), (RAIL_Z, hi), (RAIL_Z, lo), (zv(lo) + ft, lo), (zv(yb) + ft, yb),
+          (zv(yb), yb)]
     rails, liners, screws = [], [], []
     for sign in (-1, 1):
         bar = _prism_x([(sign * z, y) for z, y in zy], xr, RAIL_END)
-        tongue = _box(tx0, xr + 0.5, tbot, keel, *sorted((sign * tz0, sign * tz1)))
+        top = _tongue_top(sign)
+        tongue = _box(tx0, xr + 0.5, top - th, top + 0.01, *sorted((sign * tz0, sign * tz1)))
+        if sign > 0:                           # the keel round the T-slot
+            tongue = union([tongue, _box(xr, RAIL_END, keel, lo + 0.01, GROOVE[0] - 5.0,
+                                         GROOVE[1] + 5.0)])
+        sbot = _socket_bottom(sign)
         cuts = [_box(xr - 1.0, RAIL_END + 1.0, hi - depth, hi + 1.0,
                      *sorted((sign * g0, sign * g1)))]
         if sign > 0:
             cuts += [*_tslot(xr - 1.0, RAIL_END - 3.0), *_stop_scale(xr, RAIL_END, hi)]
         zt = sign * (tz0 + tz1) / 2
         y_head = sbot + RAIL_HEAD_SINK             # the screws' heads' tops, sunk in the floor
-        cuts += [_rod_y(x, zt, M5_PILOT / 2, tbot - 1.0, y_head + RAIL_SCREW + 1.0)
+        cuts += [_rod_y(x, zt, M5_PILOT / 2, top - th - 1.0, y_head + RAIL_SCREW + 1.0)
                  for x in RAIL_SCREW_X]
         band = [(sign * zv(hi), hi), (sign * (zv(hi) - LINER * math.sqrt(2)), hi),
                 (sign * (zv(yb) - LINER * math.sqrt(2)), yb), (sign * zv(yb), yb)]

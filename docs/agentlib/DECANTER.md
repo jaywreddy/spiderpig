@@ -517,13 +517,20 @@ printed PLA's strength across its layers, for a load that stays):
 | base stop's gate, bending | 96 N at rest (with a corkscrew's push) | 5.4 MPa |
 | base stop's lock | 96 N | its grip 300 N (SF 3.1: 0.5 N·m by hand, two faces) |
 | base stop's T-slot lips | the lock's 500 N preload | 6.9 MPa |
-| base stop's rails at their sockets | 6.5 N·m each: a 6 L's body on the flanges' end, level | 2.3 MPa |
+| base stop's rails at their sockets | 6.5 N·m each: a 6 L's body on the flanges' end, level | 4.1 MPa |
 | the sockets' floors | 346 N under each tongue's end | 7.7 MPa |
 | lip gauge's pad, arm, bar, bridge | 54 N at full tilt (no friction) | 1.1, 2.6, 8.4, 5.9 MPa |
 | lip gauge's post | the same, bent and twisted (its 41 mm turn) | 6.4 MPa |
 | lip gauge's pin (M5) and the post's bore | the knuckles' 89 N couple | 42 MPa (SF 4.9); 7.5 MPa bearing |
 
 The V blocks carry no jam load: the tie rods and the cradle links do.
+
+**What they weigh:** the saddles, the gauge and the base stop come to about 1.6 kg, solid
+(the report counts a printed part at full infill), 0.3 kg more than with the M8 screw, most
+of it the rails' flanges 100-220 mm behind the rear V. With a sealed full 6 L at its old
+centre of mass that moved the crank's peak from 29.5 to 30.4 N·m on B (the gearbox's SF
+from 1.52 to 1.48, 22.5 N at the grip) and from 31.3 to 32.2 on A (1.44 to 1.40, 22.7 N);
+the stand tips at 25.8° on B and 25.4° on A, as before.
 
 **Review round 1** (the same day; `/root/scratch/decant/review5/r1/mounting.md` on the
 development box). What it found, and what changed:
