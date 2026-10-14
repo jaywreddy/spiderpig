@@ -63,13 +63,20 @@ ten: five sizes, two head placements; the Strider double about twenty)."""
 @dataclass(frozen=True)
 class Job:
     """One stack size (``top``) searched with one head placement, ``budget`` nodes, a plan to
-    beat (``bound``: its key) and whether to stop at the first plan (``first``)."""
+    beat (``bound``: its key) and whether to stop at the first plan (``first``); ``extend``:
+    once it has found a plan, it goes on to that many nodes in all (a short job that plans
+    carries on to the end of the proof's budget, rather than a full job of that size
+    starting again from nothing)."""
 
     heads: str
     top: int
     budget: int
     bound: tuple | None = None
     first: bool = False
+    extend: int = 0
+    legs: bool | None = None    # a leg at a time (True), not (False), else the plain search
+    #                             then, where it finds nothing, a leg at a time
+    at: int | None = None       # only the part of the size with its first link in this layer
 
 
 def run_job(subs: Mapping[str, StackProblem], job: Job, deadline: Deadline) -> dict:
@@ -84,15 +91,50 @@ def run_job(subs: Mapping[str, StackProblem], job: Job, deadline: Deadline) -> d
     s.key_bound, s.first_only = job.bound, job.first
     if not s.height_first and job.bound is not None and job.bound[0] == job.top:
         s.bound = job.bound[1]      # (objective "layers": a cheaper route in this size only)
-    s.run(job.budget, False, deadline)
-    if s.best is None and sub.hint and not s.done and not sub.gave_up and not deadline.expired:
+    if job.at is not None:
+        s.only(job.at)
+    s.run(job.budget, bool(job.legs), deadline)
+    if (job.legs is None and s.best is None and sub.hint and not s.done and not sub.gave_up
+            and not deadline.expired):
         s.run(job.budget, True, deadline)
+    if s.best is not None and not s.done and s.nodes < job.extend and not deadline.expired:
+        s.run(job.extend - s.nodes, False, deadline)     # (the plain order to the end)
     b = s.best
     return {"best": None if b is None else (dict(b.layers), dict(b.choices), b.cost),
             "key": s.best_key, "done": s.done, "nodes": s.nodes,
             "seconds": time.monotonic() - t0, "blocked": dict(sub.blocked),
             "by": dict(sub._blocked_by), "unbuilt": dict(s.unbuilt), "gave_up": sub.gave_up,
             "expired": deadline.expired and not s.done, "lb_bad": s.lb_bad}
+
+
+def combine(parts: list[dict], cover: bool) -> dict:
+    """One answer of several jobs of one size and placement: ``cover`` (a split, each part a
+    layer of the first link): the best of them, searched to the end when all are; else
+    alternatives (the plain search and a leg at a time, the first one's plan if it has one):
+    to the end when either is."""
+    keyed = [r for r in parts if r["key"] is not None]
+    if cover:
+        best = min(keyed, key=lambda r: r["key"]) if keyed else None
+        done = all(r["done"] for r in parts)
+    else:
+        best = keyed[0] if keyed else None
+        done = any(r["done"] for r in parts)
+    blocked: dict = {}
+    by: dict = {}
+    unbuilt: dict = {}
+    for r in parts:
+        for k, n in r["blocked"].items():
+            blocked[k] = blocked.get(k, 0) + n
+            by.setdefault(k, r["by"].get(k))
+        for k, n in r["unbuilt"].items():
+            unbuilt[k] = unbuilt.get(k, 0) + n
+    return {"best": None if best is None else best["best"],
+            "key": None if best is None else best["key"], "done": done,
+            "nodes": sum(r["nodes"] for r in parts),
+            "seconds": sum(r["seconds"] for r in parts), "blocked": blocked, "by": by,
+            "unbuilt": unbuilt, "gave_up": next((r["gave_up"] for r in parts if r["gave_up"]), ""),
+            "expired": any(r["expired"] for r in parts) and not done,
+            "lb_bad": sum(r["lb_bad"] for r in parts)}
 
 
 class Here:
@@ -108,6 +150,9 @@ class Here:
 
     def free(self) -> int:
         return 0
+
+    def cancel(self, keep: Iterable[Job]) -> None:
+        pass
 
     def ready(self, job: Job) -> bool:
         return job in self.results
@@ -194,26 +239,48 @@ class _Drive:
             self.gave_up.setdefault(m, r["gave_up"])
         return r
 
-    def _size(self, top: int) -> dict[str, dict]:
+    def _size(self, top: int, up: bool = True) -> dict[str, dict]:
         """Every placement still searched (not given up) at stack size ``top``: a short job
-        each, side by side, while idle workers run the next sizes up and down."""
+        each, side by side; ``up`` (the search climbing): idle workers run the next size's."""
         spec = self.spec
         modes = [m for m in self.modes if m not in self.gave_up]
-        jobs = {m: Job(m, top, spec.quick_nodes, None, spec.quick_first) for m in modes}
-        for job in jobs.values():
-            self.runner.submit(job, front=True)
-        free = self.runner.free()
-        for i in range(1, 9):
-            if free <= 0:
-                break
-            for t in (top + i, top - i):
-                if spec.min_top <= t <= spec.max_top:
-                    for m in modes:
-                        if t not in self.tried[m] and free > 0:
-                            self.runner.submit(Job(m, t, spec.quick_nodes, None,
-                                                   spec.quick_first))
-                            free -= 1
-        return {m: self._take(m, top, self.runner.result(job)) for m, job in jobs.items()}
+        jobs = {m: self._quick(m, top) for m in modes}
+        for js in jobs.values():
+            for job in js:
+                self.runner.submit(job, front=True)
+        if up and self.runner.free() >= len(modes) and top < spec.max_top:
+            # (the next size up, which the search asks next while sizes are ruled out)
+            for m in modes:
+                if top + 1 not in self.tried[m]:
+                    self.runner.submit(self._quick(m, top + 1)[0])
+        out = {}
+        for m, js in jobs.items():
+            first = self.runner.result(js[0])
+            if len(js) > 1 and first["best"] is None and not first["done"] \
+                    and not first["gave_up"] and not first["expired"]:
+                first = combine([first, self.runner.result(js[1])], cover=False)
+            out[m] = self._take(m, top, first)
+        return out
+
+    def _quick(self, m: str, top: int) -> list[Job]:
+        """Size ``top``'s short jobs with placement ``m``: the plain search, and where the
+        problem has a hint, a leg at a time beside it (its answer read only where the plain
+        one finds nothing and doesn't end: as one search would run them in turn)."""
+        spec = self.spec
+        if not self.subs[m].hint:
+            return [Job(m, top, spec.quick_nodes, None, spec.quick_first)]
+        return [Job(m, top, spec.quick_nodes, None, spec.quick_first, legs=False),
+                Job(m, top, spec.quick_nodes, None, spec.quick_first, legs=True)]
+
+    def _split(self, job: Job) -> list[Job]:
+        """A full job as parts, one per layer its first link may take (``Job.at``): they
+        cover the size once each, and run side by side. A size that has none (its fixed
+        parts rule it out) stays one job."""
+        s = _Search(self.subs[job.heads], job.top)
+        layers = s.firsts()
+        if len(layers) < 2:
+            return [job]
+        return [replace(job, at=v) for v in layers]
 
     def _firsts(self) -> int | None:
         """The thinnest stack size a short job of any placement finds a plan in (``None``:
@@ -247,7 +314,7 @@ class _Drive:
             for top in range(found - 1, spec.min_top - 1, -1):
                 if any(top in self.tried[m] for m in self.modes) or spent >= spec.max_total_nodes:
                     break
-                rs = self._size(top)
+                rs = self._size(top, up=False)
                 spent += sum(r["nodes"] for r in rs.values())
                 if all(r["best"] is None for r in rs.values()):
                     break
@@ -311,10 +378,13 @@ class _Drive:
                     if r is None or not r["done"]:
                         jobs.append(Job(m, top, spec.proof_nodes or spec.max_nodes, bound))
             jobs.sort(key=lambda j: (prob.size_lb(j.top), self.subs[j.heads].heads_rank, j.top))
-            for job in jobs:
-                self.runner.submit(job)
-            for job in jobs:
-                r = self.runner.result(job)
+            parts = {job: self._split(job) for job in jobs}
+            self.runner.cancel([p for ps in parts.values() for p in ps])
+            for ps in parts.values():       # (a size guessed next that no one needs now: gone)
+                for p in ps:
+                    self.runner.submit(p)
+            for job, ps in parts.items():
+                r = combine([self.runner.result(p) for p in ps], cover=True)
                 full.append((job.heads, job.top, r))
                 self.order.append((job.heads, job.top, r))
                 if r["gave_up"]:

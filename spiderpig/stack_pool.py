@@ -98,6 +98,21 @@ class Pool(Here):
         """Workers that would sit idle with what is waiting now."""
         return self.n - len(self.busy) - len(self.queue)
 
+    def cancel(self, keep) -> None:
+        """Drop every job waiting or running but those in ``keep`` (a worker running one is
+        stopped, and another forked when a job needs it)."""
+        keep = set(keep)
+        self.queue = [j for j in self.queue if j in keep]
+        for p, conn in list(self.procs):
+            job = self.busy.get(conn)
+            if job is not None and job not in keep:
+                p.terminate()
+                p.join()
+                conn.close()
+                del self.busy[conn]
+                self.sent.discard(job)
+                self.procs.remove((p, conn))
+
     def _pump(self) -> None:
         """Take the answer of whichever worker answers first (blocking until one does)."""
         for c in cast("list[Connection]", wait(list(self.busy))):

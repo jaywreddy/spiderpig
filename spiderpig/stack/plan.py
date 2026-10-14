@@ -76,7 +76,7 @@ class StackSpec:
     proof_nodes: int | None = None
     objective: str = "height"
     prove: bool = True
-    quick_first: bool = False
+    quick_first: bool = True
     symmetry: bool = False
     # z of the plan (:meth:`StackProblem.plan`): the frame plates' thickness (``None``: the
     # pitch), each link's sheet thickness (a link not named: the pitch; a layer is as thick

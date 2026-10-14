@@ -905,30 +905,54 @@ class _Search:
                 out[p.slot] = out.get(p.slot, 0) | bit
         return out
 
+    def prepare(self) -> bool:
+        """The fixed claims placed, once, and the link the search places first (``first``);
+        False when that already rules the size out (``done``)."""
+        if self.base is not None:
+            return not self.done
+        self.base = 0
+        for c in self.claims:
+            if not self.deps[id(c)]:
+                out, why = made(c, self.prob.bound_layout({}, self.top))
+                if out is None:
+                    self.prob._tally_why(c.owner, why)
+                    self.done = True
+                    return False
+                if any(self.add(p, frozenset()) is not None for p in out):
+                    self.done = True
+                    return False
+        self.base = len(self.trail)
+        if any(not d for d in self.dom.values()):
+            self.done = True
+            return False
+        self.first = min(self.links, key=lambda x: (len(self.dom[x]),
+                                                     self.prob.depth.get(x, 99), x))
+        return True
+
+    def firsts(self) -> list[int]:
+        """The layers the link placed first may take (:meth:`prepare`): a split of this size
+        into parts that cover it once each (:meth:`only`)."""
+        return sorted(self.dom[self.first]) if self.prepare() else []
+
+    def only(self, layer: int) -> None:
+        """Search only the part of this size with its first link in ``layer``."""
+        if not self.prepare():
+            return
+        for v in sorted(self.dom[self.first]):
+            if v != layer:
+                self.cut(self.first, v, frozenset())
+        self.base = len(self.trail)
+        if not self.dom[self.first]:
+            self.done = True
+
     def run(self, budget: int, legs: bool = False, deadline: Deadline | None = None) -> bool:
         """Search this stack size with ``budget`` more nodes, until ``deadline`` (``legs``: a
         leg at a time, at the hint's layers); True once it has been searched to the end."""
         if self.done:
             return True
         self.deadline = deadline or Deadline()
-        if self.base is None:                        # the fixed claims, once
-            self.base = 0
-            for c in self.claims:
-                if not self.deps[id(c)]:
-                    out, why = made(c, self.prob.bound_layout({}, self.top))
-                    if out is None:
-                        self.prob._tally_why(c.owner, why)
-                        self.done = True
-                        return True
-                    if any(self.add(p, frozenset()) is not None for p in out):
-                        self.done = True
-                        return True
-            self.base = len(self.trail)
-            if any(not d for d in self.dom.values()):
-                self.done = True
-                return True
-            self.first = min(self.links, key=lambda x: (len(self.dom[x]),
-                                                         self.prob.depth.get(x, 99), x))
+        if not self.prepare():
+            return True
         syms = getattr(self.prob, "syms", ())
         if syms and self.lex is None and (self.nodes or budget > self.prob.spec.quick_nodes):
             # a size worth more than a short search: the first link the search places, and
