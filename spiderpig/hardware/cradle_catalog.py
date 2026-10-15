@@ -169,6 +169,34 @@ register_factory("pillar_shaft_10_m5_", _netrf10_of)
 register_factory("pillar_shaft_12_m6_", _netrf12_of)
 
 register(
+    Item("standoff_15_m8_nickel_150", "15 mm round steel standoff, 150 mm, tapped M8 both "
+         "ends, electroless nickel plated (MISUMI PETR15-150)", "standoff",
+         (Offer("MISUMI", "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode="
+                "PETR15-150", "PETR15-150", price_usd=19.25, verified=True,
+                tiers=((1, 19.25), (5, 14.00), (10, 7.05), (20, 6.88), (50, 6.47)),
+                note="the NETRF12's series (circular standoffs, tapped both ends), a stocked "
+                     "length: low carbon steel, electroless nickel plating, M8 both ends, "
+                     "wrench flats 13 mm across at its ends (SC 10); page rendered 2026-10-15 "
+                     "(the same day: PETRF15-130, no flats, 29.43; PETRF12-130 21.79; the bare "
+                     "NETRF12-130, round 1's post, 16.98)"),),
+        dims={"d": 8.0, "od": 15.0, "length": 150.0, "flats": 13.0, "flat_length": 10.0,
+              "yield_mpa": NETRF10_YIELD},
+        notes="The rear saddle's post (construction.cradle.POST; review round 2): the V "
+              "block's boss slides on it in a wine cradle, so plated (bare steel rusts, and "
+              "rust raises the boss's friction: m3); 15 mm, as the post now takes a hung 6 "
+              "L's roll with its share of the moving parts at 5.6 x its yield (12 mm had "
+              "been 2.96 x). Its steel taken as the NETRF12's, 1018 or equivalent at 220 "
+              "MPa."),
+    Item("m8_bhcs_12", "M8 x 12 button head socket screw (ISO 7380), 18-8", "fastener",
+         (Offer("Bolt Depot", BD + "6654", "6654", price_usd=0.40, verified=True,
+                tiers=((1, 0.40), (100, 0.2688)),
+                note="18-8 (A-2), M8-1.25 x 12, head 13.57-14.00 x 4.10-4.40, 5 mm hex; page "
+                     "rendered 2026-10-15"),),
+         dims={"d": 8.0, "length": 12.0, "head_d": 14.0, "head_h": 4.4},
+         notes="Up into the rear saddle's post's foot from under its carrier."),
+)
+
+register(
     Item("nrv030_30", "NRV030 worm gear reducer, 30:1, 9 mm input shaft, 14 mm hollow output "
          "(Phidgets 20 N·m 30 Series)", "gearbox",
          (Offer("Phidgets", "https://www.phidgets.com/?prodid=868", "TRM4400_0",

@@ -161,7 +161,8 @@ def test_the_worm_holds_and_every_bottle_lies_with_its_mouth_on_the_pivot():
         assert front.vee[1] < size.com_from_mouth, size.name
         assert 0.6 < size.com_from_mouth / size.length < 0.72, size.name
         assert size.com_from_mouth < min(cr.FLANGE_END, size.length), size.name
-    assert cr.setting(cr.METHUSELAH) == cr.Setting(0.0, 0.0, cr.METHUSELAH.length + 0.5)
+    assert cr.setting(cr.METHUSELAH) == cr.Setting(0.0, 0.0,
+                                                   cr.METHUSELAH.length + cr.STOP_GAP)
     # a magnum in the 6 L's setting would lie nose up, its mouth off the pivot
     y0, slope, x0 = cr.seat(cr.MAGNUM, cr.setting(cr.DESIGN))
     assert math.degrees(-slope) > 5.0
@@ -1123,9 +1124,11 @@ def test_every_printed_part_fits_a_print_bed_in_its_pose():
     cfg = BuildConfig(linkage="decanter_hinge", robot=False)
     mech = fabricate(template_for(cfg), cfg, 1.0)
     poses = mech.meta["print_poses"]
+    assert sorted(mech.meta["petg"]) == sorted(cr.PETG_PARTS)
     for name in ("front_saddle", "rear_saddle", "front_saddle_vee", "rear_saddle_vee",
                  "front_saddle_liner", "front_saddle_knob", "front_saddle_gauge",
-                 "rear_saddle_liner", "rear_saddle_knob", "rear_saddle_brake",
+                 "rear_saddle_liner", "rear_saddle_knob", "rear_saddle_hub",
+                 "rear_saddle_brake",
                  "base_stop_rail0", "base_stop_rail1", "base_stop_rail0_liner",
                  "base_stop_rail1_liner", "base_stop_gate", "base_stop_knob", "L.handle",
                  "foot_boot_0"):
@@ -1166,7 +1169,7 @@ def test_the_cradle_pages_swing_is_the_linkages(key):
     assert m["bottle"]["key"] == cr.SHOWN.key
     assert m["bottle"]["setting"] == [0.0, 0.0, cr.SHOWN.length + cr.STOP_GAP]
     got = {b["key"]: b["setting"] for b in m["bottles"]}
-    assert got["standard"] == pytest.approx([12.73, 68.87, 300.5], abs=0.01)
+    assert got["standard"] == pytest.approx([12.73, 68.87, 303.0], abs=0.01)
     assert set(m["adjust"]) == {"front", "rear", "stop"}
     assert [s["moves"] for s in m["saddles"]] == ["front", "rear"]
 
@@ -1264,27 +1267,119 @@ def test_a_frame_plates_member_buckles_out_of_its_plane():
 @pytest.mark.no_fabricate
 def test_the_saddles_hold_a_full_6_l():
     """``cradle_report.saddles``: every printed part of the saddles, the lip gauge and the base
-    stop under its allowable at a full 6 L's worst (hung on its thumbscrew, leaning on the
-    gate at rest with a corkscrew's push, on the gauge at full tilt with no friction, its
-    body on the rails' flanges), the post and the screws 3 x under their yield, the gate's
-    lock gripping and the lead screw's brake holding 3 x what they hold."""
-    from spiderpig.cradle_report import PLA_ALLOW, saddles
+    stop over its bar against its cited strength, in its layers or across them as it's
+    printed (Prusament's datasheets: a quarter of it for a load that stays, 1/2.5 for the
+    pour's or a knock's), at a full 6 L's worst (hung on its thumbscrew, leaning on the gate
+    at rest with a corkscrew's push, on the gauge at full tilt with no friction, its body on
+    the rails' flanges), the post and the screws 3 x under their yield, the gate's lock
+    gripping 2 x what it holds at the least friction cited, the rear knob's teeth holding
+    the greased lead screw; no V block's guide jams raising it under twice the most friction
+    cited for its faces (review round 2, N1: the post 213 mm from the screw jammed at 0.15,
+    0.095 for a 750 ml); the lip gauge held on its post."""
+    from spiderpig.cradle_report import (
+        PLA_ALLOW,
+        PRINTED,
+        SUSTAINED_SF,
+        TRANSIENT_SF,
+        drawers,
+        saddles,
+    )
 
-    got = saddles(-50.0, 30.0, 0.75)
+    assert pytest.approx(17.0 / 4) == PLA_ALLOW
+    got = saddles(-50.0, 30.0, 1.25)     # (the parts riding the rear block: 1.1-1.2 kg)
+    assert got["ok"], [r for r in got["rows"] if not r["ok"]]
     rows = {r["part"]: r for r in got["rows"]}
     for r in got["rows"]:
-        if r.get("limit_mpa") == PLA_ALLOW:
-            assert r["stress_mpa"] <= PLA_ALLOW, r
-        else:
-            assert r["sf"] >= 3.0, r
-    assert rows["rear post (NETRF12, bending)"]["load_n"] > 10.0     # (N·m: the couple)
-    assert rows["rear post (NETRF12, bending at rest)"]["load_n"] > 10.0
-    for part in ("rear lead screw's brake (no turning back)", "base stop's lock (its grip)",
-                 "base stop's rails (bending at their sockets)", "lip gauge's post (bent and "
-                 "twisted)", "rear knob's tower (bending)", "base stop's T-slot lips (bending)"):
+        if "stress_mpa" in r and r["limit_mpa"] in PRINTED.values():
+            assert r["limit_mpa"] == PRINTED["petg", "across" if "across" in r["basis"]
+                                             else "in"], r
+            assert r["bar"] == (SUSTAINED_SF if "sustained" in r["basis"] else TRANSIENT_SF)
+        assert r["bar"] is None or r["sf"] >= r["bar"], r
+    assert rows["rear post (bending)"]["load_n"] > 10.0     # (N·m: the couple)
+    assert rows["rear post (bending at rest)"]["load_n"] > 10.0
+    assert "rear post's socket (bearing)" in rows
+    # the rails print standing: their T-slot's lips bend in their layers (review round 2, N6)
+    assert "in its layers" in rows["base stop's T-slot lips (bending)"]["basis"]
+    assert "across" in rows["rear knob's tower (bending)"]["basis"]
+    assert "across" in rows["lip gauge's post (bent and twisted)"]["basis"]
+    for part in ("rear lead screw's lock (the knob's teeth)", "base stop's lock (its grip)",
+                 "base stop's rails (bending at their sockets)",
+                 "base stop's rails' tongues (bending where they leave the sockets)",
+                 "lip gauge on its post (fixed)", "rear knob's tower (bending)"):
         assert part in rows, part
+    # the brake alone, greased, doesn't hold: the knob's lock does
+    greased = rows["rear lead screw's brake, the knob lifted, greased"]
+    assert greased["bar"] is None
+    assert greased["sf"] < 1.0
+    # the drawers: every bottle's setting, both guides
+    guides = drawers()
+    assert {(r["bottle"], r["guide"]) for r in guides} == {
+        (z.name, g) for z in cr.SIZES for g in ("rear", "front")}
+    assert all(r["ok"] and r["mu_jam"] >= 2 * r["mu"] for r in guides)
+    rear = {r["bottle"]: r for r in guides if r["guide"] == "rear"}
+    assert rear[cr.STANDARD.name]["mu_jam"] == pytest.approx(
+        rear[cr.STANDARD.name]["engagement_mm"] / 54.0, abs=1e-3)
+    assert min(r["mu_jam"] for r in rear.values()) > 0.6     # (it had been 0.095)
     assert got["balance"]["ok"]
-    assert got["gauge"]["falls_back"]
+    assert got["gauge"]["held"]
+
+
+@pytest.mark.no_fabricate
+def test_the_parts_that_carry_the_bottle_print_solid_in_petg():
+    """The saddles' carriers and V blocks, the rear knob and its hub, the base stop's rails
+    and gate and the lip gauge print in PETG (``meta["petg"]``: on hand), solid, as
+    ``cradle_report.saddles`` rates them (review round 2, N6 and m9); the liners stay TPU,
+    the other knobs the build's filament. The grease note keeps grease off what holds the
+    rear lead screw (round 2, N5)."""
+    from types import SimpleNamespace
+
+    from spiderpig.hardware.bom import (
+        CRADLE_GREASE_NOTE,
+        CRADLE_PRINT_NOTE,
+        PRESS_FILAMENT,
+        TPU_FILAMENT,
+        part_filament,
+    )
+
+    meta = {"petg": list(cr.PETG_PARTS)}
+    for n in cr.PETG_PARTS:
+        assert part_filament(SimpleNamespace(name=n), meta, "pla_filament") == PRESS_FILAMENT
+    assert part_filament(SimpleNamespace(name="front_saddle_knob"), meta,
+                         "pla_filament") == "pla_filament"
+    assert part_filament(SimpleNamespace(name="rear_saddle_liner"), meta,
+                         "pla_filament") == TPU_FILAMENT
+    assert part_filament(SimpleNamespace(name="rear_saddle_vee"), {},
+                         "pla_filament") == "pla_filament"         # (a walker: no "petg")
+    assert "PETG at 100 % infill" in CRADLE_PRINT_NOTE
+    assert "above its collar" in CRADLE_GREASE_NOTE
+    assert "knob's teeth" in CRADLE_GREASE_NOTE
+
+
+@pytest.mark.no_fabricate
+def test_the_base_stop_reads_any_bottles_length_to_a_millimetre():
+    """The base stop's scale (review round 2, N2: its grooves had been named for one maker's
+    bottle of each size, and the gate set half a millimetre behind it): a groove every 5 mm
+    of a bottle's length over the gate's range, a long one every 10, one dot at each 50 and
+    three, four and five at 300, 400 and 500; the gate's pointer's vernier meets a groove
+    with its k-th line from the face for a length k mm past one (none for a round one). The
+    gate goes :data:`construction.cradle.STOP_GAP` behind the base, so a bottle measured to
+    a millimetre lies 1.7-3.7 mm behind the gauge's pad at rest."""
+    marks = cr.stop_marks()
+    xs = [x for x, _, _ in marks]
+    assert all(b - a == pytest.approx(cr.STOP_EVERY) for a, b in itertools.pairwise(xs))
+    assert (xs[0] - cr.STOP_GAP, xs[-1] - cr.STOP_GAP) == (255.0, 570.0)
+    assert all(lng == ((x - cr.STOP_GAP) % 10 == 0) for x, _, lng in marks)
+    dots = {round(x - cr.STOP_GAP): d for x, d, _ in marks if d}
+    assert (dots[300], dots[350], dots[400], dots[500]) == (3, 1, 4, 5)
+    pitch, lines, _ = cr.VERNIER
+    for length in range(286, 571):
+        stop = length + cr.STOP_GAP
+        met = [k for k in range(1, lines + 1) if any(abs(stop - pitch * k - x) < 0.3 for x in xs)]
+        assert met == ([length % 5] if length % 5 else []), length
+    for size in cr.SIZES:
+        assert xs[0] <= cr.setting(size).stop <= xs[-1] + cr.STOP_EVERY, size.name
+    gap = cr.STOP_GAP - cr.GAUGE_FRONT[1]                  # the mouth to the pad, at rest
+    assert (gap - 1.0, gap + 1.0) == pytest.approx((1.7, 3.7))
 
 
 @pytest.mark.no_fabricate
@@ -1294,8 +1389,11 @@ def test_every_bottle_rests_on_both_saddles_at_rest_level_and_tipped():
     at rest and the gauge's over it at full tilt, each bottle's reaction centres inside its
     support, the front V to the rear support's end (the rear V, then the rails' flanges), by
     40 mm or more; without the flanges (the rear V's end at 380) the 6 L would lift its neck
-    off the front V at rest. The lip gauge, lifted to its stop, falls back shut."""
-    from spiderpig.cradle_report import balance
+    off the front V at rest. Behind 380 the flanges bend (review round 2, N3): their sag
+    lifts the mouth at most :data:`cradle_report.MOUTH_LIFT_MAX`, under a quarter of a
+    millimetre once the bottle is level. The lip gauge is held on its post: its bridge
+    flat on the post's top, its bolt under it."""
+    from spiderpig.cradle_report import MOUTH_LIFT_MAX, balance
 
     assert cr.METHUSELAH.com_from_mouth == 390.0
     got = balance(-50.0, 30.0)
@@ -1304,11 +1402,16 @@ def test_every_bottle_rests_on_both_saddles_at_rest_level_and_tipped():
     assert {r["case"] for r in got["rows"]} == {"rest", "level", "full"}
     assert len(got["rows"]) == 3 * len(cr.SIZES)
     rest = {r["bottle"]: r for r in got["rows"] if r["case"] == "rest"}
-    assert rest[cr.METHUSELAH.name]["centre_mm"] > cr.SADDLES[1].vee[1]     # (on the flanges)
-    g = cr.gauge_return()
-    assert g["falls_back"]
-    assert g["com_deg_open"] < 85.0
-    assert abs(g["stop_on_wall_mm"]) < 0.05
+    meth = rest[cr.METHUSELAH.name]
+    assert meth["centre_mm"] > cr.SADDLES[1].vee[1]     # (on the flanges)
+    assert meth["rigid_margin_mm"] < 0 < meth["flange_n"]
+    assert got["worst_mouth_lift_mm"] <= MOUTH_LIFT_MAX
+    assert all(r["mouth_lift_mm"] < 0.25 for r in got["rows"] if r["case"] != "rest")
+    assert all(r["flange_n"] == 0.0 for r in got["rows"] if r["rigid_margin_mm"] > 0)
+    g = cr.gauge_fixed()
+    assert g["held"]
+    assert g["seated"]
+    assert g["bolt_under_top_mm"] > 5.0
 
 
 @pytest.mark.server

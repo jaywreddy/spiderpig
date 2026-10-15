@@ -1661,3 +1661,112 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** `spiderpig/construction/cradle.py`, `spiderpig/cradle_pack.py`,
   `spiderpig/cradle_report.py`, `spiderpig/hardware/bom.py`, `tests/test_cradle.py`,
   `viewer/src/decant/pack.ts` (its comment).
+
+### 2026-10-15: the cradles' saddles made to hold real bottles (design review round 2, mounting)
+
+- **What:** the saddles, the lip gauge and the base stop fixed where review round 2 found
+  them failing ([DECANTER.md](DECANTER.md), "The saddles, adjustable", "Review round 2";
+  the review `/root/scratch/decant/review5/r2/mounting.md`, its probes in
+  `/root/.cache/spiderpig/tmp/r2-mounting/` on the development box).
+  - **The rear post beside the lead screw (N1, the blocker).** The rear V block was guided
+    by one post at -z, 213 mm across from the screw that pushes it up: a drawer, which
+    jammed raising it past a friction of 0.149 on the post (0.095 at a 750 ml's setting),
+    under the 0.24-0.30 measured for printed PETG on steel (Stoimenov et al., Tribology in
+    Industry 46(1), 2024). The post now stands beside the screw at +z, 27 mm in front of
+    it (`cradle.REAR_POST`): the push can't cock the block, and it jams only past
+    `engagement / 54`, 0.74 at a 750 ml's setting (40.1 mm of the boss on the post's
+    round) to 0.98. `cradle_report.drawers` rates it at every bottle's setting, and the
+    front block's box guide too (m5: 40 mm off its middle, it had bound past 0.40; its -z
+    wall 12 mm taller and a cheek up the block's -z face, `cradle.FRONT_GUIDE`, make it
+    0.56, greased); `saddles` lists them (2 x the most friction cited for the faces).
+  - **The post 15 mm, plated** (m3, and N1's own consequence). With the post on the screw's
+    side it alone takes the roll of a load at the axis, as it did; counted with what rides
+    the block at its weight (1.2 kg: the report's, not the 0.75 kg the test had used), a 6
+    L hung a hair off the rods took the 12 mm post at 2.96 x its yield (2.99 at round 1's
+    masses), under the 3 asked. MISUMI PETR15-150 (15 mm, M8, electroless nickel, a stocked
+    length, USD 19.25: 2.27 less than a plated 12 mm, PETRF12-130), 5.6 x; its socket 30
+    mm deep under a collar (the boss 53 mm long over it), rated in bearing (8 x); an M8 x 12
+    button head into its foot (Bolt Depot 6654, USD 0.40), the screw table's first M8
+    (`fasteners.SCREWS`).
+  - **Real bottles (N2).** The base stop's named grooves gave way to a plain length scale,
+    a groove every 5 mm (`cradle.stop_marks`), and a vernier on the gate's pointer reaching
+    forward along it (`cradle.VERNIER`: four lines 6 mm apart, the k-th meeting a groove for
+    k mm); the gate sits 2.5 mm behind the base (`cradle.STOP_GAP`, it had been 0.5: a
+    bottle 0.7 mm long put its rim under the gauge's pad), and the guide measures every
+    bottle. `cradle.SIZES` against the makers' pages rendered 2026-10-14 and -15: the
+    750 ml became Saverglass's 4427 (300.5 mm, it had been 300); the 3 L is Saverglass's
+    Jero Vignoble 7201 (470.3 x 140.8 mm, 2.9 kg: the record's figures; the review compared
+    it with their Standard 0718, 474.3 x 135.2 mm, a different bottle); the magnum and the
+    6 Ls match to 0.2 mm. The 0718 and 750s of 308 and 315 mm lie clear at their own
+    settings, as does every size against its gate.
+  - **The rails (N3).** Their tongues have crush ribs on top (`cradle.RIBS`), the socket's
+    clearance moved above them, so they sit down on the sockets' floors, flush and without
+    play (0.3 mm, 0.6° of rock, before); a 4 mm keel down each rail's outer face
+    (`cradle.RAIL_KEEL`) doubles its stiffness (61 000 mm⁴, was 30 000), and its flange,
+    keel and tongue end level at -91 mm so it prints standing. `balance` now rates the
+    flanges' sag behind the rigid V block (380 mm): the mouth lifts at most 0.89 mm (a
+    methuselah at rest), 0.23 past level (1.5-4 mm before).
+  - **The lip gauge fixed (N4, m2).** The review's simplest option: its bridge flat on the
+    post's flat top, the bolt under it, tight (`cradle.gauge_fixed`); no hinge, stop or
+    lug. A bottle is uncorked standing on the table before it goes in; one set too long
+    can't lie in under the gauge. A knock on the pad: 8.3 MPa on the post's edge, SF 5.7.
+  - **The rear knob locks (N5).** It slides on a hex hub set-screwed on the screw's top and
+    drops over a star of 12 teeth on the tower's arm (`cradle._lead_screw`,
+    `cradle.LOCK_TEETH`): a positive lock, whatever the grease (the teeth at 0.4 MPa under a
+    hung 6 L's turn back, the thread greased). Lifted 3.6 mm, it turns. The TPU brake
+    washer stays, slowing the screw with the knob lifted (4.1 x dry, 0.8 x greased: told,
+    not rated). The grease note now keeps grease to the thread above the collar, off the
+    collar, the washer and the teeth.
+  - **The print basis (N6, m9).** `cradle_report.PRINTED`: Prusament's datasheets (PLA
+    v1.1 of 2022-07-27: 51 MPa in its layers, 17 across; PETG v1.1 of 2022-02-16: 47 and
+    18; specimens printed solid); each row rated in or across its layers as the part prints,
+    a quarter of it for a load that stays, 1/2.5 for the pour's or a knock's
+    (`SUSTAINED_SF`, `TRANSIENT_SF`). `PLA_ALLOW` is now 4.25 MPa, a quarter of PLA's 17
+    across (it had been 10, "a quarter of ~40", which no datasheet gives). The parts that
+    carry the bottle print in PETG at 100 % infill (`cradle.PETG_PARTS`, `meta["petg"]`,
+    `bom.part_filament`; on hand); the rails stand (their T-slot's lips bend in their
+    layers), the gauge lies on its side; the lips are 5.5 mm (5) for a firm hand's 1 N·m.
+  - **Minor:** base first when loading (m1); the gauge's pad 0.5 mm lower (m4: 3.25 mm down
+    a 750's rim, clear of a methuselah's bore) and the guide measures the neck 80 mm from
+    the lip, the body where it lies (m4); a drain from the +z rail's T-slot's back end
+    (m6); "tug the gate" (m7); the T-slot's ends chamfered 0.5 mm at the block-to-rail
+    joint (m8).
+  - **Lighter elsewhere:** the rear V shell 7.5 mm (9), the rear carrier's -z block 15 mm
+    wide (29: it only rides the rods now), the rails' flanges 7 mm (8.5): the printed
+    mounting parts are 1220 cm³ solid (1223 before), so the 15 mm post's 90 g more steel and
+    PETG's density leave B's stand tipping past 25° (25.02°; 25.08 before).
+- **Why:**
+  - **The post beside the screw, not a second post or PTFE bushings:** a second post near
+    the screw would have needed the tower moved; bushings (about 0.1) would still jam at a
+    750 ml's setting. A post at the -z end with the screw at +z can't be made free at any
+    plausible friction: the push is 213 mm off.
+  - **The fixed gauge, not a 50° stop or a return spring:** both keep a hinge that wine
+    can stick; uncorking in the cradle was three tasks for two hands. The cost: no
+    uncorking in the cradle (the -50° rest still takes an opened full bottle).
+  - **Teeth under a lifting knob, not a jam knob or a sprung detent:** positive (no
+    friction in it), all printed, no loose part, one hand: lift and turn.
+  - **Crush ribs, not glue or an interference fit:** a printed press fit is either loose
+    or doesn't go; ribs crush to fit across a print's tolerance, and the rail still comes
+    off its two screws.
+  - **The rated strengths by layer:** a part's weak direction is the one its print puts
+    across its layers; rating every part against the across-layer figure would have thrown
+    away the in-layer strength the rails' new pose buys.
+- **Numbers** (`cradle_report.saddles`, 2026-10-15): every row over its bar; the worst
+  printed one the rails' tongues, 4.2 x (4) at rest; the post 5.6 x its yield; both
+  guides 2.5 x or more the most friction cited. `balance`: every bottle centred 62.9 mm
+  or more inside its support, the mouth lifted 0.89 mm at most. Clash-free at rest, level
+  and full tilt on B and A, every size at its setting with the bottle at the pad and
+  against the gate, and the off-list bottles above; the finger gap 26.4 mm on B, 26.5 on
+  A, as before. The cradle 0.12 kg heavier (the post's steel): B's crank peak 35.4 N·m
+  (35.1; the gearbox 1.27 x its 45 N·m, was 1.28; 21.0 N at the grip, was 20.8), A's 37.2
+  (36.9; 1.21, was 1.22; 32.4 N, was 32.2); B's stand tips at 25.02° (25.08), A's 23.9°
+  (24.0); A's clutch clears the worst start by 1.10 (1.11; its floor 1.1). The pack
+  (`spiderpig pack-inspect`): B 741 x 316 x 600 mm, 140.7 L (140.5), A 700 x 185 x 601 mm,
+  77.9 L (78.0), every piece supported. The bought parts: USD 41.00 (38.50), the post and
+  its screw.
+- **Not done:** the light, the tie rods, the rails' length per bottle (as round 1); the
+  impériale's 31.5 mm bore has its top 5 mm under the pad (the first of its pour runs down
+  the pad's back into the stream: the pad must reach a 750's rim).
+- **Where:** `spiderpig/construction/cradle.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/hardware/bom.py`, `spiderpig/hardware/cradle_catalog.py`,
+  `spiderpig/hardware/fasteners.py`, `tests/test_cradle.py`.

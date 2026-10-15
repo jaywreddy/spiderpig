@@ -61,7 +61,7 @@ stops there:
 | the mouth | stays put over the whole pour, for either bottle | the decanter stands under it (US7708241) |
 | tilt | −50° (rest, neck up) to +30° (neck down) | the user, 2026-10-10: start nearly upright. At +20° both bottles' shoulders lie over the mouth's lowest lip, so they drain; one crank turn is one decant and back |
 | the mouth's height | 550 mm over the table | at −50° the base stop's rails hang about 514 mm under it |
-| the bay | 260 mm between the inner plates | a 174 mm bottle between the rear saddle's post and knob; a standard decanter (up to 240 mm across) stands wholly between the side stacks |
+| the bay | 260 mm between the inner plates | a 174 mm bottle beside the rear saddle's post and knob; a standard decanter (up to 240 mm across) stands wholly between the side stacks |
 | vessel | a standard decanter or glass on a lab jack (100 x 100 mm) in the base board's jack locator, one height for the whole swing | the vessel study (204–300 mm tall decanters, 155–240 across); the room under the mouth, below; round 1 of 2026-10-14 (no raising it mid-pour) |
 | drive | hand crank, self-locking | holds any angle when let go |
 | light | an LED under the shoulder, riding the cradle | the candle's job |
@@ -87,22 +87,25 @@ stops there:
     from its underside, and a V block that rides up and down in it on a thumbscrew.
     - The front one carries the neck: its V block slides in the carrier's box guide, an M6
       thumbscrew at its end.
-    - The rear one carries the body: its V block rides a 12 mm steel post at one end and a
-      coarse lead screw (8 mm a turn) at the other. The base stop's two rails continue its
-      V behind it on 45° flanges to 588 mm, so a 6 L's whole body is carried: lying level
-      or tipped, a bottle's weight centres on the saddles (`cradle_report.balance`, "The
-      saddles, adjustable").
+    - The rear one carries the body: its V block rides a 15 mm plated steel post and,
+      27 mm beside it at the same end, a coarse lead screw (8 mm a turn) that pushes it up
+      (since review round 2; the post had been at the far end, and the block jammed on it);
+      the screw's knob drops onto a ring of teeth that lock it. The base stop's two rails
+      continue its V behind it on 45° flanges to 580 mm, so a 6 L's whole body is carried:
+      lying level or tipped, a bottle's weight centres on the saddles
+      (`cradle_report.balance`, "The saddles, adjustable").
     - The Vs are 90°, lined with 2 mm TPU pegged into them. At a 6 L methuselah's setting
       each V block sits on its tie rods (the rear one in a seat over each); a thinner
       bottle's ride higher.
-  - **The lip gauge** (`cradle._gauge`): a printed arm on a hinge along the axis on the
-    front carrier (two knuckles either side of a post, an M5 tap bolt through them). Down,
-    its pad stands in front of the mouth, its back face on the pivot's plane, over the top
-    of the rim (above a cork's bore), and its bar runs back beside the neck, not over it: a
-    bottle lays in with it down. It checks where the mouth is, and it is the forward stop:
-    past level a bottle would slide toward its mouth, and the rim's top bears on it. It
-    lifts 70° onto a stop to uncork; let go, it falls back by itself (its centre of mass
-    stays inboard of the hinge), so it can't be left up.
+  - **The lip gauge** (`cradle._gauge`): a printed arm fixed on the front carrier (two
+    cheeks either side of a post, an M5 tap bolt through them, its bridge flat on the
+    post's top). Its pad stands in front of the mouth, its back face on the pivot's plane,
+    over the top of the rim (above a cork's bore), and its bar runs back beside the neck,
+    not over it: a bottle lays in under nothing. It checks where the mouth is, and it is
+    the forward stop: past level a bottle would slide toward its mouth, and the rim's top
+    bears on it. A bottle is uncorked standing on the table before it goes in (since
+    review round 2: the gauge had hinged up to uncork and fallen back by its own weight,
+    barely more than its hinge's friction).
   - **The base stop** (`cradle._rails`, `cradle._gate`): a printed gate across the V behind
     the bottle's base, riding the rear V block's flats and two printed rails behind the
     block. It is the back stop: at rest the bottle stands 50° neck up and leans on it (at
@@ -111,20 +114,23 @@ stops there:
     - Keys under its ears run in a groove along each flat and rail. It is set by a scale
       grooved across the +z flat and rail and locked by hand: a printed knob on an M5 tap
       bolt through one ear into a nut and a fender washer in a T-slot under the groove.
-    - It serves every base from 285 mm (inside the rear V: a 750 ml's at 300) to 576 mm
-      (a 6 L's at 571) behind the mouth.
+    - It serves every base from 285 mm (inside the rear V: a 750 ml's at 300.5) to 576 mm
+      (a 6 L's at 571) behind the mouth, its face 2.5 mm behind the base
+      (`cradle.STOP_GAP`).
     - It rides the rear V block, so it rises with it. At rest, set for a 6 L, it comes
-      down to 26 mm over the base board, a finger's 25 mm (ISO 13854): the flanges end at
-      588 mm, past a 6 L's heel, and the +z rail's keel is chamfered at its end
-      (`cradle.FLANGE_END`, `cradle.finger_gap`).
+      down to 26 mm over the base board, a finger's 25 mm (ISO 13854): the flanges and
+      keels end at 580 mm, past a 6 L's heel, and the +z rail's T-slot keel is chamfered
+      at its end (`cradle.FLANGE_END`, `cradle.finger_gap`).
 - **The bottles** (`cradle.setting`, `cradle.seat`): every one lies with the mouth on the
   pivot and the axis level, so the mouth stays put for each. Its setting is the two V
   blocks' rise and the base stop's place, read off the scales with the bottle out (see
   "The saddles, adjustable"); the base stop and the lip gauge hold it there.
   - The 6 L necks' lengths and radii are estimates scaled from the jeroboam's (no maker
     draws them): set the front knob to the neck in hand.
-  - Another bottle: set each knob to its neck's (measured 50-80 mm from the lip) and its
-    body's diameter on the scales' other rows, and the base stop to its length.
+  - Every bottle is measured first (two of a size differ: 750 ml Bordeaux run 300.5 to 315
+    mm long): each knob set to its neck's diameter (80 mm from the lip) and its body's
+    (where it lies, 255 mm from the lip and on) on the scales' graded rows, the base stop
+    to its length on a plain length scale with a vernier.
 - **The drive** (`spiderpig/construction/handcrank.py`, `config.crank == "hand"`; round 1's
   drive review of 2026-10-14 reworked its riser, its block, its tie and its hand crank).
   - **Gearbox:** an NRV040 worm gear reducer at 30:1 (Phidgets TRM4401_0, rated 45 N·m;
@@ -454,38 +460,46 @@ locks the bottle there. The top stays open, so bottles still lay in from above. 
 plus the stop replace all the adapters." The 10 printed adapter liners and collars are gone.
 Design review round 1 (the same day) found it didn't yet work: a full 6 L tipped nose-up
 off the front V at rest, setting a big bottle took three hands and a hex key, and the rear
-knob took 55 turns and bent at a knock. What changed for it is under "Review round 1"
+knob took 55 turns and bent at a knock. Round 2 (the same day) found the rear V block
+jammed raising it, the scale and the lip gauge too fussy for real bottles, the rails
+rocking in their sockets, the lead screw's brake undone by its own grease and the printed
+parts rated on a wrong figure. What changed is under "Review round 1" and "Review round 2"
 below; the rest of this section describes the saddles as they now are.
 
 **The setting** (`cradle.setting`): a bottle lies with its axis level through the pivot
 when each 90° V's apex is `(r + 2) √2` under the axis (`r` its radius, 2 the liner), so
 each V block rises `√2` times what the neck or the body is thinner than the 6 L
-methuselah's. The base stop's face goes half a millimetre behind the base.
+methuselah's. The base stop's face goes 2.5 mm behind the base (`cradle.STOP_GAP`): at
+rest the mouth lies 2.7 mm behind the lip gauge's pad, and past level the bottle slides
+onto it.
 
 | bottle | front V block rises | rear V block rises | base stop's face behind the mouth |
 |---|---|---|---|
-| 750 ml Bordeaux | 12.7 mm | 68.9 mm | 300.5 mm |
-| 1.5 L magnum | 12.0 | 53.0 | 356.5 |
-| 3 L jeroboam | 7.1 | 23.3 | 470.5 |
-| 6 L impériale | 0.7 | 6.6 | 493.5 |
-| 6 L methuselah | 0 (on the rods) | 0 (on the rods) | 571.5 |
+| 750 ml Bordeaux (Saverglass 4427, 300.5 mm) | 12.7 mm | 68.9 mm | 303.0 mm |
+| 1.5 L magnum | 12.0 | 53.0 | 358.5 |
+| 3 L jeroboam (Saverglass Jero Vignoble 7201) | 7.1 | 23.3 | 472.5 |
+| 6 L impériale | 0.7 | 6.6 | 495.5 |
+| 6 L methuselah | 0 (on the rods) | 0 (on the rods) | 573.5 |
 
-The front V block travels 15 mm, the rear one 72: a neck from 28 to 48 mm across, a body
-from 76 to 174.
+These are examples: two bottles of a size differ (Saverglass's 750 ml Bordeaux run 300.5
+to 315 mm long, its Standard 3 L is 474.3 x 135.2 mm against the Vignoble's 470.3 x
+140.8), so every bottle is measured and set by its own length, neck and body. The front V
+block travels 15 mm, the rear one 72: a neck from 28 to 48 mm across, a body from 76 to
+174.
 
 **The mechanism.**
 
 ```
   front saddle (looking along the axis)        rear saddle (looking along the axis)
 
-    bar  gauge's pad       knob (M6)           post                    knob (lead screw)
-     ||   ____             _|_                  ||      6 L           ___|___  <- tower's arm
-     ||  |pad |  .-.      |#|                   ||   .-'''-.           |#|  |
-   __||__|____| ( O ) ____|#|_ <- tab + M6 nut  ||  /       \       ___|#|__|_
-  |  post   \__  \ /  _/  |#| |              ___||_ \  axis /  ____|  boss  | | <- tower
-  |   |      V  block     |#| |             |   ||\  \____/  /|    | (nut)  | |
-  |___|___________________|_|_|             |___||_\  V    /_|____|___||___|_|
-   ===o========o===  tie rods                ===o=====\block/=====o==[collar]=== tie rods
+    bar  gauge's pad       knob (M6)                                post, and lead screw
+     ||   ____             _|_                         6 L        27 mm behind it: its knob
+     ||  |pad |  .-.      |#|                        .-'''-.          _[|#|]_ <- teeth, arm
+   __||__|____| ( O ) ____|#|_ <- tab + M6 nut      /       \       ___|#|__|_
+  | cheek   \__  \ /  _/  |#| |                ____ \  axis /  ____|  bosses| | <- tower
+  |  wall    V  block     |#| |               |    \ \____/  /|    |(nut)   | |
+  |___|___________________|_|_|               |_____\  V    /_|____|___||___|_|
+   ===o========o===  tie rods                  ===o===\block/=====o==[collar]=== tie rods
 ```
 
 - **Front:** the V block slides in a box (the carrier's walls, the front and back ones
@@ -494,35 +508,65 @@ from 76 to 174.
   in the carrier's floor, through the nut, its printed knob on its head over the wall. The
   knob stays put: turning it walks the nut, and the block, up or down (13 turns end to
   end). The block bears down on the nut, so the thread (self-locking) holds it.
-- **Rear:** the V block's two end bosses ride a NETRF12 post (12 mm, at -z) and a
-  Tr8 x 8 lead screw (+z, 8 mm a turn: 9 turns end to end), whose bronze barrel nut sits in
-  the boss from below, an M3 set screw on it. The post stands in the carrier's -z side
-  block; the screw's foot in the +z one, through its clamping collar in a pocket there on a
-  TPU brake washer. A tower on that block rises beside the screw to an arm over its top: a
-  bushing round the screw under the printed knob.
+  - The push at the tab is 40 mm off the box's middle, so it cocks the block onto the -z
+    wall's top and the +z wall's foot, and their friction grows with the push: a drawer.
+    The -z wall stands 12 mm taller (`cradle.FRONT_GUIDE`), a cheek up the block's -z face
+    along it: the pair 45 mm apart at every bottle's setting (32 before), the block jams
+    raising only past friction 0.56 (`cradle_report.drawers`; 3.3 x the most cited for
+    printed PETG on steel, oiled: the guide's faces are greased).
+- **Rear:** the V block's two bosses at its +z end ride a 15 mm steel post, nickel plated
+  (MISUMI PETR15-150), and 27 mm behind it a Tr8 x 8 lead screw (8 mm a turn: 9 turns end
+  to end), whose bronze barrel nut sits in its boss from below, an M3 set screw on it. Both
+  stand in the carrier's +z side block: the post in a socket 30 mm deep (a collar round
+  its top), an M8 button head up into it; the screw's foot through its clamping collar in
+  a pocket on a TPU washer. A tower on
+  that block rises beside the screw to an arm over its top: a bushing round the screw, and
+  a star of 12 teeth on it under the knob (`cradle.LOCK_TEETH`).
+  - The screw pushes the block up beside its guide, so it can't cock it: raising it jams
+    only past friction `engagement / 54` (the boss's 53 mm on the post's round, between
+    its wrench flats: 40.1 mm at a 750 ml's setting): 0.74 to 0.98, against the 0.24-0.30
+    measured for printed PETG on steel dry (`cradle_report.drawers`, a row per bottle in
+    `saddles`). (The post had been at -z, 213 mm across from the screw: it jammed past
+    0.15, 0.095 at a 750 ml's setting: review round 2, N1.)
   - An 8 mm lead isn't self-locking (the thread's lead angle, 20°, is over its friction's).
-    The collar holds it: the block's load presses the collar's 21 mm face on the TPU
-    washer, whose grip at that radius is 4.1 x the thread's turn back under the same load,
-    whatever the bottle (`cradle_report.saddles`, a greased thread). The knob turns easily
-    with the bottle out, when the block carries only itself.
-  - The screw holds the block at one end. A bottle's weight at the axis rolls the block
+    The knob locks it: it slides up and down a hex hub set-screwed on the screw's top, and
+    down, its underside's star socket sits over the arm's teeth, so the screw can't turn
+    (`cradle._lead_screw`). Lifted 3.6 mm off them, it turns the screw; let go and pressed
+    down, it locks it again, a twelfth of a turn at most from where it was (0.7 mm of the
+    block, 0.2 mm at the mouth). The teeth carry the thread's turn back under a hung 6 L,
+    greased, at 0.4 MPa. The collar's TPU washer under the block's load still slows the
+    screw with the knob lifted (4.1 x its turn back, dry; 0.8 x greased: not a hold).
+  - The screw holds the block at its +z end. A bottle's weight at the axis rolls the block
     about it, and the post takes that couple (it is 22 x stiffer than the lead screw's
-    core). That is why the post is 12 mm, not 10.
-  - The screw's knob sits at |z| 110, 11 mm outboard of a 6 L's widest as it's laid in
-    (the M8's was at 4). A knock at the knob goes into the tower's arm, not the screw, which
-    is held at both ends (`saddles`: 6.3 MPa in the tower at 50 N; the old free M8 yielded
-    at about 50 N).
-  - Gussets under the flats spread the couple into the block.
+    core): 15 mm, as it takes a 6 L hung a hair off the rods and the 1.2 kg riding the
+    block at 5.6 x its yield (12 mm, round 1's, took it at 2.96 x once the parts riding
+    the block were counted at their weight). Its friction also makes a loaded block hard
+    to drive down.
+  - The screw's knob sits at |z| 110, 10 mm outboard of a 6 L's widest as it's laid in.
+    A knock at the knob goes into the tower's arm, not the screw, which is held at both
+    ends (`saddles`: 6.4 MPa across the tower's layers at 50 N).
+  - A gusset under the +z flat, along both bosses, spreads the couple into the block. The
+    carrier's -z side block only rides the rods (15 mm wide), and the V shell is 7.5 mm
+    thick: what the 15 mm post adds in steel they take off in plastic, so the stand still
+    tips past 25° (B's rear edge, 25.02°).
 - **The scales:** grooves the V block's top edge (front) or its screw boss's top (rear, on
-  the tower's face) reads. One row has a groove per bottle, a dot each per place from the
-  top: in front three (`cradle.FRONT_GROUPS`: the 750 ml and the magnum share one, the two
-  6 L another; their necks rise the block 0.7 mm apart, so each pair is set at the mean,
-  0.45 mm off at the mouth), at the rear five. The other row is graded in diameter: the
-  neck's every 4 mm in front, the body's every 10 mm at the rear. No text is printed on
-  them: glyphs would depend on the fonts of the machine that builds the STL.
+  the tower's face) reads. One row has a groove per listed bottle, a dot each per place
+  from the top: in front three (`cradle.FRONT_GROUPS`: the 750 ml and the magnum share one,
+  the two 6 L another; their necks rise the block 0.7 mm apart, so each pair is set at the
+  mean, 0.45 mm off at the mouth), at the rear five. The other row is graded in diameter:
+  the neck's every 4 mm in front, the body's every 10 mm at the rear: a bottle is set by
+  its own (measured). No text is printed on them: glyphs would depend on the fonts of the
+  machine that builds the STL.
+- **The base stop's scale** (`cradle.stop_marks`): a plain length scale across the +z flat
+  and rail, a groove every 5 mm of a bottle's length (a long one every 10; one dot in front
+  of each 50 mm groove, three, four and five at 300, 400 and 500), the gate's face 2.5 mm
+  behind the length it reads. The gate's pointer reaches forward along the scale's outer
+  half with a vernier (`cradle.VERNIER`): four lines 6 mm apart, the k-th from the face
+  meeting a groove for a length k mm past one. (It had been a named groove per bottle:
+  review round 2, N2.)
 - **No depth added:** each carrier's bottom is the old saddle's (front -60, rear -149).
   The V block sits on the rods at its lowest, and its guides stand beside the bottle (|z|
-  91 to 126 at the rear, inside the bay's 130). `decanters.TIES` didn't move: neither
+  88 to 126 at the rear, inside the bay's 130). `decanters.TIES` didn't move: neither
   cradle re-plans.
 
 **Resting on both saddles** (`cradle_report.balance`; review round 1, B1). At rest the gate
@@ -534,21 +578,33 @@ since that round, 31-36 % of its length from the base: 390 mm from the mouth for
 methuselah), the reaction centred up to 482 mm from the mouth, 102
 past the rear V's end: the neck lifted off the front V and the bottle pivoted on the V's
 back edge. The base stop's rails now carry 45° flanges continuing the V behind the block,
-lined with TPU, so the rear support runs to 588 mm (the body's heel, 10 mm short of its
+lined with TPU, so the rear support runs to 580 mm (the body's heel, 10 mm short of its
 base, ends it for each bottle):
 
-| bottle | at rest | level | full tilt | its support's end |
-|---|---|---|---|---|
-| 750 ml | 223 | 191 | 199 | 290 |
-| magnum | 276 | 230 | 238 | 346 |
-| 3 L jeroboam | 397 | 325 | 334 | 460 |
-| 6 L impériale | 405 | 319 | 329 | 483 |
-| 6 L methuselah | 482 | 390 | 400 | 561 |
+| bottle | at rest | level | full tilt | its support's end | the rails' sag lifts the mouth (at rest, level, full) |
+|---|---|---|---|---|---|
+| 750 ml | 224 | 192 | 199 | 290.5 | - |
+| magnum | 276 | 230 | 238 | 346 | - |
+| 3 L jeroboam | 397 | 325 | 334 | 460 | 0.03 mm, -, - |
+| 6 L impériale | 405 | 319 | 329 | 483 | 0.10, -, - |
+| 6 L methuselah | 482 | 390 | 400 | 561 | 0.89, 0.14, 0.23 |
 
 The reaction's centre (mm from the mouth); every one at least 62 mm inside its support. At
 full tilt the lip gauge's push over the axis moves it back too (by the rim's height times
-tan 30°). The rails join the block in a socket under each flat, their tongues 28 mm in, so
-the body's load on the flanges' end goes into the block in bearing.
+tan 30°). The rear V block is rigid to its back end, 380 mm from the mouth; behind it the
+rails' flanges bend. A centre behind 380 rests the bottle on that end and the flanges'
+end, the flanges taking at most `W (x - 380) / (end - 380)` (39 N for the methuselah at
+rest); each rail, a cantilever from its socket, sags under its half and the bottle tips
+about the block's end, lifting the mouth (`cradle_report.balance`, at most
+`cradle_report.MOUTH_LIFT_MAX`, 1 mm). As the pour moves the centre in front of 380
+(about level for the methuselah) the lift goes smoothly back to nothing. (It had been
+taken as rigid; the rails' tongues rocked 0.6° in their sockets and the rails were half as
+stiff: 1.5 to 4 mm at the neck, review round 2, N3.) Each rail joins the block by a tongue
+under its flat, 29 mm into a socket: crush ribs along its top (`cradle.RIBS`, 0.2 mm of
+interference) press it down onto the socket's floor, where its two M5s hold it, so it sits
+with no play and its top flush with the flats. A keel down its outer face to the flange's
+bottom (`cradle.RAIL_KEEL`) doubles its stiffness (61 000 mm⁴, was 30 000), and the
+flange, the keel and the tongue end level at -91 mm, so it prints standing on them.
 
 **Why not the tie rods in vertical slots** (the first idea): the slot would have to run
 the whole travel under the rod, so the rear block would hang 69 mm deeper at a 6 L's
@@ -569,13 +625,28 @@ sliding toward its mouth past level. A lip over the base's heel can't: the heel 
 toward the base, and nothing on the bottle faces the mouth but the shoulder and the
 mouth's own face. A shoulder stop would need a third adjustment, 45 mm along the axis
 (and the light stands there). The gauge is at the pivot by construction, for any bottle.
-Its pad bears on the top of the rim, over the bore; the stream leaves the bottom of the
-bore, and the decanter is below. Its bar runs back beside the neck, so the bottle lays in
-under nothing; a bottle's push on the pad is 41 mm off the hinge's line, and the hinge's
-two knuckles either side of the post take that turn on the pin (the push itself bears the
-back knuckle on the post's back face, not on a thread). It can't be forgotten up: lifted
-to uncork, it stops at 70° with its centre of mass still inboard of the hinge, and falls
-back onto the mouth when let go.
+Its pad bears on the top of the rim, over the bore, 3.25 mm down a 750 ml's rim (its ring
+27.5 mm across) and clear of a methuselah's 20.5 mm bore; the stream leaves the bottom of
+the bore, and the decanter is below. (An impériale's bore, 31.5 mm across, has its top
+5 mm under the pad: the first of a pour runs down the pad's back into the stream.) Its
+bar runs back beside the neck, so the bottle lays in under nothing; a bottle's push on the
+pad is 41 mm off the bolt's line, and the gauge's two cheeks either side of the post take
+that turn on the bolt (the push itself bears the back cheek on the post's back face, not
+on a thread).
+
+**Why the gauge is fixed** (review round 2, N4 and m2): it had hinged up to uncork and
+fallen back by its own weight, a turn only 1.3 x its hinge's friction at rest (0.8 N·mm
+against 0.6 at a printed hinge's 0.3): dried wine, or a nut done up a little tight, would
+hold it up, and a bottle cranked past level with it up slides forward up to 45 mm. And
+uncorking in the cradle was three tasks for two hands (the gauge, the neck, the
+corkscrew), the bottle spinning in its Vs. Uncorked standing on the table, the bottle goes
+in already open (the -50° rest exists for that), and the gauge needs no hinge, no stop and
+no return. Its bridge sits flat on the post's flat top, the bolt 6.5 mm under it: to turn
+about the bolt one edge of the bridge would have to sink into the post
+(`cradle.gauge_fixed`); a 50 N knock on the pad bears 306 N on the post top's edge, 8.3
+MPa. A bottle set too long can't lie in under it (its rim meets the pad: move the gate
+back), where the hinged gauge rode up onto the rim. A 50° stop (about 3 x the friction)
+or a TPU spring would have kept the hinge.
 
 **Why the base stop rides the V block:** a 750 ml's base (300 mm) and a magnum's (356) lie
 inside the rear V (255-380), where the old spine couldn't reach. A gate across the V,
@@ -585,20 +656,25 @@ height at every setting. It drops the 155 g spine; at rest it comes no nearer th
 than 26 mm (the old rails' end had been 18.8 mm over it, under a finger's 25 mm).
 
 **Use** (the guide's "Setting it for a bottle"):
-1. At rest, the bottle out, set all three by their scales: the gate's pointer to the
-   bottle's groove across the rail or flat, its knob tight by hand; each V block's reading
-   edge to the bottle's groove (a dot per place on every scale). Another bottle: its length
-   (plus half a millimetre) on the 10 mm grooves, its neck's diameter measured 50-80 mm
-   from the lip (where the front V holds it: a Port bottle's bulb or a tapered neck sets by
-   that), its body's.
-2. Lay the bottle in, its label up, its base to the gate: it slides back onto it. The
-   gauge stays down; its pad stands a millimetre or less in front of the rim.
-3. To uncork, lift the gauge onto its stop and hold it (or let it rest on the corkscrew);
-   let go and it falls back onto the mouth. It must be down before the handle turns.
+1. Measure the bottle, every one: its length standing on the table, base to lip, to the
+   millimetre; its neck's diameter 80 mm down from the lip (where the front V holds it: a
+   Port bottle's bulb or a tapered neck sets by that); its body's where it lies in the
+   rear V, 255 mm from the lip and on (the 1855 and Icon 750s taper 84.8 to 79.4 and 82 to
+   75.8 mm). Uncork it there, standing on the table.
+2. At rest, the bottle out, set all three: the gate's face to the bottle's length on the
+   5 mm grooves, its vernier for the millimetres, its knob tight by hand, then tug the gate
+   toward the saddle: it must not move; each V block's reading edge to the bottle's
+   diameters on the graded rows (or a listed size's groove). The rear knob turns only
+   lifted off its teeth; let go and pressed down, it locks the screw.
+3. Lay the bottle in base first, its label up: its heel on the rails just in front of the
+   gate, slid back against it, then the neck lowered into the front V, the rim passing
+   behind the gauge's pad (it won't go down if the bottle is longer than set: the gate
+   back). The pad's bottom edge covers the rim's top, 2 to 4 mm in front of it.
 
-**The parts** (prices from pages rendered 2026-10-13 and 2026-10-14, qty 1, per cradle;
-the sourcing in `/root/scratch/decant/saddles/sourcing/` and
-`/root/scratch/decant/review5/r1_mounting/pages/` on the development box):
+**The parts** (prices from pages rendered 2026-10-13 to 2026-10-15, qty 1, per cradle;
+the sourcing in `/root/scratch/decant/saddles/sourcing/`,
+`/root/scratch/decant/review5/r1_mounting/pages/` and
+`/root/.cache/spiderpig/tmp/r2fix/pages/` on the development box):
 
 | part | where | USD |
 |---|---|---|
@@ -607,55 +683,67 @@ the sourcing in `/root/scratch/decant/saddles/sourcing/` and
 | its clamping collar, 21 x 9 mm, aluminium | ServoCity 3504-0804-2109 | 6.99 |
 | M6 x 60 tap bolt, fully threaded, 18-8 | Bolt Depot 5973 | 0.60 |
 | M6 hex nut, 18-8 | Bolt Depot 4776 | 0.11 |
-| NETRF12-130 standoff (the rear post) | MISUMI | 16.98 |
-| M6 x 12 button head (the post's foot) | Bolt Depot 6644 | 0.19 |
+| PETR15-150 standoff, 15 mm, nickel plated (the rear post; review round 2, N1 and m3) | MISUMI (2026-10-15) | 19.25 |
+| M8 x 12 button head (the post's foot) | Bolt Depot 6654 (2026-10-15) | 0.40 |
 | M5 x 16 button heads: the rails' four | Bolt Depot 6634 | 4 x 0.14 |
 | M5 x 25 tap bolt (the base stop's lock) | Bolt Depot 5952 | 0.22 |
 | M5 nut and two fender washers (in its T-slot, on its ear) | Bolt Depot 4775, 7314 | 0.07 + 2 x 0.10 |
-| M5 x 40 tap bolt and nylon-insert nut (the gauge's pin) | Bolt Depot 5955, 4794 | 0.34 + 0.09 |
-| M3 x 6 set screws: the barrel nut's, the rear knob's | Bolt Depot 8707 | 2 x 0.09 |
+| M5 x 40 tap bolt and nylon-insert nut (the gauge's bolt) | Bolt Depot 5955, 4794 | 0.34 + 0.09 |
+| M3 x 6 set screws: the barrel nut's, the rear knob's hub's | Bolt Depot 8707 | 2 x 0.09 |
 
-That is about USD 38.50, USD 14.70 more than with the M8 screw and coupling nut, the screw,
-its nut and collar most of it (a 3D printer's T8 x 8 kit off the shelf, screw, nut and
-collar, would do; ServoCity's are the ones priced). Everything else is printed: the two
-carriers, the two V blocks, the TPU liners (the Vs' and the rails' flanges') and the
-rear screw's brake washer, three knobs, the gauge, the rails and the gate.
+That is about USD 41.00 (38.50 with round 1's bare NETRF12-130 post and its M6 x 12: the
+post and its screw are review round 2's only bought change; the same day a plated 12 mm,
+PETRF12-130, is 21.79, a 15 mm without flats, PETRF15-130, 29.43).
+Everything else is printed: the two carriers, the two V blocks, the TPU liners (the Vs' and
+the rails' flanges') and the rear screw's brake washer, three knobs and the rear one's hub,
+the gauge, the rails and the gate; those that carry the bottle in PETG, solid
+(`cradle.PETG_PARTS`; on hand).
 
 **What holds** (`cradle_report.saddles`; a sealed full bottle, its worst way for each part,
-its centre of mass the shell model's; printed parts against 10 MPa, a quarter of
-printed PLA's strength across its layers, for a load that stays):
+its centre of mass the shell model's). Each printed part is rated against its cited
+strength in its layers or across them as it prints (`cradle_report.PRINTED`: Prusament
+PETG's datasheet, 47 MPa in its layers, 18 across them, printed solid; PLA's 51 and 17):
+a quarter for a load that stays, 1/2.5 for the pour's or a knock's. Steel against its
+yield, 3 x; a grip at the least friction cited (printed PETG on steel: 0.24-0.30 dry,
+0.13-0.17 oiled: Stoimenov et al., Tribology in Industry 46(1), 2024), 2 x:
 
-| part | load | stress |
-|---|---|---|
-| rear V block on its rods' seats | 109 N (a 6 L, level) | 0.28 MPa |
-| rear barrel nut on the block | 116 N (a 6 L hung) | 2.2 MPa |
-| rear post, bending | 12.2 N·m roll, a 6 L hung at the screw | 72 MPa (SF 3.05 on 1018's 220) |
-| rear post at rest | 12.1 N·m: a hung impériale's pull along the axis, 121 mm over its root, and its roll | 71 MPa (SF 3.1) |
-| rear lead screw | its share of the roll; a 50 N knock between its nut and bushing | 33, 56 MPa (SF 6.4, 3.8) |
-| rear lead screw's brake | the block's load on the collar's TPU washer | 4.1 x the thread's turn back |
-| rear knob's tower | a 50 N knock at the knob | 6.3 MPa |
-| base stop's gate, bending | 96 N at rest (with a corkscrew's push) | 5.4 MPa |
-| base stop's lock | 96 N | its grip 300 N (SF 3.1: 0.5 N·m by hand, two faces) |
-| base stop's T-slot lips | the lock's 500 N preload | 6.9 MPa |
-| base stop's rails at their sockets | 6.5 N·m each: a 6 L's body on the flanges' end, level | 4.1 MPa |
-| the sockets' floors | 346 N under each tongue's end | 7.7 MPa |
-| lip gauge's pad, arm, bar, bridge | 54 N at full tilt (no friction) | 1.1, 2.6, 8.4, 5.9 MPa |
-| lip gauge's post | the same, bent and twisted (its 41 mm turn) | 6.4 MPa |
-| lip gauge's pin (M5) and the post's bore | the knuckles' 89 N couple | 42 MPa (SF 4.9); 7.5 MPa bearing |
+| part | load | stress | SF (bar) |
+|---|---|---|---|
+| rear V block on its rods' seats | 109 N (a 6 L, level) | 0.28 MPa | 169 (4) |
+| rear barrel nut on the block | 121 N (a 6 L hung with what rides the block, 1.2 kg) | 2.3 MPa | 21 (4) |
+| rear post (15 mm), bending | 13.0 N·m roll, a 6 L hung at the screw | 39 MPa | 5.6 on 220 (3) |
+| rear post at rest | 12.9 N·m: a hung impériale's pull along the axis, 121 mm over its root, and its roll | 39 MPa | 5.6 (3) |
+| rear post's socket, 30 mm deep | the post's couple, as bearing | 5.8 MPa | 8.1 (4) |
+| rear lead screw | its share of the roll; a 50 N knock between its nut and bushing | 33, 56 MPa | 6.4, 3.8 (3) |
+| rear V block at the post's boss | the post's share of the roll | 0.9 MPa | 53 (4) |
+| rear lead screw's lock (the knob's teeth) | 115 N·mm: a 6 L hung, the thread greased | 0.4 MPa | 111 (4) |
+| rear lead screw's brake, the knob lifted | the block's load on the collar's TPU washer | 4.1 x the thread's turn back dry, 0.8 x greased | told, not the hold |
+| rear knob's tower, across its layers | a 50 N knock at the knob | 6.4 MPa | 2.8 (2.5) |
+| the V blocks' guides raised (`cradle_report.drawers`) | rear: 40.1-53 mm engaged, 27 mm off; front: 44.9 mm, 40 mm off | jam past 0.74-0.98; 0.56 | 2.5-3.3 on 0.30 dry; 3.3 on 0.17 greased (2) |
+| base stop's gate, bending | 96 N at rest (with a corkscrew's push) | 5.4 MPa | 8.7 (4) |
+| base stop's lock | 96 N | its grip 240 N at 0.24 (0.5 N·m by hand, two faces) | 2.5 (2) |
+| base stop's T-slot lips | the lock's 1000 N preload at a firm hand's 1 N·m | 11.0 MPa | 4.3 (4) |
+| base stop's rails at their sockets | 5.3 N·m each: a 6 L's body on the flanges' end at rest | 1.9 MPa | 25 (4) |
+| their tongues where they leave the sockets; the ribs; the sockets' floors | the same | 11.1; 6.1; 6.3 MPa | 4.2; 7.7; 7.5 (4) |
+| lip gauge's pad, arm (across), bar, bridge | 54 N at full tilt (no friction) | 1.2, 2.6, 8.4, 5.7 MPa | 40, 7.0, 5.6, 8.3 (2.5) |
+| lip gauge's post, across its layers | the same, bent and twisted (its 41 mm turn) | 6.2 MPa | 2.9 (2.5) |
+| lip gauge's bolt (M5) and the post's bore | the cheeks' 89 N couple | 42 MPa; 7.5 MPa bearing | 4.9 (3); 6.3 (2.5) |
+| lip gauge on its post | a 50 N knock on its pad: 306 N on the post top's edge | 8.3 MPa | 5.7 (2.5) |
 
 The V blocks carry no jam load: the tie rods and the cradle links do.
 
-**What they weigh:** the saddles, the gauge and the base stop come to about 1.6 kg, solid
-(the report counts a printed part at full infill), 0.3 kg more than with the M8 screw, most
-of it the rails' flanges 100-210 mm behind the rear V. With a sealed full 6 L at its
-shell model's centre of mass (390 mm) that puts the crank's peak at 35.1 N·m on B (34.3 with
-the old saddles: the gearbox's SF 1.28, was 1.31; 26.0 N at the grip, was 25.4) and 36.9 on
-A (36.0: SF 1.22, was 1.25; 26.0 N); the stand tips over its rear edge at 25.0° on B and
-24.1° on A. B's gearbox (its 1.3 bar) and both grips (the relaxed 26 N bar) are past what
-the tests ask: the drive's to settle (2026-10-14). Round 1's drive set both bars on cited
-sources ("The drive"): the gearbox rated at a hand's speed, 1.65 on B and 1.57 on A; the
-grip under MIL-STD-1472H's 22 N, 20.8 N on B's 125 mm crank. A's 85 mm crank (the longest
-its cradle clears) takes 32.2 N: open. B's board is 682 mm (25.1°).
+**What they weigh:** the printed parts of the saddles, the gauge and the base stop come to
+about 1.5 kg, solid (1220 cm³: the report counts a printed part at full infill, the parts
+that carry the bottle at PETG's 1.27 g/cm³), the 15 mm post 0.20 kg. Review round 2 left
+the printed volume as it was (1223 cm³ before: the rails' keels and the knob's hub against
+a thinner V shell and a narrower carrier) and added about 90 g of steel in the post: the
+cradle stands 0.12 kg heavier (12.79 kg on B, 11.59 on A). With a sealed full 6 L at its shell model's centre of mass (390 mm) the crank's peak is
+35.4 N·m on B (35.1 before: the gearbox's SF 1.27, was 1.28; 21.0 N at the grip, was 20.8)
+and 37.2 on A (36.9: SF 1.21, was 1.22; 32.4 N, was 32.2); B's stand tips over its rear
+edge at 25.02° (25.08), A's at 23.9° (24.0). B's gearbox (its 1.3 bar) and both grips are
+the drive's to settle; the gearbox rated at a hand's speed is 1.64 on B and 1.56 on A, and
+A's slip clutch still clears the worst starting turn by 1.10 (its floor 1.1). B's board is
+682 mm.
 
 **Review round 1** (the same day; `/root/scratch/decant/review5/r1/mounting.md` on the
 development box). What it found, and what changed:
@@ -680,6 +768,47 @@ development box). What it found, and what changed:
 - **Not done:** the rails still reach 600 mm for every bottle (m10); the light stays the
   penlight (m6, S4); the tie rods stay NETRF10 (S5); the post's socket isn't deeper (m2: the
   post itself is rated at rest instead, SF 3.1).
+
+**Review round 2** (the same day; `/root/scratch/decant/review5/r2/mounting.md` on the
+development box). What it found, and what changed:
+- **The rear V block jammed raising it (N1, the blocker).** Its one post stood at -z,
+  213 mm from the screw that pushes it up: past a friction of 0.149 on the post (0.095 at a
+  750 ml's setting) no push lifts it, and printed plastic on steel measures 0.2-0.3. The
+  post moved beside the screw at +z, 27 mm in front of it: it jams only past 0.74 (a
+  750 ml's setting) to 0.98; `cradle_report.drawers` rates both guides at every bottle's
+  setting, and `saddles` lists them.
+- **The scales fitted one bottle per size, and the setting 0.7 mm (N2).** The base stop's
+  named grooves became a plain length scale with a vernier on the gate's pointer, the gate
+  2.5 mm behind the base (it had been 0.5), and the guide measures every bottle. Of
+  `cradle.SIZES` against the makers' pages: the 750 ml became Saverglass's 4427 (300.5 mm,
+  it had been 300; its centre of mass 192 mm from the mouth); the 3 L is Saverglass's Jero
+  Vignoble (470.3 x 140.8 mm, 2.9 kg, the record's), the reviewer's 474.3 x 135.2 their
+  Standard: both lie in it at their own settings (`bottle_hits`), as do 750s of 308 and
+  315 mm; the 6 Ls and the magnum match to 0.2 mm.
+- **The 6 L's rails rocked in their sockets (N3).** Crush ribs on the tongues, the
+  clearance moved above them so they sit on the sockets' floors, a keel on each rail (2.0 x
+  as stiff); `balance` rates the flanges' sag at the mouth (0.89 mm at rest at worst, 0.23
+  past level; 1.5-4 mm before).
+- **The lip gauge's return beat its friction by 1.3 x (N4).** Fixed: no hinge; a bottle
+  is uncorked standing before it goes in (and m2's three tasks for two hands go with it).
+- **The rear brake was friction only, beside a greased screw (N5).** The knob drops onto a
+  ring of teeth that lock the screw; the grease note keeps grease to the thread above the
+  collar, off the collar, the washer and the teeth.
+- **The printed parts' 10 MPa was not a quarter of anything cited, and two parts bent
+  across their layers (N6, m9).** Each row rated against Prusament's cited strength in or
+  across its layers, by how it prints; the parts that carry the bottle in PETG at 100 %
+  infill (their stresses are solid sections'); the rails print standing (their T-slot's
+  lips bend in their layers), the gauge on its side; the T-slot's lips 5.5 mm (5), to take
+  a firm hand's 1 N·m on the lock.
+- **Minor:** base first when loading (m1); uncork standing (m2); the post nickel plated,
+  and 15 mm (it had taken a hung 6 L at 2.96 x its yield, under the 3 asked), MISUMI
+  PETR15-150, USD 19.25, on an M8 x 12 (m3); the pad's bottom 0.5 mm lower, 3.25 mm down a 750's
+  rim, and the guide measures the neck 80 mm from the lip and the body where it lies (m4);
+  the front V's box guide 45 mm tall at its push's side, greased (m5); a drain from the
+  T-slot's low end through the +z rail's keel (m6); "tug the gate" in the setting steps
+  (m7); the T-slot's ends chamfered 0.5 mm where block and rail meet (m8). And, to pay
+  for the 15 mm post's weight, the rear V shell 7.5 mm (9) and the carrier's -z block 15 mm
+  wide (29): the printed mounting parts 1220 cm³ solid (1223 before).
 
 ## The vessel under the mouth
 
@@ -1285,8 +1414,9 @@ The assembly guide's order is `construction.assembly.CRADLE_ORDER`:
    - its stack, from outside: the pillar goes up through the cradle link;
    - what goes over the link, then its inner plate, then its brackets and cleats (as the
      drive side's), its knobs snugged last, after a whole pour.
-5. **The hand crank**, then **the bottle:** set the cradle for it (the two knobs, the lip
-   gauge, the base stop), then decanting; on B, taking it apart for the trip and putting
+5. **The hand crank**, then **the bottle:** measure and uncork it, set the cradle for it
+   (the two knobs and the base stop; the lip gauge checks it), then decanting; on B, taking
+   it apart for the trip and putting
    it back together ("Flat pack").
 
 Things to know before cutting and on the bench:
@@ -1349,16 +1479,14 @@ Things to know before cutting and on the bench:
   cradle's force grows without bound however the clutch is set: nothing under the cradle
   box or the bottle there.
 - **Letting go stops the bottle, not the stream:** to stop it, turn back about a turn.
-- **The lip gauge down before the bottle passes level:** it falls back by itself, so
-  check nothing holds it up (a corkscrew left in the cork); with it up a wet bottle slides
-  forward at full tilt, its mouth off the pivot over the decanter.
-- **Uncork at rest**, the base stop set: lift the lip gauge onto its stop and hold it, or
-  let it rest on the corkscrew, holding the neck, a corkscrew's lever lifted straight up;
-  let go and the gauge falls back onto the mouth. Not a
-  sparkling wine under pressure: at rest the mouth points 50° up toward the front (the 6 L
-  methuselah is a Champagne bottle); ease such a cork out by hand first, the mouth pointed
-  away from people.
+- **Uncork standing on the table, before the bottle goes in** (since review round 2: the
+  lip gauge is fixed over the mouth): a sparkling wine under pressure the same, its cork
+  eased out by hand, the mouth pointed away from people. The -50° rest takes an opened
+  full bottle.
+- **The rear knob down on its teeth** whenever a bottle is in: lifted, only the brake
+  washer slows the lead screw.
 - **Lift it** by its base board in use; to take it off the board, by its outer plates' top
   members, never by the cradle box or the hand crank.
-- **PLA softens at about 55 °C:** a cradle that travels in a hot car wants the hand crank,
-  the brackets and the thumb knobs in PETG.
+- **PLA softens at about 55 °C:** the parts that carry the bottle are PETG (68 °C); a
+  cradle that travels in a hot car wants the hand crank, the brackets and the thumb knobs
+  in PETG too.
