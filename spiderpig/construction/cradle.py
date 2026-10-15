@@ -55,7 +55,7 @@ import itertools
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import numpy as np
 from build123d import Axis as BAxis
@@ -80,9 +80,6 @@ from spiderpig.hardware.fasteners import Screw, screw
 from spiderpig.mechanism import Body, Mechanism
 from spiderpig.shapes import Cut, Shape3D, cut_holes, difference, disc, moved, pill, union
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
-
-if TYPE_CHECKING:
-    from spiderpig.construction.assembly import Scene
 
 LIP_HEIGHT = 550.0      # the bottle's mouth over the table (mm): at rest, 50° neck up, the
 #                         base stop (set for a 6 L) hangs about 507 mm under it, 26 mm
@@ -2722,7 +2719,7 @@ def assembly(view) -> list:
         parts = {"setting": [n for n in ("bottle",) if n in view.z],
                  "riser": [*plates, *(n for n in ("decanter",) if n in view.z)]}
         ops.append(Op(USE, (i,), whole(*parts.get(u.tag, ())), u.title, u.lines[0], u.tag,
-                      count=False, lines=u.lines[1:], scene=u.scene))
+                      count=False, lines=u.lines[1:], scene=cast(Scene | None, u.scene)))
     if key in PACK_POSES:
         from spiderpig import linkage
 
@@ -2735,7 +2732,8 @@ def assembly(view) -> list:
             for i, m in enumerate(trip, 1):
                 ops.append(Op(USE, (tag, i), (), f"{head} {i}/{len(trip)}: {m.title}",
                               (intro if tag == "pack" and i == 1 else "") + m.text,
-                              f"{tag}_{i:02d}", count=False, lines=m.lines, scene=m.scene))
+                              f"{tag}_{i:02d}", count=False, lines=m.lines,
+                              scene=cast(Scene | None, m.scene)))
     return ops
 
 
@@ -2751,7 +2749,7 @@ class UseStep:
     tag: str
     title: str
     lines: tuple[str, ...]
-    scene: Scene | None = None
+    scene: object = None      # a construction.assembly.Scene
 
 
 def grip_at_slip_n(key: str) -> float:
@@ -3225,7 +3223,7 @@ class ModuleStep:
     text: str
     tag: str = ""
     lines: tuple[str, ...] = ()
-    scene: Scene | None = None
+    scene: object = None      # a construction.assembly.Scene
 
     @property
     def words(self) -> str:

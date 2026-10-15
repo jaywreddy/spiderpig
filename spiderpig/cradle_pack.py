@@ -10,7 +10,8 @@ board, the two side panels, the cradle box and its hand crank
 1. the hand crank off (its thumb screw): nothing turns without it;
 2. the cradle off the base board (the brackets' thumb knobs: the carriage bolts stay in the
    board, the washers and knobs back on them), by its outer plates' top members;
-3. the cradle laid on its drive side (the gearbox down), on a towel;
+3. the cradle laid on its drive side on a towel, on its gearbox and the riser's two
+   blocks (``construction.cradle.LAY_BLOCKS``: it lies level);
 4. the clips of the cradle link's pins on the passive side out from the bay (B's X and Y:
    quick-release clevis pins, :mod:`construction.pivots.clevis`; they go back in the pins'
    holes);
@@ -25,11 +26,13 @@ board, the two side panels, the cradle box and its hand crank
    tipped onto its cradle box once the pins cleared, and the panel fell the other way.)
 
 It goes back together the other way (the payload's ``reassembly``): the drive side on its
-drive side, the cradle box lowered onto its pins (pin X, then the box turned about it and
-b5 swung until pin Y drops in), their clips in; the passive panel's links set to the pose by
-paint marks (taped while it turns over), the panel lowered level onto the cradle link's
-holes, the clips in, the cradle stood up onto the board between its cleats, its passive
-side's knobs snugged last after a whole pour, the first build's checks again.
+blocks, the cradle box lowered onto its pins, its weight held until both are in (pin X, then
+the box turned about it and b5 swung until pin Y lines up: never resting on a pin's tip,
+which would push it out through its keeper), their clips in; the passive panel's links set
+to the pose by paint marks (b3 taped to its bar while it turns over), the panel lowered
+level onto the cradle link's holes the same way, the clips in, the cradle stood up onto the
+board between its cleats, the riser back in its locator, the passive side's knobs snugged
+at level, the first build's checks again. Each resting pose is rated (:func:`rest_poses`).
 
 **Flat** (:func:`pieces`: A, whose cradle link rides pillar G between its side's plates).
 The cradle comes apart where it is already fastened, with no new joint, in the order
