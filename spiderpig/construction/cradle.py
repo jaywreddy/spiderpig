@@ -652,11 +652,13 @@ class CradleTies(Group):
             return [Op(STACK, (k, 1), whole(link), "", "", "cradle_link")]
         lk = view.ctx.config.lk
         clipped = sorted(j for j in lk.links[link][0] if f"pin_{j}_clip" in view.z)
-        keep = (f" Before it goes on, pin{'s' if len(clipped) > 1 else ''} "
-                f"{' and '.join(clipped)}' TPU keeper (the ring printed in TPU over the link "
-                "the pin stands in) pushed down onto that link: firm, it grips the pin, and it "
-                "is what holds the pin in its link when the side lies down with its clip out "
-                "(the trip's breakdown; both sides' keepers)." if clipped else "")
+        many = len(clipped) > 1
+        keep = (f" Before it goes on, the TPU keeper of pin{'s' if many else ''} "
+                f"{' and '.join(clipped)} (the ring printed in TPU over the link "
+                f"{'each' if many else 'the'} pin stands in) pushed down onto that link: "
+                "firm, it grips the pin, and it is what holds the pin in its link when the side "
+                "lies down with its clip out (the trip's breakdown; both sides' keepers)."
+                if clipped else "")
         return [Op(STACK, (k, 0, "ties"), whole(link), "Cradle link and tie rods",
                    "The four tie rods onto the cradle link, an M5 button head "
                    "through the link from its leg side into each (threadlocker); the rods "
