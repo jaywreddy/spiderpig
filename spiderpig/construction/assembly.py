@@ -30,6 +30,8 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 
+from spiderpig.hardware.sheet_catalog import SCS_DEBURR_MM
+
 STACK, UNIT, JOIN = "stack", "unit", "join"
 CHASSIS, WIRING, DECK, OTHER = "chassis", "wiring", "deck", "other"
 CRADLE, FINISH, USE = "cradle", "finish", "use"     # a decanting cradle's own stages
@@ -215,6 +217,28 @@ USE_TAGS: tuple[tuple[str, ...], ...] = (("where",), ("setting",), ("riser",), (
 alphabetically, the trip apart before the setting); the trip's own (``pack_01`` ...,
 ``unpack_01`` ...: ``construction.cradle.module_steps``) follow, by tag."""
 
+def _inch(mm: float) -> str:
+    return f"{mm / 25.4:g}"
+
+
+CRADLE_ARRIVAL = (
+    "First the cut parts, as they arrive. SendCutSend deburrs only parts of at least "
+    f"{_inch(SCS_DEBURR_MM[0])} x {_inch(SCS_DEBURR_MM[1])} in: narrower links come as cut "
+    "(ORDER.md's upload list marks them \"as cut\"). Deburr each by hand before it is "
+    "stacked, both faces and each pin hole's edges (a deburring tool, then fine sandpaper "
+    "on a flat block). Caliper every link at its pin holes and note it: a sheet may run "
+    "thick (SendCutSend's tables: up to +0.69 mm at 0.250 in, +0.23 mm at 0.187 in), and "
+    "the pivot pins are ordered from these figures (ORDER.md: each pin's stack + 0.3 mm).")
+"""What a cradle's guide says of the cut parts before the first one goes on (design review
+round 2's M3 and M5: the links SendCutSend can't deburr, the sheets' thickness against the
+pins' take-up; the parts themselves are named in ORDER.md, :func:`hardware.bom.hand_deburred`)."""
+CRADLE_FLAT = (
+    "Lay the base board on the flat table first: SendCutSend's sheet is flat to +/- 0.030 in "
+    "a foot before cutting (about 1.7 mm over the board). If it bows, its concave face goes "
+    "down (the cradle's weight then flattens it), and its cleats are glued on that way.")
+"""A cradle's board flatness check (design review round 2's minor 9), before the drive side
+stands on it and before its cleats are glued."""
+
 CRADLE_ORDER: tuple[Stage, ...] = (
     # a decanting cradle (construction.cradle): the drive side bottom up with its tie rods,
     # bolted to the base plate (it can't stand alone: the gearbox outboard, the rods and
@@ -222,7 +246,8 @@ CRADLE_ORDER: tuple[Stage, ...] = (
     # the rods, its stack slid in from outside, what goes over the link, its inner plate
     # last (2026-10-10 review round 2: the plate had gone on a bay tie A doesn't have)
     Stage(STACK, "L", "Drive side: stack",
-          intro="The drive side (the crank's) is built bottom up on its outer frame plate, "
+          intro=CRADLE_ARRIVAL + " "
+                "The drive side (the crank's) is built bottom up on its outer frame plate, "
                 "in the plan's layer order, the gearbox under the plate first: it stands "
                 "the plate up off the bench while the stack goes on. The steel standoffs "
                 "(tie rods, columns, pillars, the crank's) are bare 1018 steel: wipe each "
@@ -243,8 +268,8 @@ CRADLE_ORDER: tuple[Stage, ...] = (
                 "under the inner plate."),
     Stage(FINISH, None, "Drive side onto the base board", where="robot",
           tags=(("base",),), strict=True,
-          intro="The drive side stands on the base board from here on, the board bare: its "
-                "cleats and its finish go on once both sides stand on it."),
+          intro=CRADLE_FLAT + " The drive side stands on the base board from here on, the "
+                "board bare: its cleats and its finish go on once both sides stand on it."),
     Stage(FINISH, None, "Hand crank", where="robot", tags=(("handle",),), strict=True,
           intro="On now, to turn the crank for the checks to come."),
     Stage(FINISH, None, "Toggle flag", where="robot", tags=(("flag",),), strict=True),

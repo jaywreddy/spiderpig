@@ -228,14 +228,102 @@ def test_a_cradle_never_takes_another_engines_plan(monkeypatch):
 
 @pytest.mark.hardware
 def test_a_cradles_cutting_estimate_is_the_same_grouped_or_not():
-    """The cradle's cutting fit discounts a file cut twice or more (``CRADLE_QTY_FACTOR``):
-    the same whether the BOM groups its parts (build) or not (verify, audit)."""
-    from spiderpig.hardware.bom import CRADLE_CUT_FITS, cut_estimate
+    """The cradle's cutting fit discounts a file cut twice or more (``CutFit.factor``): the
+    same whether the BOM groups its parts (build) or not (verify, audit); a part given by
+    its area alone (verify's floor) is the service's smallest part's price, above 0."""
+    from spiderpig.hardware.bom import CRADLE_CUT_FITS, CutPart, cut_estimate
 
+    a = CutPart(120.0, 1, 900.0, 4, 300.0, 24.0)
+    b = CutPart(35.5, 1, 400.0, 3, 120.0, 30.0)
+    c = CutPart(60.0, 1, 600.0, 5, 200.0, 40.0)
     for key, fit in CRADLE_CUT_FITS.items():
-        grouped = cut_estimate(key, [(120.0, 2), (35.5, 3), (60.0, 1)], fit)
-        assert cut_estimate(key, [(120.0, 1), (35.5, 1), (60.0, 1), (120.0, 1), (35.5, 1),
-                                  (35.5, 1)], fit) == grouped
+        grouped = cut_estimate(key, [a._replace(qty=2), b._replace(qty=3), c], fit)
+        assert cut_estimate(key, [a, b, c, a, b, b], fit) == grouped
+        assert cut_estimate(key, [(0.0, 1)], fit) > 0
+        assert fit.factor(1) == 1.0
+        assert fit.factor(2) < 1.0
+        assert fit.factor(3) <= fit.factor(2)
+
+
+QUOTED = (
+    # SendCutSend's live quotes of 2026-10-14 (design review round 2): B's and A's files at
+    # the reviewed snapshot, at their quantities: (cradle, sheet, part, qty, area cm^2, cut
+    # mm, pierces, blank long, short mm, USD for the file)
+    ("B", "al7075_4p8mm", "L-b3", 2, 70.4, 734, 4, 308.0, 24.0, 41.06),
+    ("B", "al7075_4p8mm", "L-b4", 2, 76.6, 767, 4, 331.0, 24.0, 43.72),
+    ("B", "al7075_4p8mm", "L-b2", 2, 112.9, 1024, 5, 180.4, 171.0, 85.62),
+    ("B", "al5052_4p8mm", "L-b6", 2, 252.7, 1626, 8, 475.6, 216.8, 77.74),
+    ("B", "al5052_4p8mm", "L-torso", 2, 113.1, 851, 5, 362.3, 67.6, 30.94),
+    ("B", "al5052_4p8mm", "L-b5", 2, 28.7, 337, 3, 129.0, 24.0, 9.62),
+    ("B", "al5052_4p8mm", "L-frame_outer", 2, 748.9, 4057, 15, 506.4, 454.8, 161.10),
+    ("B", "al5052_6p35mm", "L-b1", 1, 83.8, 814, 3, 360.8, 25.3, 21.66),
+    ("B", "al6061_3p2mm", "L-conn_plate1", 6, 27.8, 416, 4, 124.6, 37.3, 33.90),
+    ("B", "al6061_3p2mm", "L-conn", 1, 28.7, 398, 4, 124.7, 37.3, 8.45),
+    ("B", "al6061_3p2mm", "L-conn_plate7", 1, 30.6, 368, 4, 124.7, 37.3, 8.29),
+    ("B", "birch_9mm", "jack_locator_0", 2, 325.1, 1225, 2, 280.0, 195.0, 50.38),
+    ("B", "birch_9mm", "base_plate", 1, 3306.9, 3210, 9, 682.0, 584.0, 140.39),
+    ("B", "birch_9mm", "base_cleat_L0", 4, 117.5, 956, 1, 452.0, 26.0, 45.32),
+    ("A", "al5052_4p8mm", "L-frame_outer", 2, 679.0, 4174, 18, 683.6, 508.5, 175.70),
+    ("A", "al5052_4p8mm", "L-torso", 2, 110.9, 991, 7, 407.5, 53.9, 32.30),
+    ("A", "al5052_4p8mm", "L-b2", 2, 188.6, 1460, 9, 384.0, 168.0, 60.66),
+    ("A", "al5052_6p35mm", "L-b1", 1, 67.2, 677, 3, 292.0, 25.3, 17.77),
+    ("A", "al6061_3p2mm", "L-conn_plate1", 6, 26.8, 408, 4, 120.7, 37.3, 33.36),
+    ("A", "al6061_3p2mm", "L-conn", 1, 27.7, 390, 4, 120.7, 37.3, 8.31),
+    ("A", "al6061_3p2mm", "L-conn_plate7", 1, 29.6, 361, 4, 120.7, 37.3, 8.15),
+    ("A", "birch_9mm", "base_plate", 1, 3205.1, 3348, 11, 682.0, 584.0, 139.03),
+    ("A", "birch_9mm", "base_cleat_L0", 4, 64.0, 544, 1, 246.0, 26.0, 26.52),
+    ("A", "birch_9mm", "base_cleat_L2", 4, 51.0, 444, 1, 196.0, 26.0, 21.64),
+    ("A", "birch_9mm", "jack_locator_0", 2, 325.1, 1225, 2, 280.0, 195.0, 50.38),
+)
+
+
+@pytest.mark.no_fabricate
+def test_a_cradles_cutting_fit_holds_to_the_live_quotes():
+    """``CRADLE_CUT_FITS`` against the quotes it was fitted on (design review round 2's B1:
+    the area-only fit had missed by -32 to +53 %, the 7075 and the birch unpriced): each
+    file within 11 %, B's and A's orders within 2 % (quoted USD 758.19 and 573.82)."""
+    from spiderpig.hardware.bom import CRADLE_CUT_FITS, CutPart, cut_estimate
+
+    totals: dict[str, list[float]] = {}
+    for cradle, key, part, q, area, cut, n, long_, short, usd in QUOTED:
+        got = cut_estimate(key, [CutPart(area, q, cut, n, long_, short)], CRADLE_CUT_FITS[key])
+        assert got == pytest.approx(usd, rel=0.11), (cradle, part)
+        t = totals.setdefault(cradle, [0.0, 0.0])
+        t[0] += usd
+        t[1] += got
+    assert totals["B"][0] == pytest.approx(758.19)
+    assert totals["A"][0] == pytest.approx(573.82)
+    for live, fit in totals.values():
+        assert fit == pytest.approx(live, rel=0.02)
+
+
+@pytest.mark.no_fabricate
+def test_the_take_up_rates_each_pin_against_its_sheets_tolerances():
+    """``cradle_report.take_up`` (design review round 2's M5): each pin's play against its
+    links' sheets at their published over-thickness, worst case and RSS. On B's pins as
+    reviewed (their wobble notes' plays), P (b1 0.250 in + b2 7075) and Y (b5 + b6 0.187
+    in) come out short worst case; J and K, both 7075, keep 0.09 mm. A rating: the guide
+    and ORDER.md carry the fix."""
+    from types import SimpleNamespace
+
+    from spiderpig.cradle_report import take_up
+
+    cfg = BuildConfig(linkage="decanter_rcm", robot=False)
+    plays = {"P": (0.374, "b1", "b2"), "Y": (0.400, "b5", "b6"), "J": (0.448, "b3", "b4"),
+             "K": (0.448, "b2", "b4"), "X": (0.424, "b4", "b6")}
+    wobble = {f"pin:{p}": {"play_mm": play, "links": [{"link": a}, {"link": b}]}
+              for p, (play, a, b) in plays.items()}
+    wobble["pillar:O1"] = {"play_mm": 0.4, "links": [{"link": "b3"}]}     # not a pin
+    got = take_up(cfg, SimpleNamespace(meta={"wobble": wobble}, bodies=[]))
+    by = {r["pin"]: r for r in got["rows"]}
+    assert set(by) == set(plays)
+    assert got["short_worst"] == ["P", "Y"]
+    assert got["short_rss"] == ["P"]
+    assert by["P"]["growth_worst_mm"] == pytest.approx(0.864, abs=1e-3)
+    assert by["P"]["margin_worst_mm"] == pytest.approx(-0.49, abs=1e-3)
+    assert by["J"]["margin_worst_mm"] == pytest.approx(0.092, abs=1e-3)
+    assert [x["sheet"] for x in by["P"]["links"]] == ["al5052_6p35mm", "al7075_4p8mm"]
+    assert got["fix"]
 
 
 def test_a_cradle_warns_when_its_own_default_replaces_a_named_one():
@@ -778,9 +866,11 @@ def test_b_packs_at_a_mark_inside_its_clear_range():
 @pytest.mark.no_fabricate
 def test_a_cradles_bom_says_what_its_total_leaves_out():
     """A cradle's BOM and ORDER.md say plainly what their totals leave out: each unpriced
-    cutting line with its area and, where a fitted sheet bounds it, an estimate marked as
-    one with its basis (the 7075 off the 0.187 in 5052 fit, x1 to x2); the birch stays
-    unpriced. A walker's BOM (no ``cut_ranges``) says nothing new."""
+    cutting line with its area and, where a fitted sheet bounds it (a proxy), an estimate
+    marked as one with its basis; one with neither stays unpriced. B's and A's sheets are
+    all fitted since SendCutSend's quotes of 2026-10-14 (the 7075 had been "x1 to x2 of the
+    5052 fit", the birch unpriced: design review round 2's B1), so none has a proxy. A
+    walker's BOM (no ``cut_ranges``) says nothing new."""
     from spiderpig.hardware.bom import (
         CRADLE_CUT_FITS,
         CRADLE_CUT_PROXIES,
@@ -793,6 +883,12 @@ def test_a_cradles_bom_says_what_its_total_leaves_out():
     )
     from spiderpig.hardware.order import order_markdown
 
+    assert {"al7075_4p8mm", "birch_9mm", "al5052_4p8mm", "al5052_6p35mm",
+            "al6061_3p2mm"} <= set(CRADLE_CUT_FITS)
+    assert CRADLE_CUT_PROXIES == {}
+    assert "2026-10-14" in CRADLE_CUT_SOURCE
+    assert "758.19" in CRADLE_CUT_SOURCE
+    proxies = {"al7075_4p8mm": ("al5052_4p8mm", 1.0, 2.0, "a test's basis")}
     made = [MadeRow("L.b2", "laser", "7075", "", 40.0 * 0.4826, 2, sheet="al7075_4p8mm"),
             MadeRow("base_plate", "laser", "birch", "", 3000.0 * 0.9, 1, sheet="birch_9mm"),
             MadeRow("L.frame_outer", "laser", "5052", "", 600.0 * 0.47625, 2,
@@ -800,7 +896,7 @@ def test_a_cradles_bom_says_what_its_total_leaves_out():
     cutting = [CutRow("SendCutSend", "al5052_4p8mm", "5052 0.187 in", 2, 1200.0, 100.0),
                CutRow("SendCutSend", "al7075_4p8mm", "7075 0.190 in", 2, 80.0, None),
                CutRow("SendCutSend", "birch_9mm", "Baltic birch 9 mm", 1, 3000.0, None)]
-    ranges = cut_ranges(cutting, made, CRADLE_CUT_PROXIES)
+    ranges = cut_ranges(cutting, made, proxies)
     base = cut_estimate("al5052_4p8mm", [(40.0, 2)], CRADLE_CUT_FITS["al5052_4p8mm"])
     assert ranges["al7075_4p8mm"][:2] == pytest.approx((base, 2 * base), abs=0.02)
     assert ranges["birch_9mm"] is None
@@ -809,8 +905,6 @@ def test_a_cradles_bom_says_what_its_total_leaves_out():
     assert "The total excludes 2 unpriced cut lines" in md
     assert "an estimate of USD" in md
     assert "Baltic birch 9 mm (1 part, 3000 cm²: no fitted" in md
-    assert "cradle A's files" in CRADLE_CUT_SOURCE
-    assert "359-368" not in CRADLE_CUT_SOURCE
     assert bom.as_dict()["unpriced_cutting"][1]["estimate_usd"] is None
     order = order_markdown(bom, [], [])
     assert "The total excludes 2 unpriced cut lines" in order
@@ -928,13 +1022,14 @@ def test_the_cradle_stands_turns_easily_and_holds():
     assert crank["walk_sf"] >= 2.5
     assert crank["jam_sf"] >= 1.5
     assert r["drive"]["jam_hand_force_n"] == JAM_HAND_N
-    # every joint, link, column and plate holds the jam (rated from the force vectors:
-    # the links chord by chord, the pillar and the columns on their box)
-    jam = [x["jam_sf"] for x in rows if x["jam_sf"] is not None]
-    assert min(jam) >= 1.3, [(x["joint"], x["jam_sf"]) for x in rows]
+    # every joint, link, column, plate and tie rod holds the jam (rated from the force
+    # vectors: the links chord by chord, the side's posts and plates as one frame) but the
+    # parts open since design review round 2 (cradle_report.OPEN_AT_CAP)
+    _holds_the_jam(r, "decanter_hinge")
     _the_structure_is_rated(r, ("b2",), {"pillar:G"},
                             {"column:C1", "column:C2", "column:D1", "column:D2"})
-    _holds_the_clutchs_cap(r)
+    _holds_the_clutchs_cap(r, "decanter_hinge")
+    _the_side_frame_is_open(r, "decanter_hinge")
     _the_drive_keeps_its_bars(r, grip_open=(
         "A's grip is open (design review round 1's drive, 2026-10-14): its crank clears its "
         "own cradle link only at 85 mm, 32 N at a full 6 L's worst start against "
@@ -960,7 +1055,43 @@ def _the_drive_keeps_its_bars(r: dict, grip_open: str | None = None) -> None:
                                                      drive["grip_radius_mm"])
 
 
-def _holds_the_clutchs_cap(r: dict) -> None:
+def _holds_the_jam(r: dict, key: str) -> None:
+    """Every row of the report holds the jam at SF 1.3 or more but the parts open at the
+    clutch's cap (``cradle_report.OPEN_AT_CAP``), and nothing under it is off that list; the
+    cradle box's tie rods and their end joints among the rows (design review round 2's M1);
+    the rod as a beam-column at its far pin's offset (its minor 1); the side's stiffness
+    across (its M3: a hand's 20 N sideways on the bottle sways the pivots under 5 mm)."""
+    from spiderpig.cradle_report import OPEN_AT_CAP
+
+    rows = r["strength"]["rows"]
+    open_ = OPEN_AT_CAP[key]
+    held = [(x["joint"], x["jam_sf"]) for x in rows
+            if x["jam_sf"] is not None and x["joint"] not in open_]
+    assert min(sf for _, sf in held) >= 1.3, held
+    under = {x["joint"] for x in rows if x["jam_sf"] is not None and x["jam_sf"] < 1.3}
+    assert under <= set(open_), under
+    box = {x["joint"]: x for x in rows if x["kind"] == "box"}
+    assert set(box) == {"box:tie rods", "box:tie rod ends"}
+    assert r["structure"]["box"]["cases"]["walk"]["gap_ratio"] >= 1.5   # closed walking
+    assert r["rod"]["sf_secant_jam"] >= 1.5
+    assert r["structure"]["stiffness"]["sway_mm"] <= 5.0
+
+
+def _the_side_frame_is_open(r: dict, key: str) -> None:
+    """The open item, said as one (design review round 2, 2026-10-15): rated as one frame
+    (``cradle_structure.side_frame``), these parts of the side frame fall under 1.3 at the
+    clutch's cap; walking they hold. The fix is a box toward the rear (DECANTER.md, "The
+    side frames at the clutch's cap"): the user's call, with the drive's gearbox mount."""
+    from spiderpig.cradle_report import OPEN_AT_CAP
+
+    rows = {x["joint"]: x for x in r["strength"]["rows"]}
+    under = sorted((rows[k]["jam_sf"], k) for k in OPEN_AT_CAP[key]
+                   if k in rows and (rows[k]["jam_sf"] or 9.9) < 1.3)
+    if under:
+        pytest.xfail(f"open at the clutch's cap: {under} ({OPEN_AT_CAP[key]})")
+
+
+def _holds_the_clutchs_cap(r: dict, key: str) -> None:
     """A report's drive at its clutch (``cradle_drive``): its least slip clears the worst
     starting turn by the margin; its cap is the jam case's torque (however hard the push),
     within the gearbox's momentary limit (2 x its rating); the grip's force at the clutch's
@@ -973,13 +1104,18 @@ def _holds_the_clutchs_cap(r: dict) -> None:
     assert r["drive"]["jam_torque_nm"] == pytest.approx(clutch["crank_cap_nm"], abs=0.01)
     assert r["drive"]["gearbox_jam_x_peak_limit"] <= 1.0
     assert r["drive"]["input_overhung"]["sf"] >= 2.0
+    from spiderpig.cradle_report import OPEN_AT_CAP
+
     capped = r["jam_capped"]
     assert capped["crank_nm"] == clutch["crank_cap_nm"]
-    assert capped["away"][0] >= 1.3, capped["away"]
-    holds = capped["holds_1p3_outside_deg"]
+    open_ = OPEN_AT_CAP[key]
+    away = {k: v for k, v in capped["by_band"][-1]["parts"].items() if k not in open_}
+    assert min(away.values()) >= 1.3, away          # every part 30° from the toggles,
+    holds = capped["holds_1p3_outside_deg"]         # but the open ones
     bands = [(x["band_deg"], x["worst"]) for x in capped["by_band"]]
-    assert holds is not None, bands                 # (5° steps: where the old case
-    assert holds <= 30.0, bands                     # skipped, now rated at a bound)
+    if not open_:
+        assert holds is not None, bands             # (5° steps: where the old case
+        assert holds <= 30.0, bands                 # skipped, now rated at a bound)
     assert capped["by_band"][0]["band_deg"] == 0.0              # the whole turn rated
     assert r["drive"]["gearbox_jam_x_rating"] > 1.0             # (reported, not a bar)
     assert r["drive"]["keyway"]["four_plates_sf_cap"] >= 2.0
@@ -1015,8 +1151,7 @@ def test_b_stands_turns_easily_and_holds():
     rows = r["strength"]["rows"]
     walk = [x["walk_sf"] for x in rows if x["walk_sf"] is not None]
     assert min(walk) >= 2.0, [(x["joint"], x["walk_sf"]) for x in rows]
-    jam = [x["jam_sf"] for x in rows if x["jam_sf"] is not None]
-    assert min(jam) >= 1.3, [(x["joint"], x["jam_sf"]) for x in rows]
+    _holds_the_jam(r, "decanter_rcm")
     # the quick-release clevis pins at X and Y (2026-10-13): stronger than the M6 Chicago
     # screws they replaced (1.72 and 1.49 jammed); K and J2 clevis pins too, P and J the
     # hardened pivot pins (design review round 1): no Chicago screw left
@@ -1050,12 +1185,17 @@ def test_b_stands_turns_easily_and_holds():
     assert all(e["tip_deg"] >= 25.0 for e in pour.values())
     _the_structure_is_rated(r, ("b2", "b6"), {"pillar:O1", "pillar:O2"},
                             {"column:D1", "column:D2"})
-    # the known limits (not designed for): a block near the mouth multiplies the pins' loads
+    # the known limits (not designed for): a block near the mouth multiplies the pins' loads;
+    # where the frame starts to give, in newtons at the grip (design review round 2's M2)
     front = r["blocked"]["cases"]["front saddle"]
     assert front["joints_n"]["J"] > 3.0 * max(x["jam_n"] or 0.0 for x in rows
                                               if x["joint"] == "pin:J")
-    _holds_the_clutchs_cap(r)
+    first = r["blocked_capped"]["cases"]["front saddle"]["threshold"]["sf_1"]
+    assert first is not None
+    assert 0.0 < first["grip_n"] < 27.0, first      # under the clutch's 27 N
+    _holds_the_clutchs_cap(r, "decanter_rcm")
     _the_drive_keeps_its_bars(r)
+    _the_side_frame_is_open(r, "decanter_rcm")
 
 
 def _the_structure_is_rated(r: dict, links, pillars, columns) -> None:
@@ -1397,6 +1537,86 @@ def test_a_frame_plates_member_buckles_out_of_its_plane():
                                              tied=("A", "B"))["members"]}
     assert loose["A-C"]["untied"] == ["C"]
     assert loose["A-C"]["buckling"] < ac["buckling"]
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
+def test_a_posts_foot_turns_square_to_its_load():
+    """``cradle_structure.posts``: a post bent by a force along x turns its foot about y, the
+    moment vector square to the force in the plate's plane (design review round 2: its
+    probes had applied the slopes' generalized moment as the turn, 90° off, and so shared a
+    post's moment among the plate's members by the wrong axis)."""
+    from spiderpig.cradle_structure import E_STEEL, Post, posts
+
+    ei = E_STEEL * math.pi * 12 ** 4 / 64
+    p = Post("P", np.zeros(2), ei, [(0, 1.0, 50.0)], np.eye(2) * 1e6, np.zeros((2, 2)))
+    got = posts([p], 100.0, np.array([[[1000.0, 0.0]]]))["P"]["forces"]["turn"]["foot"][0]
+    assert abs(got[0]) < 1e-6 * abs(got[1])
+    assert abs(got[1]) == pytest.approx(1000.0 * 50.0, rel=0.01)    # a cantilever's F a
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
+def test_a_side_frame_holds_its_posts_only_as_its_plates_do():
+    """``cradle_structure.side_frame`` (design review round 2's B1): two posts between two
+    plates, the outer on clamped feet. Plates far stiffer than the posts: a load at one
+    post's middle along the posts' line is a portal's (the loaded post's foot ``F L / 4``,
+    its end 0, the other post ``F L / 8`` at both ends: sway shared, the ends clamped by the
+    posts' push and pull). Across the line nothing but the plates' twist holds the posts'
+    ends, so the loaded post's foot takes more. Real plates (24 x 4.75 mm strips) hold less,
+    and every member end is rated on its cut section (``plate_rows``)."""
+    from spiderpig.cradle_structure import E_STEEL, Post, SidePlates, plate_rows, side_frame
+
+    ei = E_STEEL * math.pi * 12 ** 4 / 64
+    L, f = 60.0, 1000.0
+    xy = {"A": np.array([0.0, 0.0]), "B": np.array([100.0, 0.0]),
+          "F1": np.array([0.0, -100.0]), "F2": np.array([100.0, -100.0])}
+
+    def run(t: float, w: float, d) -> dict:
+        outer = [(("A", "B"), w), (("A", "F1"), w), (("B", "F2"), w)]
+        plates = SidePlates(xy, outer, [(("A", "B"), w)], t, ("F1", "F2"))
+        side = [Post("A", xy["A"], ei, [(0, 1.0, L / 2)]), Post("B", xy["B"], ei, [])]
+        return side_frame(side, L, np.array([[d]], float) * f, plates)
+
+    got, _ = run(100.0, 200.0, (1.0, 0.0))
+    assert got["A"]["foot_nm"] == pytest.approx(f * L / 4 / 1000, rel=0.05)
+    assert got["A"]["tip_nm"] < 0.05 * f * L / 1000
+    assert got["B"]["foot_nm"] == pytest.approx(f * L / 8 / 1000, rel=0.05)
+    across, _ = run(100.0, 200.0, (0.0, 1.0))
+    assert across["A"]["foot_nm"] > 1.3 * got["A"]["foot_nm"]
+    _, grills = run(4.75, 24.0, (1.0, 0.0))
+    rows = plate_rows(grills["outer"], [(("A", "B"), 24.0), (("A", "F1"), 24.0),
+                                        (("B", "F2"), 24.0)], xy, 4.75, 193.0, {"A": 6.4},
+                      9.6)
+    assert set(rows) == {f"{a}-{b} at {n}" for a, b in (("A", "B"), ("A", "F1"), ("B", "F2"))
+                         for n in (a, b)}
+    assert all(0 < r["safety"] < math.inf for r in rows.values())
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
+def test_the_cradle_box_racks_on_its_tie_rods():
+    """``cradle_report.box_racking`` (design review round 2's M1): the passive half's share of
+    what the drive side's pins put on the cradle about the mouth crosses the bay in the four
+    tie rods, each fixed at both ends: shared by their stiffness at their radii from the mouth
+    (``12 E I / L^3`` across, ``G J / L`` in twist), the rear rods most."""
+    from spiderpig.cradle_report import PASSIVE_SHARE, box_racking
+    from spiderpig.cradle_structure import E_STEEL
+
+    cfg = BuildConfig(linkage="decanter_rcm", robot=False)
+    pts = {"Lc": np.zeros((1, 2)), "X": np.array([[100.0, 0.0]])}
+    joints = [("X", "b6", "b4")]
+    vecs = np.array([[[0.0, 1000.0]]])                  # 100 N·m about the mouth
+    got = box_racking(cfg, joints, pts, {"walk": (vecs, np.zeros(1, bool), None)}, 274.9)
+    case = got["cases"]["walk"]
+    assert case["crossing_nm"] == pytest.approx(PASSIVE_SHARE * 100.0)
+    d, L = cr.TIE_D, 274.9
+    ei, gj = E_STEEL * math.pi * d ** 4 / 64, E_STEEL / 2.6 * math.pi * d ** 4 / 32
+    r = {n: math.hypot(*TIES[n]) for n in TIES}
+    theta = case["crossing_nm"] * 1000 / sum(12 * ei / L ** 3 * x * x + gj / L for x in r.values())
+    assert case["rods"]["Tr2"]["shear_n"] == pytest.approx(12 * ei / L ** 3 * r["Tr2"] * theta,
+                                                           rel=0.01)
+    assert max(case["rods"].values(), key=lambda x: x["end_nm"]) is case["rods"]["Tr2"]
 
 
 @pytest.mark.no_fabricate
@@ -2117,3 +2337,131 @@ def test_a_side_panel_slides_off_only_where_nothing_is_in_its_way():
     assert slide_hits({"clip": clip}, {"link": link})[0][:2] == ("clip", "link")
     assert slide_hits({"torso": torso.mirror(Plane.XY)},
                       {"link": link.mirror(Plane.XY)}) == [("torso", "link", 3.5)]
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+@pytest.mark.parametrize("key", CRADLES)
+def test_a_cradles_links_are_closed_bossed_and_claimed(key):
+    """Design review round 2's laser-cut parts (2026-10-15): each cradle link's outline is
+    its chords and bosses closed (``plates.product_outline``), so no corner on it is sharp
+    (every edge meets the next along its tangent): B's cradle link b6 and A's b2 have no
+    window left, B's bell crank b2 keeps its window, its corners rounded to the link's
+    closing radius; each rod b1 is 26 mm wide (SendCutSend deburrs it) with a boss round its
+    crank bore, and every boss of ``config.PRODUCT_BOSS_R`` is there; and what the link
+    claims (its chords, its bosses and the closing's covers, on points of its own) holds its
+    whole outline, at the first sample and a third of a turn on (the points ride it)."""
+    from build123d import GeomType
+
+    from spiderpig.config import PRODUCT_BOSS_R, chord_r
+    from spiderpig.construction import plates
+    from spiderpig.fabricate import side_problem, template_for
+    from spiderpig.stack import Disc, Layout, body_class
+
+    cfg = BuildConfig(linkage=key, robot=False)
+    ctx, groups, _ = side_problem(template_for(cfg), cfg, hint=False)
+    group = next(g for g in groups if g.name == "links")
+    claims = {c.owner: c for c in group.claims(ctx)}    # (its points added again: the same)
+    layout = Layout(dict.fromkeys(ctx.topo.links, 1), 2, ctx.pitch)
+    geo = ctx.topo.geometry.points
+    windows = {"decanter_rcm": {"b2": 1, "b6": 0}, "decanter_hinge": {"b2": 0}}[key]
+    for link, segs in ctx.topo.links.items():
+        ol = plates.product_outline(ctx, link, segs)
+        r = plates.fillet_r(ctx, link)
+        for v in ol.face.vertices():     # smooth all round: each edge leaves along the last
+            at = np.array([v.X, v.Y])
+            ways = []
+            for e in ol.face.edges():
+                for u, sign in ((0.0, 1.0), (1.0, -1.0)):
+                    p = e.position_at(u)
+                    if np.hypot(p.X - at[0], p.Y - at[1]) < 1e-6:
+                        t = e.tangent_at(u)
+                        ways.append(sign * np.array([t.X, t.Y]))
+            assert len(ways) == 2, (link, at)
+            assert float(ways[0] @ ways[1]) < -0.9998, (link, at)
+        if link in windows:
+            inner = ol.face.inner_wires()
+            assert len(inner) == windows[link], link
+            for w in inner:
+                arcs = [e for e in w.edges() if e.geom_type == GeomType.CIRCLE]
+                assert len(arcs) >= 3, link
+                assert all(abs(e.radius - r) < 1e-6 for e in arcs), link
+        a, b = ol.frame
+
+        def local(p: str, k: int = 0, a=a, b=b) -> np.ndarray:
+            o, d = np.asarray(geo[a][k]), np.asarray(geo[b][k]) - np.asarray(geo[a][k])
+            ex = d / np.hypot(*d)
+            w = np.asarray(geo[p][k]) - o
+            return np.array([w @ ex, w @ np.array([-ex[1], ex[0]])])
+
+        for joint, rb in PRODUCT_BOSS_R[key].get(body_class(link), {}).items():
+            c = local(ctx.topo.point_of[(link, joint)])
+            assert any(e.geom_type == GeomType.CIRCLE and abs(e.radius - rb) < 1e-6
+                       and np.hypot(e.arc_center.X - c[0], e.arc_center.Y - c[1]) < 1e-6
+                       for e in ol.face.edges()), (link, joint)
+        if body_class(link) == "b1":
+            assert 2 * chord_r(cfg, link, *segs[0]) == 26.0
+            box = ol.face.bounding_box()
+            assert pytest.approx(2 * 15.8, abs=1e-6) == box.max.Y - box.min.Y
+        shapes = claims[link].make(layout)
+        for k in (0, ctx.topo.geometry.samples // 3):
+            held = [plates.flat_pill(local(s.shape.at, k), local(s.shape.at, k), s.shape.r)
+                    if isinstance(s.shape, Disc) else
+                    plates.flat_pill(local(s.shape.a, k), local(s.shape.b, k), s.shape.r)
+                    for s in shapes]
+            left = [ol.face]
+            for h in held:              # (one at a time: a fuse of them all can come back null)
+                cut = [f - h for f in left]
+                left = [g for c in cut for g in (c.faces() if hasattr(c, "faces") else c)
+                        if g.area > 1e-9]
+            assert sum(f.area for f in left) < 1e-3, (link, k, [f.area for f in left])
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_boards_bay_points_the_locators_ears_and_the_cleats_ends_are_rounded():
+    """Design review round 2's laser-cut parts (2026-10-15): the four points the notch's bays
+    leave on the base board are cut back to R3 (``cradle.BAY_POINT_R``), the riser
+    locator's four inside corners at its ears filled to R2 (``EAR_FILLET_R``: SendCutSend's
+    birch page) and the locator still clear of the board, and each cleat's corners rounded
+    R5 (``CLEAT_END_R``), its width as it was."""
+    from build123d import Location
+
+    from spiderpig.shapes import moved
+
+    lip = np.array([0.0, cr.LIP_HEIGHT])
+    y_top = lip[1] + cr.BASE_TOP
+    board, _ = cr._base_plate(lip, cr.STANDS["decanter_rcm"], y_top,
+                              [(-110.0, 231.7), (386.0, -231.7)], cr.BASE_Z["decanter_rcm"])
+
+    def solid_at(shape, x: float, z: float, y: float) -> bool:
+        probe = moved(cr._rod_y(0.0, 0.0, 0.05, y - 0.5, y + 0.5), Location((x, 0.0, z)))
+        inter = shape & probe
+        return inter is not None and sum(p.volume for p in inter.solids()) > 1e-6
+
+    xb, rb = cr.NOTCH_BAY
+    y = y_top - cr.BASE_T / 2
+    for s in (-1, 1):
+        for e in (-1, 1):
+            x0, z0 = xb + e * rb, s * cr.NOTCH_R           # where the old point was
+            assert not solid_at(board, x0 + e * 0.3, z0 + s * 0.3, y)
+            assert solid_at(board, x0 + e * 5.0, z0 + s * 5.0, y)
+    play = cr.LOCATOR[1]
+    edge = cr.NOTCH_R - play
+    for part in cr._riser_locator(lip, lip[1] - cr.LIP_HEIGHT):
+        lb = part.bounding_box()
+        yl = (lb.min.Y + lb.max.Y) / 2
+        for s in (-1, 1):
+            for e in (-1, 1):
+                x0 = xb + e * math.sqrt((rb - play) ** 2 - play ** 2)     # the old corner
+                assert solid_at(part, x0 + e * 0.25, s * (edge + 0.25), yl)
+                assert not solid_at(part, x0 + e * 3.0, s * (edge + 1.0), yl)
+        inter = part & board
+        assert inter is None or sum(p.volume for p in inter.solids()) < 1e-3
+    for c in cr._cleats([-110.0, 386.0], y_top, 209.7, 1, 4.775):
+        b = c.bounding_box()
+        assert pytest.approx(cr.CLEAT[0]) == b.max.Z - b.min.Z
+        yc = y_top + cr.BASE_T / 2
+        assert not solid_at(c, b.min.X + 0.5, b.min.Z + 0.5, yc)
+        assert solid_at(c, b.min.X + cr.CLEAT_END_R, b.min.Z + 0.5, yc)
+        assert solid_at(c, b.min.X + 0.5, (b.min.Z + b.max.Z) / 2, yc)

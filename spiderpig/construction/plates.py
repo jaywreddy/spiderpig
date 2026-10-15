@@ -8,15 +8,18 @@ pads other groups need (the servo footprint, chassis tabs).
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import cast
 
 import numpy as np
+from build123d import Face, Location, Vector
 
 from spiderpig.construction.base import (
     FRAME_INNER,
     FRAME_OUTER,
     RIDES_HOST,
     Build,
+    ConstructionError,
     Context,
     Group,
     Motion,
@@ -138,6 +141,11 @@ def foot_links(topo, lk) -> list[tuple[str, str, str]]:
     return out
 
 
+def _product(ctx: Context) -> bool:
+    """Whether ``ctx`` builds a product (a decanting cradle: :attr:`linkage.Linkage.product`)."""
+    return bool(getattr(getattr(ctx.config, "lk", None), "product", ""))
+
+
 def _chord_r(ctx: Context, link: str, a: str, b: str) -> float:
     """A link chord's half-width: a product's own (:func:`config.chord_r`), else
     ``Params.link_radius``."""
@@ -175,16 +183,265 @@ def rider_bosses(ctx: Context) -> dict[str, tuple[str, float]]:
     return out
 
 
+# --- a product's links: each outline closed -------------------------------------------
+
+PRODUCT_FILLET_R = 15.0
+"""A product's links (a decanting cradle's): each link's outline, its chords and bosses,
+closed by this radius (grown by it and shrunk back: every inside corner, an elbow, a boss's
+cusp, a window's corner, rounded to it, a window narrower than twice it filled), so no cut
+aluminium link has a sharp inside corner (design review round 2, 2026-10-15, laser-cut parts
+M4: SendCutSend's 7075 page, "avoid tight internal corners"; nothing sweeps where the
+closing adds, measured, and the planner checks it: :func:`product_outline`'s claims)."""
+PRODUCT_FILLETS: dict[str, dict[str, float]] = {"decanter_rcm": {"b6": 18.0},
+                                              "decanter_hinge": {"b2": 18.0}}
+"""Per product linkage, per link: its own closing radius, where not
+:data:`PRODUCT_FILLET_R`: B's cradle link b6 R18 (the review's priced shape, its sliver
+window gone); A's cradle link b2 R18, both its windows gone (R15 would have left a
+15 mm hole of its triangle's and that triangle's acute corner filled as a sliver)."""
+FILL_SAG = 1.0          # mm: the most a fillet's claim stands off its arc into the air
+FILL_SAG_WINDOW = 3.0   # mm: the same into a window the closing leaves open (the link's own)
+FILL_PAD = 0.01         # mm: a fill's sampled reach from its fillet's centre, rounded up
+
+
+def fillet_r(ctx: Context, link: str) -> float:
+    """The radius a product's link ``link`` is closed by (:data:`PRODUCT_FILLETS`, else
+    :data:`PRODUCT_FILLET_R`)."""
+    return PRODUCT_FILLETS.get(ctx.config.linkage, {}).get(body_class(link), PRODUCT_FILLET_R)
+
+
+def product_bosses(ctx: Context, link: str, segs) -> dict[str, float]:
+    """A product's link ``link``: the radius of each boss it grows round a hole, by point:
+    its crank bore's (:func:`rider_bosses`) and its own (:func:`config.boss_r`: the cut rules'
+    hole-to-edge), each only where wider than the chords meeting there."""
+    from spiderpig.config import boss_r
+
+    out: dict[str, float] = {}
+    rider = rider_bosses(ctx).get(link)
+    if rider is not None:
+        out[rider[0]] = rider[1]
+    for joint, r in boss_r(ctx.config, link).items():
+        p = ctx.topo.point_of.get((link, joint))
+        if p is None:
+            raise ConstructionError(f"{link} has no joint {joint} for its boss")
+        out[p] = max(out.get(p, 0.0), r)
+    chords = {p: max(_chord_r(ctx, link, a, b) for a, b in segs if p in (a, b))
+              for p in out if any(p in sg for sg in segs)}
+    return {p: r for p, r in sorted(out.items()) if r > chords.get(p, 0.0) + 1e-9}
+
+
+Cover = tuple[tuple[float, ...], tuple[float, ...], float]   # a pill: its ends, its radius
+
+
+@dataclass(frozen=True)
+class Outline:
+    """A product link's outline (:func:`product_outline`) in the link's own frame: the
+    origin its point ``frame[0]``, x toward ``frame[1]`` (``length`` away). ``face``: its
+    chords and bosses closed (:func:`fillet_r`); ``covers``: pills ``(p, q, r)`` whose union
+    holds everything the closing added, standing off the closed outline into the air by at
+    most about :data:`FILL_SAG` (:data:`FILL_SAG_WINDOW` into a window it leaves open), else
+    into the link (the claims' points, :meth:`stack.Topology.add_link_points`, are their
+    ends)."""
+
+    frame: tuple[str, str]
+    length: float
+    face: Face
+    covers: tuple[Cover, ...]
+
+    def points(self, link: str) -> dict[str, tuple[str, str, float, float]]:
+        """The covers' ends as points fixed to the link (name -> ``(a, b, u, v)``)."""
+        a, b = self.frame
+        ends = sorted({e for p, q, _ in self.covers for e in (p, q)})
+        return {f"{link}.fill{i}": (a, b, x / self.length, y / self.length)
+                for i, (x, y) in enumerate(ends)}
+
+    def pills(self, link: str) -> list[tuple[str, str, float]]:
+        """The covers as pills between the link's points (:meth:`points`)."""
+        ends = sorted({e for p, q, _ in self.covers for e in (p, q)})
+        name = {e: f"{link}.fill{i}" for i, e in enumerate(ends)}
+        return [(name[p], name[q], r) for p, q, r in self.covers]
+
+
+_OUTLINES: dict[tuple, tuple] = {}     # a closing's inputs -> (its face, its covers)
+
+
+def product_outline(ctx: Context, link: str, segs) -> Outline:
+    """A product's link ``link`` (outline ``segs``), closed: its chords
+    (:func:`config.chord_r`) and bosses (:func:`product_bosses`) in its own frame, drawn
+    where the plan's geometry has its points at the first sample, grown by
+    :func:`fillet_r` and shrunk back (round joins). Memoized on those inputs: the claims
+    and every build of the link make it from the same numbers, so each fabrication places
+    one shape (it moves with its link exactly)."""
+    g = ctx.topo.geometry.points
+    a, b = segs[0]
+    pa = np.asarray(g[a][0], dtype=float)
+    d = np.asarray(g[b][0], dtype=float) - pa
+    length = float(np.hypot(*d))
+    ex = d / length
+    ey = np.array([-ex[1], ex[0]])
+
+    def local(p: str) -> tuple[float, float]:
+        w = np.asarray(g[p][0], dtype=float) - pa
+        return float(w @ ex), float(w @ ey)
+
+    pills = tuple((local(p), local(q), _chord_r(ctx, link, p, q)) for p, q in segs)
+    discs = tuple((local(p), r) for p, r in product_bosses(ctx, link, segs).items())
+    key = (pills, discs, fillet_r(ctx, link))
+    got = _OUTLINES.get(key)
+    if got is None:
+        try:
+            got = _close(*key)
+        except ConstructionError as e:
+            raise ConstructionError(f"{link}: {e}") from None
+        if len(_OUTLINES) > 64:
+            _OUTLINES.clear()
+        _OUTLINES[key] = got
+    return Outline((a, b), length, got[0], got[1])
+
+
+def _xy0(p) -> Vector:
+    return Vector(float(p[0]), float(p[1]), 0.0)
+
+
+def flat_pill(p, q, r: float):
+    """The face (in the XY plane) of the stadium ``p``-``q`` of radius ``r``; of a disc where
+    ``p`` and ``q`` meet."""
+    from build123d import Edge, Plane, Wire
+
+    p, q = np.asarray(p, dtype=float), np.asarray(q, dtype=float)
+    length = float(np.hypot(*(q - p)))
+    if length < 1e-9:
+        return Face(Wire([Edge.make_circle(r, Plane(origin=_xy0(p)))]))
+    u = (q - p) / length
+    n = np.array([-u[1], u[0]])
+    return Face(Wire([
+        Edge.make_line(_xy0(p - r * n), _xy0(q - r * n)),
+        Edge.make_three_point_arc(_xy0(q - r * n), _xy0(q + r * u), _xy0(q + r * n)),
+        Edge.make_line(_xy0(q + r * n), _xy0(p + r * n)),
+        Edge.make_three_point_arc(_xy0(p + r * n), _xy0(p - r * u), _xy0(p - r * n))]))
+
+
+def _close(pills, discs, r: float) -> tuple:
+    """The face of ``pills`` and ``discs`` (in a plane) closed by ``r``, and pills covering
+    what the closing added (:func:`_cover`)."""
+    from build123d import Kind, offset
+
+    faces = [flat_pill(p, q, w) for p, q, w in pills] + [flat_pill(c, c, w) for c, w in discs]
+    joined = cast("Face", faces[0].fuse(*faces[1:])).clean() if len(faces) > 1 else faces[0]
+    union = joined.faces()
+    if len(union) != 1:
+        raise ConstructionError(f"its chords and bosses make {len(union)} pieces, not one")
+    closed = offset(offset(union[0], r, kind=Kind.ARC), -r, kind=Kind.ARC).faces()
+    if len(closed) != 1:
+        raise ConstructionError(f"its outline closed by {r:g} mm is {len(closed)} pieces")
+    face = closed[0]
+    if face.normal_at().Z < 0:
+        face = -face
+    fills = [f for f in _faces(face - union[0]) if f.area > 1e-6]
+    deep = 2 * min(w for *_, w in [*pills, *discs])
+    # a window the closing leaves open: its corners' claims may stand off further into it
+    kept = [Face(w) for w in face.inner_wires()]
+    covers = tuple(c for f in fills for c in _cover(
+        f, union[0], r, deep, FILL_SAG_WINDOW if any(_meets(f, k) for k in kept) else FILL_SAG))
+    return face, covers
+
+
+def _faces(shape) -> list[Face]:
+    """The faces of a 2D boolean's result (a face, a compound or a list of them)."""
+    if hasattr(shape, "faces"):
+        return list(shape.faces())
+    return [f for s in shape for f in s.faces()]
+
+
+def _meets(f, window) -> bool:
+    """Whether the fill ``f`` borders the open window ``window`` (shares an edge's length)."""
+    return f.distance_to(window) < 1e-6 and any(
+        window.distance_to(e.position_at(0.5)) < 1e-6 for e in f.edges())
+
+
+def _cover(f, union, r: float, deep: float, sag: float = FILL_SAG) -> list[Cover]:
+    """Pills whose union holds ``f``, a piece the closing by ``r`` added to ``union``.
+
+    A piece along one fillet (an arc of radius ``r`` round a centre outside the union: a
+    corner's, a cusp's) lies in the annular sector about that centre its boundary spans
+    (every point of it at least ``r`` out, at most the furthest its boundary reaches): a
+    chain of pills along the sector's middle arc, each over its share of the sector, its
+    radius the most any point of that share stands off it, holds it, and stands off the
+    fillet into the air by at most ``sag``; its far side runs into the link, so only where
+    the sector is no deeper than ``deep`` (the link's narrowest chord). Any other piece (a
+    window filled whole, a narrow window's sharp corner) is held by its triangles (its
+    tessellation: every edge of the piece bulges into it, so the chords hold it), each by
+    three pills from its corners to its incentre."""
+    from build123d import GeomType
+
+    arcs = [e for e in f.edges() if e.geom_type == GeomType.CIRCLE
+            and abs(e.radius - r) < 1e-6 and union.distance_to(e.arc_center) > 1e-6]
+    centres = {(round(e.arc_center.X, 6), round(e.arc_center.Y, 6)) for e in arcs}
+    pts = np.array([(v.X, v.Y) for e in f.edges() for v in e.positions(np.linspace(0, 1, 257))])
+    if len(centres) == 1:
+        o = np.array([arcs[0].arc_center.X, arcs[0].arc_center.Y])
+        w = pts - o
+        rho = np.hypot(w[:, 0], w[:, 1])
+        if rho.min() > r - 1e-6 and rho.max() + FILL_PAD - r <= deep:
+            mid = sum((np.array([(m := e.position_at(0.5)).X, m.Y]) - o for e in arcs),
+                      np.zeros(2))
+            m0 = math.atan2(mid[1], mid[0])
+            phi = (np.arctan2(w[:, 1], w[:, 0]) - m0 + math.pi) % (2 * math.pi) - math.pi
+            lo, hi = float(phi.min()) - 2e-3, float(phi.max()) + 2e-3
+            far = float(rho.max()) + FILL_PAD
+            rm = (r + far) / 2
+            step = 4 * math.asin(min(1.0, math.sqrt(sag / (4 * rm))))
+            n = max(1, math.ceil((hi - lo) / step))
+            dl = (hi - lo) / n
+            width = (far - r) / 2 + rm * (1 - math.cos(dl / 2)) + 1e-3
+            q = [tuple(map(float, o + rm * np.array([math.cos(m0 + lo + j * dl),
+                                                      math.sin(m0 + lo + j * dl)])))
+                 for j in range(n + 1)]
+            return [(q[j], q[j + 1], width) for j in range(n)]
+    verts, tris = f.tessellate(0.02, 0.1)
+    xy = np.array([(v.X, v.Y) for v in verts])
+    out = []
+    for i, j, k in tris:
+        a, b, c = xy[i], xy[j], xy[k]
+        la, lb, lc = (float(np.hypot(*(y - x))) for x, y in ((b, c), (c, a), (a, b)))
+        area = abs(float((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]))) / 2
+        if area < 1e-9:
+            continue
+        inc = tuple(map(float, (la * a + lb * b + lc * c) / (la + lb + lc)))
+        rin = 2 * area / (la + lb + lc) + 1e-3
+        out += [(tuple(map(float, x)), inc, rin) for x in (a, b, c)]
+    return out
+
+
+def _placed_outline(build: Build, ol: Outline, z0: float, z1: float) -> Shape3D:
+    """``ol``'s face where its frame's points are at ``build``'s angle, from ``z0`` to
+    ``z1``."""
+    from build123d import Solid
+
+    pa, pb = build.xy(ol.frame[0]), build.xy(ol.frame[1])
+    turn = math.degrees(math.atan2(pb[1] - pa[1], pb[0] - pa[0]))
+    face = ol.face.moved(Location((float(pa[0]), float(pa[1]), z0), (0, 0, 1), turn))
+    return cast("Shape3D", Solid.extrude(face, Vector(0, 0, z1 - z0)))
+
+
 class LinkPlates(Group):
     """Every leg link, cut from the sheet, in the layer the plan gives it (an aluminium
-    link's end grown round a crank bore its width can't hold: :func:`rider_bosses`)."""
+    link's end grown round a crank bore its width can't hold: :func:`rider_bosses`); a
+    product's with its own bosses and its outline closed (:func:`product_outline`)."""
 
     name = "links"
     cuts = True
 
     def claims(self, ctx: Context) -> list[Claim]:
         r = ctx.params.link_radius
-        bosses = rider_bosses(ctx)
+        bosses = {n: [boss] for n, boss in rider_bosses(ctx).items()}
+        fills: dict[str, list[tuple[str, str, float]]] = {}
+        if _product(ctx):       # its bosses, and what closing its outline adds, on its points
+            bosses = {n: list(product_bosses(ctx, n, segs).items())
+                      for n, segs in ctx.topo.links.items()}
+            for n, segs in ctx.topo.links.items():
+                outline = product_outline(ctx, n, segs)
+                ctx.topo.add_link_points(outline.points(n))
+                fills[n] = outline.pills(n)
 
         feet = {name: foot for name, foot, _ in foot_links(ctx.topo, ctx.config.lk)} \
             if hasattr(ctx.config, "lk") else {}
@@ -193,9 +450,10 @@ class LinkPlates(Group):
             def f(L: Layout):
                 out = [Placed(L.layers[link], Pill(a, b, _chord_r(ctx, link, a, b)), link,
                               link) for a, b in segs]
-                if link in bosses:      # its end grown round the crank bore
-                    at, rb = bosses[link]
+                for at, rb in bosses.get(link, ()):     # its end grown round a bore
                     out.append(Placed(L.layers[link], Disc(at, rb), link, f"{link} boss"))
+                out += [Placed(L.layers[link], Pill(p, q, w), link, f"{link} fillet")
+                        for p, q, w in fills.get(link, ())]
                 if link in feet:        # its TPU sock round the toe, in its own layer
                     out.append(Placed(L.layers[link], Disc(feet[link], r + SOCK_REACH), link,
                                       f"{link} sock"))
@@ -247,10 +505,14 @@ class LinkPlates(Group):
                                            color=SOCK_COLOR))
                 out.notes.setdefault("feet", {})[name] = {
                     "sock": "TPU 95A", "wall_mm": SOCK_T, "point": feet[name][0]}
-            boss = bosses.get(name)
-            part = plate([(build.xy(a), build.xy(b), _chord_r(ctx, name, a, b))
-                          for a, b in segs], z0, z1, cuts,
-                         discs=[(build.xy(boss[0]), boss[1])] if boss else ())
+            if _product(ctx):   # its outline closed, placed where its points are
+                part = cut_holes(_placed_outline(build, product_outline(ctx, name, segs),
+                                                 z0, z1), cuts, z0, z1)
+            else:
+                boss = bosses.get(name)
+                part = plate([(build.xy(a), build.xy(b), _chord_r(ctx, name, a, b))
+                              for a, b in segs], z0, z1, cuts,
+                             discs=[(build.xy(boss[0]), boss[1])] if boss else ())
             out.bodies.append(hardware(name, part, name, fab="laser",
                                        sheet=ctx.sheet("link", name)))
         return out

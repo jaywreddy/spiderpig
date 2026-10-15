@@ -163,8 +163,9 @@ class Build:
         """World XY of a topology point at this ``t``.
 
         A point a group added to the geometry (not a joint) is where the
-        geometry says if it's fixed (e.g. a servo mounting screw); if it moves,
-        it's fixed to the crank (:meth:`stack.Topology.add_crank_point`)
+        geometry says if it's fixed (e.g. a servo mounting screw); one fixed to a link
+        (:meth:`stack.Topology.add_link_points`) rides the two points it is drawn from;
+        any other that moves is fixed to the crank (:meth:`stack.Topology.add_crank_point`)
         and has turned with it about O.
         """
         node = self._node(point)
@@ -172,6 +173,12 @@ class Build:
             body, joint = node
             b = self.mech.body(body)
             return (b.pose @ b.joint(joint).pose).matrix[:2, 3].copy()
+        on_link = self.plan.topo.link_points.get(point)
+        if on_link is not None:
+            a, b_, u, v = on_link
+            pa = self.xy(a)
+            d = self.xy(b_) - pa
+            return pa + u * d + v * np.array([-d[1], d[0]])
         g = self.plan.topo.geometry.points
         p = np.asarray(g[point][0], dtype=float)
         if not np.ptp(g[point], axis=0).any():

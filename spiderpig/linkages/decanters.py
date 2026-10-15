@@ -40,13 +40,18 @@ from spiderpig.linkage import (
 R = sp.Rational
 SOURCE = "https://patents.google.com/patent/US7708241"   # the mouth on the tilt axis
 
-TIES = {"Tf1": (55, -47), "Tf2": (75, -47), "Tr1": (275, -136), "Tr2": (360, -136)}
+TIES = {"Tf1": (55, -47.95), "Tf2": (75, -47.95), "Tr1": (275, -136.95),
+        "Tr2": (360, -136.95)}
 """Where the cradle box's tie rods ride on the cradle link, in the cradle's frame (mm: the
 mouth at the origin, x along the bottle's axis toward its base, y up with the bottle level):
 two under the neck carry the front saddle (the neck's V and the shoulder's stop), two under
 the body the rear saddle (the body's V, deep enough for a 6 L bottle, 174 mm, and long
-enough to reach behind its centre of mass). Each link point sweeps an arc about the mouth:
-:mod:`construction.cradle` keeps the frame clear of them."""
+enough to reach behind its centre of mass). Since design review round 2's M1 (2026-10-15)
+the rods are 12 mm (NETRF12), their centres 0.95 mm lower than the 10 mm rods' were, so
+their tops, which the V blocks sit on at a 6 L's setting, stay within 0.05 mm of where they
+were, and the carriers keep 6 mm of print under them for their M3 x 6 set screws. Each link
+point sweeps an arc about the mouth: :mod:`construction.cradle` keeps the frame clear of
+them."""
 
 
 def _ties(at):

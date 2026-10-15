@@ -138,6 +138,9 @@ def clutch_case(config, mech, ts, tilt, cap: float, rod: dict, crankpin: dict, j
     rod_jk = next(jk for jk, (j, *_) in enumerate(joints) if j == lk.crank[1])
     f_rod = np.maximum(cap_f[:, rod_jk], 1e-9)
     rod_sf = rod["euler_n"] / f_rod
+    from spiderpig.cradle_report import rod_secant_sf
+
+    secant_sf = rod_secant_sf(f_rod, rod) if "eccentricity_mm" in rod else rod_sf
     pin_sf = crankpin["capacity_nm"] * 1000.0 / (f_rod * crankpin["lever_mm"])
 
     def outside(b: float) -> dict:
@@ -152,6 +155,7 @@ def clutch_case(config, mech, ts, tilt, cap: float, rod: dict, crankpin: dict, j
                  for r in st["rows"] if (r.get("jam") or {}).get("safety") is not None}
         keep = ~skip
         least["rod (buckling)"] = round(float(rod_sf[keep].min()), 2)
+        least["rod (beam-column)"] = round(float(secant_sf[keep].min()), 2)
         least["crankpin"] = round(float(pin_sf[keep].min()), 2)
         worst = min(least, key=least.__getitem__)
         return {"band_deg": b, "worst": [least[worst], worst], "parts": least,
@@ -201,9 +205,20 @@ def verdict(key: str, rep: dict) -> tuple[str, str]:
     stand = rep.get("stand") or {}
     bits = []
     if capped:
-        sf, part = capped["away"]
-        bits.append(f"at the clutch's {capped['crank_nm']:g} N·m cap every part holds jam SF "
-                    f"{sf:g} or more 30° and more from the toggles ({part} least)")
+        from spiderpig.cradle_report import OPEN_AT_CAP
+
+        open_ = OPEN_AT_CAP.get(key, {})
+        parts = (capped.get("by_band") or [{}])[-1].get("parts") or {}
+        held = {k: v for k, v in parts.items() if k not in open_}
+        if held:
+            part = min(held, key=held.__getitem__)
+            bits.append(f"at the clutch's {capped['crank_nm']:g} N·m cap every other part holds "
+                        f"jam SF {held[part]:g} or more 30° and more from the toggles ({part} "
+                        "least)")
+        under = sorted((v, k) for k, v in parts.items() if k in open_ and v < JAM_FLOOR)
+        if under:
+            bits.append("open: " + ", ".join(f"{k} {v:g}" for v, k in under) + " at the cap "
+                        "(the side frames, design review round 2)")
     if drive:
         bits.append(f"the gearbox {drive['gearbox_sf_hand']:g} x its rating at a hand's speed "
                     f"walking ({drive['gearbox_sf']:g} x its 45 N·m)")

@@ -81,9 +81,10 @@ stops there:
   - Code: `spiderpig/construction/cradle.py`; the linkages are in
     `spiderpig/linkages/decanters.py`.
 - **The cradle box.**
-  - Four tie rods run between the two cradle links, at `decanters.TIES`. Each is a 10 mm
-    steel standoff made to length (MISUMI NETRF10, M5 ends), with an M5 button head
-    through the link into each end. Two carry the front saddle under the neck, two the
+  - Four tie rods run between the two cradle links, at `decanters.TIES`. Each is a 12 mm
+    steel standoff made to length (MISUMI NETRF12, M6 ends, since design review round 2's
+    M1: the box's racking), with an M6 x 16 A2-70 button head through the link into each
+    end. Two carry the front saddle under the neck, two the
     rear saddle 275 and 360 mm behind the mouth.
   - Two printed saddles ride on the tie rods (`cradle.SADDLES`; since 2026-10-14, under
     "The saddles, adjustable"). Each is a carrier locked on its rods by M3 set screws up
@@ -319,8 +320,9 @@ stops there:
     and b6 each alone in its layer.
   - Some chords are wider than 24 mm (`config.PRODUCT_CHORD_R`): B's b6's rear arm X-Tr1
     (40 mm) and its chord X-Y (32), A's b2's E-Tr1 (32).
-  - The metal is cut at SendCutSend: `materials.LINK_SHEETS` and `config.PRODUCT_*`. The
-    7075 has no fitted cutting price yet (quote at upload).
+  - The metal is cut at SendCutSend: `materials.LINK_SHEETS` and `config.PRODUCT_*`. Its
+    cutting, the 7075's and the birch's too, is a fit to SendCutSend's live quotes of
+    2026-10-14 (`hardware.bom.CRADLE_CUT_FITS`; "Building one").
   - The cradle's links are 24 mm wide (`config.PRODUCT_*`'s `link_radius` 12, from 22): B's
     336 mm rod in 0.250 in then holds 1.6 x its jam force in buckling (at 22 mm, 1.46), and
     the bigger pins' holes keep a sheet's thickness of web.
@@ -345,8 +347,8 @@ stops there:
   toward its drive side (`cradle.BASE_Z`, round 1 of 2026-10-14: the gearbox and the hand
   crank put the cradle's centre of mass 68 mm that way). Its corners are rounded 35 mm and
   the notch's mouth 8 mm (`cradle.BASE_CORNER_R`, `NOTCH_MOUTH_R`): a square plywood corner
-  chips and catches a shin. SendCutSend publishes no plywood price: its cutting is quoted at
-  upload.
+  chips and catches a shin. SendCutSend publishes no plywood price; the BOM's figure is a
+  fit to its live quotes of 2026-10-14 (the board alone USD 140.39 then).
   - **Glued, then finished** (design review round 2's M6, 2026-10-14). Wood glue bonds bare
     wood: "Most of our glues are designed to bond bare wood. Painting or staining a wood
     blocks the pores", and over a finish a bond "will only be as strong as the bond
@@ -744,7 +746,8 @@ development box). What it found, and what changed:
   (m4); drains in the front carrier (m7); grease on the thumbscrews (the BOM's notes, m9);
   the guide measures an off-list neck 50-80 mm from its lip (m5).
 - **Not done:** the rails still reach 600 mm for every bottle (m10); the light stays the
-  penlight (m6, S4); the tie rods stay NETRF10 (S5); the post's socket isn't deeper (m2: the
+  penlight (m6, S4); the tie rods stayed NETRF10 (S5; NETRF12 since round 2's structure,
+  for strength); the post's socket isn't deeper (m2: the
   post itself is rated at rest instead, SF 3.1).
 
 ## The vessel under the mouth
@@ -1105,12 +1108,18 @@ at a hand's speed (`WormBox.eta_hand`, 0.55 on the NRV040): 66 N·m at B's crank
 - The joints' rows leave out 30° of crank round either toggle, where a blocked
   crank-rocker's forces grow without bound; the clutch's case rates them (below). There
   only clearance protects: the decanter's lip and anything under the cradle.
-- What A holds there: pin E (steel) 3.31 (3.26 before the planner of 2026-10-14 put it in
-  12 layers, its span 8.55 mm), the crankpin 1.81, the keyed plates 2.15, the
-  rod's buckling 2.32, pillar G 1.83 (on its box: below), its cradle link b2 1.82 (in
-  bending, chord by chord; 0.187 in 5052, its E-Tr1 32 mm wide against buckling), the
-  columns 2.44 and more, the outer plate's members 2.25, the inner's 3.34 (at the 40 N
-  push's 69.3 N·m: 2.88, 1.6, 1.9, 2.05, 1.63, 1.61, 2.17, 2.01, 2.97).
+- What A holds there (design review round 2's side frame, below):
+  - pin E (steel) 3.13, the crankpin 1.81, the keyed plates 2.15;
+  - the rod's buckling 2.51, and 2.65 as a beam-column at pin E's 4.6 mm offset;
+  - its cradle link b2 1.81 (in bending, chord by chord; 0.187 in 5052, its E-Tr1 32 mm
+    wide against buckling);
+  - pillar G 1.38 (1.83 on round 1's springs);
+  - columns C1, C2, D1 and D2 2.15 and more;
+  - the tie rods across the bay 1.51, their end screws 2.28.
+
+  Open at the cap: the outer plate 0.45 (its front leg from column D3 to the foot), column
+  D3 0.9, the inner plate 1.19 ("The side frames at the clutch's cap"). (At the 40 N push's
+  69.3 N·m, round 1's springs: 2.88, 1.6, 1.9, 2.05, 1.63, 1.61, 2.17, 2.01, 2.97.)
 - Turning it: 36.9 N·m at A's crank at worst, a sealed full 6 L on the mounting round's
   saddles: the NRV040's SF 1.57 at a hand's speed (1.22 on its 45 N·m). 32.2 N at A's 85
   mm grip, over the 22 N bar (MIL-STD-1472H's light-load crank): open (DECISIONS.md,
@@ -1139,36 +1148,158 @@ as a beam between both plates) missed. They feed `strength.check` (`loads_doc`'s
   chord in compression. A tree of chords is rated by `|r x F|` about each joint: B's bell
   crank b2 as an L held the jam at 0.80 at its pillar's hole (the generic rule read 2.61),
   so it is a triangle now. B's cradle link b6 in 0.125 in held 0.32 at X under the jam.
-- **Posts on the box** (`cradle_structure.posts`): the pillars and columns between a
-  side's plates solved as one frame: each post a steel beam, its foot fixed in the outer
-  plate's plane, its end moving with the inner plate, which is rigid in its plane and held
-  by nothing but the posts; each end held against turning only as stiffly as its plate's
-  24 mm strips bend and twist there (`cradle_structure.plate_spring`). A plate on two posts
-  in a line (B's bar O1-O2 alone) turns about one and barely holds the other across the
-  line. A post's tapped ends are rated on the tube the tap leaves, the rest on the bar.
+- **Posts on the box**: the pillars and columns between a side's plates, solved as one
+  frame. Each post is a steel beam, its foot fixed in the outer plate's plane, its end moving
+  with the inner plate, which is rigid in its plane and held by nothing but the posts. A
+  plate on two posts in a line (B's bar O1-O2 alone) turns about one and barely holds the
+  other across the line. A post's tapped ends are rated on the tube the tap leaves, the rest
+  on the bar. Until round 2 each end was held by springs of its plate's 24 mm strips
+  (`cradle_structure.plate_spring`, `cradle_structure.posts`).
+- **A side as one frame** (`cradle_structure.side_frame`, design review round 2, 2026-10-15):
+  the posts (pillars and columns) and both frame plates solved together. Each plate is a
+  grillage out of its plane (its members' weak-axis bending and twist), the outer one standing
+  on its feet, held by their cleats; the inner one held by nothing but the posts, which are
+  stiff along their axes; each post's ends turn with its plates. The gearbox's shaft carries
+  the rod's force from the crankpin, so it turns the outer plate at the crank by that force
+  times the rod's height over the plate (`cradle_report.rod_height`, 41.9 mm). Until round 2,
+  each post's ends sat on springs of its plates' members, clamped at their far nodes
+  (`plate_spring`, kept for `cradle_structure.posts`). Those springs held no plate's own
+  equilibrium out of its plane. They also ignored the gearbox's turn, and the inner plate
+  twisting as a whole. An independent 3D frame of 12-dof beams (the review's probe, in
+  `/root/.cache/spiderpig/tmp/r2-structure/frame3d.py` on the development box) agrees with it
+  within about 10 %. A unit test holds its portal case (`test_a_side_frame_holds_its_posts_only_as_its_plates_do`).
+- **Each plate out of its plane** (`cradle_structure.plate_rows`, round 2's B1): every member
+  end rated on the plate as cut:
+  - at a node on a straight run (a column on a leg, a foot's or the flag's screw), the net
+    section through its hole (the boss round it where wider);
+  - where members meet, at its strip's root (`strip_root`), at the moment there.
+
+  The rows had spread a post's end moment over the summed sections of every member at the
+  node. The review's own probes had applied the posts' moments 90° off: the slopes'
+  generalized moment as the turn's vector (`test_a_posts_foot_turns_square_to_its_load`). Its
+  "196 MPa at D1's column hole" is 145 MPa turned right, on the springs' moments. On the side
+  as one frame it is worse elsewhere.
 - **The frame plates' members** (`cradle_structure.members`): each plate a plane frame of
   its members under the posts' feet (and the gearbox's force and torque at O), standing
-  on its feet; each member's in-plane stress, Euler out of the plane between nodes the box
-  holds, and where a node isn't held (the gearbox's O) its tilt on the members there
-  (`k L`). Also each plate where a post's end turns it out of its plane.
+  on its feet. Each member's in-plane stress is rated, and its Euler load out of the plane
+  between nodes the box holds. Where a node isn't held (the gearbox's O), its tilt on what
+  holds it across is rated: since round 2 that is the side's own stiffness there
+  (`cradle_report.side_stiffness`, 12.4 N/mm at B's O). The members there as cantilevers had
+  given 2.9 N/mm and ranked O-Fr's sway first (round 2's minor 3).
+- **The cradle box across the bay** (`cradle_report.box_racking`, round 2's M1). The passive
+  side holds its cradle link in place but lets it turn about the mouth: B's double
+  parallelogram, A's hinge at G.
+  - So the passive half's share crosses the bay in the four tie rods racking: half of what
+    the drive side's pins put on the cradle about the mouth.
+  - Each rod is a steel beam fixed at both ends, sharing by its stiffness at its radius from
+    the mouth (73-385 mm). The rear rods take most.
+  - Walking, 25.4 N·m crosses: the rear rod Tr2's end takes 4.9 N·m, SF 7.4 on its tapped
+    end.
+  - The end joint stays closed: its M6 x 16 A2-70 screw at 6 N·m gives about 5 kN of
+    preload, over its 12 mm face's kern that is 9.6 N·m, 1.97 x the end moment. The 10 mm
+    rods' M5 joints had worked at their gapping moment on every pour.
+  - Jammed at the cap (a block mid-bay, half the couple: 107 N·m on B, 124 on A), the rods
+    hold 1.75 (A 1.51), the end screws' prying 2.63 (A 2.28).
+  - All of the couple on the passive half (a block at that side's end) would take the rods
+    to 0.87 (A 0.76): a known limit.
+  - Since round 2 the rods are MISUMI NETRF12 (12 mm, M6 x 12 deep each end): USD 21.07 at
+    one to four, 15.33 at five, 7.73 at ten (NETRF12-274.9's page, rendered 2026-10-15;
+    NETRF10's 15.30, 11.08 and 5.57).
+  - Their centres sit 0.95 mm lower in the cradle's frame (`decanters.TIES`), so their tops,
+    which the V blocks sit on at a 6 L's setting, stay where the 10 mm rods' were. The
+    carriers keep 6 mm of print under them for their M3 set screws.
+- **The side's stiffness across** (`cradle_report.side_stiffness`, round 2's M3): a push
+  across the plates at a pivot, on the side as one frame.
+  - B's O1 takes 2.67 N/mm, its O2 12.8. A 20 N hand sideways on the bottle, both sides
+    sharing it, sways the pivots 3.75 mm (A's G: 2.92 N/mm, 3.4 mm).
+  - The review's grillage of the outer plate alone had 1.41 N/mm and 7 mm.
+  - Round 2's wider front leg (B1) is the cheap improvement taken: 2.0 N/mm on the side as
+    one frame with the 24 mm leg.
+  - The test holds the sway under 5 mm. A gusset or a cross-tie doesn't reach the pivots:
+    the sway is the outer plate's legs bending from the board.
+- **The rod as a beam-column** (`cradle_report.rod_secant_sf`, round 2's minor 1). Its far
+  pin spans two layers, so the rod's force comes in half that span off its mid-plane: 5.97
+  mm at B's P, 4.58 at A's E.
+  - Pinned at the crankpin, the moment grows by 1/sin(kL). Against the sheet's yield that
+    gives B 2.05 jammed (its Euler 1.85), A 2.65 (Euler 2.51).
+  - b1 is 26 mm wide since round 2 (the parts' M3).
 
 **The known limits: a blocked cradle** (`cradle_report.blocked`, the report's `blocked`).
 The jam case is a couple on the cradle. A real block is a force at a contact, and near the
-mouth its lever is short. The same 61.3 N·m, the clutch's cap, against a block:
+mouth its lever is short. The same 61.3 N·m, the clutch's cap, against a block (round 2's
+side frame):
 
 | block at | B: the block's force | B: J / O1 / X / K | B: weakest | A: weakest |
 |---|---|---|---|---|
-| the front tie Tf1 (the front saddle, the light, the front ties on a raised decanter's rim), 72 mm from the mouth | 3.43 kN | 6.2 / 5.9 / 3.5 / 3.4 kN | the outer plate 0.18, pillars O1 0.32 and O2 0.36, pin K 0.70 | the outer plate 0.23, pillar G 0.81 (G 3.9 kN) |
-| the rear saddle's underside, 351 mm out | 0.71 kN | 1.5 / 2.0 / 1.0 / 1.8 kN | the outer plate 0.78, pillar O2 0.93, O1 1.07 | the outer plate 0.94 |
+| the front tie Tf1 (the front saddle, the light, the front ties on a raised decanter's rim), 73 mm from the mouth | 3.41 kN | 6.2 / 5.8 / 3.4 / 3.3 kN | the outer plate 0.16, pillar O2 0.21, pillar O1 0.31, the inner plate 0.31 | the outer plate 0.19, pillar G 0.21 (G 3.9 kN) |
+| the rear saddle's underside, 351 mm out | 0.71 kN | 1.5 / 2.0 / 1.0 / 1.8 kN | pillar O2 0.50, the outer plate 0.64, pillar O1 1.1 | the outer plate 0.46, pillar G 0.94 |
+| a 6 L's base at its top edge (a shelf or a cabinet's front), 563 mm out | 0.44 kN | 0.9 / 1.5 / 0.9 / 1.6 kN | pillar O2 0.63, the outer plate 0.69, b6 0.75 | the outer plate 0.55, b2 0.66 |
 
-Not designed for: nothing that holds a block 72 mm from the mouth at the cap fits the
-cradle, and no clutch a hand can turn brings those to 1. "In practice the glass decanter
-breaks first" was unverified (round 2's linkage review found no rim-strength figure): the
-frame starts to give at about 10 N over the normal turn at B's grip, about 1 kN at the front
-tie (the outer plate O1-O buckles at +6.5 N, the pillar O1 and the plate round its foot
-yield at +10 N). Since round 2 the decanter stands on a printed riser that can't be raised
-mid-pour, its rim 20 mm under the lowest part over it ("The vessel under the mouth"). (At the 40 N push, before round 1's
-drive: B's outer plate 0.17, pillars 0.30 and 0.34; A's plate 0.21.)
+**Where it starts to give** (`blocked`'s `threshold`, round 2's M2). The loads are the
+walking ones plus the push beyond what turning the cradle takes, `dT = T - T_walk >= 0`
+(a block only pushes back), superposed: the statics are linear in the crank's torque. Every
+part is rated as the report rates it. The extra force at the grip, through the worm at a
+hand's speed, is on top of what the turn already takes (up to 21 N on B, 33 on A):
+
+| block at | B: first to 1.3 | B: first to 1 | A: first to 1.3 | A: first to 1 |
+|---|---|---|---|---|
+| the front tie Tf1 | the outer plate, +4.2 N at the grip (417 N at the tie) | the outer plate, +5.8 N (577 N) | the outer plate, +6.7 N (516 N) | the outer plate, +9.3 N (719 N) |
+| the rear saddle | pillar O2, +9.9 N (204 N) | none within the clutch's +27 N | the outer plate, +11.6 N (187 N) | the outer plate, +16.7 N (270 N) |
+| a 6 L's base | the outer plate, +10.1 N (129 N) | none within the clutch's | the outer plate, +13.2 N (133 N) | the outer plate, +19.0 N (191 N) |
+
+So a decanter raised into the front ties starts bending B's frame at about 6 N over the
+normal turn, which a hand can't feel against the turn's own 21 N. No clutch a hand can turn
+helps a block 73 mm from the mouth. Since round 2 the decanter stands on a printed riser
+that can't be raised mid-pour, its rim 20 mm under the lowest part over it ("The vessel
+under the mouth"), and the use limits keep everything else from under the box. (Until round
+2 this said the glass decanter would break first; nothing supports that, and the review
+found no rim-strength figure to cite. At the 40 N push, before round 1's drive: B's outer
+plate 0.17, pillars 0.30 and 0.34; A's plate 0.21.)
+
+**The side frames at the clutch's cap (open, design review round 2, 2026-10-15).** Rated as
+one frame (`cradle_structure.side_frame`), B's drive side holds a full 6 L walking: every part
+at SF 2.86 or more (pillar O2 3.52). At the clutch's 61.3 N·m cap it doesn't hold
+everywhere (`cradle_report.OPEN_AT_CAP`):
+
+| part | B jam SF (round 1's springs) | why |
+|---|---|---|
+| the outer plate's front leg, D2 to the foot | 0.62 (2.61, D1's hole) | the box turns out of its plane about the leg and twists it into the clamped foot |
+| pillar O2 | 0.75 (1.41) | the inner plate can't hold its posts' ends across the line they stand on |
+| column D2 | 1.01 (4.5) | the same |
+
+Two things the springs couldn't see make it so:
+- **The posts stand almost on one line.** B's O1, O2, D1 and D2 lie within 66 mm of the
+  line down the front, and the drive's force runs mostly across it.
+  - The inner plate floats on its posts. Turning it about that line takes its slender
+    triangle's twist, which barely resists.
+  - So the posts' ends turn freely across the line. The box sways in the drive's direction,
+    and pillar O2 bends nearly as a cantilever off the outer plate: 47.9 N·m at its foot
+    against 26.7 on the springs.
+- **The gearbox turns the outer plate at the crank.** The rod's force reaches the frame at
+  O through the gearbox's shaft, 41.9 mm under the rod. At the pillars it arrives 54 mm up.
+  - Between the two, only the outer plate's strips carry that moment out of their plane.
+  - B's O2-O, O1-O and the rear leg O-Fr take it to the box and the feet: the rear leg at the
+    flag's screws holds 0.89, O2-O 1.2.
+
+**The fix, modelled and not built:** make each side a box toward the rear.
+- Two or three 12 mm columns stand along the rail, and the inner plate runs a bottom chord
+  from D2 to them. The posts then spread across the drive's force, so the box holds its
+  ends.
+- In the model (`widths.py` on the development box): rail columns at 60, 180 and 290 mm
+  behind the mouth, 48 mm chords, the rear leg and the rail 48 mm. That brings pillar O2 to
+  1.58, O1 to 1.43 and column D2 to 2.55. The inner plate's leg D1-D2 in its plane (0.86),
+  O2-Fr (1.08) and the last column (1.17) want one more iteration.
+- It is a redesign of the stand round the gearbox's mount: the round's drive changes that
+  mount to the NRV050. It also changes the pack and the guide, so it is left to the user,
+  with the drive.
+- Widths alone don't do it. The front leg at 64 mm, the rear leg at 64 and the rail at 48
+  take the plate to 0.88, but leave pillar O2 at 0.81 and column D2 at 0.96: neither moves
+  without box action.
+
+A shows the same (`OPEN_AT_CAP["decanter_hinge"]`): its outer plate's front leg from column
+D3 to the foot 0.45, the strut G-O at the gearbox 0.69, column D3 0.9, the inner plate's leg
+D2-D3 1.19. Its inner plate, a block round G with its columns down the front leg, is a line of
+posts too. Walking it holds 3.74 or more.
 
 **The clutch's cap** (round 1's drive review, 2026-10-14: `config.PRODUCT_CLUTCH_NM`,
 `cradle_drive.clutch_case`, the report's `jam_capped`). The hand crank's slip clutch slips
@@ -1356,7 +1487,10 @@ b2 held 0.80, b6 0.32 and pillar O2 about 0.4.
   leg runs from O2, a rear leg straight down from O, and a rail along the base board.
   O2–O, the strut that takes the rod's push back to the gearbox (1.45 kN jammed), is 64
   mm wide: at 24 it buckled out of the plate at 0.72, and the gearbox's node O, held
-  across only by the plate's members, leans on it.
+  across only by the plate's members, leans on it. The front leg is 40 mm wide from O2 to
+  the foot (design review round 2's B1, layer 0 only: the plan is the same). At 24 it held
+  the clutch's cap out of its plane at 0.44 on the side as one frame; it holds 0.62 now
+  (open, above), and the side's stiffness across at O1 went from 2.0 to 2.67 N/mm.
 - **The inner plate** is the bar O1–O2, a triangle O1–O2–D1 off it and a leg D1–D2 down
   over the outer plate's front leg, on two 12 mm columns (since 2026-10-14: the bar alone,
   on its two pillars, held them only along itself; across it O2 was a cantilever off the
@@ -1468,16 +1602,42 @@ The guide's cover lists the tools the steps name (`cradle.TOOLS`, round 2's m10:
 named only inside the steps until then).
 
 Things to know before cutting and on the bench:
-- **Get a live SendCutSend quote** (upload the DXFs). The BOM's cutting figure is a fit to
-  the live quotes of 2026-10-10 for A's files (`hardware.bom.CRADLE_CUT_FITS`: USD 367.50
-  then); the walkers' per-area rates had priced the old aluminium base plate alone at USD
-  488. The plywood (the board, its cleats and the riser locator) and the 7075 have no fitted
-  price. The BOM's and ORDER.md's totals say so (`bom.unpriced_cut_note`): "The total
-  excludes 2 unpriced cut lines". For the 7075 they give an estimate, marked as one, with
-  its basis: the 0.187 in 5052 fit's price for the same parts, x1 to x2
-  (`bom.CRADLE_CUT_PROXIES`); on B that is USD 68-136. The birch, never quoted, stays
-  unpriced with its area (4439 cm² on B). The cutting's source line names A's quote as A's
-  (it had printed "USD 359-368 in all" in B's order).
+- **Get a live SendCutSend quote** (upload the DXFs). The BOM's cutting figure is a fit
+  (`hardware.bom.CRADLE_CUT_FITS`, design review round 2's parts B1) to 40 live quotes of
+  2026-10-14, every file of both cradles at its quantity.
+  - Aluminium: each file's one-off price is `k x area^0.249 x cut length^0.229 x blank^0.326`,
+    `k` per sheet. 7075 runs 1.87 x 5052 one-off, 2.16 x at two.
+  - The birch is fitted on its blank's two sides.
+  - The quantity discount is each sheet's as quoted: 5052 0.187 in x0.67 at two, 7075
+    x0.78, 0.250 in x0.76, 6061 x0.72, the birch x0.75. It had been a flat 0.72.
+  - Every quoted file is within 11 % (`tests/test_cradle.py` holds it). B comes to USD
+    760.28 against 758.19 quoted, A to 580.03 against 573.82.
+  - Today's files: B's cutting USD 768.44 (5052 0.187 in 279.92, 7075 177.42, the birch
+    237.46, 6061 50.91, 0.250 in 22.73), the whole build USD 1,190.54. A's cutting is USD
+    580.35, the whole build 920.93.
+  - Until round 2 the BOM printed B's cutting at USD 301.58. That left out a "USD 68-136"
+    7075 band and an unpriced birch line: about USD 457 short.
+  - Each file's estimate is in ORDER.md's upload table, and which files arrive as cut (under
+    SendCutSend's 1 x 3 in deburring minimum, `bom.hand_deburred`).
+- **On arrival** (the guide's first stage, `assembly.CRADLE_ARRIVAL`):
+  - Deburr by hand the links that come as cut (B's b4 and b5, 24 mm wide).
+  - Caliper every link at its pin holes. SendCutSend's sheets run up to +0.69 mm thick at
+    0.250 in and +0.23 mm at 0.187 in (its spec tables).
+  - Then order the made-to-length pins (MISUMI CCGH8: the measured stack + 0.3 mm; ORDER.md
+    says to order them last).
+  - The report rates each pin's take-up against those tolerances (`cradle_report.take_up`,
+    the parts' M5). B's pin P can be 0.49 mm short of its play and Y 0.06 mm at worst, A's
+    E 0.52 mm. Where a ring or clip won't seat, sand that pin's printed spacer by the excess.
+  - The base board goes on the flat table first (SendCutSend's sheet is flat to ±0.030 in a
+    foot before cutting, 1.7 mm over the board), its concave face down.
+- **The posts' and the tie rods' screws are A2-70** (design review round 2's m2 and M1).
+  - Each is an M6 x 16 button head of a stated class (ISO 3506-1: Fastenal's, 9.0 kN proof),
+    on a DIN 125 washer at the pillars' and columns' ends, in 6.4 mm holes.
+  - Tighten them to 6 N·m on the 4 mm key: about 5 kN, which keeps each end joint closed
+    walking.
+  - Jammed, the joints gap. The tie rods' screws then pry at 3.4-4 kN; pillar O2's foot
+    screw pries at about 8 kN at its 48 N·m (open with the pillar).
+  - Bolt Depot's 18-8 names no class, and A2-50's 210 MPa would yield there.
 - **Run the gearbox in and wipe it:** a new worm box can weep oil at its seals, and it
   stands over the base board beside the wine. A few hundred input turns (a drill, slowly),
   then wipe it.
@@ -1499,7 +1659,8 @@ Things to know before cutting and on the bench:
   front saddle, the tie rods and the light after each pour. (Stainless tie rods, round 2's
   m8, are not priced: MISUMI's SETRF10 page refuses a script, HTTP 403 when fetched on
   2026-10-15, and the review's figure, USD 18.52 each at five against NETRF10's 11.08 (+37.20
-  for five), came from MISUMI's price API with the grade unconfirmed.)
+  for five), came from MISUMI's price API with the grade unconfirmed. The rods are NETRF12
+  since round 2's structure.)
 - **The worm's hold, on the bench:** with a full bottle at level, tap the table and watch a
   pencil line across the crank and the plate for 10 minutes (the guide's hand crank step).
   The clone's mesh isn't Motovario's: a 16 % drop in its friction loses self-locking. One

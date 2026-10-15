@@ -173,9 +173,28 @@ class Topology:
     frame_bodies: tuple[str, ...] = ()
     crank_bodies: tuple[str, ...] = ()
     crank_points: dict[str, tuple[float, float]] = field(default_factory=dict)
+    # points fixed to a link: name -> (a, b, u, v), a + u (b - a) + v (b - a) turned 90°
+    link_points: dict[str, tuple[str, str, float, float]] = field(default_factory=dict)
 
     def axes_of(self, kind: AxisKind) -> list[Axis]:
         return [a for a in self.axes if a.kind == kind]
+
+    def add_link_points(self, points: Mapping[str, tuple[str, str, float, float]]) -> None:
+        """Points fixed to a link, each ``(a, b, u, v)``: ``a + u (b - a) + v (b - a)``
+        turned 90° counter-clockwise, ``a`` and ``b`` two of the link's points (an affine
+        combination of points of one rigid body rides it), added to the geometry (and
+        remembered, so a re-sampled topology gets them too: :func:`stack.verify_plan`;
+        :meth:`construction.base.Build.xy` places them)."""
+        new = {n: v for n, v in points.items() if self.link_points.get(n) != v}
+        if not new:
+            return
+        g = self.geometry.points
+        xy = {}
+        for name, (a, b, u, v) in new.items():
+            pa, d = g[a], g[b] - g[a]
+            xy[name] = pa + u * d + v * np.stack([-d[:, 1], d[:, 0]], axis=-1)
+        self.geometry = self.geometry.extend(xy)
+        self.link_points.update(new)
 
     def add_crank_point(self, name: str, r: float, angle_deg: float) -> str:
         """A point fixed to the crank, ``r`` from O and ``angle_deg`` counter-clockwise from
@@ -285,7 +304,7 @@ def _copy_of(base: Topology) -> Topology:
     """A topology of ``base``'s links, axes and points with its own geometry (own points,
     sharing the base's distance table for them) and its own crank points."""
     geo = Geometry(dict(base.geometry.points), shared=base.geometry)
-    return replace(base, geometry=geo, crank_points={})
+    return replace(base, geometry=geo, crank_points={}, link_points={})
 
 
 def _sample_topology(tmpl, samples: int) -> Topology:

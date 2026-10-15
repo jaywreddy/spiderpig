@@ -511,6 +511,9 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
     if row["kind"] == "frame":
         return [f"a wider {(row.get('jam') or row.get('walk') or {}).get('governs')} "
                 "(construction.cradle.Stand.wide), or a member or column holding its node"]
+    if row["kind"] == "box":
+        return ["thicker tie rods across the bay (construction.cradle.TIE_D), their end "
+                "screws a stronger class, or the rear rods farther from the mouth"]
     if row["kind"] == "link":
         need = row.get("needs")
         if need:
@@ -662,7 +665,7 @@ def check(notes: dict, meta: dict, config: BuildConfig, loads: dict) -> dict:
         rows.append(plates)
     rows += [dict(r) for r in loads.get("rated") or []]   # (the loads' own: a cradle's
     worst: dict[str, dict] = {}                         # columns and frame plates)
-    for kind in ("pin", "pillar", "crank", "link", "chassis", "column", "frame"):
+    for kind in ("pin", "pillar", "crank", "link", "chassis", "column", "frame", "box"):
         ks = [r for r in rows if r["kind"] == kind]
         for tag in ("walk", "jam"):
             have = [r for r in ks if r.get(tag)]

@@ -209,17 +209,19 @@ class StandoffAxle:
     def cradle_shaft(self) -> StandoffAxle:
         """A decanting cradle's pillar (``construction._axle_groups``): one 12 mm round
         steel standoff made to the column's length (MISUMI NETRF12, 0.1 mm steps), tapped
-        M6 both ends, an M6 button head through each plate (its 10.5 mm head bears on the
-        aluminium plate: no washer). Its bottle's load bends a 6 mm column between plates
-        too far (B's O1 at the 3 L's jam: SF 0.4, ``cradle_report``), a 10 mm one at the
-        6 L's (0.78): the 12 mm is 1.73 x the 10 mm. Its 3.3 mm heads stand outside the
-        plates, where a cradle's side is open (the bay; the outside, its gearbox at O)."""
+        M6 both ends, an M6 x 16 button head (A2-70) and a DIN 125 washer through each plate's
+        6.4 mm hole (design review round 2's m2, 2026-10-15: the 10.5 mm heads had borne on
+        the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated class). Its bottle's
+        load bends a 6 mm column between plates too far (B's O1 at the 3 L's jam: SF 0.4,
+        ``cradle_report``), a 10 mm one at the 6 L's (0.78): the 12 mm is 1.73 x the 10 mm.
+        Its heads and washers, 4.9 mm, stand outside the plates, where a cradle's side is
+        open (the bay; the outside, its gearbox at O)."""
         from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, NETRF12_ID
 
         return replace(self.one_piece(), stock="shaft12", size="M6", od=12.0, id_=NETRF12_ID,
-                       yield_mpa=NETRF10_YIELD, end_hole=6.6, stud_hole=6.4,
-                       min_engage=6.0, min_segment=24.0, washer_key=None,
-                       shim_key="m6_washer", tighten_nm=6.0, outside=3.5)
+                       yield_mpa=NETRF10_YIELD, end_hole=6.4, stud_hole=6.4,
+                       min_engage=6.0, min_segment=24.0, washer_key="m6_washer",
+                       shim_key="m6_washer", tighten_nm=6.0, outside=5.0)
 
     def _running_play(self, build: Build, group: AxleGroup, out: Realized,
                       length: float) -> float:
@@ -574,18 +576,17 @@ class StandoffAxle:
         column += [n for n in ends if view.z[n][0] < bottom - 1e-3]
         inner = [n for n in ends if n not in column and view.z[n][1] > top + 1e-3]
         ops = []
-        cradle = self.washer_key is None        # (a cradle's: its button head on the plate)
+        cradle = self.stock == "shaft12"        # (a cradle's: its sides open, no servo bay)
         if column:
             ops.append(Op(STACK, (-1, 1), whole(*column), "",
                           "Screw each pillar's standoff column (one piece) to the outer plate: "
-                          + ("its button head from outside" if cradle else
-                             "its button head and washer from outside")
+                          + "its button head and washer from outside"
                           + f", threadlocker, to {self.tighten_nm:g} N·m while the column is "
                           "bare to hold.", "columns"))
         if inner:
             ops.append(Op(JOIN, (1,), whole(*inner), "",
-                          (f"Each pillar's inner button head from the bay side, threadlocker, "
-                           f"to {self.tighten_nm:g} N·m." if cradle else
+                          (f"Each pillar's inner button head and washer from the bay side, "
+                           f"threadlocker, to {self.tighten_nm:g} N·m." if cradle else
                            "Each pillar's inner screw and washer from the servo bay (a "
                            f"ball-end key), threadlocker, to {self.tighten_nm:g} N·m."),
                           "pillar_screws"))

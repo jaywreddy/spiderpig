@@ -10,7 +10,15 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from spiderpig.hardware.bom import CUT_SOURCE, ON_HAND, bought
+from spiderpig.hardware.bom import (
+    CRADLE_CUT_FITS,
+    CUT_SOURCE,
+    ON_HAND,
+    bought,
+    deburr_least,
+    file_estimates,
+    hand_deburred,
+)
 from spiderpig.hardware.catalog import get
 from spiderpig.hardware.electronics import HV_SHORT, HV_WARNING
 
@@ -39,6 +47,24 @@ COMPENSATES = {"SendCutSend": True, "Ponoko": False}
 """Whether a service offsets its cut path for the kerf itself (SendCutSend does; Ponoko
 doesn't in acrylic): what the files' own kerf (:func:`layout.sheet_kerf`, ``--kerf``)
 must be."""
+MEASURED_PINS = ("pivot_pin8_",)
+"""Catalog keys (by prefix) of the pins made to length whose length is the stack of cut
+parts they go through (MISUMI's CCGH8, :mod:`construction.pivots.pivot_pin`, made to the
+0.1 mm): ordered last, once the parts are measured (:data:`PIN_TAKE_UP_MM`)."""
+PIN_TAKE_UP_MM = 0.3
+"""mm over the measured stack a made-to-length pin's length is ordered at (design review
+round 2, M5: SendCutSend's sheets run up to +0.027 in thick at 0.250 in, more than the
+0.37-0.45 mm the pins' play allows: ``cradle_report.take_up``)."""
+MEASURED_PIN_NOTE = (
+    "Order the made-to-length pivot pins ({pins}) last, once the cut parts have arrived: "
+    "SendCutSend's sheets come up to +0.027 in (0.69 mm) over at 0.250 in and +0.009 in "
+    "(0.23 mm) at 0.187 in (its spec tables), more than a pin's play. Caliper each link at "
+    "its pin holes, add up each pin's stack (its links and the printed spacers between "
+    "them, as the assembly guide stacks them) and order L, the length between the rings' "
+    "grooves, at that stack plus {take:g} mm (made to 0.1 mm, +0.1/-0). The clevis pins are "
+    "a stock length: where a clip won't seat, sand the printed spacer under the pin's head "
+    "by the excess.")
+"""ORDER.md's line for a build with :data:`MEASURED_PINS` (a cradle's)."""
 
 
 def kerf_note(service: str, kerfs: set[float]) -> str:
@@ -127,6 +153,9 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
             name = r.name + (f" (the same pack{also})" if also else "")
             if r.key in LINE_WARNINGS:
                 name += f" — **{LINE_WARNINGS[r.key]}**"
+            if r.key.startswith(MEASURED_PINS):
+                name += (" — **order once the cut parts are measured** (L: the measured "
+                         f"stack + {PIN_TAKE_UP_MM:g} mm; see Before you order)")
             est = _money(r.cost_usd)
             if r.cost_usd is None:
                 unpriced += 1
@@ -157,6 +186,11 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
             f"* {r.name}: {r.where[0] if len(r.where) == 1 else f'{len(r.where)} uses'}"
             for r in on_hand] + [""]
 
+    fitted: dict[str, float] = {}       # a cradle's files' estimates, by their first part
+    rough: set[str] = set()             # ... and those that arrive as cut
+    if getattr(bom, "cut_ranges", None) is not None:
+        fitted = file_estimates(getattr(bom, "made", []), CRADLE_CUT_FITS)
+        rough = {m.name for m in hand_deburred(getattr(bom, "made", []))}
     if laser_rows:
         lines += ["## Cut (upload per service)", ""]
         by_service: dict[str, list[dict]] = defaultdict(list)
@@ -179,12 +213,20 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
                 lines += [f"Estimate: ≈{_money(cut[service])} for these parts ({source})"
                           + (f", without {', '.join(unpriced)}: unpriced, see the total above"
                              if unpriced else "") + ".", ""]
-            lines += ["| qty | file | material | thickness | size mm | makes |",
-                      "|---:|---|---|---:|---|---|"]
+            if fitted:      # a cradle's: each file's estimate, and whether it comes deburred
+                lines += ["| qty | file | material | thickness | size mm | est. | deburred | "
+                          "makes |", "|---:|---|---|---:|---|---:|---|---|"]
+            else:
+                lines += ["| qty | file | material | thickness | size mm | makes |",
+                          "|---:|---|---|---:|---|---|"]
             for r in rows:
+                head = r["parts"].split()[0] if r["parts"] else ""
+                done = ("as cut: by hand" if head in rough else
+                        "yes" if deburr_least(r["sheet"]) else "—")   # (wood: not offered)
+                more = f" {_money(fitted.get(head))} | {done} |" if fitted else ""
                 lines.append(f"| {r['qty']} | `{build_dir}/laser/parts/{r['file']}` | "
-                             f"{r['material']} | {r['thickness_mm']:g} mm | {r['size_mm']} | "
-                             f"{r['parts']} |")
+                             f"{r['material']} | {r['thickness_mm']:g} mm | {r['size_mm']} |"
+                             f"{more} {r['parts']} |")
             lines += ["", f"{sum(r['qty'] for r in rows)} parts in {len(rows)} files.", ""]
 
     if print_rows:
@@ -200,6 +242,10 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
 
     notes = [n for r in bom.purchased for n in _item_notes(r.key)]
     notes += [LINE_NOTES[r.key] for r in bom.purchased if r.key in LINE_NOTES]
+    measured = [r for r in bom.purchased if r.key.startswith(MEASURED_PINS)]
+    if measured:
+        notes.append(MEASURED_PIN_NOTE.format(pins=", ".join(r.sku or r.name for r in measured),
+                                              take=PIN_TAKE_UP_MM))
     if notes or bom.notes:
         lines += ["## Before you order", ""] + [f"* {n}" for n in dict.fromkeys(notes)] \
             + [f"* {n}" for n in bom.notes] + [""]

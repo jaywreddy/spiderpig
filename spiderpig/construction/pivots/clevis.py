@@ -301,7 +301,9 @@ class ClevisPinAxle(ChicagoAxle):
               "link), on the bench; the link goes on with the pin standing in it.")
         clip_on = ("Each clevis pin's hairpin cotter (R-clip) through the pin's hole from the "
                    "bay side, by hand, its bent leg over the pin: the links must turn freely "
-                   "and lift their play (about 0.3 mm). Where the pin holds the cradle link, "
+                   "and lift their play (about 0.3 mm). If the hole stays covered, the stack "
+                   "is over the pin (a thick sheet: the calipered figures): sand the printed "
+                   "spacer under its head by the excess. Where the pin holds the cradle link, "
                    "pull its clip to take the side off; it goes back in the pin's hole.")
         ops = [Op(STACK, (k_lo, 0, 1), whole(pin, *spacer), "", on, "layer")]
         if clip in view.z:

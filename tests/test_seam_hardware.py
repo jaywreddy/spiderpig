@@ -225,6 +225,40 @@ def test_the_check_counts_the_rules_and_errors_over_every_laser_part():
                                        "worst bad (al6061_2p5mm)")
 
 
+def test_a_part_under_the_deburring_minimum_arrives_as_cut():
+    """SendCutSend deburrs a part only from 1 x 3 in (its spec tables, 2026-10-15): a 24 mm
+    link on a cradle's 0.187 in 5052 is a warning (deburr it by hand), a 26 mm one passes,
+    and a walker's sheet doesn't carry the rule (its audit is the identity gate's)."""
+    t = 4.75
+    narrow = _body(_plate(120, 24, t, [(12, 12, 8.2), (108, 12, 8.2)]), sheet="al5052_4p8mm")
+    (d,) = [i for i in manufacture.part_issues(narrow, "al5052_4p8mm") if i["rule"] == "deburr"]
+    assert (d["level"], d["value"], d["limit"]) == ("warning", [24.0, 120.0], [25.4, 76.2])
+    assert "arrives as cut" in d["fix"]
+    wide = _body(_plate(120, 26, t, [(13, 13, 8.2)]), sheet="al5052_4p8mm")
+    assert not [i for i in manufacture.part_issues(wide, "al5052_4p8mm")
+                if i["rule"] == "deburr"]
+    walker = _body(_plate(120, 24, 2.54, [(12, 12, 3.0)]))
+    assert not [i for i in manufacture.part_issues(walker, "al6061_2p5mm")
+                if i["rule"] == "deburr"]
+    assert manufacture.blank_of(narrow) == pytest.approx((24.0, 120.0), abs=1e-6)
+
+
+def test_the_thick_sheets_take_their_own_smallest_part():
+    """The spec tables' smallest part per thickness (2026-10-15): 0.50 x 0.75 in in 0.187
+    and 0.250 in 5052, 0.50 x 0.50 in in 7075 0.190 in; the thin sheets keep 0.25 x 0.375
+    in; every SendCutSend sheet carries its published thickness tolerance."""
+    assert materials.sheet("al5052_4p8mm").min_part == pytest.approx((12.7, 19.05))
+    assert materials.sheet("al5052_6p35mm").min_part == pytest.approx((12.7, 19.05))
+    assert materials.sheet("al7075_4p8mm").min_part == pytest.approx((12.7, 12.7))
+    assert materials.sheet("al5052_2mm").min_part == (0.25 * 25.4, 0.375 * 25.4)
+    assert get("al5052_6p35mm").dims["thickness_tol"] == (0.686, 0.686)
+    assert get("al7075_4p8mm").dims["thickness_tol"] == (0.178, 0.178)
+    assert get("birch_9mm").dims["thickness_tol"] == (0.406, 0.61)
+    small = _body(_plate(18, 12, 4.75), sheet="al5052_4p8mm")
+    (m,) = [i for i in manufacture.part_issues(small, "al5052_4p8mm") if i["rule"] == "min_part"]
+    assert m["limit"] == pytest.approx([12.7, 19.05])
+
+
 # -- the catalog's on-demand families ----------------------------------------------------------
 
 
