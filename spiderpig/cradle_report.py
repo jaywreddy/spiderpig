@@ -621,7 +621,7 @@ def keepers(config: BuildConfig, mech) -> dict:
         bb = by[n].placed_part().bounding_box()
         h = bb.size.Z
         od = max(bb.size.X, bb.size.Y)
-        w = part_mass_kg(config, by[n.split("_gap")[0] + "_pin"]) * G
+        w = part_mass_kg(config, by[cr.keeper_pin(n)]) * G
         least = TPU_STEEL_FRICTION * normal(cr.KEEPER[1], TPU_E, od, h)
         rows.append({"keeper": n, "od_mm": round(od, 2), "height_mm": round(h, 2),
                      "pin_weight_n": round(w, 3), "grip_least_n": round(least, 2),

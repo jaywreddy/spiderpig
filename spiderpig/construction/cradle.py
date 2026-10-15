@@ -1987,11 +1987,17 @@ left loose on the cradle link."""
 KEEPER_COLOR = LINER_COLOR
 
 
+KEEPER_FILL = 9.0
+"""The keeper's bore is filled out to this diameter (mm) from :data:`KEEPER`'s: over any
+ring's own bore (the pin's 8 mm and its print clearance), under its outline."""
+
+
 def keeper_names(side: Mechanism, lk) -> list[str]:
-    """The drive side ``side``'s gap rings (bare names) that are keepers (:data:`KEEPER`): on
-    each pin of the cradle link's with a clip (a quick-release clevis pin), every ring the
-    pin's plan puts in a gap between its links; none on a cradle without such pins (A). A
-    clipped pin with no ring is an error: nothing would hold it with its side down."""
+    """The drive side ``side``'s printed rings (bare names) that are keepers (:data:`KEEPER`):
+    on each pin of the cradle link's with a clip (a quick-release clevis pin), every ring or
+    sleeve the pin's plan prints between its links (a gap's ring, a layer's ring, or one
+    sleeve of both: not the take-up spacer under its head); none on a cradle without such
+    pins (A). A clipped pin with no ring is an error: nothing would hold it, its side down."""
     import re
 
     link = cradle_link(lk)
@@ -2001,22 +2007,31 @@ def keeper_names(side: Mechanism, lk) -> list[str]:
                   and f"pin_{j}_clip" in names)
     out = []
     for j in pins:
-        rings = sorted(n for n in names if re.fullmatch(rf"pin_{re.escape(j)}_gap\d+_spacer", n))
+        rings = sorted(n for n in names
+                       if re.fullmatch(rf"pin_{re.escape(j)}_(?:gap\d+_spacer|ring\d+)", n))
         if not rings:
-            raise ConstructionError(f"pin {j}: a quick-release pin with no ring in a gap to "
-                                    "keep it (construction.cradle.KEEPER)")
+            raise ConstructionError(f"pin {j}: a quick-release pin with no ring between its "
+                                    "links to keep it (construction.cradle.KEEPER)")
         out += rings
     return out
 
 
+def keeper_pin(name: str) -> str:
+    """The pin a keeper (:func:`keeper_names`, bare or a side's) keeps: ``L.pin_X_gap14_spacer``
+    -> ``L.pin_X_pin``."""
+    import re
+
+    return re.sub(r"_(?:gap\d+_spacer|ring\d+)$", "", name) + "_pin"
+
+
 def _keeper(part):
-    """A gap ring ``part`` (a side's frame, along z) as a keeper: its outline, its bore
-    :data:`KEEPER`'s."""
+    """A ring ``part`` on a pin (a side's frame, along z) as a keeper: its outline as it is,
+    its bore filled in to :data:`KEEPER`'s."""
     from spiderpig.shapes import ring
 
     bb = part.bounding_box()
     xy = ((bb.min.X + bb.max.X) / 2, (bb.min.Y + bb.max.Y) / 2)
-    return ring(xy, bb.max.X - bb.min.X, KEEPER[0], bb.min.Z, bb.max.Z)
+    return union([part, ring(xy, KEEPER_FILL, KEEPER[0], bb.min.Z, bb.max.Z)])
 
 
 def _moved(part, dz: float, mirror: bool):
@@ -2270,7 +2285,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                for k, part in enumerate(_jack_locator(cf.lip, y_top - BASE_T - FOOT_PAD_H))]
     glue = [BomLine(WOOD_GLUE, 1, "the base board's cleats and the jack locator's layers")]
     # each keeper grips its pin (its bore under the pin's: an interference fit, not a clash)
-    fastened += [(prefixed(n, s), prefixed(n.split("_gap")[0] + "_pin", s))
+    fastened += [(prefixed(n, s), prefixed(keeper_pin(n), s))
                  for n in sorted(keepers) for s in SIDES_LR]
     for i, (x, z) in enumerate(foot_xz):
         extras.append(hardware(f"foot_boot_{i}", _tpu_foot(x, z, y_top), frame_host,

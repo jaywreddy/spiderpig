@@ -450,10 +450,12 @@ def test_a_quick_release_pins_gap_ring_is_its_keeper():
     def side(*names):
         return SimpleNamespace(bodies=[SimpleNamespace(name=n) for n in names])
 
-    got = cr.keeper_names(side("pin_X_pin", "pin_X_clip", "pin_X_gap14_spacer", "pin_Y_pin",
-                               "pin_Y_clip", "pin_Y_gap14_spacer", "pin_K_clip",
-                               "pin_K_gap11_spacer", "pin_J_gap13_spacer"), lk)
-    assert got == ["pin_X_gap14_spacer", "pin_Y_gap14_spacer"]      # (K: not the cradle's)
+    got = cr.keeper_names(side("pin_X_pin", "pin_X_clip", "pin_X_gap14_spacer",
+                               "pin_X_spacer_lo", "pin_Y_pin", "pin_Y_clip", "pin_Y_ring13",
+                               "pin_K_clip", "pin_K_gap11_spacer", "pin_J_gap13_spacer"), lk)
+    assert got == ["pin_X_gap14_spacer", "pin_Y_ring13"]    # (K: not the cradle link's)
+    assert cr.keeper_pin("R.pin_Y_ring13") == "R.pin_Y_pin"
+    assert cr.keeper_pin("pin_X_gap14_spacer") == "pin_X_pin"
     assert cr.keeper_names(side("pin_X_gap14_spacer", "pin_Y_gap14_spacer"), lk) == []
     with pytest.raises(ConstructionError, match="keep"):
         cr.keeper_names(side("pin_X_clip", "pin_Y_clip", "pin_Y_gap14_spacer"), lk)
@@ -960,8 +962,8 @@ def test_b_stands_turns_easily_and_holds():
     # X's and Y's TPU keepers (pack turn 1): each holds its pin 10 x its weight at the least
     # interference a print gives and TPU's least published modulus, and goes on by hand
     k = r["keepers"]
-    assert {x["keeper"].split("_gap")[0] for x in k["rows"]} == {f"{s}.pin_{j}" for s in "LR"
-                                                                  for j in "XY"}
+    assert {cr.keeper_pin(x["keeper"]) for x in k["rows"]} == {f"{s}.pin_{j}_pin" for s in "LR"
+                                                                for j in "XY"}
     assert k["least_ratio"] >= k["bar"] == 10.0
     assert all(x["push_on_n"] < 60.0 for x in k["rows"])
     _the_structure_is_rated(r, ("b2", "b6"), {"pillar:O1", "pillar:O2"},
