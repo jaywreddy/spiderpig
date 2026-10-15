@@ -236,7 +236,8 @@ sit under the pipeline, as the part registries do (`actuators`, `roles`, `fabmet
 ## Pipeline contract
 
 1. **Symbolic**: a `Linkage`'s steps (`spiderpig/linkages/*.py`), sympy over earlier points,
-   `t` and the params; `O` the crank centre, y up, feet lowest.
+   `t` and the params (a crank's angle, or a ranged linkage's tour over its inputs' box);
+   `O` the crank centre or a drive's pivot, y up, a walker's feet lowest.
 2. **Compiled**: `Linkage.compiled` once; `LegSolution(orientation, phase).evaluate(ts)`.
 3. **Template**: `MechanismTemplate`, one *side* (a leg module: single, double, decker, quad).
 4. **Rationalized**: `fabricate.design_side(tmpl, config)`: groups in dependency order

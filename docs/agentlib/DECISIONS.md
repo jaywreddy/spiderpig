@@ -1323,7 +1323,8 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 
 ### 2026-10-14: the surfaces start from a task, for any kind of linkage (wave 2)
 
-- **The decision:** the ways in (the Python API, the MCP server, the viewer) take a task
+- **The decision:** the ways in (the Python API, the MCP server; the CLI's `spiderpig
+  candidates` since fix round 1, the viewer not yet: it picks a linkage, not a task) take a task
   and answer for every kind by what each linkage declares, toward the user's "one seamless
   repo that can generate surfaces and linkages for a given task". A task
   (`spiderpig.task.Task`: `walk`, `place` or `trace` and its numbers) names no linkage;
