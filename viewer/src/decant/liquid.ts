@@ -328,7 +328,7 @@ export function bestRiser(vessel: Profile, room: Room, max: number,
   return null;
 }
 
-/** A printed riser stack: its height (mm) and its pieces bottom up (``"blocks"``, a plate's
+/** A printed riser stack: its height (mm) and its pieces bottom up (``"lifts"``, ``"blocks"``, a plate's
  * thickness), as ``cradle_report.riser_stacks`` lists them. */
 export type Stack = readonly [number, readonly string[]];
 
@@ -340,11 +340,12 @@ export function riserStack(mm: number | null, stacks: readonly Stack[]): Stack {
   return best;
 }
 
-/** A stack in words: ``the two blocks, 20, 10 and 5 mm plates (122 mm)``. */
+/** A stack in words: ``the two lifts, the two blocks, the 5 and 4 mm plates (123 mm)``. */
 export function stackWords(s: Stack): string {
   if (!s[1].length) return 'none: on the table, in the locator';
-  const plates = s[1].filter((p) => p !== 'blocks');
+  const plates = s[1].filter((p) => p !== 'blocks' && p !== 'lifts');
   const parts: string[] = [];
+  if (s[1].includes('lifts')) parts.push('the two lifts');
   if (s[1].includes('blocks')) parts.push('the two blocks');
   if (plates.length) {
     const list = plates.length > 1 ? `${plates.slice(0, -1).join(', ')} and ${plates[plates.length - 1]}` : plates[0]!;

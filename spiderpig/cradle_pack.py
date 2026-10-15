@@ -394,7 +394,7 @@ def _board_part(name: str) -> bool:
                                                     "foot_boot"))
 
 
-_SIDE_EXTRAS = ("foot_bracket", "toggle_flag")
+_SIDE_EXTRAS = ("foot_bracket",)
 """A side's own parts the cradle adds by name (a foot's bracket and its screws, B's toggle
 flag on the drive side's rear leg): each travels with the side it's screwed to (its host)."""
 RISER = "decanter_riser"
@@ -1127,10 +1127,10 @@ def resting(points: np.ndarray, com: np.ndarray, mass: float, down: np.ndarray,
 
 def lay_blocks(inp: dict, lk) -> list[np.ndarray]:
     """The riser's two blocks' points where they stand under the drive side's outer plate,
-    the cradle lying on its drive side (``construction.cradle.LAY_BLOCKS``): each block moved
-    from the riser (its meshes in ``inp``) to stand outboard of the plate's outer face, its
-    boss against it, centred on its node (a post's screw head in its relief), its length
-    along x."""
+    the cradle lying on its drive side (``construction.cradle.LAY_BLOCKS``): each block, on
+    its lift (``construction.cradle.RISER_LIFT``), moved from the riser (its meshes in
+    ``inp``) to stand outboard of the plate's outer face, its boss against it, centred on its
+    node (a post's screw head in its relief), its length along x."""
     nodes = cr.LAY_BLOCKS.get(lk.key, ())
     if not nodes:
         return []
@@ -1151,7 +1151,11 @@ def lay_blocks(inp: dict, lk) -> list[np.ndarray]:
                   else pts[node][0])
         p = np.asarray(inp["meshes"][name][0], float)
         c = (p.min(axis=0) + p.max(axis=0)) / 2
-        q = p - [c[0], p[:, 1].max(), c[2]]      # its boss's top's middle at the origin
+        top = p[:, 1].max()
+        lift = name.replace("_block", "_lift")    # its lift, under it in the riser: with it
+        if lift in inp["meshes"]:
+            p = np.concatenate([p, np.asarray(inp["meshes"][lift][0], float)])
+        q = p - [c[0], top, c[2]]               # its boss's top's middle at the origin
         # its height (y) outboard along the plate's normal, its width (z) along y, its
         # length (x) along x: the boss up against the face
         q = np.column_stack([q[:, 0], q[:, 2], -q[:, 1] * out_z])

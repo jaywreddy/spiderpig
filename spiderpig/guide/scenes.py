@@ -76,9 +76,10 @@ def _rot_x(deg: float) -> np.ndarray:
 
 
 def _block_matrices(mech, lk, drive_side: str) -> dict[str, np.ndarray]:
-    """The riser's blocks (``decanter_riser_block*``) moved from the riser to stand under
-    the drive side's outer plate (``construction.cradle.LAY_BLOCKS``), as
-    ``cradle_pack.lay_blocks`` does their points: 4 x 4 each, before the lay."""
+    """The riser's blocks (``decanter_riser_block*``), each on its lift
+    (``decanter_riser_lift*``), moved from the riser to stand under the drive side's outer
+    plate (``construction.cradle.LAY_BLOCKS``), as ``cradle_pack.lay_blocks`` does their
+    points: 4 x 4 each, before the lay."""
     from spiderpig.construction import cradle as cr
 
     by = {b.name: b for b in mech.bodies if b.part is not None}
@@ -109,6 +110,9 @@ def _block_matrices(mech, lk, drive_side: str) -> dict[str, np.ndarray]:
         m[:3, :3] = rot
         m[:3, 3] = np.array([at[0], at[1], face]) - rot @ c
         out[name] = m
+        lift = name.replace("_block", "_lift")    # its lift goes with it (under it)
+        if lift in by:
+            out[lift] = m
     return out
 
 
@@ -129,7 +133,8 @@ def pieces_of(mech, lk) -> dict[str, list[str]]:
     names = {b.name for b in mech.bodies if b.part is not None}
     out["bottle"] = [n for n in ("bottle",) if n in names]
     out["decanter"] = [n for n in ("decanter",) if n in names]
-    out["blocks"] = sorted(n for n in names if n.startswith("decanter_riser_block"))
+    out["blocks"] = sorted(n for n in names
+                           if n.startswith(("decanter_riser_block", "decanter_riser_lift")))
     out.setdefault("risers", sorted(n for n in names if n.startswith("decanter_riser")))
     out["board"] = out.get("base", [])
     return out

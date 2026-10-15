@@ -22,9 +22,11 @@ A cradle (:mod:`construction.cradle`) is judged here, not by the walking model o
   onto the crank, however hard the push (``config.PRODUCT_CLUTCH_NM``), on a blocked cradle
   over the whole turn, the toggles included: each part's safety factor as the excluded
   band round the toggles narrows to nothing, and where it falls under 1.3 and 1.
-* **The hand**: the crank torque through the worm (its ratio, its static efficiency: the
-  slow end of a hand's speed) at the handle's throw; turns per pour; the slip clutch's
-  setting against the worst starting turn; the gearbox and the keyed plates at the jams.
+* **The hand**: the crank torque through the worm (its ratio, its static efficiency run in
+  and new: the slow end of a hand's speed) at the handle's throw; turns per pour; the slip
+  clutch's setting against the worst starting turn, its drift; the gearbox against its
+  maximum, its input's and output's radial loads, the keyed plates at the jams; a hand on the
+  grip against every part over the whole turn (:func:`hand_sweep`).
 * **The rod**: Euler buckling of the connecting rod at its largest compression.
 * **The stand**: the centre of mass of the cradle with each bottle, full and empty, at its
   own setting, over the swing, against the feet (the base ties' line along x, the two
@@ -45,13 +47,14 @@ from spiderpig.config import BuildConfig, is_cradle
 from spiderpig.construction import cradle as cr
 from spiderpig.construction.handcrank import (
     CRANKPIN_D,
+    HAND_RPM,
     HANDLE_R,
     LIGHT_LOAD_N,
-    NRV040,
+    NRV050,
     HandCrank,
     WormBox,
-    clutch,
-    handle_r,
+    drawn_clutch,
+    handle_spec,
 )
 from spiderpig.cradle_drive import clutch_case, drive_limits, verdict
 from spiderpig.fabricate import design_side, fabricate, template_for
@@ -79,19 +82,20 @@ JAM_HAND_N = 40.0       # a firm push at the grip against a blocked cradle (abou
 #                         itself, so the jam is the clutch's cap (jam_nm); reported beside it
 
 
-def push_nm(box: WormBox = NRV040, grip_r: float = HANDLE_R) -> float:
+def push_nm(box: WormBox = NRV050, grip_r: float = HANDLE_R) -> float:
     """The crank torque (N·m) of :data:`JAM_HAND_N` at the grip (``grip_r`` mm) through the
-    worm at a hand's speed (``WormBox.eta_hand``)."""
-    return JAM_HAND_N * grip_r / 1000.0 * box.ratio * box.eta_hand
+    worm at the hand's fastest (``WormBox.eta_at`` at ``handcrank.HAND_RPM``)."""
+    return JAM_HAND_N * grip_r / 1000.0 * box.ratio * box.eta_at(HAND_RPM)
 
 
-def jam_nm(box: WormBox = NRV040, grip_r: float = HANDLE_R) -> float:
+def jam_nm(config: BuildConfig) -> float:
     """The jam case's crank torque (N·m): the most the hand crank's slip clutch lets through
-    (``construction.handcrank.clutch``'s cap, design review round 1's drive), however hard
-    the push at the grip (``grip_r`` mm out): :func:`push_nm`'s firm push is no bound (a hand
-    on a crank that feels stuck pushes 60-150 N), the clutch is. ``config.PRODUCT_JAM_NM``
-    is this number."""
-    return clutch(grip_r, box.ratio, box.eta_hand)["crank_cap_nm"]
+    as drawn (``construction.handcrank.drawn_clutch``'s cap: set on the bench at 1.3 x a full
+    6 L's start, checked within its window, through the worm at the hand's fastest; design
+    review rounds 1 and 2), however hard the push at the grip: :func:`push_nm`'s firm push is
+    no bound (a hand on a crank that feels stuck pushes 60-150 N), the clutch is.
+    ``config.PRODUCT_JAM_NM`` is this number."""
+    return drawn_clutch(config.linkage)["crank_cap_nm"]
 
 
 @dataclass
@@ -346,13 +350,14 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     rigid, joints = planar_model(config, mech, 1.0, cr.DESIGN)
     torque, forces = statics(config, rigid, joints, ts)
     near = _toggles(config, ts)
-    _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm(grip_r=handle_r(config)))
+    _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm(config))
     jam_f = np.where(near[:, None], 0.0, jam_f)
-    box = NRV040
+    box = HandCrank().box
     peak = float(np.abs(torque).max())
     handle = peak / (box.ratio * box.eta_static)
-    hand = (mech.meta.get("hand_crank") or {}).get("handle") or {}
-    grip_r = float(hand.get("grip_r_mm", 60.0))
+    notes = mech.meta.get("hand_crank") or {}
+    spec = handle_spec(config)
+    grip_r = spec.throw
     out["drive"] = {
         "gearbox": box.key, "ratio": box.ratio, "static_efficiency": box.eta_static,
         "irreversible": box.irreversible(),
@@ -361,8 +366,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
         "handle_torque_nm": round(handle, 3),
         "handle_force_n": round(handle / (grip_r / 1000.0), 1),
         "grip_radius_mm": grip_r,
-        "jam_hand_force_n": JAM_HAND_N,
-        "jam_torque_nm": round(jam_nm(box, grip_r), 2),
+        "jam_torque_nm": round(jam_nm(config), 2),
         "handle_turns_per_pour": round(box.ratio / 2.0, 1),
         "deg_per_handle_turn_mean": round(float(np.ptp(tilt)) / (box.ratio / 2.0), 2),
         "load_case": f"a sealed full {cr.DESIGN.name} ({cr.DESIGN.mass_full_kg} kg)",
@@ -372,7 +376,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     empty, _ = statics(config, rigid0, joints0, ts)
     out["drive"]["empty_handle_force_n"] = round(
         float(np.abs(empty).max()) / (box.ratio * box.eta_static) / (grip_r / 1000.0), 2)
-    out["drive"].update(drive_limits(box, grip_r, peak, handle))
+    out["drive"].update(drive_limits(box, spec, peak, handle, notes))
     if out["drive"]["handle_force_n"] > WARN_HANDLE_N:
         out.setdefault("warnings", []).append(
             f"the handle needs {out['drive']['handle_force_n']} N at its grip at worst")
@@ -393,6 +397,11 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                   "euler_n": round(p_cr, 1), "bottle_n": round(f_rod, 1),
                   "jam_n": round(f_rod_jam, 1), "sf_bottle": round(p_cr / max(f_rod, 1e-9), 2),
                   "sf_jam": round(p_cr / max(f_rod_jam, 1e-9), 2)}
+    # the gearbox's output shaft: the rod's force at its plane, walking (the toggles' at the
+    # cap: jam_capped's rows)
+    outp = out["drive"]["output_overhung"]
+    outp["walk_n"] = round(f_rod, 1)
+    outp["sf_walk"] = round(outp["allowed_n"] / max(f_rod, 1e-9), 2)
     # the crankpin: a NETRF12 standing in the crank block, the rod's force at the rod's
     # mid-plane over the block's top (a cantilever that long out of its socket): it bends at
     # the block's top, taken as the 12 x 5.0 tube its tapped end may be there, at 1018's
@@ -416,7 +425,8 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     out["blocked"] = blocked(config, mech, ts=ts)
     cap = out["drive"]["clutch"]["crank_cap_nm"]
     out["jam_capped"] = clutch_case(config, mech, ts, tilt, cap, out["rod"], out["crankpin"],
-                                    out["drive"]["jam_push_nm"])
+                                    out["drive"]["jam_push_nm"],
+                                    out["drive"]["output_overhung"]["allowed_n"])
     out["blocked_capped"] = blocked(config, mech, ts=ts, crank_nm=cap)
     out["verdict"] = verdict(lk.key, out)
     moving = {*cr.REAR_MOVES, *cr.STOP_MOVES}
@@ -1146,6 +1156,149 @@ def wheel_sweep(mech) -> list[dict]:
     return out
 
 
+HAND_AROUND = 20.0      # a hand on the grip: its fingers and knuckles reach this far past the
+#                         grip's surface (a 16 mm grip's 28: round 2's reviewer took 25)
+HAND_OUT = 15.0         # and this far past the grip bolt's head
+SWEEP_EDGE = 1.5        # hand_sweep's surface triangles near an envelope, split to this edge
+SWEEP_NEAR = 15.0       # (mm): within this of an envelope
+
+
+def hand_sweep(config: BuildConfig, mech, step_deg: float = 1.0, t_ref: float = 1.0) -> dict:
+    """The hand crank's turning against every other part of the built cradle ``mech``
+    (fabricated at ``t_ref``) over the whole crank turn at ``step_deg``: each body's motion
+    the planar rigid fit of its anchor's joints (as the bake's), its surface sampled
+    adaptively (a triangle whose bound comes within :data:`SWEEP_NEAR` of an envelope split
+    until its edges are under :data:`SWEEP_EDGE`), measured about the input shaft's axis
+    against (a) the crank's own swept solids (``notes["hand_crank"]["handle"]["sweep"]``,
+    drawn at rest: what it sweeps over a handle turn) and (b) a hand on the grip: within the
+    grip's radius and :data:`HAND_AROUND` round it, from the arm's outer face to the grip
+    bolt's head and :data:`HAND_OUT` (design review round 2's M-3: the crank's own solids
+    cleared A's cradle where a hand on its grip didn't). Each handle turn covers every angle
+    of the crank's disc, so every crank angle meets the whole envelope. Signed clearances
+    (mm, negative inside): the least of each, at which crank angle and what part, and the
+    crank degrees where the hand's is under 0."""
+    from spiderpig import walk
+    from spiderpig.construction.robot import robot_template
+    from spiderpig.mesh import tessellate_many
+
+    w = (mech.meta.get("hand_crank") or {}).get("handle")
+    if not w:
+        return {}
+    end, d = np.asarray(w["end_xy"], float), np.asarray(w["dir"], float)
+    nrm = np.array([-d[1], d[0]])
+    zax = float(w["axis_z"]) - float(mech.meta.get("mid_plane", 0.0))
+    sweep = [tuple(map(float, s)) for s in w["sweep"]]
+    throw = float(w["grip_r_mm"])
+    grip_d = float((w.get("grip_mm") or [16.0])[0])
+    disc_row = max(sweep, key=lambda s: s[0])
+    hand_x = (float(w["reach_mm"]), disc_row[2] + HAND_OUT)
+    hand_r = (throw - grip_d / 2 - HAND_AROUND, throw + grip_d / 2 + HAND_AROUND)
+    tmpl = template_for(config)
+    by = {b.name: b for b in mech.bodies}
+    owner = {b.name: walk.anchor_of(b, by) for b in mech.bodies}
+    anchors = {}
+    for name in {o for o in owner.values() if o}:
+        b = by[name]
+        anchors[name] = {j.name: np.asarray((b.pose @ j.pose).matrix[:3, 3], float)
+                         for j in b.joints}
+    deg = np.arange(0.0, 360.0, step_deg)
+    ts = t_ref + np.radians(deg)
+    nf = len(ts)
+    sampled = robot_template(tmpl).sample(ts)
+    motion = {}
+    for name, joints in anchors.items():
+        cur = sampled.joint_world.get(name)
+        if cur is None:
+            continue
+        names = [j for j in joints if j in cur]
+        p0 = np.broadcast_to(np.stack([joints[j] for j in names]), (nf, len(names), 3))
+        p1 = np.stack([cur[j] for j in names], axis=1)
+        motion[name] = walk.planar_fit(p0, p1)
+    bodies = [b for b in mech.bodies if b.part is not None and "handle" not in b.name
+              and not b.name.endswith("gearbox")]
+    meshes = tessellate_many([b.placed_part() for b in bodies], 0.2, 0.2)
+
+    def clear(x, rho):
+        best = np.full(x.shape, np.inf)
+        for r, x0, x1 in sweep:
+            dx = np.maximum(np.maximum(x0 - x, x - x1), 0.0)
+            dr = rho - r
+            best = np.minimum(best, np.where(dx == 0.0, dr, np.where(
+                dr <= 0, dx, np.hypot(np.maximum(dr, 0), dx))))
+        dx = np.maximum(np.maximum(hand_x[0] - x, x - hand_x[1]), 0.0)
+        dr = np.maximum(np.maximum(hand_r[0] - rho, rho - hand_r[1]), 0.0)
+        inside = (dx == 0) & (dr == 0)
+        pen = -np.minimum.reduce([x - hand_x[0], hand_x[1] - x, rho - hand_r[0],
+                                  hand_r[1] - rho])
+        return best, np.where(inside, pen, np.hypot(dx, dr))
+
+    def measure(pts, th, tr):
+        cs, hs = np.empty((nf, len(pts))), np.empty((nf, len(pts)))
+        for f0 in range(0, nf, 24):
+            fr = slice(f0, min(nf, f0 + 24))
+            c, s = np.cos(th[fr]), np.sin(th[fr])
+            xw = c[:, None] * pts[None, :, 0] - s[:, None] * pts[None, :, 1] + tr[fr, 0, None]
+            yw = s[:, None] * pts[None, :, 0] + c[:, None] * pts[None, :, 1] + tr[fr, 1, None]
+            zw = pts[None, :, 2] + tr[fr, 2, None]
+            rx, ry = xw - end[0], yw - end[1]
+            cs[fr], hs[fr] = clear(rx * d[0] + ry * d[1],
+                                   np.hypot(rx * nrm[0] + ry * nrm[1], zw - zax))
+        return cs, hs
+
+    def split(tri):
+        a, b, c = tri[:, 0], tri[:, 1], tri[:, 2]
+        ab, bc, ca = (a + b) / 2, (b + c) / 2, (c + a) / 2
+        return np.concatenate([np.stack([a, ab, ca], 1), np.stack([ab, b, bc], 1),
+                               np.stack([ca, bc, c], 1), np.stack([ab, bc, ca], 1)])
+
+    def take(pts, th, tr, bc, bh):
+        """``pts`` measured: the least clearances so far (``bc``, ``bh``, per frame) and
+        each point's least over every frame and both envelopes."""
+        lb = np.full(len(pts), np.inf)
+        for p0 in range(0, len(pts), 3000):
+            cc, hh = measure(pts[p0:p0 + 3000], th, tr)
+            bc = np.minimum(bc, cc.min(axis=1))
+            bh = np.minimum(bh, hh.min(axis=1))
+            lb[p0:p0 + 3000] = np.minimum(cc, hh).min(axis=0)
+        return lb, bc, bh
+
+    worst = np.full(nf, np.inf)
+    hand = np.full(nf, np.inf)
+    who_c, who_h = [""] * nf, [""] * nf
+    for b, (pos, idx, _) in zip(bodies, meshes, strict=True):
+        if len(pos) == 0:
+            continue
+        o = owner[b.name]
+        th, tr = (motion[o] if o in motion else (np.zeros(nf), np.zeros((nf, 3))))
+        pos = pos.astype(float)
+        tri = pos[idx.reshape(-1, 3)]
+        _, bc, bh = take(pos, th, tr, np.full(nf, np.inf), np.full(nf, np.inf))
+        for _ in range(14):
+            if not len(tri):
+                break
+            cen = tri.mean(axis=1)
+            rad = np.linalg.norm(tri - cen[:, None], axis=2).max(axis=1)
+            edge = np.maximum.reduce([np.linalg.norm(tri[:, 1] - tri[:, 0], axis=1),
+                                      np.linalg.norm(tri[:, 2] - tri[:, 1], axis=1),
+                                      np.linalg.norm(tri[:, 0] - tri[:, 2], axis=1)])
+            lb, bc, bh = take(cen, th, tr, bc, bh)
+            tri = tri[(lb - rad < SWEEP_NEAR) & (edge > SWEEP_EDGE)]
+            if len(tri) > 300000:
+                break
+            tri = split(tri) if len(tri) else tri
+        for arr, who, got in ((worst, who_c, bc), (hand, who_h, bh)):
+            upd = got < arr
+            arr[upd] = got[upd]
+            for i in np.nonzero(upd)[0]:
+                who[i] = b.name
+    i, j = int(np.argmin(worst)), int(np.argmin(hand))
+    return {"step_deg": step_deg, "hand_x_mm": [round(v, 1) for v in hand_x],
+            "hand_r_mm": [round(v, 1) for v in hand_r],
+            "crank": [round(float(worst[i]), 2), float(deg[i]), who_c[i]],
+            "hand": [round(float(hand[j]), 2), float(deg[j]), who_h[j]],
+            "hand_under_0_deg": round(float((hand < 0).sum() * step_deg), 1)}
+
+
 def joint_rows(config: BuildConfig, rider: str, joints, forces, jam_f) -> list[dict]:
     """Each joint's peak force over the turn (N), the bottle's and the jam's, per side
     (:data:`SHARE` on the pins both sides have)."""
@@ -1171,7 +1324,7 @@ def loads(config: BuildConfig, store=None) -> dict:
     ts = np.linspace(0.0, 2.0 * math.pi, 360, endpoint=False)
     rigid, joints = planar_model(config, mech, 1.0, cr.DESIGN)
     torque, forces = statics(config, rigid, joints, ts)
-    _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm(grip_r=handle_r(config)))
+    _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm(config))
     jam_f = np.where(_toggles(config, ts)[:, None], 0.0, jam_f)
     rows = joint_rows(config, HandCrank.rider(design.ctx), joints, forces, jam_f)
     return loads_doc(config, rows, float(np.abs(torque).max()),
@@ -1195,10 +1348,10 @@ def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float,
                        "jam": {"n": r["jam_n"], "patterns": None}})
     out = {"source": "statics", "note": "a cradle's: a sealed full 6 L methuselah (walk), the "
            "most the hand crank's slip clutch lets onto a blocked cradle "
-           f"({jam_nm(grip_r=handle_r(config)):g} N·m at the crank, jam); cradle_report",
+           f"({jam_nm(config):g} N·m at the crank, jam); cradle_report",
            "walk_n": max((j["walk"]["n"] for j in joints), default=0.0),
            "jam_n": max((j["jam"]["n"] for j in joints), default=0.0), "joints": joints,
-           "torque_limit_nm": jam_nm(grip_r=handle_r(config)),
+           "torque_limit_nm": jam_nm(config),
            "walk_torque_nm": round(crank_nm, 2),
            "joint_moment_factor": 1.0,
            "crank_basis": "statics: the bottle's largest torque over a pour, the hand crank's "
@@ -1369,7 +1522,7 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
         ts = np.linspace(0.0, 2.0 * math.pi, 360, endpoint=False)
     ts = np.asarray(ts, float)
     if crank_nm is None:
-        crank_nm = jam_nm(grip_r=handle_r(config))
+        crank_nm = jam_nm(config)
     if skip is None:
         skip = _toggles(config, ts)
     skip = np.asarray(skip, bool)
@@ -1542,7 +1695,7 @@ def blocked(config: BuildConfig, mech, *, ts=None, crank_nm: float | None = None
     if ts is None:
         ts = np.linspace(0.0, 2.0 * math.pi, 360, endpoint=False)
     if crank_nm is None:
-        crank_nm = jam_nm(grip_r=handle_r(config))
+        crank_nm = jam_nm(config)
     rigid, joints = planar_model(config, mech, 1.0, cr.DESIGN)
     near = _toggles(config, ts)
     torque, forces = statics(config, rigid, joints, ts)
@@ -1569,21 +1722,27 @@ def blocked(config: BuildConfig, mech, *, ts=None, crank_nm: float | None = None
 # -- the cradle page's swing (``/api/cradle/{key}``, ``viewer/decant.html``) ------------
 
 VERDICT = {
-    "decanter_rcm": ("build", "The one to build: an eight-bar double parallelogram turns the "
+    "decanter_rcm": ("build", "The main design: an eight-bar double parallelogram turns the "
                      "cradle about a point with nothing there, so nothing stands at the "
                      "mouth; its pivots hang under the mouth, its crank behind. It comes apart "
-                     "by hand for the trip. Every check passes with a full 6 L: a slip clutch "
-                     "in the hand crank caps the crank's torque however hard the push, every "
-                     "joint holds that cap at SF 1.3 or more away from the ends of the swing, "
-                     "the gearbox carries the bottle within its rating, the stand tips past "
-                     "25°."),
-    "decanter_hinge": ("build", "Also builds: a four-bar crank-rocker whose rocker is the "
-                       "cradle, hinged at the bottle's mouth. From 50° neck up (an opened full "
-                       "bottle goes in) to 30° neck down, a 750 ml to a 6 L. Every check "
-                       "passes with a full 6 L: a slip clutch in the hand crank caps the "
-                       "crank's torque however hard the push, every joint holds that cap at "
-                       "SF 1.3 or more away from the ends of the swing, the gearbox carries "
-                       "the bottle within its rating, the stand tips past 15° (its bar)."),
+                     "by hand for the trip. With a full 6 L: a slip clutch in the hand crank, "
+                     "set on the bench and checked at each set-up, caps the crank's torque "
+                     "however hard the push, every joint holds that cap at SF 1.3 or more away "
+                     "from the ends of the swing (in the first and last two and a half handle "
+                     "turns it doesn't: the gearbox's marks, the use limits), the gearbox "
+                     "carries the bottle and the cap within its maximum, its light-load crank "
+                     "turns under 22 N once the gearbox is run in, the stand tips past 25°."),
+    "decanter_hinge": ("build", "Builds too (B is the main design): a four-bar crank-rocker "
+                       "whose rocker is the cradle, hinged at the bottle's mouth. From 50° "
+                       "neck up (an opened full bottle goes in) to 30° neck down, a 750 ml to "
+                       "a 6 L. With a full 6 L: a slip clutch in the hand crank, set on the "
+                       "bench and checked at each set-up, caps the crank's torque however hard "
+                       "the push, every joint holds that cap at SF 1.3 or more away from the "
+                       "ends of the swing (in the first and last two and a half handle turns "
+                       "it doesn't: the gearbox's marks, the use limits), the gearbox carries "
+                       "the bottle and the cap within its maximum, its 130 mm crank turns "
+                       "under 22 N once the gearbox is run in, the stand tips past 15° (its "
+                       "bar)."),
 }
 """Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why: the
 bars ``tests/test_cradle.py`` holds, not a copied number; :func:`report`'s ``verdict`` adds its
@@ -1613,7 +1772,7 @@ def motion(config: BuildConfig, n: int = 360) -> dict:
     mouth = cr.mouth_name(lk)
     lip = pts[mouth]
     wander = float(np.linalg.norm(lip - lip.mean(axis=0), axis=1).max())
-    ratio = NRV040.ratio
+    ratio = NRV050.ratio
     turns = ((np.arange(n) - rest) % n) / n * ratio
     def outline_of(size: cr.BottleSize) -> list[tuple[float, float]]:
         y0, slope, x0 = cr.seat(size)
@@ -1757,19 +1916,22 @@ def riser_for(vessel, rows, high: float = 250.0, clear=cr.RISER_CLEAR) -> int | 
 
 def riser_stacks() -> list[tuple[float, list[str]]]:
     """Every height the printed riser's pieces make (``construction.cradle.riser_pieces``),
-    each with its pieces bottom up (``"blocks"`` the two blocks side by side, a plate by its
-    thickness), the highest last: the plates alone or on the blocks, the top piece's boss on
-    top (:data:`construction.cradle.RISER_LIP`); none (on the table, in the locator) is 0."""
-    hb, lip = cr.RISER_BLOCK[1], cr.RISER_LIP
+    each with its pieces bottom up (``"lifts"`` the two lifts side by side, ``"blocks"`` the
+    two blocks, a plate by its thickness), the highest last: any of the lifts, the blocks and
+    the plates, in that order, the top piece's boss on top
+    (:data:`construction.cradle.RISER_LIP`); none (on the table, in the locator) is 0."""
+    lift, hb, lip = cr.RISER_LIFT, cr.RISER_BLOCK[1], cr.RISER_LIP
     plates = sorted(cr.RISER_PLATES, reverse=True)
     out: dict[float, list[str]] = {0.0: []}
-    for base in (False, True):
+    for lifts, blocks in itertools.product((False, True), repeat=2):
         for k in range(len(plates) + 1):
             for chosen in itertools.combinations(plates, k):
-                if not base and not chosen:
+                if not (lifts or blocks or chosen):
                     continue
-                h = round((hb if base else 0.0) + sum(chosen) + lip, 2)
-                names = (["blocks"] if base else []) + [f"{p:g}" for p in chosen]
+                h = round((lift if lifts else 0.0) + (hb if blocks else 0.0) + sum(chosen)
+                          + lip, 2)
+                names = ((["lifts"] if lifts else []) + (["blocks"] if blocks else [])
+                         + [f"{p:g}" for p in chosen])
                 if h not in out or len(names) < len(out[h]):
                     out[h] = names
     return sorted(out.items())
