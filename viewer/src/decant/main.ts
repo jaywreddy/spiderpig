@@ -255,6 +255,7 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
     loaded = next;
     next.action.paused = true;     // posed from ``f`` every frame
     pour.attach(next, m);
+    renderAbout(m);               // (the bottle the pour opens on: its legend line)
     reframe();
     status('');
     dirty = true;

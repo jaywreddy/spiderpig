@@ -1113,7 +1113,8 @@ def resting(points: np.ndarray, com: np.ndarray, mass: float, down: np.ndarray,
     top = float(np.max(-(points @ n + off)))
     on_names: list[str] = []
     if owner is not None:
-        on_names = sorted({owner[i] for i in np.flatnonzero(np.abs(points @ n + off) < 0.5)})
+        on_names = sorted({owner[int(i)]
+                           for i in np.flatnonzero(np.abs(points @ n + off) < 0.5)})
     return {"tilt_deg": round(math.degrees(math.acos(min(1.0, score))), 1),
             "margin_mm": round(margin, 1), "com_mm": round(float(h), 1),
             "tip_deg": round(math.degrees(math.atan2(margin, h)), 1),
@@ -1176,8 +1177,8 @@ def rest_poses(inp: dict, lk) -> list[dict]:
                 if rest.pieces == ("*",) else list(rest.pieces))
         names = [n for k in keys for n in by[k].parts]
         mass = sum(inp["parts"][n]["mass"] for n in names)
-        com = sum(inp["parts"][n]["mass"] * np.asarray(inp["parts"][n]["com"], float)
-                  for n in names) / mass
+        com = np.sum([inp["parts"][n]["mass"] * np.asarray(inp["parts"][n]["com"], float)
+                      for n in names], axis=0) / mass
         pts = [np.asarray(inp["meshes"][n][0], float) for n in names]
         owner = [n for n, p in zip(names, pts, strict=True) for _ in range(len(p))]
         if rest.blocks:

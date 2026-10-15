@@ -55,7 +55,7 @@ import itertools
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from build123d import Axis as BAxis
@@ -80,6 +80,9 @@ from spiderpig.hardware.fasteners import Screw, screw
 from spiderpig.mechanism import Body, Mechanism
 from spiderpig.shapes import Cut, Shape3D, cut_holes, difference, disc, moved, pill, union
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
+
+if TYPE_CHECKING:
+    from spiderpig.construction.assembly import Scene
 
 LIP_HEIGHT = 550.0      # the bottle's mouth over the table (mm): at rest, 50° neck up, the
 #                         base stop (set for a 6 L) hangs about 507 mm under it, 26 mm
@@ -369,7 +372,7 @@ its corners' radius. At rest, set for a 6 L, the base stop comes down to 26 mm o
 board, a finger's 25 mm (ISO 13854) and less than the cork just pulled; over the window
 whatever lies there lies on the table, 43 mm under it (:func:`finger_gap`). It cuts no cleat,
 bolt or foot, and the board stays whole round it: 159 mm of birch between it and the notch,
-132 mm behind it."""
+134 mm behind it on B (A: 92)."""
 _FOOT_Y = BASE_TOP + 12.5       # a foot's centre: its screw's boss (2 t) on the base board
 BRACKET = (36.0, 30.0, 5.0)     # a foot's printed bracket: its length, legs' height, wall
 """A stand foot is a printed L-bracket outside each outer plate, an M5 button head through
@@ -442,8 +445,11 @@ STANDS: dict[str, Stand] = {
         # (round 1, 2026-10-14: with the corrected centre of mass and the board 40 mm
         # toward the drive side, BASE_Z, the rear edge binds: 682 mm is the least board
         # that keeps a full 6 L past 25° over it since round 1's drive, whose parts took the
-        # 680 mm board's 25.0° to 24.9°: 25.1° at 682)
-        base=(-160.0, 522.0),
+        # 680 mm board's 25.0° to 24.9°: 25.1° at 682. Round 2's window under the base stop
+        # and toggle flag took 682's to 24.997°: 684, 2 mm more at the rear. That bound
+        # counts a full 6 L at every tilt; with the wine leaving as it pours the rear holds
+        # 28°: cradle_report.stability's "pouring")
+        base=(-160.0, 524.0),
     ),
 }
 
@@ -1837,6 +1843,10 @@ def toggle_zone(lk) -> tuple[float, float] | None:
     return math.degrees(math.atan2(arm[1], arm[0])), TOGGLE_ZONE
 
 
+def _xy2(p) -> tuple[float, float]:
+    return float(p[0]), float(p[1])
+
+
 def _toggle_flag(o_xy, screws: list[tuple[float, float]], face: float, sign: int,
                  t_frame: float, lk) -> tuple[Shape3D, list[tuple[Shape3D, str, str]]] | None:
     """The drive side's toggle flag (world, :data:`TOGGLE_FLAG`): a printed red plate on the
@@ -2487,7 +2497,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                    for i, part in enumerate(_cleats([xy[0] for xy in feet_xy.values()], y_top,
                                                     face, sign, t_frame))]
         flag = (_toggle_flag(build.xy(_point_of(topo, lk, lk.crank[0])),
-                             [tuple(float(v) for v in _node_xy(build.xy, lk, topo, stand, n))
+                             [_xy2(_node_xy(build.xy, lk, topo, stand, n))
                               for n in stand.flag_screws], face, sign, t_frame, lk)
                 if s == "L" else None)
         if flag is not None:            # the drive side's toggle flag, on its rear leg
@@ -2741,7 +2751,7 @@ class UseStep:
     tag: str
     title: str
     lines: tuple[str, ...]
-    scene: object = None
+    scene: Scene | None = None
 
 
 def grip_at_slip_n(key: str) -> float:
@@ -2768,8 +2778,8 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
     out = [UseStep("where", "Before you use it", (
         "Headroom: 950 mm over the table (a 6 L's base at full tilt reaches about 910 mm).",
         "100 mm free behind the base board: the base stop's rails reach past its rear edge "
-        "at full tilt" + (", and the hand crank's grip turns up to 89 mm past it (65 mm "
-        "past its drive-side edge)." if key == "decanter_rcm" else "."),
+        "at full tilt" + (", and the hand crank's grip turns past it (and past its "
+        "drive-side edge): room for a hand there." if key == "decanter_rcm" else "."),
         "A flat counter: the TPU feet take up about 1 mm; if it rocks, print a thicker foot "
         "for the corner that lifts.",
         "The thumb knobs snug by hand. One that keeps working loose has let its "
@@ -2823,7 +2833,7 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
         "Another decanter or glass: the cradle page (decant.html, Pour into) gives its stack "
         "by the same rule: the blocks and some plates, or plates alone. Lower is always "
         "safe; higher, never.",
-        "Never raise the decanter during a pour (a book, a coaster, a lab jack): coming back "
+        "Never raise the decanter during a pour (a book, a coaster, anything): coming back "
         "to rest the worm drives the cradle box down onto the glass with a force no clutch "
         "bounds."),
         Scene("rest", show=("board", "risers", "decanter", "box"),
@@ -2944,7 +2954,7 @@ def _blocks_words(key: str) -> str:
     return ", ".join(words)
 
 
-def _lay_first(key: str) -> tuple[str, str, str]:
+def _lay_first(key: str) -> tuple[str, str]:
     """The first build's step laying B's drive side and its cradle box down (``lay``)."""
     words = PACK_POSES[key].words if key in PACK_POSES else ""
     marks = PACK_POSES[key].marks if key in PACK_POSES else ""
@@ -3215,7 +3225,7 @@ class ModuleStep:
     text: str
     tag: str = ""
     lines: tuple[str, ...] = ()
-    scene: object = None
+    scene: Scene | None = None
 
     @property
     def words(self) -> str:
