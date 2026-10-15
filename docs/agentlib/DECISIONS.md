@@ -1709,3 +1709,60 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `task.height_mm` 238 mm, both `estimated`, `verify standard` ok; the Hoecken traces a
   60 mm path within 0.5 mm as a 66.9 mm stroke 0.064 mm across, `measured`, ok.
   DESIGNS.md is not regenerated (no part moved).
+
+### 2026-10-14: a crank servo's torque limit everywhere it matters; a mechanism's controller unnamed stays none (fix round 3)
+
+- **The torque limit reaches every servo design's BOM.** `config.torque_limit_note` is
+  keyed on the design's motor role (`roles.motor_role`: a crank's `servo`), not on a
+  walker's robot (`BuildConfig.mirrored` before): the export (`api.exports`) and `spiderpig
+  build` add it to every design a crank's servo drives. A mechanism's limit
+  (`config.LINKAGE_TORQUE_LIMITS`, 0.09-0.36 N·m) is far under the STS3215's own 0.85 and
+  its joints are rated at it (`strength.crank_loads`): left at the servo's own, every one of
+  them fails a jam. A walker side's BOM gets the note too; an arm's steppers have no
+  firmware limit (none).
+- **A fixed design's turn is bounded by that limit.** `sim.run.turn` caps the crank's servo
+  at the limit it is set to (`sim.run.crank_torque_limit`: `config.torque_limit_nm` of the
+  servo and linkage the model's meta names, an exported MJCF's too; `torque_limit=` to
+  override) on top of its speed-torque line, and reports against it (`torque_limit`, `stall`
+  beside it); `verify` full's `sim.torque` row is bounded by it, and `sim.run.hold` caps the
+  crank the same way. Before, the turn ran up to the stall (1.91 N·m), so a mechanism passed
+  at torques its firmware never gives. A walker's `simulate` is unchanged (its jam loads pin a
+  foot at the limit, `sim.loads`).
+- **The fixes name the lever of the design's own motors.** `strength.stepped` (the motor
+  role `actuator`): only a stepper design's findings name the drives' holding torque (their
+  run current); a mechanism, rated as an arm's crash since round 2, got that stepper advice
+  beside its servo-limit fix.
+- **Same id, same parts and BOM, for the mechanisms too.** Round 2 gave a mechanism the
+  ESP32 kit by default under the role's `implicit` key, so its id stayed while its BOM gained
+  14 lines: a mechanism stored before read back with a kit it never had. A resolved spec that
+  doesn't name a role reads back with the role's default (`stages.resolve` builds the config
+  from the stored keys alone), so an unnamed role must mean, forever, what the kind's stored
+  designs carried. `roles.Role.implicit` is now per kind (`((kind, key), ...)`): the walkers'
+  `esp32_bus_servo`, the mechanisms' `none`; where it is `none` it is also the kind's default
+  (`roles.default_key`). A mechanism's controller is `none` unless named; naming the kit
+  (`esp32_bus_servo`, bought as lines, wired in its last step) writes it into the resolved
+  spec and the id. The alternative, the kit by default with its key in new mechanisms' ids,
+  needs a stored spec without the key read as the kind's implicit key: one line in
+  `stages.resolve._config_from_resolved` (another package's this round). With it a
+  mechanism's default could be the kit again, and a DYNAMIXEL walker stored before its
+  default moved to `u2d2_dynamixel` (the user's call, round 2) would read back with the kit it
+  had; until then that one case still reads back with the U2D2.
+- **The motor role stays a function of the inputs** (`roles.motor_role`: a crank's servo,
+  ranged inputs' steppers), not a design choice: not contained. The controllers
+  (`Controller.drives`), `construction.DRIVES` and `verify.cost_floor` already key on
+  `roles.MOTOR_ROLES`, but a DYNAMIXEL-servo arm or a stepper-driven crank also needs: a
+  `JointDrive` for a servo (its body and horn on a transmission's hub; the `actuator`
+  registry offers `StepperSpec`s only) and a crank driven by a stepper through a hub (the
+  bolt crank seats a servo horn); the MJCF's actuator chosen per motor, not per kind of input
+  (a crank a velocity servo from `ServoSpec`, a ranged input a stepper's position gains);
+  strength's jam lever per motor (`crank_loads` the servo's limit, `arm_loads` the steppers'
+  holding torque x ratio); and control (`control.servos`' speed mode and crank phases against
+  Klipper's ranged, homed axes: a stepper crank needs continuous rotation, a servo arm
+  position mode and its IK in servo ticks). This is an open item for ROADMAP (not edited here:
+  another package's this round): "the motor role a design choice: servo arms, stepper cranks".
+- **The gate** (against `platform-9aae3e3`): every design's parts, plans, DXF and meshes
+  identical; the walkers and the arms identical in all. Intended: the two mechanisms' BOMs
+  drop the ESP32 kit's 14 lines round 2 added (`hoecken_pantograph` USD 248.59 -> 143.18,
+  `dwell_rocker` 240.78 -> 135.37: unnamed, their controller is `none`) and gain the
+  servo-firmware note (0.21 and 0.11 N·m); their audits OK. `klann_quad` fails its audit as
+  known. DESIGNS.md is not regenerated (no part moved).

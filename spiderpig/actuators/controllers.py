@@ -22,9 +22,12 @@ kind's name):
   parts are bodies of the robot, laid out by the electronics deck (:mod:`construction.deck`,
   drawn for :data:`DECK_KIT`), so the BOM counts them from the bodies, not from ``bom``; a
   design with no deck (a mechanism: its side is the machine) buys them as lines
-  (:func:`construction.robot.controller_lines`). A design's default is the board that
+  (:func:`construction.robot.controller_lines`). A walker's default is the board that
   speaks its servo's protocol (:data:`BUS_DEFAULTS`): the deck's ESP32 board for Feetech's
-  STS servos, ROBOTIS's U2D2 for DYNAMIXEL's (bought as lines, a walker's deck bare).
+  STS servos, ROBOTIS's U2D2 for DYNAMIXEL's (bought as lines, a walker's deck bare). A
+  mechanism's is :data:`roles.NONE` (2026-10-14's third round: what its stored designs
+  carried, :attr:`roles.Role.implicit`, so their ids keep their BOMs); a board named, e.g.
+  ``esp32_bus_servo``, is bought as lines and enters its id.
 
 The key :data:`roles.NONE` is your own electronics: nothing bought, a walker's deck bare
 (:func:`construction.deck.deck_parts`), an arm's Klipper pins left to fill.
@@ -295,7 +298,8 @@ def motors_of(config) -> str:
 def default_key(config) -> str:
     """The role ``controller``'s default for ``config``: the one that drives its motors
     (:data:`DEFAULTS`), and on a serial bus the one that speaks its servo's protocol
-    (:data:`BUS_DEFAULTS`)."""
+    (:data:`BUS_DEFAULTS`). (A kind whose stored designs carried none keeps
+    :data:`roles.NONE` before this is asked: :func:`roles.default_key`, a mechanism's.)"""
     need = motors_of(config)
     if need == "servo":
         from spiderpig import servos

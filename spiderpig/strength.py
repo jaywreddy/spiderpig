@@ -713,9 +713,20 @@ def materials_sheet(key: str):
     return sheet(key)
 
 
+def stepped(config: BuildConfig) -> bool:
+    """Are ``config``'s motors steppers, whose holding torque (their run current) sets a
+    crash's load (the motor role ``actuator``, :func:`roles.motor_role`)? A crank's servo's
+    lever is its firmware torque limit instead: its fixes never name a holding torque
+    (2026-10-14; a mechanism's, rated as an arm's crash, got both before)."""
+    from spiderpig import roles
+
+    return roles.motor_role(config.lk) == "actuator"
+
+
 def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> list[str]:
     """What would bring ``row`` to :data:`JAM_WARN` jammed and :data:`WALK_WARN` walking,
-    each recomputed with the change."""
+    each recomputed with the change: a crank servo's torque limit, or steppers' holding
+    torque (:func:`stepped`), whichever drives the design."""
     out: list[str] = []
     if row["kind"] == "crank":
         f = row["factor"]
@@ -750,7 +761,7 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         if jam_sf is not None and jam_sf < JAM_WARN and limit:
             out.append(f"a servo torque limit of {limit * jam_sf / JAM_WARN:.2f} N·m (now "
                        f"{limit:g}) for jam SF {JAM_WARN:g}")
-        if jam_sf is not None and jam_sf < JAM_WARN and loads.get("source") == "static":
+        if jam_sf is not None and jam_sf < JAM_WARN and stepped(config):
             out.append("lower the drives' holding torque (their run current): a crash's load "
                        "scales with it")
         return out or ["a wider link (Params.link_radius) or a stronger sheet"]
@@ -801,7 +812,7 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
     if jam_sf is not None and jam_sf < JAM_WARN and limit:
         out.append(f"a servo torque limit of {limit * jam_sf / JAM_WARN:.2f} N·m (now "
                    f"{limit:g}: the jam loads scale with it) for jam SF {JAM_WARN:g}")
-    if jam_sf is not None and jam_sf < JAM_WARN and jl.get("crash_n"):
+    if jam_sf is not None and jam_sf < JAM_WARN and jl.get("crash_n") and stepped(config):
         # a crash's load scales with the drives' holding torque (their run current); the
         # payload's and the arm's weight stay: the share that leaves jam SF JAM_WARN
         need = jl["jam_n"] * jam_sf / JAM_WARN
@@ -810,9 +821,10 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
             out.append(f"the drives' holding torque cut to {share:.0%} (their run current: a "
                        f"crash's load scales with it) for jam SF {JAM_WARN:g}")
     if not out:
-        out.append("no listed pin or pillar construction clears it at this load: a lower "
-                   "servo torque limit, or a linkage scaled up (stiffer links, shorter "
-                   "relative spans)")
+        lever = ("the drives' holding torque lowered" if stepped(config)
+                 else "a lower servo torque limit")
+        out.append(f"no listed pin or pillar construction clears it at this load: {lever}, "
+                   "or a linkage scaled up (stiffer links, shorter relative spans)")
     return out
 
 

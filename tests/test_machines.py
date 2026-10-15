@@ -65,25 +65,70 @@ def test_a_cranked_linkage_may_declare_its_second_inputs_drive():
 
 @pytest.mark.no_fabricate
 def test_every_design_with_motors_has_a_controller():
-    """The role ``controller`` is a slot of every kind (a mechanism's too: its servo's
-    protocol picks it, as a walker's); a mechanism's side keeps its robot roles (no robot
-    round it); its default keeps the stored ids (implicit)."""
+    """The role ``controller`` is a slot of every kind (a mechanism's too: the board that
+    speaks its servo's protocol, named); a mechanism's side keeps its robot roles (no robot
+    round it); unnamed, a mechanism's is none, what the mechanisms stored before the role
+    reached them carried (``Role.implicit``), so their ids keep their BOMs."""
     for name in ("controller", "pin", "pillar"):
         assert set(roles.get(name).kinds) == {"walker", "mechanism", "arm"}
     mech = BuildConfig(linkage=MECH, robot=False)
-    assert controllers.of(mech) is controllers.get(controllers.DECK_KIT)
+    assert controllers.of(mech) is None
+    assert mech.role("controller") == ""
     assert "controller" not in mech.applied_roles()          # implicit: its id stays
-    dxl = BuildConfig(linkage=MECH, robot=False, servo="xl330_m288")
+    kit = BuildConfig(linkage=MECH, robot=False, roles=(("controller", "esp32_bus_servo"),))
+    assert controllers.of(kit) is controllers.get(controllers.DECK_KIT)
+    assert kit.applied_roles() == {"controller": "esp32_bus_servo"}   # named: in its id
+    dxl = BuildConfig(linkage=MECH, robot=False, servo="xl330_m288",
+                      roles=(("controller", "u2d2_dynamixel"),))
     assert controllers.of(dxl) is controllers.get("u2d2_dynamixel")
     own = BuildConfig(linkage=MECH, robot=False, roles=(("controller", "none"),))
+    assert own == mech                                        # (none is its default)
     assert controllers.of(own) is None
-    assert own.side_config().role("controller") == ""         # (the side is the machine)
+    assert kit.side_config().role("controller") == controllers.DECK_KIT   # (the machine)
     walker = BuildConfig(roles=(("controller", "none"),))
     assert walker.side_config().roles == ()                   # (its robot holds it)
     skr = BuildConfig(linkage=MECH, robot=False, roles=(("controller", "skr_pico_pi_zero"),))
     with pytest.raises(ValueError, match="drives steppers and hoecken_pantograph's motors "
                                          "are serial-bus servos"):
         controllers.of(skr)
+
+
+@pytest.mark.no_fabricate
+def test_a_role_reaching_a_kind_never_moves_what_its_stored_designs_read_back():
+    """Same id, same parts and BOM: a resolved spec that doesn't name a role reads back with
+    its default (``BuildConfig.role``), so where a kind's designs carried nothing before the
+    role reached it (``Role.implicit``: ``none``) its default stays nothing for every
+    linkage of the kind, and where they carried a key that key, its default, isn't written.
+    A key chosen enters the id: a stored mechanism with no controller key reads back bare,
+    one that names the kit with it."""
+    from spiderpig.construction.robot import controller_lines
+    from spiderpig.stages.resolve import _config_from_resolved, resolve, spec_of
+
+    for r in roles.ROLES.values():
+        for kind, key in r.implicit:
+            assert kind in r.kinds, (r.name, kind)
+            if key != roles.NONE:
+                continue
+            for lk in linkage.available(kind):
+                cfg = BuildConfig(linkage=lk, robot=False)
+                assert roles.default_key(r.name, cfg) == roles.NONE, (r.name, lk)
+                assert r.name not in cfg.applied_roles(), (r.name, lk)
+    with pytest.raises(ValueError, match="not a kind of it"):
+        roles.Role("x", "x", "m:X", ("arm",), implicit=(("walker", "k"),))
+    with pytest.raises(ValueError, match="needs optional"):
+        roles.Role("x", "x", "m:X", ("arm",), implicit=(("arm", roles.NONE),))
+    bare = BuildConfig(linkage=MECH, robot=False)
+    kit = BuildConfig(linkage=MECH, robot=False, roles=(("controller", "esp32_bus_servo"),))
+    stored = {}
+    for cfg in (bare, kit):
+        d = resolve(spec_of(cfg), None)
+        assert _config_from_resolved(d.resolved) == cfg
+        stored[d.id] = d.resolved
+    (old, new) = stored.values()
+    assert "controller" not in old["constructions"]           # what master stored
+    assert new["constructions"]["controller"] == "esp32_bus_servo"
+    assert controller_lines(_config_from_resolved(old), deck=False) == []
+    assert controller_lines(_config_from_resolved(new), deck=False)
 
 
 @pytest.mark.no_fabricate
@@ -95,7 +140,7 @@ def test_a_machine_with_no_deck_buys_its_controller_as_lines():
 
     kit = controllers.get(controllers.DECK_KIT)
     assert controller_lines(BuildConfig()) == []
-    mech = BuildConfig(linkage=MECH, robot=False)
+    mech = BuildConfig(linkage=MECH, robot=False, roles=(("controller", kit.key),))
     lines = controller_lines(mech, deck=False)
     assert [(x.key, x.qty) for x in lines] == list(kit.bom)
     assert {x.where for x in lines} == {"controller: esp32_bus_servo"}
@@ -194,7 +239,96 @@ def test_a_mechanisms_overload_fails_verify(monkeypatch):
     rows = verify._strength_rows(cast(Any, design), rep, "standard")
     assert not rows[0].passed
     assert (rep.failures[0].stage, rep.failures[0].code) == ("strength", "joint_overload")
-    assert any("torque limit" in fx for c in rep.failures[0].culprits for fx in c["fixes"])
+    fixes = [fx for c in rep.failures[0].culprits for fx in c["fixes"]]
+    assert any("torque limit" in fx for fx in fixes)
+    # a crank's servo: its firmware limit is the lever, never a stepper's run current
+    assert not [fx for fx in fixes if "holding torque" in fx or "run current" in fx]
+
+
+@pytest.mark.no_fabricate
+def test_holding_torque_fixes_are_a_steppers():
+    """The fixes name the drives' holding torque only for a design whose motors are steppers
+    (the motor role ``actuator``), whatever its loads' source: a link short of jam SF 2 on a
+    cranked mechanism gets the servo's torque limit alone, on an arm the holding torque."""
+    row = {"kind": "link", "links": ["b1"], "jam": {"safety": 1.0}, "walk": None}
+    loads = {"source": "static", "torque_limit_nm": 0.2}
+    assert not strength.stepped(BuildConfig(linkage=MECH, robot=False))
+    assert strength.stepped(BuildConfig(linkage=ARM))
+    mech = strength.fixes(row, None, loads, BuildConfig(linkage=MECH, robot=False))
+    assert mech == ["a servo torque limit of 0.10 N·m (now 0.2) for jam SF 2"]
+    arm = strength.fixes(row, None, dict(loads, torque_limit_nm=None), BuildConfig(linkage=ARM))
+    assert arm == ["lower the drives' holding torque (their run current): a crash's load "
+                   "scales with it"]
+
+
+# -- the torque limit a crank's servo is set to: its BOM and its sim ---------------------
+
+
+@pytest.mark.no_fabricate
+def test_every_crank_servos_bom_names_its_torque_limit():
+    """The firmware torque limit the joints are rated at is a BOM / ORDER.md note for every
+    design a crank's servo drives (its motor role, not a walker's robot alone): a
+    mechanism's own lowered limit, a walker side's; none for an arm's steppers. The export
+    and the build add it ungated."""
+    import inspect
+
+    from spiderpig import build
+    from spiderpig.api import exports
+    from spiderpig.config import torque_limit_nm, torque_limit_note
+
+    for key in linkage.available("mechanism"):
+        cfg = BuildConfig(linkage=key, robot=False)
+        note = torque_limit_note(cfg)
+        assert note is not None, key
+        assert f"to {torque_limit_nm(cfg):g} N·m" in note, key
+        assert "a blocked output" in note, key
+    assert "LINKAGE_TORQUE_LIMITS" in str(torque_limit_note(BuildConfig(linkage=MECH,
+                                                                        robot=False)))
+    assert "a jammed foot" in str(torque_limit_note(BuildConfig(robot=False)))
+    assert torque_limit_note(BuildConfig(linkage=ARM)) is None
+    for src in (inspect.getsource(exports._export_files), inspect.getsource(build.main)):
+        assert "if note := torque_limit_note(" in src
+        assert "mirrored and (note" not in src
+
+
+_ONE_CRANK = """<mujoco><option timestep="0.001" integrator="implicitfast"/>
+<worldbody><body name="crank">
+<joint name="t" type="hinge" axis="0 0 1" damping="0.05"/>
+<geom type="cylinder" size="0.05 0.005" mass="0.1"/></body></worldbody>
+<actuator><velocity name="drive" joint="t" kv="0.3" ctrlrange="-6 6" forcerange="-1.9 1.9"/>
+</actuator></mujoco>"""
+"""A crank on a damped hinge, its servo's velocity actuator: turning it at the servo's
+speed-torque line needs about 0.26 N·m, over a mechanism's limit and under the stall."""
+
+
+@pytest.mark.no_fabricate
+def test_a_fixed_designs_turn_is_bounded_by_its_servos_torque_limit():
+    """``sim.run.turn`` drives the crank under the torque limit its servo is set to (the
+    model's meta names the servo and linkage: ``config.torque_limit_nm``), not the stall,
+    and reports against it: a crank that needs more than the limit saturates on it."""
+    pytest.importorskip("mujoco")
+    from spiderpig.config import servo_torque_limit_nm
+    from spiderpig.sim.run import crank_torque_limit, hold, turn
+
+    cfg = BuildConfig(linkage=MECH, robot=False)
+    meta = {"freejoint": None, "config": {"servo": "sts3215", "linkage": MECH},
+            "actuators": {"drive": {"type": "velocity", "ctrlrange": [-6.0, 6.0],
+                                    "forcerange": [-1.9, 1.9]}}}
+    limit = servo_torque_limit_nm("sts3215", MECH)
+    assert limit is not None
+    assert crank_torque_limit(cfg, meta) == pytest.approx(limit) == 0.21
+    t = turn(cfg, model_xml=_ONE_CRANK, model_meta=meta)
+    assert t is not None
+    assert t["torque_limit"] == pytest.approx(limit)
+    assert t["stall"] == pytest.approx(1.9)
+    assert t["torque_peak"] <= limit + 1e-9
+    assert t["saturates"]                    # it needs ~0.26 N·m: on the limit
+    free = turn(cfg, model_xml=_ONE_CRANK, model_meta=meta, torque_limit=1.0)
+    assert free is not None
+    assert not free["saturates"]
+    assert limit < free["torque_peak"] < 0.5
+    h = hold(cfg, 0.2, model_xml=_ONE_CRANK, model_meta=meta)
+    assert h["torque_fraction"]["drive"] < 1.0      # of the limit: holding needs ~nothing
 
 
 @pytest.mark.slow     # (fabricates every one-input mechanism's side: ~2 min)
@@ -263,7 +397,7 @@ def test_no_precision_target_no_failure_from_the_budget(monkeypatch):
 @pytest.mark.slow     # (MuJoCo: the mechanism's model fabricated and stepped, ~15 s)
 def test_a_mechanism_holds_in_position_and_turns_its_crank():
     """Held: its servo in position mode, no creep under gravity; turned: one turn at full
-    speed, its torque well under the stall (a walker's ``sim.torque``)."""
+    speed, its torque well under the torque limit its servo is set to (not the stall)."""
     pytest.importorskip("mujoco")
     from spiderpig.sim.run import hold, turn
 
@@ -276,6 +410,10 @@ def test_a_mechanism_holds_in_position_and_turns_its_crank():
     assert t["completed"]
     assert not t["saturates"]
     assert 0 < t["torque_peak"] < 0.5 * t["torque_limit"]
+    from spiderpig.config import torque_limit_nm
+
+    assert t["torque_limit"] == pytest.approx(torque_limit_nm(cfg))   # its firmware's
+    assert t["stall"] > 4 * t["torque_limit"]
     assert turn(BuildConfig(linkage=ARM, robot=False)) is None    # steppers: nothing to turn
 
 
@@ -307,8 +445,8 @@ def test_the_arms_cover_names_its_pivots():
     line = constructions_line(BuildConfig(linkage=ARM))
     assert "ball_pair pins" in line
     assert "ball_pair_pillar pillars" in line
-    assert "esp32_bus_servo controller" in constructions_line(BuildConfig(linkage=MECH,
-                                                                          robot=False))
+    kit = BuildConfig(linkage=MECH, robot=False, roles=(("controller", "esp32_bus_servo"),))
+    assert "esp32_bus_servo controller" in constructions_line(kit)
 
 
 @pytest.mark.no_fabricate

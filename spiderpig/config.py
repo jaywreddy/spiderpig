@@ -299,11 +299,18 @@ only below it (each with why): :func:`torque_limit_nm`."""
 
 def torque_limit_nm(config: BuildConfig) -> float | None:
     """The torque limit to set in the robot's servo firmware (N·m), the one the jam loads
-    and the joints' ratings assume: the servo's (``TORQUE_LIMIT_FRACTION`` of stall, at
-    most ``JAM_TORQUE_NM``), lowered to the linkage's :data:`LINKAGE_TORQUE_LIMITS` entry;
-    ``None`` for a servo with no stall torque."""
-    limit = servos.get(config.servo).torque_limit_nm
-    own = LINKAGE_TORQUE_LIMITS.get(config.linkage)
+    and the joints' ratings assume: :func:`servo_torque_limit_nm` of its servo and its
+    linkage; ``None`` for a servo with no stall torque."""
+    return servo_torque_limit_nm(config.servo, config.linkage)
+
+
+def servo_torque_limit_nm(servo: str, linkage_key: str) -> float | None:
+    """Servo ``servo``'s torque limit on linkage ``linkage_key`` (N·m): the servo's own
+    (``TORQUE_LIMIT_FRACTION`` of stall, at most ``JAM_TORQUE_NM``), lowered to the
+    linkage's :data:`LINKAGE_TORQUE_LIMITS` entry; ``None`` for a servo with no stall
+    torque. (An exported MJCF's meta names both: :func:`sim.run.turn` reads them there.)"""
+    limit = servos.get(servo).torque_limit_nm
+    own = LINKAGE_TORQUE_LIMITS.get(linkage_key)
     if limit is None or own is None:
         return limit
     return min(limit, own)
@@ -311,7 +318,15 @@ def torque_limit_nm(config: BuildConfig) -> float | None:
 
 def torque_limit_note(config: BuildConfig) -> str | None:
     """What the builder must set for :func:`torque_limit_nm` (a BOM / ORDER.md note), or
-    ``None`` when the servo has no limit."""
+    ``None`` when the design's motors aren't a crank's servo (its motor role, not
+    ``servo``: :func:`roles.motor_role`; an arm's steppers have no firmware limit) or the
+    servo has no limit. Every crank's servo gets it: a walker's, a walker side's and a
+    mechanism's (2026-10-14; a walker's robot alone before, so a mechanism's far lower
+    limit, :data:`LINKAGE_TORQUE_LIMITS`, never reached its BOM)."""
+    from spiderpig import roles as rolemod
+
+    if rolemod.motor_role(config.lk) != "servo":
+        return None
     limit = torque_limit_nm(config)
     spec = servos.get(config.servo)
     stall = spec.stall_torque_nm
@@ -319,10 +334,11 @@ def torque_limit_note(config: BuildConfig) -> str | None:
         return None
     why = (" (lowered for this linkage: config.LINKAGE_TORQUE_LIMITS)"
            if config.linkage in LINKAGE_TORQUE_LIMITS else "")
+    jam = "a jammed foot" if config.lk.walks else "a blocked output"
     return (f"Servo firmware: before the first run, set the torque limit of every servo "
             f"({spec.name.split(' (')[0]}) to {limit:g} N·m, {limit / stall * 100:.0f} % of "
             f"its {stall:.2f} N·m stall{why}: every joint and link is rated (spiderpig audit, "
-            "strength) at a jammed foot holding the servo at that limit.")
+            f"strength) at {jam} holding the servo at that limit.")
 
 
 def config_crank(config: BuildConfig) -> str:
@@ -554,9 +570,9 @@ class BuildConfig:
     def applied_roles(self) -> dict[str, str]:
         """Every :mod:`spiderpig.roles` role kept in ``roles`` that applies to this design,
         with the key that fills it (:data:`roles.NONE` for an emptied one), and every
-        per-slot key named: what the resolved spec writes in. A role filled by its
+        per-slot key named: what the resolved spec writes in. A role filled by its kind's
         ``implicit`` key, its default here, is left out (:class:`roles.Role`: the designs
-        stored before it reached their kind keep their ids)."""
+        stored before it reached their kind keep their ids, and read back the same)."""
         from spiderpig import roles as rolemod
 
         kind = self.lk.kind
@@ -567,7 +583,8 @@ class BuildConfig:
                 continue
             default = rolemod.default_key(r.name, self)
             key = named.get(r.name) or default
-            if not (r.implicit and key == r.implicit == default):
+            implicit = r.implicit_for(kind)
+            if not (implicit and key == implicit == default):
                 out[r.name] = key
         out.update({q: k for q, k in named.items() if "@" in q})
         return out

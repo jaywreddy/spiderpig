@@ -1616,12 +1616,14 @@ def test_a_fixed_designs_full_verify_holds_it_in_mujoco(monkeypatch):
     assert "tool0 sags 0.040 mm" in row.detail
     assert f"a {PAYLOAD_G:g} g payload" in row.detail
     assert "q2 at 8 % of its torque" in row.detail
-    turned = {"torque_peak": 0.03, "torque_mean": 0.01, "torque_limit": 1.91,
+    turned = {"torque_peak": 0.03, "torque_mean": 0.01, "torque_limit": 0.21, "stall": 1.91,
               "saturates": False, "completed": True, "revolutions": 1.0}
     monkeypatch.setattr(run, "turn", lambda config, params=None: turned)
     _, torque = vf._hold_rows(d, VerifyReport("full"))
+    # bounded by the torque limit the servo is set to (sim.run.turn's), not its stall
     assert (torque.requirement, torque.value, torque.target, torque.passed, torque.hard) == (
-        "sim.torque", 0.03, "<= 1.91", True, False)
+        "sim.torque", 0.03, "<= 0.21", True, False)
+    assert "0.21 N·m torque limit it is set to (1.91 stall)" in torque.detail
 
     def broken(config, params=None):
         raise RuntimeError("bad model")

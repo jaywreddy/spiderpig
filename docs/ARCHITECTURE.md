@@ -1188,7 +1188,9 @@ payload over a turn of the crank x 1.5; jammed, its output blocked while its ser
 its torque limit (`config.torque_limit_nm`, what `spiderpig control servo` writes into it,
 as a walker's), gravity added, the crank angles where its lever on the output is under
 `strength.CRANK_LEVER_FLOOR` of its largest left out (the output's dead points, where only
-the crank's stop bounds the force). The audit also reports each link's tilt out of plane
+the crank's stop bounds the force). A finding's fixes name the lever of the design's own
+motors (`strength.stepped`, its motor role): a crank's servo its torque limit, an arm's
+steppers their holding torque (their run current), never both. The audit also reports each link's tilt out of plane
 (`construction/wobble.py`): free (bore clearance over bearing length) and held by the faces
 beside it; a link beside a clearance gap bears on what the column holds there (an end's
 head or printed spacer, a gap ring). For a linkage that walks, it reports the feet across
@@ -1480,7 +1482,10 @@ robot is an entry rather than an edit across the stages:
   and battery (`esp32_bus_servo`: on a walker's deck; a mechanism, whose side is the
   machine, buys it as lines, `construction.robot.controller_lines`, and wires it in its
   side's last step), a DYNAMIXEL servo's USB interface and hub (`u2d2_dynamixel`), a
-  stepper board running Klipper (`skr_pico_pi_zero`), or `none`. A board that can't drive
+  stepper board running Klipper (`skr_pico_pi_zero`), or `none`, a mechanism's default
+  (what its designs stored before the role reached them carried: `roles.Role.implicit`,
+  per kind, so a stored id reads back with the same BOM; the kit named enters the id). A
+  board that can't drive
   the design's motors is a `ConstructionError` (`construction.robot.controller_of`). The
   drive groups are keyed on the same names (`construction.DRIVES`: `ServoDrive` for the
   servo, a `JointDrive` per declared drive for the actuators, a cranked linkage's second
@@ -1615,8 +1620,11 @@ item's first offer, a direct product page (`hardware/sources.py`, checked in a b
 where the offer is `verified`; McMaster-Carr's prices need a login); the uploads per
 cutting service; the prints per filament. Shop supplies (filament, threadlocker) are taken
 as on hand (`bom.ON_HAND`): listed, not ordered or totalled. An unpriced line is estimated
-from its first priced alternative and totalled apart. A design's servo torque limit
-(`config.LINKAGE_TORQUE_LIMITS`) appears as a servo-firmware note.
+from its first priced alternative and totalled apart. The torque limit a crank's servo
+is set to and its joints are rated at (`config.torque_limit_nm`, lowered per linkage by
+`config.LINKAGE_TORQUE_LIMITS`) appears as a servo-firmware note on every design a crank's
+servo drives, a walker's, a walker side's and a mechanism's (`config.torque_limit_note`,
+by the motor role; a walker's robot alone before 2026-10-14's third round).
 
 ### 7.2 The animated model: `spiderpig bake`
 
@@ -1845,6 +1853,15 @@ The wobble itself is kinematic, not numerical: binned against the crank angle, t
 base height and pitch match the quasi-static support plane of 8.1 within 0.6 mm and 0.3°
 rms (the means apart: the base sits a link radius higher), unchanged from a 2 ms step to
 0.25 ms (`tests/test_sim.py::test_the_sim_height_and_pitch_follow_the_quasi_static_support`).
+A design that doesn't walk is held (`sim.run.hold`) and, when a crank's servo drives it,
+turned (`sim.run.turn`, `verify` full's `sim.torque`): one turn at the servo's full speed,
+the drive on its speed-torque line and never over the torque limit its firmware is set to
+(`sim.run.crank_torque_limit`: `config.torque_limit_nm` of the servo and linkage the
+model's meta names, the limit its strength rates it at), the peak reported against that
+limit, not the stall (a mechanism's limit is 5 to 20 times under it); its hold's crank is
+capped the same way. A walker's drive keeps its stall here: its jam loads
+(`sim.loads`) pin a foot at the limit instead.
+
 A design that covers no ground is now flagged by both models (`walks`: Klann's double,
 whose four feet stay coplanar, strides 2e-13 mm in the quasi-static model and crawls at
 11 mm/s with its body on the floor 16 % of the time in MuJoCo).
