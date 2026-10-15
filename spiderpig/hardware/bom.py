@@ -935,23 +935,38 @@ snap axles in PETG for the same strain); ``None`` here leaves it in the build's 
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
 CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer, the feet and (B) "
-                                      "the quick-release pins' keepers"}
+                                      "the quick-release pins' keepers",
+                       PRESS_FILAMENT: "the hand crank's hub, arm, cap and grip (PETG: its "
+                                       "clutch's plungers push on them always, and a hot car "
+                                       "softens PLA)"}
 CRADLE_PRINT_NOTE = (
     "Print the saddles, their V blocks, the base stop and the brackets in PLA at 20 % infill "
     "with 4 walls (the rear saddle's carrier stands 142 mm tall and the light's clip on its "
     "tube's foot: a brim; support under the rear carrier's tower arm, the rear V block's "
-    "flats and bosses and the lip gauge's back knuckle), the hand crank, the knobs (the base "
-    "board's thumb knobs too), the lip gauge and the light's clip at 40 %, the crank's "
-    "sleeve solid (the crank block clamps on it), the TPU parts at 15-20 %: each STL is "
-    "posed as it should print. PLA softens at about 55 °C, as in a car in summer: for a "
-    "cradle that travels so, print the crank's sleeve, the brackets and the thumb knobs in "
-    "PETG.")
+    "flats and bosses and the lip gauge's back knuckle), the knobs (the base "
+    "board's thumb knobs too), the lip gauge and the light's clip at 40 %, the hand crank's "
+    "hub solid and its arm, cap and grip at 40 % in PETG (its clutch's plungers push on them "
+    "always), the TPU parts at 15-20 %: each STL is posed as it should print. PLA softens at "
+    "about 55 °C, as in a car in summer: for a cradle that travels so, print the brackets and "
+    "the thumb knobs in PETG too, and check the clutch after the trip (the guide).")
 """A decanting cradle's (:mod:`construction.cradle`)."""
 CRADLE_GREASE_NOTE = (
     "Grease the saddles' thumbscrews as they go in (a dab of PTFE or lithium grease, not "
     "bought: a shop supply): the front M6 (stainless in a stainless nut galls dry) and the "
     "rear lead screw in its bronze nut; keep it off the rear screw's collar and its TPU brake "
-    "washer, whose grip holds the coarse screw from turning back.")
+    "washer, whose grip holds the coarse screw from turning back. The same grease on the hand "
+    "crank's clutch: its seat ring's face and six holes and its thrust washer (the clutch is "
+    "set greased; dry, it can lock), and again at its yearly check.")
+CRADLE_TOOLS_NOTE = (
+    "Tools (the shop's, not bought): a torque wrench to 20 N·m (the output shaft's M10 end "
+    "screw 20, the riser's thin nuts 10, the drive's M6 screws 5); hex keys 2.5 to 6 mm and "
+    "one for the clutch plungers' backs; two 13 mm wrenches (the riser's nuts), a 10 mm (the "
+    "crank block's tie nut) and a 3/4 in (the plungers' jam nuts); a caliper with a depth rod "
+    "(the go/no-go); a luggage scale reading 0.1 kg (the clutch's start and setting); a 14 "
+    "mm drill to ream the hand crank's hub and a drill to run the gearbox in (before it goes "
+    "on the cradle, never after); a soldering iron (the heat-set inserts); a flat file (the "
+    "keyways); a vise; a paint pen (the pack marks and the toggle-zone marks); threadlocker "
+    "243 throughout the drive.")
 """A decanting cradle's (:mod:`construction.cradle`; review round 1, m9)."""
 # a foot's sock; a decanting cradle's liners, its collar, its lead screw's brake washer, its
 # base plate's feet
@@ -978,9 +993,14 @@ def part_filament(body, meta: dict, default: str | None) -> str | None:
     """The filament (catalog key) a printed ``body`` is printed in: TPU 95A for a foot's
     sock (and a decanting cradle's saddle liners and foot boots, and the keepers on its
     quick-release pins: ``meta["keepers"]``, ``construction.cradle.KEEPER``),
-    :data:`PRESS_FILAMENT` for a sleeve pressed on its crankpin, else ``default``."""
+    :data:`PRESS_FILAMENT` (PETG) for a sleeve pressed on its crankpin and a decanting
+    cradle's hand crank's parts its notes name (``meta["hand_crank"]["petg"]``: its clutch's
+    plungers push on them always), else ``default``."""
     if _SOCK.search(body.name) or body.name in (meta or {}).get("keepers", ()):
         return TPU_FILAMENT
+    petg = ((meta or {}).get("hand_crank") or {}).get("petg", ())
+    if PRESS_FILAMENT and body.name.split(".", 1)[-1] in petg:
+        return PRESS_FILAMENT
     m = _SLEEVE.search(body.name)
     if PRESS_FILAMENT and m and m.group(1) in pressed_sleeves(meta):
         return PRESS_FILAMENT
@@ -1352,7 +1372,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
         notes.append(f"Printed parts need about {total:.0f} g of filament at 100 % infill "
                      f"({each}); less with sparse infill.")
         if (mech.meta or {}).get("cradle"):
-            notes += [CRADLE_PRINT_NOTE, CRADLE_GREASE_NOTE]
+            notes += [CRADLE_PRINT_NOTE, CRADLE_GREASE_NOTE, CRADLE_TOOLS_NOTE]
     lines.extend(mech.bom_extras)
     lines, shim_notes = split_shims(lines, by_name, (mech.meta or {}).get("shim_stacks"))
     notes += shim_notes

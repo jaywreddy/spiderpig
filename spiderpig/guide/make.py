@@ -300,7 +300,7 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
              f"{config.crank} crank")
     if config.lk.product:           # a decanting cradle: no servo, both sides
         title = f"{config.lk.name} (decanting cradle)"
-        drive = (f"hand crank (NRV040 worm, 30:1), {config.pin} pins, {config.pillar} "
+        drive = (f"hand crank (NRV050 worm, 30:1), {config.pin} pins, {config.pillar} "
                  "pillars")
     doc = Doc("Assembly guide",
               [title, drive,

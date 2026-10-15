@@ -405,8 +405,9 @@ STANDS: dict[str, Stand] = {
         # (round 1, 2026-10-14: with the corrected centre of mass and the board 40 mm
         # toward the drive side, BASE_Z, the rear edge binds: 682 mm is the least board
         # that keeps a full 6 L past 25° over it since round 1's drive, whose parts took the
-        # 680 mm board's 25.0° to 24.9°: 25.1° at 682)
-        base=(-160.0, 522.0),
+        # 680 mm board's 25.0° to 24.9°: 25.1° at 682; round 2's drive, the NRV050 and its
+        # hand crank, took 682's to 24.9°: 684)
+        base=(-160.0, 524.0),
     ),
 }
 
@@ -1936,10 +1937,10 @@ STUDIES: dict[str, str] = {}
 """The cradles that are studies (their outputs say so): none since B was refined to build
 (2026-10-10, ``docs/agentlib/DECANTER.md``)."""
 
-DRIVE_PARTS = ("gearbox", "riser_spacer", "crank_", "crankpin", "handle")
+DRIVE_PARTS = ("gearbox", "riser_", "crank_", "crankpin", "handle")
 """The hand crank's parts by name (:mod:`construction.handcrank`): the drive side's only."""
 
-GROUPS = {"drive": ("gearbox", "riser_spacer", "handle"), "crank": ("conn",),
+GROUPS = {"drive": ("gearbox", "riser_", "handle"), "crank": ("conn",),
           "box": ("tie_", "front_saddle", "rear_saddle", "led", "base_stop"),
           "stand": ("base_plate", "base_cleat", "jack_locator", "foot_")}
 """A cradle's parts its sides' plan doesn't name, by name: the gearbox and the hand crank,
@@ -2291,6 +2292,9 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
     # each keeper grips its pin (its bore under the pin's: an interference fit, not a clash)
     fastened += [(prefixed(n, s), prefixed(keeper_pin(n), s))
                  for n in sorted(keepers) for s in SIDES_LR]
+    # the crank block's keyed plates, cut under the shaft's key and filed to it at assembly
+    fastened += [(prefixed(a, "L"), prefixed(b, "L"))
+                 for a, b in (side.meta.get("hand_crank") or {}).get("filed", ())]
     for i, (x, z) in enumerate(foot_xz):
         extras.append(hardware(f"foot_boot_{i}", _tpu_foot(x, z, y_top), frame_host,
                                fab="printed", color=LINER_COLOR))
@@ -2556,13 +2560,16 @@ USE_LIMITS = (
     "whatever it has caught, so turn the handle back the way it came; never pull. When you "
     "leave it, take the handle off (its thumb screw): nothing turns without it. "
     "Never force the handle: if it stiffens, stop and look. Its clutch clicks round past "
-    "what its bench setting says (27 N at the grip on B's 125 mm crank, 40 on A's 85; 10 % "
-    "more at most), so a hard push can't break the drive: a click means something is "
-    "in the way (with nothing in the way, a full 6 L started from a stop near level: turn "
-    "back a little and on, steadily). It doesn't protect what is caught: in the last two or "
-    "three handle turns before rest and before full tilt the cradle comes in with a force no "
-    "clutch bounds, so nothing may be under the cradle box or the bottle there. Letting go "
-    "stops the bottle, "
+    "1.3 times the start you measured (the guide's setting; check it with the luggage scale "
+    "at every set-up and after a trip in a hot car), so a hard push can't break the drive: a "
+    "click means something is in the way. It doesn't protect what is caught: in the first "
+    "two and a half handle turns from rest and the last two and a half before full tilt (the "
+    "gearbox's far face: "
+    "its hub's paint line between a pair of marks; the bottle barely moves per turn there) "
+    "the cradle comes in with a force no clutch bounds, so nothing may be under the cradle "
+    "box or the bottle, or touch either, there. Only the hand crank's arm may turn it: never "
+    "a drill on its input once it is built, nor a hand twisting the hub or the clutch's "
+    "flange (either turns the cradle with no clutch between). Letting go stops the bottle, "
     "not the stream: the wine already over the lip runs on; to stop it, turn back about a "
     "turn. The lip gauge falls back onto the mouth by itself: check it is down before the "
     "bottle passes level, nothing holding it up (a corkscrew left in the cork included); with "
@@ -2574,7 +2581,8 @@ USE_LIMITS = (
     "hand before the bottle goes in, the mouth pointed away from people. Keep your hands off "
     "the decanter while the handle turns (near rest the cradle box comes down over it, and "
     "the worm doesn't stop for a hand). Lift the cradle by its base board, never by the hand "
-    "crank or the cradle box. Hand-wash the printed parts (PLA softens at 55 °C).")
+    "crank or the cradle box. Hand-wash the printed parts (PLA softens at 55 °C; the hand "
+    "crank's are PETG).")
 """The guide's use limits (the room it needs, the vessel, where it pinches: round 1's stand
 review, ``docs/agentlib/DECANTER.md``)."""
 
@@ -2612,7 +2620,7 @@ def pack_pose(lk) -> tuple[float, float, float] | None:
     member), the bottle's tilt there (degrees) and the handle turns from rest to it (the
     shorter way: its sign the crank's; rest, the bottle's least tilt); ``None``: it packs
     flat. The arm's direction is the crank angle's own, so the pose is one crank angle."""
-    from spiderpig.construction.handcrank import NRV040
+    from spiderpig.construction.handcrank import NRV050
 
     pose = PACK_POSES.get(lk.key)
     if pose is None:
@@ -2643,7 +2651,7 @@ def pack_pose(lk) -> tuple[float, float, float] | None:
     at = lk.solve().evaluate(np.array([t]))
     dt = at[ax][0] - at[o][0]
     turn = (t - rest + math.pi) % (2.0 * math.pi) - math.pi        # the shorter way
-    return t, math.degrees(math.atan2(dt[1], dt[0])), turn / (2.0 * math.pi) * NRV040.ratio
+    return t, math.degrees(math.atan2(dt[1], dt[0])), turn / (2.0 * math.pi) * NRV050.ratio
 
 
 def _arm_way(lk, turns: float) -> str:
@@ -2859,8 +2867,9 @@ def print_poses(names, tilt: float) -> dict[str, list[tuple[str, float]]]:
             out[n] = [("Y", 90.0)]                                   # corner in every layer
         elif n.startswith("foot_boot_"):
             out[n] = [("X", 90.0)]
-        elif n == "L.handle":               # its hub on the bed, the cone under the clutch's
-            out[n] = [("Y", -90.0)]          # flange, the seats up (the shaft along +x)
+        elif n in ("L.handle", "L.handle_tube"):   # its hub (or its tube's end) on the
+            out[n] = [("Y", -90.0)]          # bed, the cone under the clutch's flange (the
+            #                                  shaft along +x)
         elif n in ("L.handle_arm", "L.handle_grip", "L.handle_cap"):
             out[n] = [("Y", 90.0)]           # the arm's outer face on the bed
     return out

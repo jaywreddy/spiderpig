@@ -16,7 +16,7 @@ from spiderpig.shapes import disc, union
 
 SIZES = {"M2": "2", "M2.5": "2p5", "M3": "3"}       # thread label -> size in a catalog key
 CLEARANCE = {"2": 2.4, "2p5": 2.9, "3": 3.4,        # ISO 273 medium clearance holes (mm)
-             "5": 5.5, "6": 6.6}
+             "5": 5.5, "6": 6.6, "10": 11.0}
 SHCS_LENGTHS: dict[str, tuple[float, ...]] = {
     "2": (4, 5, 6, 8, 10, 12, 16, 20),
     "2p5": (4, 5, 6, 8, 10, 12, 16, 20),
@@ -28,6 +28,8 @@ BHCS_LENGTHS: dict[str, tuple[float, ...]] = {
     # M6 face, the crank arm's end screw and its 12 mm standoffs' M6 ends
     "5": (8, 10, 12, 16),
     "6": (8, 10, 12, 16, 20, 25, 30, 35, 40, 45),
+    # a decanting cradle's NRV050 output shaft's M10 end tap (round 2's drive)
+    "10": (16,),
 }
 SELF_TAP_LENGTHS: dict[str, tuple[float, ...]] = {"2": (4, 5, 6, 8, 10, 12)}
 
@@ -63,6 +65,7 @@ SCREWS: dict[tuple[str, str], Screw] = {(s.kind, s.size): s for s in (
     Screw("bhcs", "3", 5.7, 1.65, BHCS_LENGTHS["3"]),
     Screw("bhcs", "5", 9.5, 2.75, BHCS_LENGTHS["5"]),
     Screw("bhcs", "6", 10.5, 3.3, BHCS_LENGTHS["6"]),
+    Screw("bhcs", "10", 17.5, 5.5, BHCS_LENGTHS["10"]),
     # PA2.0 pan-head self-tapping screws for plastic; head within ISO 7049 ST2.2's maximum
     Screw("self_tap", "2", 4.0, 1.6, SELF_TAP_LENGTHS["2"]),
 )}
