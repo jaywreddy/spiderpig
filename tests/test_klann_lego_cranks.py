@@ -140,19 +140,17 @@ def _klann_lego_quad_side():
 def test_the_pillar_rings_close_the_columns_air():
     """``klann_lego``'s 6061 links make their layers 3.175 mm, so a 60 mm pillar segment
     stood 0.70 mm over the 3 mm rings' stack: 0.8 mm of play, 5.0 deg of tilt. The printed
-    rings in those layers now fill them (``StandoffAxle.ring_fill``): no pillar's play is the
-    rings' air (what is left is its take-up's: below)."""
+    rings in those layers fill them where a standoff stands over its rings
+    (``StandoffAxle.ring_fill``): no pillar's play is the rings' air (what is left is its
+    take-up's: below). (Its plan since 2026-10-14 stands 52 mm standoffs under their
+    columns, shimmed at the top, so no ring is filled there: the filled rings' 3.175 mm,
+    checked here until then, has no case in the default designs.)"""
     mech = _klann_lego_quad_side()
     notes = {k: v for k, v in mech.meta["wobble"].items() if k.startswith("pillar")}
     assert len(notes) == 4
     for name, note in notes.items():
         # the 0.1 mm assumed, and at most half a step of the 0.5 mm take-up washers
         assert note["play_mm"] <= 0.1 + 0.25 + 1e-9, name
-    rings = [b for b in mech.bodies if "pillar" in b.name and "_ring" in b.name]
-    tall = [b for b in rings if b.part.bounding_box().size.Z > 3.1]
-    assert tall
-    for b in tall:
-        assert abs(b.part.bounding_box().size.Z - 3.175) < 1e-3, b.name
 
 
 @pytest.mark.slow

@@ -1534,7 +1534,12 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   search likely asks next; a proof job is split by its first link's layer, four sizes at a
   time.
   Each placement has its own `max_total_nodes`, as each had when the second ran only after
-  the first: an unproven design (the Strider quad) spends twice the CPU. Planning time as
+  the first: an unproven design (the Strider quad) spends twice the CPU. A job's CPU
+  deadline is `max_seconds`, a placement's jobs one and a half of them together
+  (`stack.drive.SPENT_SECONDS`: TrotBot's toe quad returns in 80 s under a 15 s deadline,
+  155 s when each job had its own). The leg hint is the single module's proven plan, as it
+  was (its first plan alone, a layer thicker on the XL330, left the Strider double there
+  with no plan in 61 layers). Planning time as
   `design_side` (the leg hint included), wall seconds (min-max), interleaved runs, on
   20 cores shared with other agents. At load 2-6 (three runs, `58ebfca`, before the cheap
   sizes ran here):

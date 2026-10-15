@@ -86,8 +86,8 @@ robot; a mechanism's `single`, one side).
 ## Environment
 
 - `SPIDERPIG_STORE`: the project store (default `./.spiderpig`).
-- `SPIDERPIG_PLAN_SECONDS`: the planner's CPU budget, each job's (60; outside
-  `engine_version`'s hash).
+- `SPIDERPIG_PLAN_SECONDS`: the planner's CPU deadline, a job's, a head placement's jobs
+  1.5 times it together (60; outside `engine_version`'s hash).
 - `SPIDERPIG_WORKERS=0`: no worker processes (`spiderpig/workers.py`; the planner's too).
 - `SPIDERPIG_PLAN_WORKERS`: the planner's forked workers (`stack.drive.workers_for`; unset: up
   to `stack.drive.MAX_WORKERS`; one under xdist). The plan is the same with any number.
@@ -254,7 +254,7 @@ search's z is a bound of every plan (`stack.bound_layout`): a claim refuses a se
 only on a bound valid for every completion (`Layout.t_hi`, `span_hi`). Then the exact route
 (`CrankRouter.route`, `JointRules`), the plan's z (`finalize`: its gaps as low as it builds,
 not under what a standoff holds it at, `Claim.hold`) and `verify_plan`. Budgets
-(`StackSpec.quick_nodes`, `max_nodes`, `max_total_nodes`, `max_seconds` per job) bound effort,
+(`StackSpec.quick_nodes`, `max_nodes`, `max_total_nodes`, `max_seconds`) bound effort,
 never validity: a plan found unproven says so (`StackPlan.optimal`, `proof`). Sizes up to
 `StackSpec.max_top`. `tests/brute.py` is the independent brute force (`brute.lowest`).
 Details: `docs/ARCHITECTURE.md` §5, `spiderpig/stack/drive.py`, `spiderpig/stack/search.py`.

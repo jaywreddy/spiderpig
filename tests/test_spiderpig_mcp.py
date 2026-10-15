@@ -244,8 +244,8 @@ def test_check_plan_walk_and_verify_quick_return_json_reports(server, single):
     assert pr["ok"]
     # the default constructions' 8 layers, 35.039 mm (the planner of 2026-10-14; 10 before)
     assert pr["n_layers"] == 8
-    assert pr["layers"]["b1"] == 6
-    assert pr["route"]["runs"] == [{"at": "M", "lo": 6, "hi": 6}]
+    assert pr["layers"]["b1"] == 4
+    assert pr["route"]["runs"] == [{"at": "M", "lo": 4, "hi": 4}]
     assert pr["optimal"] is True
     assert "inner frame plate" in pr["table"]
     _no_solids(pr)
@@ -396,7 +396,7 @@ def _the_build_job_returns_a_manifest_of_files_in_the_store(server, single, stor
     assert manifest["files"] == len(files) == 56                     # one side: no mirrors
     assert all(Path(p["path"]).is_file() and p["path"].endswith(".step") for p in files)
     b1 = next(p for p in manifest["parts"] if p["name"] == "b1")
-    assert (b1["group"], b1["fab"], b1["layers"]) == ("links", "laser", [6])   # the plan's
+    assert (b1["group"], b1["fab"], b1["layers"]) == ("links", "laser", [4])   # the plan's
     _no_solids(manifest)
     assert call(server, "get_job", job=job["job"])["job"]["state"] == "done"
     stored = call(server, "get_design", design=single, stage="build")["report"]

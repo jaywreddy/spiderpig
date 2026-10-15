@@ -940,18 +940,20 @@ the planner's own process with the same answer. The search spends its effort in 
    size with a plan ends the proof. Jobs no one needs any more are stopped.
 
 The plan is the least key of everything the jobs found, re-made in the planner's process.
-It is optimal when every job the objective needs ran to the end. Each job has the CPU
-deadline (`StackSpec.max_seconds`) of its own thread; node budgets, not the deadline, bound
-a search on any machine the planner is meant for, so the plan is the same on every machine
-and with any number of workers (`tests/test_seam_stack.py` checks 1, 2, 3 and 5).
+It is optimal when every job the objective needs ran to the end. Each job has a CPU
+deadline of its own thread (`StackSpec.max_seconds` at most), and a head placement's jobs
+together one and a half of them (`stack.drive.SPENT_SECONDS`); node budgets, not the
+deadline, bound a search on any machine the planner is meant for, so the plan is the same on
+every machine and with any number of workers (`tests/test_seam_stack.py` checks 1, 2, 3 and
+5).
 
 A multi-leg module first plans its `single` module and uses that plan as a hint for which
 layers to try first, and for a second strategy that places one leg at a time. The first
-step is capped at 60,000 nodes and every job at a **60 CPU-second deadline**
-(`stack.Deadline`, the thread's CPU time, so a loaded machine doesn't change how far a search
-gets; `SPIDERPIG_PLAN_SECONDS` sets it); the hint is the single module's first plan (its
-thinnest stack, no proof asked), and any recommendation checks after a failure get one more
-deadline.
+step is capped at 60,000 nodes and every job at a **60 CPU-second deadline**, a head
+placement's jobs at 90 together (`stack.Deadline`, the thread's CPU time, so a loaded machine
+doesn't change how far a search gets; `SPIDERPIG_PLAN_SECONDS` sets it); the hint is the
+single module's plan (its fewest layers, proven), and any recommendation checks after a
+failure get one more deadline.
 
 **Where the heads go.** Every fastener head beside a link either sinks into the layer
 beside it or stands in a thin clearance gap (section 5.7). `StackSpec.heads` picks:

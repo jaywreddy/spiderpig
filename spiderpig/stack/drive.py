@@ -34,8 +34,9 @@ none with ``SPIDERPIG_WORKERS=0``) and whenever it runs.
    the end (and no head placement gave up: :data:`stack.GIVE_UP`).
 
 Budgets are nodes, per job, so the answer is the same on any machine and with any number
-of workers; the CPU deadline (``StackSpec.max_seconds``, per process: each worker counts
-its own) is the safety net, and a plan found when it runs out says what it left open.
+of workers; the CPU deadline (``StackSpec.max_seconds`` a job, each counted in its own
+thread; a head placement's jobs :data:`SPENT_SECONDS` of them together) is the safety net,
+and a plan found when it runs out says what it left open.
 """
 
 from __future__ import annotations

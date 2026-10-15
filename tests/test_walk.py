@@ -675,7 +675,9 @@ def test_nominal_mass_and_servo():
     # the fabricated quad robot with its deck: the thinnest sheet per part (2026-10-04: 0.080
     # in frame, 0.100 in 6061 crank (the hex crankpins' pockets; 975 g on 0.063 in), 0.090
     # in centre plates; 1088 g on 0.125 in aluminium)
-    assert mass == pytest.approx(988.8, rel=0.015)   # (988.8 g: parts in their material)
+    # (975.7 g built since the planner's lowest stack, 2026-10-14; 988.8 g before: parts in
+    # their material)
+    assert mass == pytest.approx(975.7, rel=0.015)
     assert com[2] == 0.0
     assert com[0] == pytest.approx(-0.4, abs=0.2)          # the deck's battery end is -x
     assert com[1] == pytest.approx(4.3, abs=1.0)           # the deck raises it ~3 mm

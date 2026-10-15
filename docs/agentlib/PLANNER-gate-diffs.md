@@ -71,7 +71,14 @@ pantograph's USD 0.36 and part of the others': the 15 mm hex standoff, priced on
   and the print lists.
 - **Outside the gate.** The demo Klann single plans in 8 layers (10 before) and its double
   in 9 (10 before): their short standoff columns were refused at a pitch a layer, and fill
-  at the plan's z.
+  at the plan's z. The single's 8 layers put its pin D across 14.8 mm (b4 in layer 1, b1 in
+  4; 5.5 mm in neighbouring layers before): jam SF 0.79, walking 1.03 (1.57 and 2.05
+  before), strength being downstream of the objective (`strength.check`). The XL330 Strider
+  double plans 14 layers, 68.66 mm (68.86 before). The walk model's nominal mass is
+  refitted to the lower stacks (`walk._PILLAR_PER_PIVOT_G` 12.0 to 7.0 g,
+  `_PIN_PER_JOINT_G` 3.3 to 4.5 g: within 1.2 % of the built Strider, Klann and
+  `klann_lego` robots, 2.4 % on `klann_lego` before), and the walk reference's Klann quad
+  has its feet at the new plan's z.
 
 ## Known regression
 

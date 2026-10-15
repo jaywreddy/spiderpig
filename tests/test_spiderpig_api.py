@@ -763,7 +763,7 @@ def test_a_thin_sheet_warns_and_the_pillar_names_the_least_pitch_with_a_checked_
     fixed = api.derive(thin, rec.patch, store=None)
     assert [w for w in fixed.warnings if w.startswith("materials.")] == []
     assert api.check(fixed).ok
-    assert api.plan(fixed).n_layers == 10
+    assert api.plan(fixed).n_layers == 8          # (10 before the planner of 2026-10-14)
     near = api.resolve({**THIN, "materials": {"thickness_mm": 3.2}}, store=None)
     assert [w for w in near.warnings if w.startswith("materials.")] == []
 
