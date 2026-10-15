@@ -126,7 +126,7 @@ The engine became a robot design system: walkers, one-sided mechanisms and arms 
 registries, the desktop palletizer arm its first new robot. Each phase was its own commit
 and review round (DECISIONS.md, 2026-10-11 to 2026-10-14, holds each one's what, why and
 open items); the gate's baseline moved with each output change (TESTING.md, the baseline's
-story), now `platform-77c117c`, eight designs.
+story), now `platform-9aae3e3`, eight designs.
 
 | phase | what | state |
 |---|---|---|

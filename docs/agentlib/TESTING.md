@@ -341,17 +341,23 @@ table to lose it); with an identity difference too, `compare` exits 4 (order dif
 5 (DIFFERENT), so neither verdict hides the other (`identity_gate.exit_status`); `mise run gate -- audit DIR` checks a snapshot alone, and the slow
 `tests/test_gate_audits.py` runs the eight audits (a known failure a strict `xfail`).
 
-**Newest baseline** (wave 2, 2026-10-14): `~/.cache/spiderpig/gate/platform-78e35e8/`, from
-which DESIGNS.md is generated. It differs from `platform-5396098` (kept) by
+**Current baseline** (the merged walkers-mechanisms-and-arm engine after review round 1,
+2026-10-14): `~/.cache/spiderpig/gate/platform-9aae3e3/`, from which DESIGNS.md is
+generated; compare against it: `mise run gate -- compare
+~/.cache/spiderpig/gate/platform-9aae3e3`. It differs from `platform-78e35e8` (kept) in BOMs
+and audits only, no part, plan or DXF moved: the cutting model's cut-length term (every
+design), the walkers' foot rows, a mechanism's controller kit and its jam rating at its
+torque limit, the arms' MJCF out of the URDF folder. `platform-78e35e8` differs from
+`platform-5396098` (kept) by
 `palletizer_turret` alone: the approved arm's pivots and links' sheets, its audit passing
 (DECISIONS.md 2026-10-14, wave 2); the other seven identical.
 
-**Baseline** (the merged walkers-and-arm platform, `77c117c`, 2026-10-14: eight designs, the
+**Earlier baseline** (the merged walkers-and-arm platform, `77c117c`, 2026-10-14: eight designs, the
 user's approved arm `palletizer_reach` among them): `~/.cache/spiderpig/gate/platform-77c117c/`
 on the development box (`/root/.cache/...`), one `<design>.json` per design, their logs and
 `snapshot.json` (commit, branch, time; its walkers snapshotted at `982e67b`, which `77c117c`
 leaves alone). Compare against it from any worktree whose `spiderpig/` should match its
-output: `mise run gate -- compare ~/.cache/spiderpig/gate/platform-77c117c`. It differs from
+output (historically): `mise run gate -- compare ~/.cache/spiderpig/gate/platform-77c117c`. It differs from
 `platform-379ad7e` (kept) by every walker's spacers (stock tubes and shims, no printed
 ones) and honest BOM prices, `palletizer_turret` on the `mt4_compact` turret (the pruning),
 and `palletizer_reach`'s cut-rule fixes and `b4`'s hubs (DECISIONS.md 2026-10-14); from

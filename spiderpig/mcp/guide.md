@@ -273,7 +273,7 @@ walker's crank): a jam safety factor under 1 at the design's own loads fails `ve
 (`strength / joint_overload`, with fixes). An arm's loads are its static model's:
 operating (its weight and the payload over the box x 1.5 for the moves) and jammed (a
 crash: the tool blocked while the drives push at their holding torque); a fix may be a
-lower run current. A cranked mechanism's loads are what it drives: not rated.
+lower run current. A cranked mechanism is rated at a jam of its output, its servo at its torque limit (`strength.crank_loads`; each mechanism's limit in `config.LINKAGE_TORQUE_LIMITS`, which `export`'s control files write into the servo).
 
 `fit` defaults (mm): <<FIT>>
 
