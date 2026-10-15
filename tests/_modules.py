@@ -58,6 +58,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_deck.py": "construction",
     "test_joinery.py": "construction",
     "test_klann_lego_cranks.py": "construction",
+    "test_machines.py": "construction",
     "test_fabricate.py": "construction",
     "test_contract.py": "construction",
     "test_shapes.py": "construction",
@@ -72,10 +73,15 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_rounding.py": "hardware",
     # strength / wobble / loads (P4)
     "test_strength.py": "strength",
+    "test_gate_audits.py": "strength",
+    "test_task_targets.py": "strength",
     "test_wobble.py": "strength",
     "test_seam_reports.py": "strength",
     # API / store / verify / MCP / CLI build (P5)
     "test_spiderpig_api.py": "api",
+    "test_task.py": "api",
+    "test_task_verify.py": "api",
+    "test_surfaces.py": "api",
     "test_spiderpig_store.py": "api",
     "test_spiderpig_mcp.py": "api",
     "test_review_fixes.py": "api",
@@ -95,6 +101,7 @@ MODULE_OF_FILE: dict[str, str] = {
     # sim and bake (P6)
     "test_sim.py": "sim",
     "test_sim_live.py": "sim",
+    "test_sim_live_kinds.py": "sim",
     "test_bake_gltf.py": "sim",
     "test_guide.py": "sim",
 }

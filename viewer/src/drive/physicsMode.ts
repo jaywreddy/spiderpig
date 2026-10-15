@@ -155,7 +155,14 @@ export function createPhysicsMode(ctx: PhysicsHost) {
       physics.close();
       throw new Error(`physics: the server built ${hello.design.linkage} for a ${baked.linkage} glb`);
     }
-    const fwd = hello.forward ?? hello.steering.forward;
+    // The drive walks a robot on the floor by its sides' cranks: a design that doesn't walk is
+    // driven live from its own panel (``arm.ts``: its joints, its crank).
+    if (!physics.walks || !hello.steering) {
+      physics.close();
+      throw new Error(`physics: ${hello.design.linkage} doesn't walk: drive it live from its panel`);
+    }
+    const steer = hello.steering;
+    const fwd = hello.forward ?? steer.forward;
     if (fwd && 'fell' in fwd && fwd.fell && url.get('physics') !== 'force') {
       physics.close();
       throw new Error(`physics: this design fell over in MuJoCo's straight run (${hello.design.linkage} `
@@ -163,7 +170,6 @@ export function createPhysicsMode(ctx: PhysicsHost) {
     }
     physicsOn = opts.physics = true;
     physicsC()?.updateDisplay();
-    const steer = hello.steering;
     // The proven-safe authority is the default; the slider only raises it beyond (with the warning).
     opts.turn = safeTurn(steer);
     ctx.turnC.updateDisplay();

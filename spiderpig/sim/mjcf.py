@@ -1,11 +1,38 @@
-"""MuJoCo model (MJCF) of the fabricated walker.
+"""MuJoCo model (MJCF) of a fabricated design: the one emitter, for every kind.
 
 :func:`build_mjcf` turns a :class:`fabricate.BuildConfig` into one
 self-contained MJCF document (no external files) plus a JSON-able metadata
-dict. The XML runs in Python (``mujoco``); the browser's physics drive
-streams the server's session of it (:mod:`sim.live`, ``/ws/sim``), and the
-metadata tells the viewer how to put the simulated poses on the glb nodes of
-:mod:`viewer.bake_gltf`.
+dict. The XML runs in Python (``mujoco``); the viewer streams the server's live
+session of any design (:mod:`sim.live`, ``/ws/sim``: a walker's physics drive, a
+mechanism's crank, an arm's joint sliders), and the metadata tells the viewer how to put
+the simulated poses on the glb nodes of :mod:`viewer.bake_gltf`.
+
+Every design goes through the same reduction (:func:`robot_model`) and the same emitter:
+the planar side's bodies and pins (the template's), the spatial joints a layout adds
+(``meta["tree"]``, :class:`kinematics.RobotTree`: the tree the bake and the URDF read),
+and what the design declares, never its kind's name:
+
+* **where it stands** (:attr:`linkage.Linkage.walks`): a walker is free on a floor (the
+  free-floating ``base``, the floor, its feet's contacts; its whole robot: both sides,
+  whatever ``config.robot`` says, :func:`model_config`); anything else is fixed to the
+  world, upright, with no floor and nothing colliding (an arm's turret base, a
+  mechanism's frame), its base's floor at the origin (a turret's under its yaw axis: the
+  URDF's ``base_link``).
+* **its motors, by what they drive**: a servo's velocity actuator on each crank (below);
+  a stepper's position actuator on each joint :func:`actuators.joint_ratings` rates (an
+  arm's ranged inputs through their transmissions, a turret's turntable ``q1``, a
+  wrist ``q4``), its gains :func:`stepper_gains`, its force its holding torque through
+  the reduction, its rotor's inertia through it the joint's ``armature``.
+* **its joints**: a spatial joint is a hinge about its own axis on a body named after the
+  frame it turns (an arm's ``torso`` on ``q1``) or after itself (the wrist's ``q4``, on
+  its host link); an input's link hangs from the frame on its drive's pivot, its hinge
+  named after the input and reading its design angle (``ref``: the input's value at
+  ``t_ref``, so a position actuator's ``ctrl`` is the input's angle in radians).
+* **its sites**: ``tool0`` at a tool's tip (ROS-Industrial's name, the URDF's), ``output``
+  at a fixed design's output point; :func:`sim.run.hold` reads their sag.
+
+The rest of this docstring is the walker's, the model the recorded fixtures and the
+sim's figures are of.
 
 Units and frames
 ----------------
@@ -95,7 +122,9 @@ electronics at their catalogued masses, ``mass_g``), plus :attr:`SimParams.paylo
 (0 by default; a point mass at :attr:`SimParams.payload_pos` for anything else carried;
 the wiring, ~5-10 g, is not modelled). A robot whose frame has no room for the deck
 (``meta["deck"]["fitted"]`` false) carries :data:`DECK_FALLBACK_G` there instead, the
-deck's measured mass on the default designs. (Before the deck, a 100 g ESTIMATE at the
+deck's measured mass on the default designs; a bare deck (the role ``controller`` none, or
+a controller bought as lines) its controller's carried parts, or your own at the kit's mass
+(:func:`bare_deck_g`). (Before the deck, a 100 g ESTIMATE at the
 crank axis stood for the electronics: +100 / +200 g on the Klann quad cost 1 / 3 % of
 speed and raised the mean torque from 0.05 to 0.055 / 0.065 N·m.) ``mass.total``
 counts all of it.
@@ -218,6 +247,7 @@ from spiderpig.stack import body_class, is_crank, is_frame, is_link
 if TYPE_CHECKING:
     import mujoco
 
+    from spiderpig.actuators import JointRating
     from spiderpig.mechanism import Mechanism
     from spiderpig.servos.spec import ServoSpec
 
@@ -285,7 +315,7 @@ class MjBody:
     """One MuJoCo body: the robot bodies it stands for and their mass properties (mech, mm)."""
 
     name: str
-    kind: str                           # "base" | "crank" | a link's class ("b1", "b2", ...)
+    kind: str                           # "base" | "crank" | "spatial" | a link's class ("b1")
     side: str | None
     kinematic: list[str] = field(default_factory=list)   # template bodies (L.torso, L.conn, ...)
     members: list[str] = field(default_factory=list)     # every robot body riding it
@@ -298,6 +328,9 @@ class MjBody:
     parent: str | None = None
     pivot: str | None = None            # the hinge's point name (Klann: O, M, D, A, B)
     mass_by: dict[str, float] = field(default_factory=dict)            # kg per material
+    joint: str | None = None            # its hinge's name (None: the base, no hinge)
+    axis: tuple[float, ...] | None = None   # a spatial hinge's axis (else the stack's)
+    ref: float = 0.0                    # the hinge's value at qpos0 (an input's design angle)
 
     @property
     def z(self) -> float:
@@ -322,6 +355,11 @@ class RobotModel:
     crank_sign: int
     meta: dict                          # the fabricated robot's meta
     servo: ServoSpec
+    walks: bool = True                  # free on a floor (else its base is fixed)
+    floor: np.ndarray = field(default_factory=lambda: np.zeros(3))   # a fixed base's (mm)
+    motors: dict[str, JointRating] = field(default_factory=dict)  # stepped joint -> its motor
+    ranges: dict[str, tuple[float, float]] = field(default_factory=dict)  # joint -> rad
+    sites: dict[str, tuple[str, np.ndarray]] = field(default_factory=dict)  # -> (body, mm)
 
 
 def _kind(name: str) -> str:
@@ -340,13 +378,18 @@ def _side(name: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _mj_name(kin: str) -> str:
-    """MuJoCo body of a kinematic (template) body."""
+def _sided(side: str | None, name: str) -> str:
+    """``name`` on ``side`` (``L.crank``), or alone on a one-sided design (``crank``)."""
+    return name if side is None else f"{side}.{name}"
+
+
+def _mj_name(kin: str, frame_body: str = "base") -> str:
+    """MuJoCo body of a kinematic (template) body (a frame's: ``frame_body``)."""
     kind = _kind(kin)
     if kind == "base":
-        return "base"
+        return frame_body
     if kind == "crank":
-        return f"{_side(kin)}.conn"
+        return _sided(_side(kin), "conn")
     return kin
 
 
@@ -384,14 +427,25 @@ def _hull_of(verts) -> np.ndarray:
 
 def crank_sign(config: BuildConfig) -> int:
     """+1 if a growing crank angle walks the robot towards mech ``+x`` (the stance foot
-    moves ``-x``), else -1. Judged on leg 0's first foot over the lowest tenth of its path."""
+    moves ``-x``), else -1. Judged on leg 0's first foot over the lowest tenth of its path;
+    +1 for a design without feet (its crank's own sense)."""
     tmpl = template_for(config)
+    feet = feet_of(tmpl)
+    if not feet:
+        return 1
     ts = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
-    body, joint = feet_of(tmpl)[0]
+    body, joint = feet[0]
     f = tmpl.sample(ts).joint_world[body][joint][:, :2]
     low = f[:, 1] <= np.quantile(f[:, 1], 0.1)
     vx = (np.roll(f[:, 0], -1) - np.roll(f[:, 0], 1))[low].mean()
     return 1 if vx < 0 else -1
+
+
+def model_config(config: BuildConfig) -> BuildConfig:
+    """The design a MuJoCo model is of: a walker's whole robot (it stands on both sides'
+    feet, whatever ``config.robot`` says), any other design as it is configured (an arm on
+    its turret or one side, a mechanism's side)."""
+    return replace(config, robot=True) if config.lk.walks else config
 
 
 CACHE_SIZE = 8      # designs kept per cache (a design's model is ~37 MB of RSS)
@@ -417,7 +471,7 @@ def build_lock(config: BuildConfig) -> threading.Lock:
     """The lock two threads building the same design's model share (so the second waits
     for the first's cached result instead of fabricating it again)."""
     with _LOCKS_LOCK:
-        return _BUILD_LOCKS.setdefault(replace(config, robot=True), threading.Lock())
+        return _BUILD_LOCKS.setdefault(model_config(config), threading.Lock())
 
 
 def clear_caches() -> None:
@@ -431,49 +485,90 @@ def clear_caches() -> None:
 
 
 def fabricated(config: BuildConfig) -> Mechanism:
-    """The fabricated robot (both sides) at ``t_ref`` (cached per config; one fabricated
-    elsewhere at that angle comes in through :func:`set_fabricated`)."""
-    config = replace(config, robot=True)
+    """The fabricated design of the model (:func:`model_config`: a walker's both sides) at
+    ``t_ref`` (cached per config; one fabricated elsewhere at that angle comes in through
+    :func:`set_fabricated`)."""
+    config = model_config(config)
     if config not in _FABRICATED:
         _remember(_FABRICATED, config, fabricate(template_for(config), config, T_REF))
     return _FABRICATED[config]
 
 
 def set_fabricated(config: BuildConfig, robot: Mechanism, props: dict | None = None) -> None:
-    """Adopt ``robot``, the robot of ``config`` fabricated at :data:`T_REF` (both sides), as
-    what :func:`fabricated` returns for it: an export that bakes the glb from the same
-    fabrication doesn't fabricate twice. ``props``: its parts' mass properties already
-    measured (body -> :class:`hardware.mass.PartProps`: the bake's), not measured again."""
-    key = replace(config, robot=True)
+    """Adopt ``robot``, the design of :func:`model_config` of ``config`` fabricated at
+    :data:`T_REF` (a walker's both sides), as what :func:`fabricated` returns for it: an
+    export that bakes the glb from the same fabrication doesn't fabricate twice. ``props``:
+    its parts' mass properties already measured (body -> :class:`hardware.mass.PartProps`:
+    the bake's), not measured again."""
+    key = model_config(config)
     _remember(_FABRICATED, key, robot)
     if props:
         _remember(_PROPS, key, (robot, props))
 
 
+def _spatial_bodies(tree, frames: list[str]) -> dict[str, str]:
+    """Spatial joint -> the MuJoCo body it turns: named after the frame it carries (an
+    arm's turntable turns its side's ``torso``), else after the joint (the wrist's
+    ``q4``)."""
+    out = {}
+    for j in tree.joints if tree is not None else ():
+        carried = [f for f in frames if tree.carried.get(f) == j.name and j.host is None]
+        out[j.name] = carried[0] if carried else j.name
+    return out
+
+
 @lru_cache(maxsize=CACHE_SIZE)
 def robot_model(config: BuildConfig, printed_fill: float = 1.0,
                 hull_tolerance: float = 0.5) -> RobotModel:
-    """The fabricated robot at ``t_ref`` reduced to MuJoCo bodies (cached per config)."""
-    config = replace(config, robot=True)
+    """The fabricated design at ``t_ref`` reduced to MuJoCo bodies (cached per config): the
+    module docstring's tree, whatever the design (its spatial joints from
+    ``meta["tree"]``, :class:`kinematics.RobotTree`)."""
+    from spiderpig.actuators import joint_ratings
+    from spiderpig.kinematics import RobotTree
+
+    config = model_config(config)
+    lk = config.lk
     robot = fabricated(config)
     servo = servos.get(config.servo)
     known = _PROPS.get(config, (None, {}))
     known = known[1] if known[0] is robot else {}
     by_name = {b.name: b for b in robot.bodies}
+    tree = RobotTree.from_meta(robot.meta.get("tree"))
 
     # kinematic bodies and where every robot body goes
-    kinematic = [b for b in robot.bodies if b.rigid_with is None]
+    kinematic = [b for b in robot.bodies if b.rigid_with is None and b.joints]
+    frames = [b.name for b in kinematic if _kind(b.name) == "base"]
+    spatial = _spatial_bodies(tree, frames)
+    frame_body = next((spatial[tree.carried[f]] for f in frames if tree is not None
+                       and tree.carried.get(f) in spatial
+                       and tree.joint(tree.carried[f]).host is None), "base")
     joints = {
         b.name: {j.name: (b.pose @ j.pose).matrix[:2, 3].copy() for j in b.joints}
         for b in kinematic
     }
     bodies: dict[str, MjBody] = {}
     for b in kinematic:
-        name = _mj_name(b.name)
+        name = _mj_name(b.name, frame_body)
         mb = bodies.setdefault(name, MjBody(name, _kind(b.name), _side(b.name) if name != "base"
                                             else None))
         mb.kinematic.append(b.name)
-    host = {b.name: _mj_name(_root(b, by_name)) for b in robot.bodies}
+    bodies.setdefault("base", MjBody("base", "base", None))     # (a turret's static parts)
+    for j in tree.joints if tree is not None else ():
+        mb = bodies.setdefault(spatial[j.name], MjBody(spatial[j.name], "spatial", None))
+        mb.kind, mb.side = "spatial", None
+        mb.joint, mb.axis = j.name, tuple(j.axis)
+        mb.origin = np.asarray(j.origin, dtype=float)
+
+    def host_of(b) -> str:
+        root = by_name[_root(b, by_name)]
+        j = tree.carried.get(b.name) if tree is not None else None
+        if j is not None and tree is not None and tree.joint(j).host is not None:
+            return spatial[j]                   # the wrist's: it turns on its host
+        if root.joints:
+            return _mj_name(root.name, frame_body)
+        return spatial[j] if j is not None else "base"   # a turret's turning / static parts
+
+    host = {b.name: host_of(b) for b in robot.bodies}
 
     # mass properties
     acc: dict[str, list] = {n: [] for n in bodies}
@@ -510,10 +605,11 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
         mb.mass, mb.inertia = m, inertia
         mb.com = c  # a sum of 3-vectors over m  # pyright: ignore[reportAttributeAccessIssue]
 
-    # the tree grown from the base over the template's connections (see the module doc)
+    # the tree grown from the frame over the template's connections (see the module doc);
+    # an input's link hangs from the frame on its drive's pivot first (the input its hinge)
     adj: dict[str, list[tuple[int, str, str, np.ndarray]]] = {n: [] for n in bodies}
     for i, ((_, pa, ja), (_, pb, jb)) in enumerate(robot.connections):
-        ma, mb_ = _mj_name(pa), _mj_name(pb)
+        ma, mb_ = _mj_name(pa, frame_body), _mj_name(pb, frame_body)
         if ma == mb_:
             continue                    # conn - coupler: one crankshaft
         xy = joints[pa][ja]
@@ -522,20 +618,32 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
         point = re.sub(r"_leg\d+$", "", ja)
         adj[ma].append((i, mb_, point, xy))
         adj[mb_].append((i, ma, point, xy))
-    placed = {"base"}
+    drives: dict[str, str] = {}         # link body -> the input whose hinge it is
+    for k, (q, (cls, point)) in enumerate(lk.drives.items()):
+        link = next(b.name for b in kinematic if body_class(b.name) == cls)
+        drives[link] = q
+        adj[frame_body].append((-1 - k, link, point, joints[link][point]))
+        adj[link].append((-1 - k, frame_body, point, joints[link][point]))
+    placed = {"base", frame_body}
     loops: list[tuple[str, str, str, np.ndarray]] = []
     seen: set[int] = set()
 
     def hinge(a: str, b: str) -> np.ndarray | None:
-        """Where the tree pins ``a`` and ``b`` together, if it does."""
+        """Where the tree pins ``a`` and ``b`` together, if it does: one on the other, or
+        both on one parent at one place (two links on one frame pivot)."""
         for child, parent in ((a, b), (b, a)):
             if bodies[child].parent == parent:
                 return bodies[child].origin[:2]
+        ma, mb = bodies[a], bodies[b]
+        if ma.parent is not None and ma.parent == mb.parent and \
+                np.abs(ma.origin[:2] - mb.origin[:2]).max() <= 1e-6:
+            return ma.origin[:2]
         return None
 
     def grow(name: str) -> None:
         kids = []
-        for i, other, point, xy in sorted(adj[name], key=lambda e: bodies[e[1]].kind != "crank"):
+        for i, other, point, xy in sorted(adj[name], key=lambda e: (
+                bodies[e[1]].kind != "crank", e[0] >= 0)):
             if i in seen:
                 continue
             seen.add(i)
@@ -543,6 +651,12 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
             if other not in placed:             # hang it from this body, on this joint
                 ob.parent, ob.pivot = name, point
                 ob.origin = np.array([xy[0], xy[1], ob.z])
+                if ob.kind == "crank":
+                    ob.joint = _sided(ob.side, "crank")
+                elif i < 0:                     # an input's link on the frame
+                    ob.joint = drives[other]
+                else:
+                    ob.joint = other
                 placed.add(other)
                 kids.append(other)
                 continue
@@ -550,7 +664,8 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
             if h is not None and np.abs(xy - h).max() <= 1e-6:
                 continue                        # another pin of that hinge (two cranks on O)
             m = re.search(r"_leg\d+$", name) or re.search(r"_leg\d+$", other)
-            loop = base = f"{bodies[name].side or ob.side}.{point}{m.group() if m else ''}"
+            side = bodies[name].side or ob.side
+            loop = base = _sided(side, f"{point}{m.group() if m else ''}")
             k = 0
             while any(n == loop for n, *_ in loops):    # a third body on that joint
                 k += 1
@@ -559,15 +674,41 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
         for kid in kids:
             grow(kid)
 
-    grow("base")
+    # the spatial joints: a turntable on the base (or its parent joint's body), the frame
+    # riding it; a wrist on its host link, placed once the planar tree holds that link
+    for j in tree.joints if tree is not None else ():
+        if j.host is None:
+            bodies[spatial[j.name]].parent = spatial[j.parent] if j.parent else "base"
+            placed.add(spatial[j.name])
+    grow(frame_body)
+    for j in tree.joints if tree is not None else ():
+        if j.host is not None:
+            bodies[spatial[j.name]].parent = _mj_name(j.host, frame_body)
+            placed.add(spatial[j.name])
     missing = sorted(set(bodies) - placed)
     if missing:
         raise ValueError(f"{missing} aren't connected to the base")
+    unhinged = sorted(set(drives) - {n for n, mb in bodies.items() if mb.joint in lk.drives})
+    if unhinged:
+        raise ValueError(f"{unhinged}: an input's link doesn't hang from the frame")
     ordered = {"base": bodies["base"]}          # tree order: parents first, else as found
     while len(ordered) < len(bodies):
         for n, mb in bodies.items():
             if n not in ordered and mb.parent in ordered:
                 ordered[n] = mb
+
+    # an input's hinge reads its design angle (qpos0: its value at t_ref)
+    ranges: dict[str, tuple[float, float]] = {}
+    if lk.ranged:
+        zero = {n: float(v[0]) for n, v in zip(lk.inputs, lk.tour(np.array([T_REF])),
+                                                 strict=True)}
+        for mb in bodies.values():
+            if mb.joint in zero:
+                mb.ref = zero[mb.joint]
+                lo, hi = lk.ranges[mb.joint]
+                ranges[mb.joint] = (math.radians(lo), math.radians(hi))
+    for j in tree.joints if tree is not None else ():
+        ranges[j.name] = (math.radians(j.range_deg[0]), math.radians(j.range_deg[1]))
 
     # collision geometry: link capsules (a foot link's stops two radii short of the
     # foot: the foot sphere alone makes the contact) and foot spheres
@@ -598,17 +739,39 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
                 continue                        # a stub shorter than its own trims
             segs.append((a + u if p in on_foot else a, c - u if q in on_foot else c))
         outlines[b.name] = segs
-    hulled = [b for b in robot.bodies if b.part is not None and host[b.name] == "base" and (
+    still = {"base", frame_body}                # the frame's: its plates, servos and deck
+    hulled = [b for b in robot.bodies if b.part is not None and host[b.name] in still and (
         (b.fab == "laser" and body_class(b.name) in ("torso", "frame_outer"))
         or body_class(b.name) in ("servo", "deck_plate", "deck_battery", "deck_board"))]
-    hulls = {b.name: ("base", pts) for b, pts in zip(
+    hulls = {b.name: (host[b.name], pts) for b, pts in zip(
         hulled, _hulls([b.part for b in hulled], hull_tolerance), strict=True)}
+
+    # the sites a fixed design is read at: its output point, a tool's tip (ROS's tool0)
+    sites: dict[str, tuple[str, np.ndarray]] = {}
+    out = lk.output
+    if not lk.walks and out is not None and out.kind == "point":
+        body = next((b.name for b in kinematic if body_class(b.name) == out.body
+                     and out.name in joints[b.name]), None)
+        if body is not None:
+            xy, mb = joints[body][out.name], bodies[host[body]]
+            sites["output"] = (mb.name, np.array([xy[0], xy[1], mb.z]))
+    tool = robot.meta.get("tool")
+    if tool:
+        x, y, z = tool["axis"]
+        tip = np.array([x, y - float(tool["drop_mm"]), z], dtype=float)
+        wrist = next((spatial[j.name] for j in (tree.joints if tree else ())
+                      if j.host is not None), None)
+        sites["tool0"] = (wrist or host[tool["body"]], tip)
+    floor = np.asarray((robot.meta.get("turret") or {}).get("axis", (0.0, 0.0, 0.0)),
+                       dtype=float)
 
     return RobotModel(
         config=config, bodies=ordered, host=host, joints=joints, loops=loops,
         outlines=outlines, feet=feet, foot_links=foot_links, hulls=hulls,
         link_radius=config.params.link_radius,
         crank_sign=crank_sign(config), meta=dict(robot.meta), servo=servo,
+        walks=lk.walks, floor=floor, motors=joint_ratings(robot.meta), ranges=ranges,
+        sites=sites,
     )
 
 
@@ -677,11 +840,43 @@ DECK_FALLBACK_G = 113.0
 mass on the Strider double and the Klann quad: plate, rails, hardware, electronics)."""
 
 
+def kit_mass_g() -> float:
+    """The deck kit's catalogued electronics (g: :data:`actuators.controllers.DECK_KIT`'s
+    items with a ``mass_g``): what a bare deck's robot carries when its electronics are your
+    own (the role ``controller`` none: a stand-in at the kit's mass)."""
+    from spiderpig.actuators.controllers import DECK_KIT, get
+    from spiderpig.hardware.catalog import get as item
+
+    return sum(q * float(item(k).dims.get("mass_g", 0.0)) for k, q in get(DECK_KIT).bom)
+
+
+def bare_deck_g(config: BuildConfig) -> float:
+    """What a walker with a bare deck carries on it (g): your own electronics (the role
+    ``controller`` none) at the deck kit's mass (:func:`kit_mass_g`); a named controller's
+    own carried parts (:func:`actuators.controllers.carried_g`: a DYNAMIXEL walker's U2D2
+    and hub, not the ESP32 kit's 61 g it carried before 2026-10-14)."""
+    from spiderpig.actuators.controllers import carried_g, of
+
+    try:
+        ctl = of(config)
+    except ValueError:          # (a controller that can't drive it: the build says so)
+        ctl = None
+    return kit_mass_g() if ctl is None else carried_g(ctl)
+
+
 def payload_g(rm: RobotModel, params: SimParams) -> float:
-    """The point mass the base carries: :attr:`SimParams.payload_g`, plus
-    :data:`DECK_FALLBACK_G` when the robot has no electronics deck."""
-    fitted = rm.meta.get("deck", {}).get("fitted", False)
-    return params.payload_g + (0.0 if fitted else DECK_FALLBACK_G)
+    """The point mass the design carries: :attr:`SimParams.payload_g`, plus, on a walker,
+    :data:`DECK_FALLBACK_G` when the robot has no electronics deck, or :func:`bare_deck_g`
+    when its deck is bare (your own electronics at the kit's mass, or a named controller's
+    carried parts). A fixed design's payload rides its tool's tip or its output
+    (:func:`_payload_at`)."""
+    if not rm.walks:            # a fixed design's electronics ride its bench, not it
+        return params.payload_g
+    deck = rm.meta.get("deck", {})
+    if not deck.get("fitted", False):
+        return params.payload_g + DECK_FALLBACK_G
+    return params.payload_g + (bare_deck_g(rm.config) if deck.get("electronics") is False
+                               else 0.0)
 
 
 def _with_payload(mb: MjBody, grams: float, pos) -> tuple[float, np.ndarray, np.ndarray]:
@@ -708,8 +903,64 @@ def _world_from_mech(pitch: float) -> tuple[np.ndarray, tuple[float, ...]]:
 
 def build_mjcf(config: BuildConfig | None = None,
                params: SimParams | None = None) -> tuple[str, dict]:
-    """The MJCF document of the robot for ``config`` and its metadata (see module doc)."""
+    """The MJCF document of the design for ``config`` and its metadata (see module doc)."""
     return _build_mjcf(config or BuildConfig(), params or SimParams())
+
+
+HOLD_OMEGA_DT = 1.0     # a stepper's position loop: its natural frequency x the step, at most
+HOLD_DAMPING = 1.0      # ... and its damping ratio (critical: integrated implicitly)
+
+
+def stepper_gains(rating: JointRating, inertia: float,
+                  params: SimParams) -> tuple[float, float]:
+    """``(kp N·m/rad, kv N·m·s/rad)`` of the position actuator holding a stepped joint:
+    its motor's holding stiffness through the reduction
+    (:attr:`actuators.JointRating.stiffness`), but no stiffer than :data:`HOLD_OMEGA_DT`
+    allows at the step on the joint's ``inertia`` (kg·m²: MuJoCo's own at qpos0, its
+    rotor's through the reduction included), damped at :data:`HOLD_DAMPING` of critical
+    (implicit in ``implicitfast``)."""
+    kp = min(rating.stiffness, inertia * (HOLD_OMEGA_DT / params.timestep) ** 2)
+    return kp, 2.0 * HOLD_DAMPING * math.sqrt(kp * inertia)
+
+
+def _joint_inertias(root: ET.Element, joints: list[str]) -> dict[str, float]:
+    """Each of ``joints``' inertia at qpos0 (kg·m², MuJoCo's ``dof_M0``: the bodies its
+    hinge carries down the tree and its armature, not those it drives through the loops):
+    the model so far compiled once to measure it. A lower bound of what the joint moves, so
+    a stiffness capped on it keeps stable with the loops' soft constraints too (capped on
+    the loops' share as well, the elbow's stiff actuator and its light rod's soft loop
+    fought: a 2 N·m oscillation, measured on the palletizer)."""
+    import mujoco
+
+    model = mujoco.MjModel.from_xml_string(ET.tostring(root, encoding="unicode"))
+    return {q: float(model.dof_M0[model.jnt_dofadr[model.joint(q).id]]) for q in joints}
+
+
+def _base_pose(rm: RobotModel, params: SimParams) -> tuple[float, float, np.ndarray,
+                                                            tuple[float, ...], np.ndarray]:
+    """``(pitch rad, height m, rotation, quaternion, position m)`` of the base at qpos0: a
+    walker standing on its feet (:func:`rest_pose`), a fixed design upright with its
+    base's floor (a turret's: under the yaw axis, the URDF's ``base_link``) at the origin."""
+    if rm.walks:
+        pitch, height = rest_pose(rm, params.clearance)
+        rot, quat = _world_from_mech(pitch)
+        return pitch, height, rot, quat, np.array([0.0, 0.0, height])
+    rot, quat = _world_from_mech(0.0)
+    pos = -(_RX90 @ rm.floor) * MM
+    return 0.0, float(pos[2]), rot, quat, pos
+
+
+def _payload_at(rm: RobotModel, params: SimParams) -> tuple[str, np.ndarray]:
+    """The body and point (mech mm) the payload rides: a walker's base at
+    :attr:`SimParams.payload_pos`; a fixed design's tool tip or output point (what it
+    carries), else its base."""
+    if rm.walks:
+        return "base", np.asarray(params.payload_pos, dtype=float)
+    for site in ("tool0", "output"):
+        if site in rm.sites:
+            body, pos = rm.sites[site]
+            return body, pos
+    return "base", np.asarray(params.payload_pos, dtype=float)
 
 
 @lru_cache(maxsize=CACHE_SIZE)
@@ -721,12 +972,14 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
                          "at 5e-3")
     with build_lock(config):
         rm = robot_model(config, params.printed_fill, params.hull_tolerance)
-    vmax, tau = drive_limits(rm.servo)
-    kv = tau / (params.stall_error * vmax)
+    cranks = sorted((mb for mb in rm.bodies.values() if mb.kind == "crank"),
+                    key=lambda mb: mb.side or "")
+    vmax, tau = drive_limits(rm.servo) if cranks else (0.0, 0.0)
+    kv = tau / (params.stall_error * vmax) if cranks else 0.0
     r = rm.link_radius * MM
-    pitch, height = rest_pose(rm, params.clearance)
-    rot, quat = _world_from_mech(pitch)
+    pitch, height, rot, quat, base_pos = _base_pose(rm, params)
     payload = payload_g(rm, params)
+    carrier, payload_pos = _payload_at(rm, params)
 
     root = ET.Element("mujoco", model=f"spiderpig_{rm.config.module}")
     ET.SubElement(root, "compiler", angle="radian", autolimits="true", inertiafromgeom="false")
@@ -750,32 +1003,41 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
 
     world = ET.SubElement(root, "worldbody")
     ET.SubElement(world, "light", name="sun", pos="0 0 2", dir="0 0 -1", directional="true")
-    ET.SubElement(world, "geom", name="floor", type="plane", size="0 0 0.05", contype="0",
-                  conaffinity="1", friction=friction, rgba=_RGBA["floor"])
+    if rm.walks:            # the floor (alone: the robot's geoms collide with nothing else)
+        ET.SubElement(world, "geom", name="floor", type="plane", size="0 0 0.05", contype="0",
+                      conaffinity="1", friction=friction, rgba=_RGBA["floor"])
 
     elems: dict[str, ET.Element] = {}
     for name, mb in rm.bodies.items():
         if name == "base":
-            el = ET.SubElement(world, "body", name="base", pos=_v((0, 0, height)),
-                               quat=_v(quat))
-            ET.SubElement(el, "freejoint", name="base")
+            el = ET.SubElement(world, "body", name="base", pos=_v(base_pos), quat=_v(quat))
+            if rm.walks:
+                ET.SubElement(el, "freejoint", name="base")
             ET.SubElement(el, "site", name="base", pos="0 0 0")
         else:
             assert mb.parent is not None  # robot_model hangs every body but the base
+            assert mb.joint is not None   # (on a hinge)
             parent = rm.bodies[mb.parent]
             el = ET.SubElement(elems[mb.parent], "body", name=name,
                                pos=_v((mb.origin - parent.origin) * MM))
             if mb.kind == "crank":
-                ET.SubElement(el, "joint", name=f"{mb.side}.crank",
+                ET.SubElement(el, "joint", name=mb.joint,
                               axis=_v((0, 0, rm.crank_sign)),
                               armature=_f(params.crank_armature),
                               damping=_f(params.crank_damping))
             else:
-                ET.SubElement(el, "joint", name=name)
+                extra = {}
+                if mb.axis is not None:                     # a spatial joint's own axis
+                    extra["axis"] = _v(mb.axis)
+                if mb.ref:                                  # an input reads its design angle
+                    extra["ref"] = _f(mb.ref)
+                if mb.joint in rm.motors:                   # its rotor through the reduction
+                    extra["armature"] = _f(rm.motors[mb.joint].armature)
+                ET.SubElement(el, "joint", name=mb.joint, **extra)
         elems[name] = el
         mass, com, inertia = mb.mass, mb.com, mb.inertia
-        if name == "base" and payload > 0:                     # what else rides the frame
-            mass, com, inertia = _with_payload(mb, payload, params.payload_pos)
+        if name == carrier and payload > 0:                     # what else it carries
+            mass, com, inertia = _with_payload(mb, payload, payload_pos)
         i = inertia * 1e-6                                      # kg·m²
         ET.SubElement(el, "inertial", pos=_v((com - mb.origin) * MM), mass=_f(mass),
                       fullinertia=_v((i[0, 0], i[1, 1], i[2, 2], i[0, 1], i[0, 2], i[1, 2])))
@@ -792,6 +1054,9 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
                 ET.SubElement(el, "geom", name=foot, type="sphere", size=_f(r), pos=pos,
                               condim="4", rgba=_RGBA["foot"])
                 ET.SubElement(el, "site", name=foot, pos=pos)
+        for site, (body, xyz) in rm.sites.items():
+            if body == name:
+                ET.SubElement(el, "site", name=site, pos=_v((xyz - mb.origin) * MM))
         for part, (host, _) in rm.hulls.items():
             if host == name:
                 ET.SubElement(el, "geom", name=part, type="mesh", mesh=part, rgba=_RGBA["base"])
@@ -805,29 +1070,46 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
                       solref=_v(params.eq_solref), solimp=_v(params.eq_solimp))
 
     actuator = ET.SubElement(root, "actuator")
-    crank_sides = {mb.side for mb in rm.bodies.values() if mb.kind == "crank"}
-    sides = sorted(cast("set[str]", crank_sides))  # crank bodies are L.conn / R.conn: sided
-    for s in sides:
-        ET.SubElement(actuator, "velocity", name=f"{s}.drive", joint=f"{s}.crank", kv=_f(kv),
-                      ctrlrange=_v((-vmax, vmax)), forcerange=_v((-tau, tau)))
+    for mb in cranks:                   # a servo turning each crank: its speed
+        ET.SubElement(actuator, "velocity", name=_sided(mb.side, "drive"),
+                      joint=cast("str", mb.joint),
+                      kv=_f(kv), ctrlrange=_v((-vmax, vmax)), forcerange=_v((-tau, tau)))
+    held = {n: cast("str", mb.joint) for n, mb in rm.bodies.items()   # stepped: body -> joint
+            if mb.joint in rm.motors}
+    inertia = _joint_inertias(root, list(held.values())) if held else {}
+    gains = {n: stepper_gains(rm.motors[q], inertia[q], params) for n, q in held.items()}
+    for n, q in held.items():           # a stepper holding each ranged joint: its angle
+        effort = rm.motors[q].effort
+        ET.SubElement(actuator, "position", name=q, joint=q, kp=_f(gains[n][0]),
+                      kv=_f(gains[n][1]), ctrlrange=_v(rm.ranges[q]),
+                      forcerange=_v((-effort, effort)))
 
     sensor = ET.SubElement(root, "sensor")
-    for s in sides:
-        ET.SubElement(sensor, "actuatorfrc", name=f"{s}.torque", actuator=f"{s}.drive")
-        ET.SubElement(sensor, "jointvel", name=f"{s}.speed", joint=f"{s}.crank")
+    for mb in cranks:
+        ET.SubElement(sensor, "actuatorfrc", name=_sided(mb.side, "torque"),
+                      actuator=_sided(mb.side, "drive"))
+        ET.SubElement(sensor, "jointvel", name=_sided(mb.side, "speed"),
+                      joint=cast("str", mb.joint))
+    for q in held.values():
+        ET.SubElement(sensor, "actuatorfrc", name=f"{q}.torque", actuator=q)
+        ET.SubElement(sensor, "jointpos", name=f"{q}.angle", joint=q)
     ET.SubElement(sensor, "framepos", name="base.pos", objtype="site", objname="base")
     ET.SubElement(sensor, "framequat", name="base.quat", objtype="site", objname="base")
+    for site in rm.sites:
+        ET.SubElement(sensor, "framepos", name=f"{site}.pos", objtype="site", objname=site)
 
     ET.indent(root)
     xml = ET.tostring(root, encoding="unicode")
-    return xml, _metadata(rm, params, height, pitch, rot, kv, vmax, tau, sides)
+    return xml, _metadata(rm, params, height, pitch, rot, base_pos, kv, vmax, tau, cranks,
+                          gains)
 
 
 def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, rot: np.ndarray,
-              kv: float, vmax: float, tau: float, sides: list[str]) -> dict:
+              base_pos: np.ndarray, kv: float, vmax: float, tau: float, cranks: list[MjBody],
+              gains: dict[str, tuple[float, float]]) -> dict:
     mech_to_world = np.eye(4)
     mech_to_world[:3, :3] = rot * MM
-    mech_to_world[2, 3] = height
+    mech_to_world[:3, 3] = base_pos
     payload = payload_g(rm, params)
     total = sum(mb.mass for mb in rm.bodies.values()) + payload * 1e-3
     by_material: dict[str, float] = {}
@@ -837,7 +1119,27 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
     if payload > 0:
         by_material["payload"] = payload * 1e-3
     cfg = rm.config
-    return {
+    actuators: dict[str, dict] = {
+        _sided(mb.side, "drive"): {"joint": mb.joint, "type": "velocity", "kv": kv,
+                                   "ctrlrange": [-vmax, vmax], "forcerange": [-tau, tau],
+                                   "ctrl_units": "rad/s crank speed, positive = forward",
+                                   "servo": rm.servo.key, "speed_rpm": rm.servo.speed_rpm,
+                                   "stall_torque_kgcm": rm.servo.torque_kgcm,
+                                   "rated_torque": rated_torque(rm.servo)}
+        for mb in cranks}
+    for n, (kp, kd) in gains.items():
+        q = cast("str", rm.bodies[n].joint)
+        m = rm.motors[q]
+        actuators[q] = {"joint": q, "type": "position", "kp": kp, "kv": kd,
+                        "ctrlrange": list(rm.ranges[q]), "forcerange": [-m.effort, m.effort],
+                        "ctrl_units": "rad: the joint's angle (an input's design angle; a "
+                                      "spatial joint's from the pose fabricated)",
+                        "ref": rm.bodies[n].ref, "motor": m.motor, "ratio": m.ratio,
+                        "stiffness": m.stiffness, "armature": m.armature}
+    world = ("z up, x forward (positive drive), y left; floor z = 0, gravity -z" if rm.walks
+             else "z up, x forward, y left; gravity -z; the base fixed, its floor (a "
+                  "turret's, under the yaw axis: the URDF's base_link) at the origin")
+    out = {
         "format": "spiderpig-mjcf/1",
         "config": {"linkage": cfg.linkage, "module": cfg.module, "servo": cfg.servo,
                    "sheet": cfg.sheet,
@@ -845,7 +1147,7 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
                    "proportions": dict(cfg.proportions)},
         "units": {"model": "SI (m, kg, s, rad)", "design": "mm"},
         "frames": {
-            "world": "z up, x forward (positive drive), y left; floor z = 0, gravity -z",
+            "world": world,
             "mech": "design frame (mm): x walking axis, y up, z lateral stack "
                     "(left side z < 0); origin on the crank axis O at the mid-plane",
             "base": "the base body's frame is the mech frame in metres",
@@ -859,7 +1161,7 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
         "crank_sign": rm.crank_sign,
         "crank_angle": "t = t_ref + crank_sign * qpos[S.crank]",
         "base": "base",
-        "freejoint": "base",
+        "freejoint": "base" if rm.walks else None,
         "bodies": {
             name: {
                 "kind": mb.kind, "side": mb.side, "parent": mb.parent, "pivot": mb.pivot,
@@ -875,15 +1177,7 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
         "nodes": dict(rm.host),
         "node_motion": "node_matrix(t) = D_body(t) @ node_matrix(frame 0), "
                        "D_body(t) = X_base_body(t) @ inv(X_base_body(qpos0)) in mech mm",
-        "actuators": {
-            f"{s}.drive": {"joint": f"{s}.crank", "type": "velocity", "kv": kv,
-                           "ctrlrange": [-vmax, vmax], "forcerange": [-tau, tau],
-                           "ctrl_units": "rad/s crank speed, positive = forward",
-                           "servo": rm.servo.key, "speed_rpm": rm.servo.speed_rpm,
-                           "stall_torque_kgcm": rm.servo.torque_kgcm,
-                           "rated_torque": rated_torque(rm.servo)}
-            for s in sides
-        },
+        "actuators": actuators,
         "feet": {foot: {"body": link, "joint": joint, "site": foot, "geom": foot,
                         "radius": rm.link_radius * MM, "links": rm.foot_links[foot]}
                  for foot, (link, joint, _) in rm.feet.items()},
@@ -892,6 +1186,10 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
         "params": {k: (list(v) if isinstance(v, tuple) else v) for k, v in asdict(params).items()},
         "rest_height": height,
     }
+    if rm.sites:            # a fixed design's: its output point, its tool's tip
+        out["sites"] = {s: {"body": b, "ref_pos": (xyz * MM).tolist()}
+                        for s, (b, xyz) in rm.sites.items()}
+    return out
 
 
 def load_model(config: BuildConfig | None = None,

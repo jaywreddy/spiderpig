@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from spiderpig.servos.spec import ServoSpec
 
+MIN_SPACER = 1.0          # thinnest printed horn spacer worth making (mm): the drive's
+#                           (servos.mount) and the crank's hub (construction.crank.base)
 REGISTRY: dict[str, ServoSpec] = {}
 DEFAULT = "sts3215"
 

@@ -951,6 +951,9 @@ def stub_bakes(server_app, monkeypatch, tmp_path):
     monkeypatch.setattr(server_app, "bake_gltf", fake_bake)
     monkeypatch.setattr(server_app, "_data_dir", lambda: tmp_path)
     monkeypatch.setattr(server_app, "_sources_mtime", lambda: 0.0)
+    # a bake's file is <config key>-<bake key>.glb; the keying itself is
+    # test_server_hardening's: here one key, so the names say which config was baked
+    monkeypatch.setattr(server_app, "bake_key", lambda config, code=None: "k")
     monkeypatch.setattr(server_app, "_FAILED", {})
     monkeypatch.setattr(server_app, "_BAKED", {})
     return calls
@@ -960,7 +963,7 @@ def test_api_glb_parameters_are_cached_per_set(client, stub_bakes, stub_plans, t
     r = client.get("/api/glb/robot", params={"linkage": "klann", "module": "quad",
                                              "phases": "0,180,90,270"})
     assert r.status_code == 200
-    assert (tmp_path / "klann_quad_robot.glb").exists()             # its default's path
+    assert (tmp_path / "klann_quad_robot-k.glb").exists()           # its default's path
     q = {"linkage": "klann", "module": "quad", "phases": "0,175,180,355", "p.DF": "2.4"}
     assert client.get("/api/glb/robot", params=q).status_code == 200
     assert client.get("/api/glb/robot", params=q).status_code == 200      # cached
@@ -987,7 +990,7 @@ def test_api_glb_linkage_is_part_of_the_design(client, stub_bakes, tmp_path, req
     assert client.get("/api/glb/robot").status_code == 200       # cached: the same design
     assert stub_bakes == [BuildConfig()]                         # the plain default bake
     assert stub_bakes[0].key == "strider_double_robot"
-    assert (tmp_path / "strider_double_robot.glb").exists()
+    assert (tmp_path / "strider_double_robot-k.glb").exists()
     for _ in range(2):                                           # the second one is cached
         r = client.get("/api/glb/robot", params={"linkage": "jansen", "module": "double"})
         assert r.status_code == 200
@@ -997,9 +1000,8 @@ def test_api_glb_linkage_is_part_of_the_design(client, stub_bakes, tmp_path, req
     assert [(c.linkage, c.module) for c in stub_bakes[1:]] == [("jansen", "double"),
                                                                 ("klann", "double"),
                                                                 ("klann", "quad")]
-    assert {p.name for p in tmp_path.glob("*_double_robot.glb")} == {"jansen_double_robot.glb",
-                                                                     "klann_double_robot.glb",
-                                                                     "strider_double_robot.glb"}
+    assert {p.name for p in tmp_path.glob("*_double_robot-k.glb")} == {
+        "jansen_double_robot-k.glb", "klann_double_robot-k.glb", "strider_double_robot-k.glb"}
 
 
 @pytest.mark.parametrize(("mode", "params", "expected"), [
@@ -1022,7 +1024,7 @@ def test_api_glb_mode_ids_are_a_module_and_a_side(client, stub_bakes, stub_plans
     assert client.get(f"/api/glb/{mode}", params=params).status_code == 200
     linkage_key, module, robot = expected
     assert stub_bakes == [BuildConfig(linkage=linkage_key, module=module, robot=robot)]
-    assert (tmp_path / f"{linkage_key}_{module}_{'robot' if robot else 'side'}.glb").exists()
+    assert (tmp_path / f"{linkage_key}_{module}_{'robot' if robot else 'side'}-k.glb").exists()
 
 
 def test_api_modes_are_the_dropdown(client, server_app):
@@ -1032,6 +1034,18 @@ def test_api_modes_are_the_dropdown(client, server_app):
     assert body["labels"]["klann"] == "single (one leg)"
     assert "side" in server_app.MODES                # an id for URLs, not for the dropdown
     assert "side" not in body["modes"]
+    assert (body["linkage"], body["kind"]) == ("strider", "walker")
+
+
+def test_api_modes_are_what_the_linkage_declares(client):
+    """An arm's robot stands on its turntable, or its side alone; a mechanism is one side
+    (no robot, no legs); a stored design's linkage answers for ``design=<id>``."""
+    arm = client.get("/api/modes", params={"linkage": "palletizer_reach"}).json()
+    assert (arm["kind"], arm["modes"], arm["default"]) == ("arm", ["robot", "side"], "robot")
+    assert arm["labels"]["robot"] == "robot (on its turntable)"
+    mech = client.get("/api/modes", params={"linkage": "crank_rocker"}).json()
+    assert (mech["modes"], mech["default"]) == (["side"], "side")
+    assert client.get("/api/modes", params={"linkage": "octopus"}).status_code == 422
 
 
 @pytest.mark.parametrize(("mode", "params"), [

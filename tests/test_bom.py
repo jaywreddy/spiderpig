@@ -10,7 +10,7 @@ from build123d import Axis, Box, Cylinder, Plane, Pos
 
 from spiderpig.hardware import catalog
 from spiderpig.hardware.bom import BomLine, bom_from_mechanism, congruent, group_made
-from spiderpig.hardware.catalog import Item, Offer, pick_length, register
+from spiderpig.hardware.catalog import Item, Offer, register
 from spiderpig.mechanism import Body, Mechanism
 
 
@@ -79,13 +79,6 @@ def test_unknown_key_is_an_error():
     mech = Mechanism("m", bom_extras=[BomLine("nope", 1)])
     with pytest.raises(KeyError, match="nope"):
         bom_from_mechanism(mech)
-
-
-def test_pick_length():
-    assert pick_length(11.2, (6, 8, 10, 12, 16)) == 12
-    assert pick_length(12.0, (6, 8, 10, 12, 16)) == 12
-    with pytest.raises(ValueError, match="no standard length"):
-        pick_length(40, (6, 8, 10))
 
 
 def _chiral():

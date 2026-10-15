@@ -127,7 +127,7 @@ def _card(lk: linkage.Linkage) -> dict:
         "output": jsonable(lk.output) if lk.output else None,
         "closures": [_step_dict(s) for s in lk.check() if s.kind == "closure"],
     }
-    if lk.kind == "walker":
+    if lk.walks:
         card["foot_path"] = foot_path(lk, {})
         card["sensitivity"] = sensitivity(lk)
         for m, doc in card["modules"].items():

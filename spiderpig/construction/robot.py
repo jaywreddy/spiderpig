@@ -144,7 +144,7 @@ def mid_plane(design) -> float:
 class FrameTies(Group):
     """Side-level part of the frame ties and the deck rails: their screws' holes and pads in
     the inner frame plate (the screws' heads under the plate are the drive group's claims,
-    :meth:`servos.mount.DriveGroup.claims`)."""
+    :meth:`servos.mount.ServoDrive.claims`)."""
 
     name = "frame ties"
 
@@ -186,11 +186,13 @@ def _moved(part, dz: float, mirror: bool):
     return moved(part, Location((0.0, 0.0, dz)))
 
 
-def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, list, dict]:
+def _deck(side: Mechanism, design, z_mid: float, host, bodies, kit: bool = True
+          ) -> tuple[list, list, dict]:
     """The electronics deck (:mod:`construction.deck`): its bodies and purchases, and what
     ``mech.meta["deck"]`` says (``fitted: False`` and why when it doesn't fit). The rails
     must clear everything the chassis put between the inner plates: checked here on the
-    real parts, not only on :func:`deck.deck_floor`'s estimate."""
+    real parts, not only on :func:`deck.deck_floor`'s estimate. ``kit``: the deck carries
+    its electronics (the role ``controller``'s deck kit), else it is bare."""
     build = Build(design.ctx, design.plan, side)
     try:
         place = deck_place(build, design.drive)
@@ -228,7 +230,8 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
                  for bb in (box_of(b.part),)
                  if z_in - 1e-6 > bb.min.Z and -z_in + 1e-6 < bb.max.Z]
     try:
-        parts, extras, info, fastened = deck_parts(design, z_mid, place, host, obstacles)
+        parts, extras, info, fastened = deck_parts(design, z_mid, place, host, obstacles,
+                                                   kit=kit)
     except ConstructionError as e:
         return [], [], {"fitted": False, "why": str(e)}
     info["chassis_top_y"] = round(top, 2)
@@ -288,7 +291,7 @@ class MirroredPair(Layout):
         return [FrameTies(design.drive)]
 
     def assemble(self, side: Mechanism, design, config) -> Mechanism:
-        return _assemble_pair(side, design)
+        return _assemble_pair(side, design, config)
 
 
 class Turret(Layout):
@@ -334,12 +337,7 @@ class Turret(Layout):
 
         turret, _ = self.plans(design, config)
         bodies, turning, extras, info = turret_parts(turret, design.ctx)
-        if key := config.role("controller"):     # the electronics (actuators.controllers)
-            from spiderpig.actuators.controllers import get as controller
-            from spiderpig.hardware.bom import BomLine
-
-            extras = extras + [BomLine(k, q, f"controller: {key}")
-                               for k, q in controller(key).bom]
+        extras = extras + controller_lines(config)      # the electronics: bought lines
 
         def over(bb) -> bool:      # over the turret's keep-out (only that)
             return (turret.x_a + turret.keep_r > bb.min.X
@@ -385,6 +383,31 @@ def _static(body: Body, side: Mechanism) -> bool:
     return False
 
 
+def controller_of(config):
+    """The robot's controller (the role ``controller``, :func:`actuators.controllers.of`):
+    ``None`` for your own; :class:`ConstructionError` where it can't drive the design's
+    motors."""
+    from spiderpig.actuators import controllers
+
+    try:
+        return controllers.of(config)
+    except (KeyError, ValueError) as e:
+        raise ConstructionError(str(e.args[0])) from None
+
+
+def controller_lines(config, deck: bool = True) -> list:
+    """The controller's parts as BOM lines: those that aren't bodies of the machine. With a
+    ``deck`` (a robot: a walker's electronics deck draws a ``mount="deck"`` controller's
+    parts as bodies) a deck-mounted one buys none; without (a mechanism: its side is the
+    machine, no deck) every controller is bought as lines."""
+    from spiderpig.hardware.bom import BomLine
+
+    ctl = controller_of(config)
+    if ctl is None or (ctl.mount and deck):
+        return []
+    return [BomLine(k, q, f"controller: {ctl.key}") for k, q in ctl.bom]
+
+
 def _pick(registry, key: str, what: str):
     try:
         return registry[key]
@@ -396,8 +419,18 @@ LAYOUTS: dict[str, Layout] = {lay.key: lay for lay in (MirroredPair(), Turret())
 """The robot layouts, by :data:`config.ROBOT_LAYOUTS`' keys."""
 
 
-def _assemble_pair(side: Mechanism, design) -> Mechanism:
-    """Both sides of the robot and the frame between their servos."""
+def _assemble_pair(side: Mechanism, design, config=None) -> Mechanism:
+    """Both sides of the robot and the frame between their servos, and the electronics
+    deck over them: its electronics the role ``controller``'s (``config``'s, else the
+    design's): the deck's kit (:data:`actuators.controllers.DECK_KIT`), a controller
+    bought as lines over a bare deck, or none (your own: the deck bare)."""
+    from spiderpig.actuators.controllers import DECK_KIT
+
+    config = config if config is not None else replace(design.config, robot=True)
+    ctl = controller_of(config)
+    if ctl is not None and ctl.mount == "deck" and ctl.key != DECK_KIT:
+        raise ConstructionError(f"controller {ctl.key}: the electronics deck is drawn for "
+                                f"{DECK_KIT} alone (construction.deck)")
     z_mid = mid_plane(design)
     bodies: list[Body] = []
     connections = []
@@ -413,12 +446,15 @@ def _assemble_pair(side: Mechanism, design) -> Mechanism:
     host = {s: prefixed(design.plan.topo.frame_bodies[0], s) for s in SIDES}
     parts, extras, info = chassis(side, design, z_mid, host)
     bodies += parts
-    deck, deck_extras, info["deck"] = _deck(side, design, z_mid, host, bodies)
+    deck, deck_extras, info["deck"] = _deck(side, design, z_mid, host, bodies,
+                                            kit=ctl is not None and ctl.mount == "deck")
+    extras += controller_lines(config)
     if deck:
         bodies += deck
         extras += deck_extras
         info["fastened"] = list(info["fastened"]) + info["deck"].pop("fastened")
-    meta = dict(side.meta, robot=True, mid_plane=z_mid, filament="pla_filament", **info)
+    meta = dict(side.meta, robot=True, layout=MirroredPair.key, mid_plane=z_mid,
+                filament="pla_filament", **info)
     return Mechanism(
         name=f"{side.name}_robot", bodies=bodies, connections=connections, meta=meta,
         bom_extras=list(side.bom_extras) * 2 + extras,

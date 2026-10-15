@@ -12,7 +12,13 @@ fields (``field``): ``pillar``, ``pin``, ``crank``. Every later role lives in
 ``BuildConfig.roles`` (``(role, key)`` pairs, only those that differ from the role's
 default), applies to the linkage kinds it lists (``kinds``: required, so a new role never
 reaches the walkers by accident), and is written into a resolved spec for every design it
-applies to (a stored design never depends on a default that later moves).
+applies to (a stored design never depends on a default that later moves), but where its
+key is the role's ``implicit`` one for the design's kind: what the designs of that kind
+carried before the role reached it (the walkers' deck electronics; a mechanism's nothing:
+the role ``controller``), left out so their ids stay. A resolved spec stored before reads
+back with the role's default (:meth:`config.BuildConfig.role`), so a kind whose designs
+carried nothing keeps nothing as its default (:func:`default_key`): its stored designs read
+back as they were, same id, same parts and BOM; a choice of a key enters the id.
 
 A role filled once per design is ``per="design"``. One filled per drive or per joint
 (``"drive"``, ``"joint"``: an arm's transmission on each of its inputs) takes one key for
@@ -50,7 +56,13 @@ class Role:
     design, or per drive / joint (:data:`PER`). ``optional``: :data:`NONE` empties it.
     ``robot``: a part of the robot round the side, not of the side (an arm's turntable, its
     tool): the side's design ignores it (:meth:`config.BuildConfig.side_config`), so one
-    plan serves every choice of it."""
+    plan serves every choice of it. ``implicit``: per linkage kind, ``(kind, key)``, the key
+    designs of that kind carried, unnamed, before the role reached it (a walker's deck
+    electronics before 2026-10-14; a mechanism's none, :data:`NONE`): where it is a design's
+    default it isn't written into the resolved spec, so the designs stored before keep
+    their ids, and they read back with the default: never move it. Where it is
+    :data:`NONE` it is the kind's default too (:func:`default_key`), so a choice of a key
+    always enters the id."""
 
     name: str
     title: str
@@ -62,6 +74,7 @@ class Role:
     optional: bool = False
     help: str = ""
     robot: bool = False
+    implicit: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self):
         if self.per not in PER:
@@ -70,10 +83,20 @@ class Role:
             raise ValueError(f"role name {self.name!r} must be an identifier")
         if not self.kinds:
             raise ValueError(f"role {self.name}: name the linkage kinds it applies to")
+        for kind, key in self.implicit:
+            if kind not in self.kinds:
+                raise ValueError(f"role {self.name}: implicit for {kind!r}, not a kind of it")
+            if key == NONE and not self.optional:
+                raise ValueError(f"role {self.name}: implicit {NONE!r} needs optional")
 
     @property
     def stored_in_roles(self) -> bool:
         return not self.field
+
+    def implicit_for(self, kind: str) -> str:
+        """The key designs of linkage kind ``kind`` carried before the role reached them
+        (``implicit``); ``""``: the role came with the kind (its key always written)."""
+        return dict(self.implicit).get(kind, "")
 
 
 ROLES: dict[str, Role] = {}
@@ -119,13 +142,19 @@ def choices(name: str) -> list[str]:
 
 def default_key(name: str, config) -> str:
     """The key role ``name`` gets in ``config`` when the config names none: its linkage's
-    (:data:`config.LINKAGE_ROLES`), else the role's."""
+    (:data:`config.LINKAGE_ROLES`), else :data:`NONE` where the designs of its kind carried
+    nothing before the role reached them (:attr:`Role.implicit`: a stored one reads back
+    with this default, so it never moves), else the role's."""
     from spiderpig.config import LINKAGE_ROLES
 
     own = LINKAGE_ROLES.get(getattr(config, "linkage", "") or "", {}).get(name)
     if own is not None:
         return own
-    d = get(name).default
+    role = get(name)
+    lk = getattr(config, "lk", None)
+    if lk is not None and role.implicit_for(lk.kind) == NONE:
+        return NONE
+    d = role.default
     if ":" in d:
         return str(_load(d)(config))
     return d
@@ -141,12 +170,32 @@ def applies(name: str, kind: str) -> bool:
     return kind in get(name).kinds
 
 
-register(Role("pillar", "frame pivot", "spiderpig.construction:AXLES", ("walker", "mechanism"),
+MOTOR_ROLES = ("servo", "actuator")
+"""The roles a design's motors fill, by what they turn (:func:`motor_role`): a crank's
+serial-bus servo, or a ranged input's stepper. The drive groups
+(:data:`construction.DRIVES`) and the controllers (:attr:`actuators.controllers.Controller.drives`)
+are keyed on these names: one drive vocabulary."""
+
+
+def motor_role(lk) -> str:
+    """The motor role of linkage ``lk``'s drive (:data:`MOTOR_ROLES`), from its inputs: a
+    crank (full turns: :attr:`linkage.Linkage.ranged` false) is the role ``servo``'s, ranged
+    inputs each the role ``actuator``'s. The one place a design's motors are chosen
+    (2026-10-14: a kind test in each stage before); the roles' ``kinds`` agree with it
+    (``tests/test_roles.py``)."""
+    return "actuator" if lk.ranged else "servo"
+
+
+register(Role("pillar", "frame pivot", "spiderpig.construction:AXLES",
+              ("walker", "mechanism", "arm"),
               field="pillar", default="spiderpig.config:config_pillar",
               help="the axles that join links to the frame plates"))
 register(Role("pin", "pin between links", "spiderpig.construction:AXLES",
-              ("walker", "mechanism"), field="pin", default="spiderpig.config:config_pin",
+              ("walker", "mechanism", "arm"), field="pin", default="spiderpig.config:config_pin",
               help="the axles that join links to links"))
+register(Role("servo", "drive servo", "spiderpig.servos:REGISTRY", ("walker", "mechanism"),
+              field="servo", default="sts3215",
+              help="the serial-bus servo that turns the crank (an arm's motors: actuator)"))
 register(Role("crank", "crank", "spiderpig.construction:CRANKS", ("walker", "mechanism"),
               field="crank", default="spiderpig.config:config_crank",
               help="the crankshaft the drive turns: webs and crankpins"))
@@ -156,11 +205,12 @@ register(Role("transmission", "transmission", "spiderpig.construction:TRANSMISSI
 register(Role("actuator", "actuator", "spiderpig.actuators:STEPPERS", ("arm",),
               default="nema17_17hs4401", per="drive",
               help="each input's stepper motor"))
-register(Role("angle_sensor", "joint angle sensor", "spiderpig.actuators.sensors:ANGLE_SENSORS",
+register(Role("angle_sensor", "joint angle sensor", "spiderpig.actuators.sensors:SENSORS",
               ("arm",), default="gauge", per="drive",
-              help="how each planar input finds its zero at homing: a digital angle gauge "
-                   "by hand, an optical endstop and a flag on the link (the MT4's), or an "
-                   "SCL3300 inclinometer on the link (0.05 / 0.03 / 0.02 deg)"))
+              help="how each planar input finds its zero at homing (the one homing registry, "
+                   "the turntable's too): a digital angle gauge by hand, an optical endstop "
+                   "and a flag on the link (the MT4's), its driver's stall on a hard stop, or "
+                   "an SCL3300 inclinometer on the link"))
 register(Role("homing_reference", "homing reference",
               "spiderpig.actuators.sensors:REFERENCES", ("arm",), default="switches",
               robot=True,
@@ -178,7 +228,16 @@ register(Role("tool", "tool", "spiderpig.construction.tools:TOOLS", ("arm",),
               default="suction_cup", optional=True, robot=True,
               help="what the arm holds on its flange: a vacuum cup, fixed or on a wrist"))
 register(Role("controller", "controller", "spiderpig.actuators.controllers:CONTROLLERS",
-              ("arm",), default="skr_pico_pi_zero", optional=True, robot=True,
-              help="the electronics that drive the steppers and run Klipper: a board with "
-                   "its drivers, the host computer, the supply and the cables (none: your "
-                   "own board, its pins left to fill in the Klipper config)"))
+              ("walker", "mechanism", "arm"),
+              default="spiderpig.actuators.controllers:default_key",
+              optional=True, robot=True,
+              # the walkers carried the deck's kit unnamed; the mechanisms nothing (their
+              # default stays none: a stored mechanism reads back without a board)
+              implicit=(("walker", "esp32_bus_servo"), ("mechanism", NONE)),
+              help="the electronics that drive the motors (every design that has motors): "
+                   "a serial-bus servo board, battery and harness (esp32_bus_servo: on a "
+                   "walker's deck, bought as lines for a mechanism; a DYNAMIXEL servo's USB "
+                   "interface and power hub, u2d2_dynamixel), a stepper board running "
+                   "Klipper with its host computer, supply and cables (skr_pico_pi_zero); "
+                   "none: your own (a walker's deck bare, an arm's Klipper pins left to "
+                   "fill; a mechanism's default, the board named enters its id)"))

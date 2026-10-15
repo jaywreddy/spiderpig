@@ -1,17 +1,19 @@
-"""The guide's wiring step: a block diagram drawn from what the design buys.
+"""The guide's wiring step: a block diagram drawn from what the design buys and what its
+controller declares.
 
-The electrical parts are the robot's bought bodies whose catalog category is
-``electronics`` or ``servo`` (each a box, with its label) and the cables are the bought
-items, bodies or BOM lines, whose key or name says cable, lead, pigtail, plug or harness
-(each on the link it serves). The links follow the power and the bus: battery, protection
-board, switch, board, servos (and the charger into the protection board), each between
-the roles a design has. Nothing here is specific to one design: a cable this can't place
-is listed under the diagram, and a design without electronics has no wiring step.
+The design's controller (the role ``controller``, :mod:`spiderpig.actuators.controllers`)
+says which bought part is which box (:attr:`Controller.nodes`: a walker's battery,
+protection board, switch, board and servos; an arm's supply, board, host computer, steppers,
+camera, pump and valve) and how they connect (:attr:`Controller.wiring`). The parts are the
+robot's bought bodies and its BOM lines; the cables are the bought items whose key or name
+says cable, lead, pigtail, plug or harness (:data:`controllers.CABLE`), each on the link
+whose pattern it matches. Nothing here is specific to one design or kind: a cable this can't
+place is listed under the diagram, and a design with no controller (your own electronics)
+draws its motors alone.
 """
 
 from __future__ import annotations
 
-import itertools
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,22 +22,9 @@ from PIL import Image, ImageDraw
 
 from spiderpig.guide.render import INK, font
 
-ROLES = (   # (role, what the catalog key or name says), first match wins
-    ("servo", r"servo_(?!driver)|^servo$|sts\d|xl\d"),
-    ("battery", r"lipo|battery"),
-    ("charger", r"charger|ip2326"),
-    ("protection", r"bms|protection"),
-    ("switch", r"switch|toggle"),
-    ("board", r"driver|esp32|board|controller"),
-)
-CABLE = r"cable|lead|pigtail|plug|harness|wire|extension"
-LINKS = (("battery", "protection"), ("charger", "protection"), ("protection", "switch"),
-         ("switch", "board"), ("board", "servo"))
-EDGE_OF = (  # which link a cable serves, by its key or name
-    (r"xt30|xt60|battery", ("battery", "protection")),
-    (r"dc_plug|5521|barrel", ("switch", "board")),
-    (r"bus_cable|y_cable|bus|servo|3.?pin|extension", ("board", "servo")),
-)
+ELECTRICAL = ("electronics", "servo", "motor", "pneumatic", "sensor")
+"""The catalog categories whose parts can be boxes of the diagram."""
+WHO = {"L": "left", "R": "right"}
 
 
 @dataclass
@@ -45,13 +34,23 @@ class Node:
     label: str = ""
 
 
-def _role(text: str) -> str | None:
-    return next((r for r, pat in ROLES if re.search(pat, text, re.I)), None)
+def _short(name: str) -> str:
+    """A catalog name without its notes: "XT30 pigtail, 16 AWG" -> "XT30 pigtail"."""
+    return re.split(r"[,(]", name)[0].strip()
 
 
-def wiring_of(mech, label_of: dict[str, str]) -> tuple[list[Node], list[tuple], list[str]]:
-    """The nodes (one per electrical body), the links ``(a, b, cables)`` between node
-    indices and the cables no link takes, from ``mech`` (``label_of``: body -> label)."""
+def _who(body: str) -> str:
+    """A body's name as its box's first words: a side's ``L.servo`` -> "left servo", a
+    drive's ``drive_q2_motor`` -> "drive q2 motor"."""
+    side = re.match(r"^([LR])\.(.*)$", body)
+    if side:
+        return f"{WHO[side.group(1)]} {side.group(2).split('_')[0]}"
+    return body.replace("_", " ")
+
+
+def parts_of(mech) -> list[tuple[str, str, str, str, float]]:
+    """Every bought part: ``(body or "", catalog key, name, category, qty)``, the bodies
+    first, then the BOM lines no body is."""
     from spiderpig.hardware import catalog
 
     def item(key):
@@ -60,78 +59,126 @@ def wiring_of(mech, label_of: dict[str, str]) -> tuple[list[Node], list[tuple], 
         except KeyError:
             return None
 
-    nodes: list[Node] = []
-    cables: list[tuple[str, str]] = []
+    out = []
     for b in mech.bodies:
         if b.fab != "purchased" or not b.bom_key:
             continue
         it = item(b.bom_key)
-        cat = getattr(it, "category", "")
-        text = f"{b.bom_key} {getattr(it, 'name', '')}"
-        if re.search(CABLE, text, re.I):
-            cables.append((b.bom_key, _short(getattr(it, "name", b.bom_key))))
-            continue
-        role = _role(b.bom_key) or (_role(text) if cat in ("electronics", "servo") else None)
-        if cat not in ("electronics", "servo") or role is None:
-            continue
-        side = re.match(r"^([LR])\.", b.name)
-        title = getattr(it, "name", b.bom_key).split(",")[0].split("(")[0].strip()
-        if side and role == "servo":
-            title = f"{'left' if side.group(1) == 'L' else 'right'} servo: {title}"
-        nodes.append(Node(role, title, label_of.get(b.name, "")))
+        out.append((b.name, b.bom_key, getattr(it, "name", b.bom_key),
+                    getattr(it, "category", ""), 1.0))
     for x in mech.bom_extras:
         it = item(x.key)
-        if it is not None and re.search(CABLE, f"{x.key} {it.name}", re.I):
-            cables.append((x.key, _short(it.name) + (f" x {x.qty:g}" if x.qty != 1 else "")))
-    links: list[tuple[int, int, list[str]]] = []
-    cables = list(dict.fromkeys(cables))
+        if it is not None:
+            out.append(("", x.key, it.name, it.category, float(x.qty)))
+    return out
+
+
+def wiring_of(mech, label_of: dict[str, str], ctl=None
+              ) -> tuple[list[Node], list[tuple], list[str]]:
+    """The nodes (one per electrical part the controller ``ctl`` names), the links ``(a, b,
+    cables)`` between node indices (its :attr:`Controller.wiring`), and the cables no link
+    takes, from ``mech`` (``label_of``: body -> label). ``ctl`` ``None``: no controller (your
+    own), the motors alone."""
+    from spiderpig.actuators.controllers import CABLE, Controller
+
+    ctl = ctl if ctl is not None else Controller("none", "", (), nodes=(
+        ("motor", r"servo_(?!driver)|sts\d|xl\d|^stepper_(?!cable)"),))
+    nodes: list[Node] = []
+    cables: list[tuple[str, str]] = []           # (key, what the diagram says)
+    accessories: list[tuple[str, str]] = []      # bought, no box: a diode on a link
+    seen_line: set[str] = set()
+    bodies: list[str] = []
+    lines: list[tuple[str, str, str]] = []       # (role, key, name): a box no body draws
+    for body, key, name, cat, qty in parts_of(mech):
+        if not body and key in seen_line:
+            continue
+        seen_line.add(key)
+        # a cable by its key first (a servo's bus cable is no servo), then a box by its key,
+        # then a cable by its name (a supply's name says plug), then a box by its name
+        role = ctl.role_of(key) if cat in ELECTRICAL else None
+        if re.search(CABLE, key, re.I) or (role is None and re.search(CABLE, name, re.I)):
+            cables.append((key, _short(name) + (f" x {qty:g}" if not body and qty != 1 else "")))
+            continue
+        role = role or (ctl.role_of("", name) if cat in ELECTRICAL else None)
+        if role is None:
+            if cat in ELECTRICAL:
+                accessories.append((key, _short(name)))
+            continue
+        if not body:
+            lines.append((role, key, name))
+            continue
+        nodes.append(Node(role, _short(name), label_of.get(body, "")))
+        bodies.append(body)
+    drawn = {n.role for n in nodes}
+    for role, key, name in lines:    # a BOM line is a box only where no body is its role's
+        if role in drawn:
+            accessories.append((key, _short(name)))
+            continue
+        nodes.append(Node(role, _short(name)))
+        bodies.append("")
     roles = {n.role for n in nodes}
-    chain = [r for r in ("battery", "protection", "switch", "board") if r in roles]
-    pairs = list(itertools.pairwise(chain))
-    if "charger" in roles and "protection" in roles:
-        pairs.append(("charger", "protection"))
-    if "board" in roles:
-        pairs.append(("board", "servo"))
-    left = list(cables)
-    for a, b in pairs:
-        on = [c for c in left if any(ab == (a, b) and re.search(pat, " ".join(c), re.I)
-                                     for pat, ab in EDGE_OF)]
+    for n, body in zip(nodes, bodies, strict=True):     # several of a role: which is which
+        if body and sum(m.role == n.role for m in nodes) > 1:
+            n.title = f"{_who(body)}: {n.title}"
+    links: list[tuple[int, int, list[str]]] = []
+    left = list(dict.fromkeys(cables))
+    extra = list(dict.fromkeys(accessories))
+    for w in ctl.wiring:
+        if w.a not in roles or w.b not in roles:
+            continue
+        on = [c for c in left + extra
+              if w.cables and re.search(w.cables, " ".join(c), re.I)]
         left = [c for c in left if c not in on]
-        names = [name for _, name in on]
-        if not names and (a, b) == ("board", "servo"):
-            names = ["the servo's own bus cable"]
+        names = list(dict.fromkeys(n for _, n in on)) or ([w.via] if w.via else [])
         for i, n in enumerate(nodes):
-            if n.role != a:
+            if n.role != w.a:
                 continue
             for j, m in enumerate(nodes):
-                if m.role == b:
+                if m.role == w.b:
                     links.append((i, j, names))
     return nodes, links, [name for _, name in left]
 
 
-def _short(name: str) -> str:
-    """A catalog name without its notes: "XT30 pigtail, 16 AWG" -> "XT30 pigtail"."""
-    return re.split(r"[,(]", name)[0].strip()
+def columns(nodes: list[Node], links: list[tuple]) -> dict[int, int]:
+    """Each node's column: its depth along the links from the nodes nothing feeds (the
+    power on the left, the motors on the right)."""
+    into: dict[int, set[int]] = {i: set() for i in range(len(nodes))}
+    for i, j, _ in links:
+        into[j].add(i)
+    col: dict[int, int] = {}
+
+    def depth(i: int, trail: tuple[int, ...] = ()) -> int:
+        if i in col:
+            return col[i]
+        ins = [k for k in into[i] if k not in trail]
+        col[i] = 0 if not ins else 1 + max(depth(k, (*trail, i)) for k in ins)
+        return col[i]
+
+    for i in range(len(nodes)):
+        depth(i)
+    return col
 
 
 def draw(nodes: list[Node], links: list[tuple], left: list[str], path: Path,
          size: tuple[int, int] = (1200, 900)) -> None:
-    """The block diagram as a PNG: power on the left, the board in the middle, the servos
-    on the right; each link with its cables."""
+    """The block diagram as a PNG: columns by depth along the links (the power on the left,
+    the motors on the right); each link with its cables."""
     w, h = size
     img = Image.new("RGB", size, (255, 255, 255))
     d = ImageDraw.Draw(img)
-    cols = {"battery": 0, "charger": 0, "protection": 1, "switch": 2, "board": 3, "servo": 4}
-    ncol = 5
+    col = columns(nodes, links)
+    ncol = max(col.values(), default=0) + 1
     per: dict[int, list[int]] = {}
-    for i, n in enumerate(nodes):
-        per.setdefault(cols.get(n.role, 2), []).append(i)
-    bw, bh = 200, 110
-    at: dict[int, tuple[float, float]] = {}
+    for i in range(len(nodes)):
+        per.setdefault(col[i], []).append(i)
+    bw = min(200, (w - 120) / ncol - 20) if ncol > 1 else 200
     usable = h - 160
+    crowd = max((len(v) for v in per.values()), default=1)
+    bh = max(60, min(110, usable / crowd - 12))
+    at: dict[int, tuple[float, float]] = {}
     for c, idx in per.items():
         for k, i in enumerate(idx):
-            x = 60 + c * (w - 120 - bw) / (ncol - 1)
+            x = 60 + (c * (w - 120 - bw) / (ncol - 1) if ncol > 1 else (w - bw) / 2 - 60)
             y = 60 + (k + 1) * usable / (len(idx) + 1) - bh / 2
             at[i] = (x, y)
     small, big = font(15, bold=False), font(18)
@@ -152,21 +199,21 @@ def draw(nodes: list[Node], links: list[tuple], left: list[str], path: Path,
         d.text((60, y), f"{k}: " + "; ".join(cs), fill=(150, 80, 0), font=small)
         y += 24
     for i, n in enumerate(nodes):
-        x, y = at[i]
-        fill = (253, 226, 196) if n.role in ("servo", "board") else (232, 236, 244)
-        d.rounded_rectangle((x, y, x + bw, y + bh), 12, fill=fill, outline=INK, width=3)
-        d.text((x + bw / 2, y + 26), n.label or n.role, fill=INK, font=big, anchor="mm")
+        x, yy = at[i]
+        fill = (253, 226, 196) if col[i] == ncol - 1 or n.role == "board" else (232, 236, 244)
+        d.rounded_rectangle((x, yy, x + bw, yy + bh), 12, fill=fill, outline=INK, width=3)
+        d.text((x + bw / 2, yy + 22), n.label or n.role, fill=INK, font=big, anchor="mm")
         words = n.title.split()
         lines, cur = [], ""
         for wd in words:
-            if len(cur) + len(wd) > 22:
+            if len(cur) + len(wd) > bw // 9:
                 lines.append(cur)
                 cur = wd
             else:
                 cur = f"{cur} {wd}".strip()
         lines.append(cur)
-        d.multiline_text((x + bw / 2, y + 66), "\n".join(lines[:3]), fill=INK, font=small,
-                         anchor="mm", align="center")
+        d.multiline_text((x + bw / 2, yy + bh / 2 + 12), "\n".join(lines[:3]), fill=INK,
+                         font=small, anchor="mm", align="center")
     if left:
         d.text((60, y), "Also: " + "; ".join(left), fill=INK, font=small)
     img.save(path, compress_level=6)

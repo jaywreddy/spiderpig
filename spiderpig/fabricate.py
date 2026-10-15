@@ -24,13 +24,13 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
 
 from spiderpig import construction, fabmethods, linkage, servos
-from spiderpig.config import BuildConfig
+from spiderpig.config import BuildConfig, robot_layout
 from spiderpig.construction.base import Build, Context, Realized
-from spiderpig.construction.robot import assemble_robot, robot_groups
+from spiderpig.construction.robot import assemble_robot, controller_lines, robot_groups
 from spiderpig.construction.underside import underside
 from spiderpig.hardware.catalog import sheet_name
 from spiderpig.mechanism import Mechanism
-from spiderpig.servos.mount import DriveGroup
+from spiderpig.servos.mount import ServoDrive
 from spiderpig.stack import (
     Clearance,
     ClearanceError,
@@ -76,7 +76,7 @@ class SideDesign:
     facts: CrankFacts | None = None     # the crank router's static facts
 
     @property
-    def drive(self) -> DriveGroup:
+    def drive(self) -> ServoDrive:
         return self.groups[0]
 
     @property
@@ -320,12 +320,15 @@ def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mech
     )
     if isinstance(meta.get("fastened"), dict):     # the groups' threaded pairs, by name
         meta["fastened"] = [tuple(p) for p in meta["fastened"].values()]
+    extras = list(mech.bom_extras) + done.extras
+    if not robot_layout(cfg.lk):    # the side is the machine (a mechanism): its controller
+        extras += controller_lines(cfg, deck=False)    # bought with it, no deck to hold it
     return Mechanism(
         name=mech.name,
         bodies=list(bodies.values()) + extra,
         connections=list(mech.connections),
         meta=meta,
-        bom_extras=list(mech.bom_extras) + done.extras,
+        bom_extras=extras,
     )
 
 

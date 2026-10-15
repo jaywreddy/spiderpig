@@ -38,10 +38,11 @@ plates"). Bottom up, in the turret's frame (:class:`.turret.TurretPlan`):
   washers and the pulley, nuts under the pulley; an M4 screw and washer in the shaft's
   tapped end clamp the stack down on the over collar (a collar pushed down by hand clamps
   too lightly to hold the arm's moment);
-* **the hard stop** (the sensor ``hard_stop``): an M3 screw hanging from the turntable
-  stalls the yaw's driver on a post on the top plate just past the yaw's lower end
-  (:func:`stop_radius`): homing turns down until it stalls (the camera then fixes the
-  zero: :mod:`control.vision`);
+* **the hard stop** (the turret's construction of the homing sensor ``stall``,
+  :mod:`actuators.sensors`): an M3 screw hanging from the turntable stalls the yaw's
+  driver on a post on the top plate just past the yaw's lower end (:func:`stop_radius`):
+  homing turns down until it stalls (the camera then fixes the zero:
+  :mod:`control.vision`);
 * **the feet**: the frame plates' feet held to the turntable by stock steel angle brackets
   (:func:`stock_bracket`).
 
@@ -57,7 +58,7 @@ import math
 
 import numpy as np
 
-from spiderpig.construction.base import ConstructionError, Context
+from spiderpig.construction.base import ConstructionError, Context, stock_length
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import screw, screw_solid
 from spiderpig.mechanism import Body
@@ -180,7 +181,7 @@ def heights(ctx: Context, support, tr, motor) -> tuple[dict[str, float], tuple[f
 
 
 def stop_radius(tr, c: float, range_deg: tuple[float, float]) -> float:
-    """A hard stop's radius (the sensor ``hard_stop``): past the large pulley's flange, and
+    """A hard stop's radius (the turntable's ``stall`` homing): past the large pulley's flange, and
     where both the post (fixed past the range's lower end) and the stop screw's sweep
     (under the turntable, over the range) stay clear of the belt's runs to the motor behind
     (straight from the large pulley's pitch circle to the small one's)."""
@@ -355,15 +356,8 @@ def turret_parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine]
         if turns:
             turning.append(name)
 
-    def stocked(s, L) -> bool:      # a length the BOM's seller has (Bolt Depot: no M3 x 14)
-        offer = get(s.key(L)).offer
-        return offer is not None and offer.price_usd is not None
-
     def length_for(need: float, s=sk) -> float:
-        try:
-            return next(L for L in s.lengths if need - 1e-6 <= L and stocked(s, L))
-        except StopIteration:
-            raise ConstructionError(f"turret: no stock screw reaches {need:.1f} mm") from None
+        return stock_length(s, need, "turret")
 
     # the motor behind the axis, its screws in slots along the belt
     m = np.array([-tp.c, 0.0])
@@ -388,9 +382,8 @@ def turret_parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine]
     if post is None:
         raise ConstructionError("turret: no room for the hard stop's post under the turntable")
     b_bot = h["bt_top"] + post
-    flen = next((L for L in sk.lengths if stocked(sk, L)
-                 and h["table"] - L <= b_bot - 2.0 + 1e-6), None)
-    if flen is None or h["table"] - flen < h["bt_top"] + sk.head_h + 1.0:
+    flen = length_for(h["table"] - b_bot + 2.0)    # its tip 2 mm under the post's top
+    if h["table"] - flen < h["bt_top"] + sk.head_h + 1.0:
         raise ConstructionError("turret: no stock M3 screw reaches the hard stop's post")
 
     # the base: a round core under the turntable, as wide, a lobe out the back round the motor
@@ -446,7 +439,7 @@ def turret_parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine]
                    disc(tuple(m), motor.boss_d / 2 - 0.2, h["bt_bot"], h["bt_bot"] + motor.boss_h),
                    disc(tuple(m), motor.shaft_d / 2 - 0.05, h["bt_bot"], h["bt_bot"] + shaft_len)])
     add("yaw_motor", mbody, fab="purchased", bom_key=motor.bom_key, color="#2b2b2b")
-    mlen = next(x for x in bh.lengths if tp_ + motor.hole_depth * 0.8 - 1e-6 <= x)
+    mlen = length_for(tp_ + motor.hole_depth * 0.8, bh)
     for i, xy in enumerate(mscrews):
         add(f"yaw_motor_screw{i}", screw_solid(xy, bh, h["bt_top"], mlen, up=False),
             fab="purchased", bom_key=bh.key(mlen), color=STEEL)
@@ -583,36 +576,37 @@ def turret_parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine]
     extras.append(BomLine("m3_nut", 2 * len(tp.brackets), "turret: the brackets' screws"))
     extras.append(BomLine("spiral_wrap_6mm", 1.0, "turret: the cables' loop round the base"))
 
-    assembly = [
-        "Screw the seven hex columns between the bottom plate and the top plate, M4 button "
-        "heads through each plate (a washer under each on the acrylic); tighten them before "
-        "the bearings go in.",
-        "Bond an F608 into each plate with epoxy (both faces abraded, none on the shields), "
-        "flange on the "
-        "plate's top face, the shaft slid through both (the mid collar, the wave washer, the "
-        "under collar and its shim on it in order) while it cures: the shaft lines the two "
-        "seats up. The lower bearing must slide on the shaft (pick one that does).",
-        "Clamp the under collar on its shim up against the upper inner ring, then the over "
-        "collar on its shim down on it: the shaft held both ways. Push the mid collar down "
-        f"until the wave washer stands at its working {spring:g} mm (a feeler gauge) and "
-        "clamp it: the pair preloaded.",
-        f"Drill the {big['teeth']}-tooth pulley's four 3.4 mm holes on its "
-        f"{float(big['bolt_pcd']):g} mm circle (a drill press, "
-        "its own bore on a pin), slide it on the shaft onto the over collar, a washer stack on "
-        "each of its holes and the turntable over them; screw the four M3s through, nuts "
-        "under the pulley; screw the "
-        "M4 and its washer into the shaft's tapped end, clamping the stack.",
-        "Hang the motor under the top plate, the small pulley on its shaft's flat in line "
-        "with the large one, the belt on; slide the motor along its slots to tension it.",
-        f"Screw the hard stop's post to the top plate at {lo_deg - 3:.0f} deg; hang its M3 "
-        "from the turntable with its nut under it: past the yaw's lower end it meets the "
-        "post. Homing turns down at a reduced current until the driver stalls on it (the "
-        "camera then sets the fine zero).",
-        f"Screw the base to the bench through the {len(bench)} {FOOT:g} mm spacers (M4 or #8 "
-        "wood "
-        "screws, not drawn): on rubber it rocks under the arm.",
-        "Stand the side on the turntable, its feet held by the angle brackets.",
-        "Loop the cables loosely round the base in the spiral wrap: the yaw turns them."]
+    steps = [   # (the hook's tag, its sentence): :func:`assembly` turns them into ops
+        ("columns", "Screw the seven hex columns between the bottom plate and the top plate, "
+                    "M4 button heads through each plate (a washer under each on the "
+                    "acrylic); tighten them before the bearings go in."),
+        ("bearings", "Bond an F608 into each plate with epoxy (both faces abraded, none on "
+                     "the shields), flange on the plate's top face, the shaft slid through "
+                     "both (the mid collar, the wave washer, the under collar and its shim on "
+                     "it in order) while it cures: the shaft lines the two seats up. The "
+                     "lower bearing must slide on the shaft (pick one that does)."),
+        ("preload", "Clamp the under collar on its shim up against the upper inner ring, "
+                    "then the over collar on its shim down on it: the shaft held both ways. "
+                    f"Push the mid collar down until the wave washer stands at its working "
+                    f"{spring:g} mm (a feeler gauge) and clamp it: the pair preloaded."),
+        ("turntable", f"Drill the {big['teeth']}-tooth pulley's four 3.4 mm holes on its "
+                      f"{float(big['bolt_pcd']):g} mm circle (a drill press, its own bore on "
+                      "a pin), slide it on the shaft onto the over collar, a washer stack on "
+                      "each of its holes and the turntable over them; screw the four M3s "
+                      "through, nuts under the pulley; screw the M4 and its washer into the "
+                      "shaft's tapped end, clamping the stack."),
+        ("motor", "Hang the motor under the top plate, the small pulley on its shaft's flat in "
+                  "line with the large one, the belt on; slide the motor along its slots to "
+                  "tension it."),
+        ("stop", f"Screw the hard stop's post to the top plate at {lo_deg - 3:.0f} deg; hang "
+                 "its M3 from the turntable with its nut under it: past the yaw's lower end it "
+                 "meets the post. Homing turns down at a reduced current until the driver "
+                 "stalls on it (the camera then sets the fine zero)."),
+        ("bench", f"Screw the base to the bench through the {len(bench)} {FOOT:g} mm spacers "
+                  "(M4 or #8 wood screws, not drawn): on rubber it rocks under the arm."),
+        ("mount", "Stand the side on the turntable, its feet held by the angle brackets."),
+        ("cables", "Loop the cables loosely round the base in the spiral wrap: the yaw turns "
+                   "them.")]
     fastened = [(b.name, "yaw_motor") for b in bodies if b.name.startswith("yaw_motor_screw")]
     fastened.append(("yaw_clamp_screw", "yaw_shaft"))     # in its tapped end
     fastened.append(("yaw_stop_post_screw", "yaw_stop_post"))   # into its female end
@@ -631,5 +625,50 @@ def turret_parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine]
             "columns": list(tp.columns),
             "reach_mm": [round(lo_r, 1), round(hi_r, 1)] if math.isfinite(hi_r) else None,
             "notes": list(tp.notes), "fastened": fastened,
-            "parts": sorted(b.name for b in bodies), "assembly": assembly}
+            "parts": sorted(b.name for b in bodies), "assembly": steps}
     return bodies, turning, extras, info
+
+
+ASSEMBLY: tuple[tuple[str, str, str, str], ...] = (
+    # (tag, the stage, the step's title, the parts: a pattern over the bodies' names)
+    ("columns", "turret", "Base: plates and columns",
+     r"base_(bottom|top|col\d+_0|col_washer\d+|col_screw\d+[ab])"),
+    ("bearings", "turret", "Base: bearings bonded round the shaft",
+     r"yaw_(bearing_\w+|shaft|collar_mid|spring|collar_under|shim_under)"),
+    ("preload", "turret", "Shaft clamped and preloaded", r"yaw_(collar_over|shim_over)"),
+    ("turntable", "turret", "Pulley and turntable",
+     r"yaw_pulley_large|turntable\w*|hub_screw\d+|yaw_clamp_\w+"),
+    ("motor", "turret", "Yaw motor and belt", r"yaw_motor\w*|yaw_pulley_small|yaw_belt"),
+    ("stop", "turret", "Hard stop", r"yaw_stop\w*"),
+    ("bench", "turret", "Base onto the bench", r"base_spacer\d+"),
+    ("mount", "mount", "Side onto the turntable", r"foot_bracket\d+|foot_screw\d+[ab]"),
+    ("cables", "wiring", "", ""),
+)
+"""How the turret goes on, step by step: each of :func:`turret_parts`' sentences (by its
+tag), the stage it goes on in (:mod:`construction.assembly`) and the parts it puts on."""
+
+EXTRAS = {"turntable": (LIFT_WASHER, CENTRE_SHIM, "m3_nut"), "mount": ("m3_nut",),
+          "cables": ("spiral_wrap_6mm",)}
+"""The bought lines that are no body's (:func:`turret_parts`' extras), by the step they're
+for."""
+
+
+def assembly(view) -> list:
+    """How the turret goes on (:mod:`construction.assembly`): the base built on the bench
+    (its plates and columns, the bearings bonded round the shaft, the shaft clamped and
+    preloaded, the pulley and the turntable, the yaw motor and its belt, the hard stop, the
+    base screwed to the bench), then the side stood on the turntable by its brackets, and
+    the cables looped round the base with the wiring. The sentences are the meta's
+    (``turret.assembly``: :func:`turret_parts`'), so its numbers are the plan's. ``view``: a
+    ``RobotView``."""
+    from spiderpig.construction.assembly import Op, whole
+
+    text = dict((view.meta.get("turret") or {}).get("assembly") or ())
+    ops = []
+    for i, (tag, stage, title, pattern) in enumerate(ASSEMBLY):
+        parts = view.named(pattern) if pattern else []
+        if pattern and not parts:
+            continue
+        ops.append(Op(stage, (i,), whole(*parts), title, text.get(tag, ""), tag,
+                      extras=EXTRAS.get(tag, ())))
+    return ops

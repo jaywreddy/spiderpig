@@ -53,7 +53,8 @@ def layout(lk: Linkage) -> Layout:
     on = {j: [b for b in bodies if j in joints[b]] for j in every}
     axles = tuple(sorted(j for j, bs in on.items() if len(bs) > 1))
     interfaces = tuple((j, b) for j in axles for b in on[j])
-    driven = (tuple(lk.drives[k][0] for k in lk.inputs) if lk.kind == "arm" else ("conn",))
+    driven = (tuple(lk.drives[k][0] for k in lk.inputs) if lk.ranged else
+              ("conn", *(lk.drives[k][0] for k in lk.inputs if k in lk.drives)))
     if lk.output is not None:
         out_body, out_pt = lk.output.link, lk.output.point
     else:
@@ -156,7 +157,7 @@ def gains(lk: Linkage, values: tuple[float, ...], ins: tuple[np.ndarray, ...]) -
 def sample_inputs(lk: Linkage, n: int) -> tuple[np.ndarray, ...]:
     """An arm's box ``n`` a side; a cranked linkage's ``4 n`` crank angles (the others at
     0, as its template holds them)."""
-    if lk.kind == "arm":
+    if lk.ranged:
         return lk.box(n)
     t = np.linspace(0.0, 2 * math.pi, 4 * n, endpoint=False)
     return (t, *[np.zeros_like(t)] * (len(lk.inputs) - 1))

@@ -1,14 +1,17 @@
 # How spiderpig works
 
-spiderpig turns a walking linkage, such as Joe Klann's spider leg or Theo Jansen's
-Strandbeest leg, into a robot you can build. Name the linkage and a few options, and it
-writes the laser-cutting files, the 3D-printing files, the parts list and an animated
-model. Its central idea is to share out space between the parts before any part is drawn,
-so that no two of them can collide as the crank turns. This report explains how the code
-does that, what it can and cannot do, and where it could mislead you.
+spiderpig turns a task (walk with this stride, place slides over this area, trace this
+line) into a machine you can build from a planar linkage of laser-cut links: a walking
+robot, a cranked mechanism or a robot arm. State the task, or name a linkage and a few
+options, and it writes the laser-cutting files, the 3D-printing files, the parts list and
+the orders, the assembly guide, the controller's files and an animated model. Its central
+idea is to share out space between the parts before any part is drawn, so that no two of
+them can collide anywhere in the linkage's motion. This report explains how the code does
+that, what it can and cannot do, and where it could mislead you.
 
 It describes the code at commit `8bfc039` (2026-10-08, the merge of W5's package splits),
-brought up to date by the documentation pass of 2026-10-08 (W7). It was first written
+brought up to date by the documentation pass of 2026-10-08 (W7); sections 1 and 3 were
+rewritten on 2026-10-14 around the task flow that every kind of machine shares. It was first written
 against commit `97bec2d` (2026-10-01), and the running example's measured numbers (stage
 timings, part counts, sizes, the walk and the sim) are still that snapshot's, taken with
 the constructions of the time (a printed crank, rod pins); they are marked as such where
@@ -17,7 +20,8 @@ one generated file, [docs/agentlib/DESIGNS.md](agentlib/DESIGNS.md).
 
 **In short.**
 
-- A design passes through six stages, from the linkage's geometry to files (section 3).
+- A task becomes ranked specs, a spec a design, and a design passes through six stages,
+  from the linkage's geometry to files, the same for every kind of machine (section 3).
 - The core is a layer planner that gives every link a layer and routes the crankshaft
   through the layers; most designs plan in seconds, proven as thin as possible
   (section 5).
@@ -75,19 +79,41 @@ designs see [DESIGNS.md](agentlib/DESIGNS.md).
 
 ## 1. What spiderpig is
 
-You name a linkage (Klann, Jansen, Strider and others) and make a handful of choices: how
-many legs a side, which servo motor, what sheet material, what kind of axle. spiderpig
+One engine makes three kinds of machine. What a machine is follows from what its linkage
+declares (`linkage.Linkage`), never from the kind's name, which is a label (a test forbids
+branching on it, `tests/test_linkage.py`):
+
+- **walkers** (Klann, Jansen, Strider and the rest of the catalog's walkers): a crank
+  drives legs whose feet walk (`Linkage.walks`); a servo turns each side's crank, and two
+  mirrored sides on a chassis make the robot;
+- **mechanisms** (Hoecken's straight-line linkage, a crank-rocker, a pantograph): one
+  cranked side whose output point or link traces a path (`Linkage.output`);
+- **arms** (the palletizer): inputs driven over ranges (`Linkage.ranged`) by steppers
+  through belts, the side standing on a turntable with a tool at its tip, to place
+  things.
+
+The way in is a **task**: what the machine must do, before any linkage is named (`walk`
+with a stride, a speed, an obstacle; `place` over an area at a height to a repeatability;
+`trace` a line, a path or a rotation). `spiderpig candidates` (`api.candidates`) ranks
+the linkages whose declared capabilities can do it, each with a **spec** that carries the
+task's numbers as targets; or name a linkage and its options directly. Either way spiderpig
 answers with what a maker needs:
 
 - laser-cutting files (DXF), packed onto sheets and corrected for the width of the laser's
-  cut;
+  cut, and one file per distinct part for a cutting service;
 - 3D-printing files (STL): one per distinct printed part, with quantities;
-- a bill of materials with vendors, pack sizes and prices;
+- a bill of materials with vendors, pack sizes and prices, and `ORDER.md`: a cart per
+  vendor, an upload per cutting service, the prints;
 - the whole assembly as STEP (for CAD programs) and STL;
-- an animated 3D model for a browser viewer (a binary glTF file, `.glb`);
-- a physics model for the MuJoCo simulator (MJCF);
-- reports on every stage: did it pass, how thick is each side of the robot, how is it
-  expected to walk, what does it weigh and cost.
+- the assembly guide (`ASSEMBLY.pdf`): numbered steps with pictures, the parts' labels,
+  the wiring;
+- the controller's files, by what drives the design: a crank's serial-bus servos' setup
+  and zeroes (`servos.json`), or an arm's Klipper configuration (`printer.cfg`) and its
+  kinematics; and the homing steps of either;
+- an animated 3D model for a browser viewer (a binary glTF file, `.glb`), a physics model
+  for the MuJoCo simulator (MJCF) and an arm's URDF for ROS;
+- reports on every stage: did it pass, how thick is each side, how does it walk or how
+  precisely does it place, what does it weigh and cost.
 
 Section 2.6 explains each of these formats and tools.
 
@@ -97,42 +123,50 @@ fix exists, the error also proposes it, and the fix has already been checked by 
 the failed stage again with it.
 
 The central promise is that designs are **correct by construction**: no two parts of a
-side collide anywhere in the crank's turn. This promise has a history. On 2026-09-29 an
-audit of the earlier code found every test passing while no design could physically be
-built: two links shared a plane and collided for 13.6 % of every turn, and a foot link
-silently dropped out of the cutting files. The answer was to share out space before any
-part exists (section 5) and then check that each part stays inside its share (section 6).
-The first half is a sound geometric bound over the whole turn; the second is checked at a
-few crank angles, as is the chassis that joins the two sides, and section 6.3 says what
-that leaves open.
+side collide anywhere in its motion (a crank's turn, an arm's inputs over their ranges).
+This promise has a history. On 2026-09-29 an audit of the earlier code found every test
+passing while no design could physically be built: two links shared a plane and collided
+for 13.6 % of every turn, and a foot link silently dropped out of the cutting files. The
+answer was to share out space before any part exists (section 5) and then check that each
+part stays inside its share (section 6). The first half is a sound geometric bound over
+the whole motion; the second is checked at a few input values, as is what joins a side
+into a robot (a walker's chassis, an arm's turntable), and section 6.3 says what that
+leaves open.
 
-There are three ways to drive it, all calling one engine, and a browser viewer for looking
-at the result:
+There are three ways to drive it, all calling one engine and one store of designs, and a
+browser viewer for looking at the result; a design's id carries from one to another:
 
-- **a command line**, `spiderpig <command>` (`build`, `bake`, `explain`, `audit` and the
-  rest: `spiderpig --help`);
-- **a Python API**, `spiderpig.api`, designed for AI agents: a validated JSON *spec* goes
-  in, typed reports come out, and an agent can reach the live CAD solids and edit them;
+- **a command line**, `spiderpig <command>` (`candidates`, `build`, `guide`, `control`,
+  `export`, `view` and the rest: `spiderpig --help`), each taking a stored design's id
+  or the build options;
+- **a Python API**, `spiderpig.api`, designed for AI agents: a task or a validated JSON
+  *spec* goes in, typed reports come out, and an agent can reach the live CAD solids and
+  edit them;
 - **an MCP server** that offers the same operations to AI agents speaking the Model
-  Context Protocol.
+  Context Protocol, its `design(task)` prompt walking a task to the files that make,
+  wire and buy the machine;
+- **the viewer**, one linkage picker over every kind, its views those the linkage declares.
 
-It does not write firmware or a gait controller for the servos. Its strength analysis is
-of the joints and link plates only, at the design's own simulated loads (section 6.2); it
-does no finite-element analysis of the parts. It does not invent mechanisms: every
-linkage is a program in its catalog, and every part follows fixed construction rules.
+It writes the controller's files and the kinematics (`spiderpig control`), not firmware
+or a gait controller. Its strength analysis is of the joints and link plates only: a
+walker's at its own simulated loads (section 6.2), an arm's and a mechanism's at their own
+static loads (an arm's weight and payload and a crash of its tool; a mechanism's output
+jammed against its servo's torque limit); it does no finite-element analysis of the
+parts. It does not invent mechanisms: every linkage is a program in its catalog, and every
+part follows fixed construction rules.
 
-In numbers (2026-10-08):
+In numbers (2026-10-14):
 
 | measure | value |
 |---|---|
-| Python package `spiderpig/` | 40,462 lines in 123 Python files |
-| tests | 27,009 lines; about 2,000 tests |
-| browser viewer (TypeScript) | 3,018 lines |
-| linkages in the catalog | 28: 17 walkers and 11 mechanisms |
-| history | 483 commits: 2015 coursework, rebuilt almost entirely from September 2026 (Appendix C) |
+| Python package `spiderpig/` | 61,960 lines in 185 Python files |
+| tests | 33,475 lines; about 2,300 tests |
+| browser viewer (TypeScript) | 3,396 lines |
+| linkages in the catalog | 30: 17 walkers, 11 mechanisms and 2 arms |
+| history | 701 commits: 2015 coursework, rebuilt almost entirely from September 2026 (Appendix C) |
 
 Following a design through the code needs a few mechanical ideas and a few tools. Section
-2 gives them.
+2 gives them, from the walkers the project began with; section 6.6 adds what an arm brings.
 
 ## 2. Background: walking machines in ten minutes
 
@@ -434,30 +468,50 @@ parts.
 
 ## 3. The pipeline at a glance
 
-A design passes through six stages. Each consumes the one before and adds one kind of
-knowledge. The six stages are the **pipeline**, and the code that runs them is the
-**engine**.
+Every kind of machine takes the same path: a **task** says what it must do, a **spec**
+says what to build, and six **stages** build it. Each stage consumes the one before and
+adds one kind of knowledge. The six stages are the **pipeline**, and the code that runs
+them is the **engine**; the task and the spec sit above it (section 9).
 
 | # | stage | adds | code |
 |---|---|---|---|
+| task | the task | what the machine must do (`walk`, `place`, `trace` and their numbers); the linkages whose declared capabilities can do it, ranked, each with a spec | `task.py`, `api/tasks.py` |
+| spec | the spec | a validated design: linkage, module, materials, constructions and the roles every later kind of part fills, targets; resolved into a `BuildConfig` and a content-addressed id | `spec.py`, `stages/resolve.py`, `roles.py` |
 | 1 | symbolic | a compass-and-ruler program over exact parameters | `linkage/`, `linkages/` |
-| 2 | compiled | numpy functions of the crank angle, built once | `linkage/engine.py` |
-| 3 | template | one side's bodies, joints and connections, every joint a function of `t` | `linkage/assembly.py`, `mechanism.py` |
-| 4 | rationalized | groups (one per functional part: the drive, the crank, each axle, the links, the frame), the space each claims in every layer, the layer plan, the crank route | `construction/`, `stack/`, `fabricate.py` |
-| 5 | fabricated | every part as a solid at one crank angle, tagged laser, printed or purchased | `construction/`, `fabricate.py` |
-| 6 | serialized | STEP, STL, DXF, BOM, glb, MJCF | `build.py`, `layout.py`, `hardware/bom.py`, `bake.py`, `sim/` |
+| 2 | compiled | numpy functions of the inputs (a crank's angle; an arm's joint angles over their ranges), built once | `linkage/engine.py` |
+| 3 | template | one side's bodies, joints and connections, every joint a function of the inputs | `linkage/assembly.py`, `mechanism.py` |
+| 4 | rationalized | groups (one per functional part: the drive, a servo or an arm's belt drives, the crank, each axle, the links, the frame), the space each claims in every layer, the layer plan, the crank route | `construction/`, `stack/`, `fabricate.py` |
+| 5 | fabricated | every part as a solid at one input value, tagged laser, printed or purchased; the robot round the side (a walker's mirrored second side and chassis, an arm's turntable and tool) | `construction/`, `fabricate.py` |
+| 6 | serialized | what a maker reads: STEP, STL, DXF, BOM and `ORDER.md`; the assembly guide; the controller's files; glb, MJCF, an arm's URDF | `build.py`, `layout.py`, `hardware/`, `guide/`, `control/`, `bake.py`, `sim/`, `urdf.py` |
 
 All paths are under `spiderpig/`. *Rationalized* is the code's word for turning ideal
 moving lines into parts with thickness; this report calls that stage **layer planning**.
 
-Here is the running example at each stage:
+**The stages read capabilities, not kinds.** What differs between a walker, a mechanism
+and an arm is what its linkage declares and what its config's roles and layout name, and
+each stage reads those: feet (`Linkage.walks`) give a walk to judge and a mirrored robot;
+an output (`Linkage.output`) a path and an error budget; ranged inputs (`Linkage.ranged`)
+belt drives instead of a crank, a turret layout (`config.robot_layout`) and a URDF. The
+same holds at the surfaces: what drives a design (`actuators.controllers.motors_of`)
+picks its controller's files, and the viewer offers the views a linkage declares.
+
+| | walker (the Strider `double`) | mechanism (Hoecken) | arm (`palletizer_reach`) |
+|---|---|---|---|
+| task | `walk`: stride, speed, obstacle | `trace`: a line's stroke and straightness | `place`: area, height, repeatability |
+| inputs and drive | one crank a side, a bus servo | one crank, a bus servo | ranged joints, steppers through belts, a turntable's yaw |
+| what is built round the side | the mirrored side and the chassis | nothing: one side | the turntable (`mt4_compact`) and the tool |
+| judged by | the walking model, MuJoCo walking | the output's path, the error budget | the error budget (ISO 9283 repeatability), MuJoCo holding its pose |
+| controller's files | `servos.json`, the cranks' zeroes | `servos.json` | Klipper `printer.cfg`, the homing sequence |
+
+The running example of sections 4 to 7 is a walker, at each stage (its plan's figures
+today, and every default design's, are in [DESIGNS.md](agentlib/DESIGNS.md)):
 
 | stage | the running example (a Klann `quad` robot, two sides) |
 |---|---|
 | 1 symbolic | 8 steps placing joints O, A, B, M, C, D, E, F; 11 parameters |
 | 2 compiled | about 1.8 s once per process, mostly first-use imports; the compile itself about 0.1 s |
 | 3 template | each side: 4 legs, 16 links, 20 bodies |
-| 4 rationalized | at the snapshot, 12 layers (36 mm) per side with the printed crank; today's figure is in [DESIGNS.md](agentlib/DESIGNS.md) (`klann_quad`) |
+| 4 rationalized | a layer plan per side and its crank route; its layers and height: [DESIGNS.md](agentlib/DESIGNS.md) (`klann_quad`) |
 | 5 fabricated | at the snapshot, 197 parts: 39 laser-cut, 42 printed, 116 purchased (the pins rods, rings and clips then) |
 | 6 serialized | at the snapshot, STEP 11.4 MB, 17 print STLs, 2 DXF sheets, a BOM of at least $124.87 (a lower bound, section 7.5), glb 9.5 MB |
 
@@ -470,7 +524,11 @@ Here is the running example at each stage:
 - the servo;
 - the pillar, pin and crank constructions: the pins M3 Chicago screws, `chicago`, the
   pillars round standoff columns, `standoff`, and the crank the laser-cut `bolt` crank
-  (`bolt_round` on TrotBot's heel and toe), the only ones since 2026-10-07;
+  (`bolt_round` on TrotBot's heel and toe), the only ones since 2026-10-07 (an arm's
+  pivots ball bearings, `ball` or `ball_pair`);
+- the roles (`BuildConfig.roles`, `roles.py`): every later kind of part by its role, an
+  arm's transmission, actuator, angle sensor, turntable and tool, and the controller of a
+  walker or an arm;
 - the sheets: the links' (`sheet`), the frame plates' (`frame_sheet`), the crank's
   (`crank_sheet`) and any per-link sheet (section 5.7);
 - shared dimensions (`Params`: the 6 mm link radius, axle diameters, the 1 mm clearance
@@ -491,15 +549,19 @@ suffix (`b1_leg0`), and in a robot a side prefix (`L.b1_leg0`, `R.b1_leg0`).
 the outline is:
 
 ```
-   Spec (JSON) --resolve--> Design (content-addressed id)
+   Task (JSON) --candidates--> ranked candidates, each a Spec       api/tasks.py
+   Spec (JSON) --resolve-----> Design (content-addressed id)        stages/resolve.py
                                  |
-        check · plan · walk · build · recheck · verify · export     spiderpig/api/
-                                 |
+        check · plan · walk · precision · build · recheck · verify · export     spiderpig/api/
+                                 |     export: step stl print dxf bom glb mjcf urdf
+                                 |             guide control order (assemble, wire, buy)
         Store: ./.spiderpig/designs/<id>/   (every stage's report, the parts)   store.py
 
    Ways in:  Python API (live solids) · MCP server (files, jobs) · CLI `spiderpig`
-   Viewer:   FastAPI server + three.js page (play, drive, tune)
-   Judges:   walk.py (quasi-static walking model) · sim/ (MuJoCo) · tools/audit.py
+             (`candidates TASK.json`, then any command given the design id)
+   Viewer:   FastAPI server + three.js page (one linkage picker; play, drive, pose, tune)
+   Judges:   walk.py (walking model) · precision.py (error budget) · sim/ (MuJoCo) ·
+             tools/audit.py
 ```
 
 **Where things live.** Appendix B lists every file with its size and tests.
@@ -517,7 +579,8 @@ the outline is:
 | `spiderpig/servos/`, `hardware/`, `materials.py`, `manufacture.py`, `strength.py` | servo data and models; the parts catalog, fasteners, mass, BOM, ordering; sheets, cut rules, joint strength | 6, 7 |
 | `spiderpig/build.py`, `layout.py`, `bake.py`, `sim/`, `mesh.py`, `workers.py`, `fabcache.py`, `keys.py`, `uptodate.py` | outputs, and the caches that keep them from being recomputed | 7 |
 | `spiderpig/walk.py`, `server/`, `viewer/` | the walking model, the web server, the browser viewer | 8 |
-| `spiderpig/spec.py`, `api/`, `design.py`, `failure.py`, `verify.py`, `store.py` | the agent surface | 9 |
+| `spiderpig/task.py`, `spec.py`, `api/`, `design.py`, `failure.py`, `verify.py`, `store.py` | the agent surface: a task's candidates, the spec, the operations | 9 |
+| `spiderpig/guide/`, `labels.py`, `control/`, `actuators/`, `precision.py`, `urdf.py`, `kinematics/` | the assembly guide and the part labels; the motors, their controller's files and an arm's kinematics; the error budget; the spatial joints and an arm's URDF | 6.6, 7 |
 | `spiderpig/mcp/`, `cli.py`, `tools/`, `view.py` | the MCP server and the command line | 9 |
 
 Sections 4 to 7 follow the running example through these stages, starting with the
@@ -1113,10 +1176,30 @@ is at the plan's own z (`wobble.column_wobble`'s `layer_z`, `wobble.layer_mid`):
 at its layer's mid-plane, a pillar's supports at the plates' faces, clearance gaps and
 thicker plates included. Every link plate is rated too (`strength.link_rows`: net section
 at the most loaded hole, plus bending for a link of three or more pins), naming the
-aluminium sheet a link would need. The audit also reports each link's tilt out of plane
+aluminium sheet a link would need. A linkage with ranged inputs (an arm: no floor, no
+sim loads) is rated at its own static loads (`strength.arm_loads`, the quasi-static model
+of `repeatability.static_loads` over the inputs' box): operating, its weight and the
+payload (`precision.payload_g`) x 1.5 for the moves' accelerations; jammed, a crash, the
+tool blocked while every drive pushes at its holding torque x ratio, gravity added. A link's
+hole is its pivot's bearing seat where the link holds one (`strength.link_hole`). A
+cranked mechanism (no floor, no sim loads either) is rated the same way
+(`strength.crank_loads`, 2026-10-14; "not rated" before): operating, its weight and a given
+payload over a turn of the crank x 1.5; jammed, its output blocked while its servo pushes at
+its torque limit (`config.torque_limit_nm`, what `spiderpig control servo` writes into it,
+as a walker's), gravity added, the crank angles where its lever on the output is under
+`strength.CRANK_LEVER_FLOOR` of its largest left out (the output's dead points, where only
+the crank's stop bounds the force). A finding's fixes name the lever of the design's own
+motors (`strength.stepped`, its motor role): a crank's servo its torque limit, an arm's
+steppers their holding torque (their run current), never both. The audit also reports each link's tilt out of plane
 (`construction/wobble.py`): free (bore clearance over bearing length) and held by the faces
 beside it; a link beside a clearance gap bears on what the column holds there (an end's
-head or printed spacer, a gap ring).
+head or printed spacer, a gap ring). For a linkage that walks, it reports the feet across
+the plane (`strength.foot_stiffness`, through the arm's frame model,
+`linkage.stiffness.across`: each link its sheet's section at its layer, each pin and pillar
+its own shaft from its wobble note, the crank rigid and driven): each foot's compliance
+across the plane over the revolution and, under a sideways foot load (`strength.foot_load`:
+the weight on the fewest feet touching, times the sim's floor friction), its deflection and
+the worst link tilt and splay. Reported, no limit; the joints' play comes on top.
 
 **The bolt crank** (`construction/crank/`: `BoltCrank` in `bolt.py`, its fits in `hex.py`
 and `web.py`, its ratings in `capacity.py`, its parts in `plates.py`'s `_WebPlates`). It is
@@ -1156,7 +1239,7 @@ The horn screws take shims under the head where a stock length is too long
 thread, else 0.1 mm DIN 988 steps). The horn holes keep the service's minimum hole and
 2 x t edge distance, the hub's and webs' rims 1 x t (`BoltCrank.web_edge_t`, the cut rules'
 error level). A crankpin within a screw head's reach of the horn's rim makes the printed
-horn spacer a layer thicker (`BoltCrank.hub_head_need`, `DriveGroup.spacer`). The crank is
+horn spacer a layer thicker (`BoltCrank.hub_head_need`, `ServoDrive.spacer`). The crank is
 rated by the hex's bearing in the plate's own pocket depth at the weaker of the plate's and
 the 300 MPa steel's yield (`hex_bearing_nm`, `hex_capacity`); the capped hex is rated in
 the hub's depth less the press's 0.1 mm.
@@ -1174,17 +1257,17 @@ note's `assembly`, an `assembly:` audit error).
 The router's rules for the crank (`BoltCrank.joint_rules`, `JointRules`) are in section
 5.3; the crank's plans use `heads="gap_sink"` (section 5.4).
 
-**The drive** (`servos/mount.py`, `DriveGroup`). The servo sits on top of the inner plate,
+**The drive** (`servos/mount.py`, `ServoDrive`). The servo sits on top of the inner plate,
 output face down, its axis on O, its body pointing away from the pillars. Its horn is
 turned on the toothed output shaft so the horn screws fall between the crank's webs, and a
 printed horn spacer sits between the horn and the hub plate. A linkage with a second input
 stops here with `ConstructionError`: there is one servo per side, so a second input has no
 drive. Every screw that comes up through the inner plate from the leg side (the servo's
 front screws, the frame ties', the deck rails') is the drive group's claim, its head in the
-gap under the plate (`DriveGroup.claims`, `chassis_screws`; the tie and rail positions are
+gap under the plate (`ServoDrive.claims`, `chassis_screws`; the tie and rail positions are
 known before a plan: `chassis.tie_points_ctx`, `deck.rail_screw_points`). A front screw
 hole with less than `Params.servo_screw_web_t` (1.0) x t of web to the horn's hole or a
-relief is left out (`DriveGroup.screw_web`; the front reliefs are cut at the model's
+relief is left out (`ServoDrive.screw_web`; the front reliefs are cut at the model's
 rectangle, `mount.RELIEF_CUT_GROW`); the servo uses all four front screws when the crank's
 hub sits a layer under the horn (`horn_layers`); `servo_screw_web_t=0` keeps all four.
 
@@ -1225,7 +1308,16 @@ its z band, and `deck_clearance` proves it over the whole cycle. The deck lowers
 down past the pillars' inner screw heads: `deck.path_notches` notches the plate round every
 static part in its way, `deck.nut_z` moves the deck screws and their nuts into the bay where a notch
 would leave a deck screw hole too little web, and `deck.deck_path` checks the way on the
-parts' geometry (`deck_clearance`'s `blocked`, an audit problem).
+parts' geometry (`deck_clearance`'s `blocked`, an audit problem). What it carries is the
+role `controller` (`actuators/controllers.py`, the same role as an arm's stepper board):
+a walker's default `esp32_bus_servo` is the deck's kit (`controllers.DECK_KIT`, its parts
+the deck's bodies, `Controller.mount`), and `none` (your own electronics) leaves the deck
+bare: the plate on its rails with its wire and cable-tie slots, nothing of the kit bought
+(`deck_parts`' `kit`, `meta["deck"]["electronics"]`; the sim carries the kit's catalogued
+mass for it, `sim.mjcf.kit_mass_g`, and for a controller bought as lines over the bare deck
+its own carried parts, `sim.mjcf.bare_deck_g`). The role reached the walkers after their designs
+were stored, so its walker default is the role's `implicit` key: it is left out of their
+resolved specs and their ids stay (`roles.Role`, `BuildConfig.applied_roles`).
 
 The chassis and the deck sit outside both sides' stacks, so the planner never sees them;
 they are checked for collisions by intersecting solids at sampled crank angles (and the
@@ -1329,7 +1421,10 @@ robot is an entry rather than an edit across the stages:
   bake see the poses they sample on the tour, no more. The arm checks refuse a link that
   isn't rigid, an input that doesn't turn its link, and a parallelogram that flattens
   (`linkage/constraints.py`, the linearised constraints' condition number).
-  `LegSolution.at` evaluates explicit inputs. The first arm
+  `LegSolution.at` evaluates explicit inputs. A stage branches on what a linkage does,
+  never on its kind's name: `Linkage.ranged` (no crank: inputs over ranges, a tour,
+  drives) and `Linkage.walks` (feet on a floor: the gait, the walk model, MuJoCo); the
+  kind is their label, and the robot a kind makes is `config.robot_layout`. The first arm
   is `linkages/palletizer.py`, an MT4-like palletizer side (130 / 150 mm, two
   parallelograms keep the tool level, the elbow driven from the shoulder).
 - **Precision** (`spiderpig/precision.py`, `spiderpig precision`): the error budget at a
@@ -1337,7 +1432,11 @@ robot is an entry rather than an edit across the stages:
   rigid-body constraints of the planar linkage (`linkage/constraints.py`: each pin an axle,
   each body on it an interface; worst case and root sum square); each input's lever says
   the resolution it needs; every hole's tolerance through the same gains, and the link
-  sheet's expansion, are the accuracy rows. `--compare` runs the pivot options.
+  sheet's expansion, are the accuracy rows. `--compare` runs the pivot options. It is a
+  stage too (`api.precision`, `precision.json`): the spec's `precision.*` targets
+  (`repeatability_mm` and `accuracy_mm` for any output; `rp_mm`, `rp_powerup_mm`,
+  `out_of_plane_mm`, `payload_sag_mm` for ranged inputs, each field naming the capability
+  it needs, `spec.CAPABILITIES`) become `verify` rows.
 - **Drives for an arm** (`construction/transmissions/`, `spiderpig/actuators/`): each
   input a stepper (role `actuator`) and a transmission (role `transmission`, per drive:
   `transmission@q3=belt`): a GT2 belt (5:1, `belt`), its motor on a slider plate outside
@@ -1365,7 +1464,8 @@ robot is an entry rather than an edit across the stages:
   and held by stock angle brackets clear of the drives' motors, and a hard stop past the
   yaw's lower end its driver stalls on (the camera sets the fine zero). The turntable is
   the preset of the role `turntable` (`construction.rotary.PRESETS`: a support, a
-  transmission, a motor and a sensor): `mt4_compact` alone, the user's approved one
+  transmission, a motor and a homing sensor from the one registry every joint's homing
+  uses, `actuators.sensors.SENSORS`): `mt4_compact` alone, the user's approved one
   (2026-10-14: the others pruned, `config.REMOVED_CONSTRUCTIONS`). The arm's tool is the role `tool` (`construction/tools.py`): a
   vacuum cup under a laser-cut shelf T-slotted to a hanger plate bolted beside the end
   plate (the homing camera hung under the shelf beside it), or on a NEMA 11 wrist hung
@@ -1374,24 +1474,53 @@ robot is an entry rather than an edit across the stages:
   feet and tool) and assembles the robot round the fabricated side (`assemble_robot`).
   The robot-level roles (`roles.Role.robot`) are dropped from the side's config
   (`BuildConfig.side_config`), so one plan serves every turntable and tool.
-- **Control** (`spiderpig/control/`, `spiderpig control`): an arm driven by steppers on a
-  3D-printer board running Klipper. `control.arm.ArmModel` is the arm's forward and inverse
+- **Controllers** (role `controller`, `actuators/controllers.py`): the electronics that
+  drive a design's motors, every design that has them (a mechanism's too, 2026-10-14),
+  chosen by what they drive (`Controller.drives`, the motor role's name, matched to the
+  design's own by `controllers.motors_of`: `roles.motor_role`, from its inputs, a crank's
+  `servo` or ranged inputs' `actuator`, never the kind's name): a serial-bus servo board
+  and battery (`esp32_bus_servo`: on a walker's deck; a mechanism, whose side is the
+  machine, buys it as lines, `construction.robot.controller_lines`, and wires it in its
+  side's last step), a DYNAMIXEL servo's USB interface and hub (`u2d2_dynamixel`), a
+  stepper board running Klipper (`skr_pico_pi_zero`), or `none`, a mechanism's default
+  (what its designs stored before the role reached them carried: `roles.Role.implicit`,
+  per kind, so a stored id reads back with the same BOM; the kit named enters the id). A
+  board that can't drive
+  the design's motors is a `ConstructionError` (`construction.robot.controller_of`). The
+  drive groups are keyed on the same names (`construction.DRIVES`: `ServoDrive` for the
+  servo, a `JointDrive` per declared drive for the actuators, a cranked linkage's second
+  input's too when it declares one, `Linkage.drives`).
+- **Control** (`spiderpig/control/`, `spiderpig control`): one entry point for every
+  robot's motors, its actions by what drives the design. A crank's serial-bus servos
+  (`control.servos`): `axes` lists each crank's servo (a walker's `L` and `R`, bus IDs 1
+  and 2; a mechanism's one), its legs' crank phases and the sense, facing its horn, that
+  walks forward (mirrored sides turn opposite ways); `servo` writes `servos.json`: the
+  IDs, the bus's baud, the speed mode, the torque limit the joints are rated at
+  (`config.torque_limit_nm`), the protocol's registers (`control.servos.REGISTERS`:
+  Feetech STS, DYNAMIXEL 2.0) and the sim's phase-lock gains for the host; `homing`
+  zeroes each crank once (its absolute encoder's offset at the design's crank angle 0,
+  `control.servos.zero_offset`). An arm driven by steppers on a 3D-printer board running
+  Klipper: `control.arm.ArmModel` is the arm's forward and inverse
   kinematics in the URDF's `base_link` frame (the turntable's angle from the target's
   bearing, the planar inputs by bounded least squares from a searched start); each joint's
   angle maps to its motor's microsteps through its transmission's exact ratio and its
-  mounting's sense (`control.mapping.Axis`); homing stalls the turntable's driver on its
-  hard stop (the camera's fiducials then set the fine zero: `control.vision`) and takes the
-  planar joints' zeros from an angle gauge on their links (their inputs are the links'
-  angles from horizontal, read with the motors holding), a switch's homing repeating to the
-  step by its driver's recorded phase (`homing.phase_move`);
+  mounting's sense (`control.mapping.Axis`); homing follows each joint's sensor from one
+  registry (`actuators.sensors.SENSORS`, each declaring its `method`: the turntable's
+  preset's and each planar input's role `angle_sensor`): a stall drives the joint onto its
+  hard stop until its driver stalls (repeatable to `sensors.STALL_FULL_STEPS` of the motor
+  through the joint's own reduction; the camera's fiducials then set the fine zero:
+  `control.vision`), a gauge reads the links' angles from horizontal with the motors
+  holding, a switch's homing repeats to the step by its driver's recorded phase
+  (`homing.phase_move`);
   `control.calibrate.fit` fits the link lengths and the zeros to measured poses;
   `control.klipper` writes a `printer.cfg` with each joint a Klipper manual stepper in joint
   degrees (its pins left to fill, the motors never disabled when idle); `control.host` plans
   straight moves as synchronised constant-speed joint segments and posts them to Moonraker.
 - **An arm through every surface** (2026-10-12, phase 7): the spec's `legs.robot` (an
   arm's whole robot by default) makes the API, the MCP and the store build an arm's turret;
-  `api.export` writes `urdf` (with the arm's MuJoCo model: `urdf.mjcf`, the loops closed by
-  `connect` equalities, the motors as position actuators); the viewer poses an
+  `api.export` writes `urdf` for ROS and `mjcf` from the one MuJoCo emitter every design
+  goes through (`sim.mjcf`, section 7.3: the arm fixed on its turret, its loops closed by
+  `connect` equalities, its steppers as position actuators); the viewer poses an
   arm by joint sliders (`viewer/src/arm.ts`, from `/api/pose/{mode}`: `spiderpig.pose`,
   each node's matrix from the clip's first frame at the joints given); the guide's arm
   steps say what an arm has (its drives, no crank or servo). The gate's designs include the
@@ -1399,7 +1528,8 @@ robot is an entry rather than an edit across the stages:
 - **Spatial joints** (`spiderpig/kinematics/`): what a layout adds out of the side's plane,
   as data on the mechanism (`meta["tree"]`, a `kinematics.RobotTree`): the turntable `q1`
   rides the world about the vertical, the wrist `q4` rides `q1` after the end plate's
-  planar motion. The bake composes them with the planar motions; the URDF writes them; the
+  planar motion. The bake composes them with the planar motions; the URDF and the MJCF
+  write them (a hinge about the joint's axis); the
   precision budget adds the turntable as an input (`q1`, through the flange's horizontal
   reach) and its support's tilt over the tool's distance from the bearings.
 
@@ -1429,7 +1559,7 @@ holds its outputs, from the same sources and options, does nothing
 | `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
 | `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
 | `ORDER.md` | the shopping list (`hardware/order.py`) | not in the snapshot |
-| `urdf/<name>.urdf`, `urdf/meshes/`, `urdf/<name>.joints.json` | an arm's URDF (`spiderpig/urdf.py`): a link per rigid body, the actuated inputs and the robot's joints, the side's other pins as a spanning tree (a `mimic` where a pin follows one input), the loops' closing pins and every passive joint's map in the sidecar | arms only |
+| `urdf/<name>.urdf`, `urdf/meshes/`, `urdf/<name>.joints.json` | an arm's URDF for ROS (`spiderpig/urdf.py`): a link per rigid body, the actuated inputs and the robot's joints, the side's other pins as a spanning tree (a `mimic` where a pin follows one input), the loops' closing pins and every passive joint's map in the sidecar (its MuJoCo model is the export's `mjcf`, section 7.3) | ranged linkages only (`Linkage.ranged`; `urdf.write` refuses a crank's design with `urdf.unsupported`'s reason) |
 
 `api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names
 (section 9.2); its `dxf` is the packed sheets only: `ORDER.md` and `laser/parts/` come
@@ -1475,8 +1605,9 @@ ordered one line per thickness (`bom.split_shims`, `hardware/shims.py`), the cla
 0.5 mm ones bought as stock washers (`bom.SHIM_AS`: DIN 125 for M3, modelled at their 7 mm,
 `bom.shim_od`; DIN 433 for M4). Purchases are rounded up to whole packs of the preferred
 offer. A sheet a service cuts is no purchase (`bom.cut_by`) but a cutting line per service
-and sheet, the material included (`bom.CutRow`: an area estimate, `bom.cut_estimate`,
-fitted to SendCutSend's quotes: per part a fixed charge plus a rate per cm² at one off,
+and sheet, the material included (`bom.CutRow`, `bom.cut_estimate`, fitted to
+SendCutSend's quotes: per part a fixed charge, a rate per cm² and, in aluminium, one per cm
+of cut length at one off, the cut every contour of the part's face, `bom.cut_length_cm`;
 times its quantity break, `bom.qty_factor`, the quantity a file's, `bom.same_files`); the
 total is the purchases and the cutting. It leaves
 out rows with no price, and the BOM says so;
@@ -1489,8 +1620,11 @@ item's first offer, a direct product page (`hardware/sources.py`, checked in a b
 where the offer is `verified`; McMaster-Carr's prices need a login); the uploads per
 cutting service; the prints per filament. Shop supplies (filament, threadlocker) are taken
 as on hand (`bom.ON_HAND`): listed, not ordered or totalled. An unpriced line is estimated
-from its first priced alternative and totalled apart. A design's servo torque limit
-(`config.LINKAGE_TORQUE_LIMITS`) appears as a servo-firmware note.
+from its first priced alternative and totalled apart. The torque limit a crank's servo
+is set to and its joints are rated at (`config.torque_limit_nm`, lowered per linkage by
+`config.LINKAGE_TORQUE_LIMITS`) appears as a servo-firmware note on every design a crank's
+servo drives, a walker's, a walker side's and a mechanism's (`config.torque_limit_note`,
+by the motor role; a walker's robot alone before 2026-10-14's third round).
 
 ### 7.2 The animated model: `spiderpig bake`
 
@@ -1522,7 +1656,28 @@ without asking the server.
 
 ### 7.3 The physics model: MJCF
 
-`spiderpig/sim/mjcf.py` writes one self-contained MuJoCo model. A free-floating base
+`spiderpig/sim/mjcf.py` writes one self-contained MuJoCo model, for every kind of design,
+through one reduction (`sim.mjcf.robot_model`) and one emitter (2026-10-14; before, an
+arm's came from a second writer beside its URDF). What differs is what the design
+declares: a walker (`Linkage.walks`) is free on a floor with its feet's contacts; any other
+design is fixed to the world with no floor (an arm's turret base, a mechanism's frame), its
+base's floor at the origin (a turret's under its yaw axis, the URDF's `base_link`). Its
+spatial joints (`meta["tree"]`, `kinematics.RobotTree`, what the bake and the URDF read)
+are hinges about their own axes; an input's link hangs from the frame on its drive's pivot,
+its hinge reading the input's design angle. Its motors go by what they drive: a servo's
+velocity actuator on each crank, a stepper's position actuator on each joint
+`actuators.joint_ratings` rates (its holding stiffness through the reduction, capped where
+the step can't hold it stably; its holding torque the force limit; its rotor's inertia
+through the reduction the joint's armature). The URDF stays the export for ROS, a ranged
+linkage's only (`urdf.unsupported` says why a crank's is refused: its joints follow the
+crank's full turn, which a URDF tree can only table); `spiderpig sim` holds a design that
+doesn't walk at its pose under gravity (`sim.run.hold`: its steppers' position actuators
+told their angles, a crank's servo in position mode, a P loop over its speed loop, so it
+doesn't creep), with its payload at the output (an arm's `PAYLOAD_G` unless its spec says),
+and turns a fixed design's crank through a turn (`sim.run.turn`: its torque against the
+stall, `verify`'s `sim.torque`, as a walker's).
+
+The walker's model, the one the figures below are of: a free-floating base
 carries the frame, servos and chassis; each side's crank turns on a hinge at O; each link
 is a body on a hinge; the joints that close each loop become equality constraints. Masses
 and inertias are exact, taken from the fabricated parts. Contacts are computed only
@@ -1603,7 +1758,7 @@ checked current by `tests/test_guide.py`):
 
 7. **Right side: body onto the leg stack.** Turn the body over onto the right leg stack: the hub plate's pocket over its hub chain's standoff, the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
 
-8. **Wiring.** The harness: the XT30 pigtail from the battery's lead to the protection board, the DC plug pigtail from the switch to the board's DC jack, and the battery divider (the 100k resistor from the switched battery to an ESP32 ADC pin, the 33k from that pin to ground). The battery is an HV LiPo: charge it as 2S, 8.4 V, only. Set the IP2326 charger board to 2S (it stops at 8.3-8.5 V, safe for the HV pack), never its 3S / 12.6 V jumper setting, and never use an HV (8.7 V) charger: the servos are 7.4 V parts. The bus plugs are already in (the centre plates' steps: the top-entry sockets take a plug only through the plates' window): each servo's wires from its channel's end at the centre plates' +x edge up through the deck's wire slot over it to its own one of the board's two bus servo ports (connector first), before the deck goes in.
+8. **Wiring.** The bus plugs are already in (the centre plates' steps: the top-entry sockets take a plug only through the plates' window): each servo's wires run from its channel's end at the centre plates' +x edge up through the deck's wire slot over it, before the deck goes in. The harness: the XT30 pigtail from the battery's lead to the protection board, the DC plug pigtail from the switch to the board's DC jack, and the battery divider (the 100k resistor from the switched battery to an ESP32 ADC pin, the 33k from that pin to ground). The battery is an HV LiPo: charge it as 2S, 8.4 V, only. Set the IP2326 charger board to 2S (it stops at 8.3-8.5 V, safe for the HV pack), never its 3S / 12.6 V jumper setting, and never use an HV (8.7 V) charger: the servos are 7.4 V parts. Each servo's bus cable (connector first) to its own one of the board's two bus servo ports.
 
 9. **Deck.** Deck electronics, on the bench: the board on its nylon standoffs; the battery cradle screwed down (two M3 button heads through its ears, nuts under the deck), the battery strapped in; the charger and the protection board under the deck on foam tape; the switch; wires tied down through the cable-tie slots. Lower the deck, electronics on, straight down between the inner plates, its notches past the pillars' inner heads, onto the rails; its 4 screws into the rails' captive nuts.
 <!-- assembly-order: end -->
@@ -1653,8 +1808,9 @@ shuffle forward isn't modelled.
 
 ### 8.2 MuJoCo
 
-`spiderpig sim`, and `verify` at level `full`, run the MJCF of section 7.3 in the MuJoCo
-simulator, with gravity, friction (coefficient 0.65 since the TPU feet; 0.5 at the
+`spiderpig sim`, and `verify` at level `full`, run a walker's MJCF of section 7.3 in the
+MuJoCo simulator (a design that doesn't walk, `spiderpig sim` holds at its pose:
+`sim.run.hold`), with gravity, friction (coefficient 0.65 since the TPU feet; 0.5 at the
 snapshot) and soft contacts. For the running example at the snapshot, with both servos at 80 % of their no-load speed (a loaded servo can't reach the
 full no-load speed), 4.5 simulated seconds take
 4.2 s of wall-clock time. The robot walks at 134 mm/s, 193 mm per crank turn, with 24 mm
@@ -1697,6 +1853,15 @@ The wobble itself is kinematic, not numerical: binned against the crank angle, t
 base height and pitch match the quasi-static support plane of 8.1 within 0.6 mm and 0.3°
 rms (the means apart: the base sits a link radius higher), unchanged from a 2 ms step to
 0.25 ms (`tests/test_sim.py::test_the_sim_height_and_pitch_follow_the_quasi_static_support`).
+A design that doesn't walk is held (`sim.run.hold`) and, when a crank's servo drives it,
+turned (`sim.run.turn`, `verify` full's `sim.torque`): one turn at the servo's full speed,
+the drive on its speed-torque line and never over the torque limit its firmware is set to
+(`sim.run.crank_torque_limit`: `config.torque_limit_nm` of the servo and linkage the
+model's meta names, the limit its strength rates it at), the peak reported against that
+limit, not the stall (a mechanism's limit is 5 to 20 times under it); its hold's crank is
+capped the same way. A walker's drive keeps its stall here: its jam loads
+(`sim.loads`) pin a foot at the limit instead.
+
 A design that covers no ground is now flagged by both models (`walks`: Klann's double,
 whose four feet stay coplanar, strides 2e-13 mm in the quasi-static model and crawls at
 11 mm/s with its body on the floor 16 % of the time in MuJoCo).
@@ -1725,9 +1890,11 @@ risk.
 
 `spiderpig/server/app.py` is a FastAPI web server. `/api/glb/{mode}` bakes on demand and
 caches per design; `/api/walk` answers the walking model for a design without building
-parts; `/api/linkages` lists the linkage catalog; `/api/design/{id}` describes a stored
-design; `/ws` pushes live reloads during development. The viewer (`viewer/src/`, three.js,
-built with Vite) plays and scrubs the animation and has two panels:
+parts; `/api/linkages` lists the linkage catalog (with what each declares: `walks`,
+`ranged`); `/api/design/{id}` describes a stored design; `/api/pose/{mode}` poses an arm's
+bake at joint angles; `/ws/sim` runs any design live in MuJoCo; `/ws` pushes live reloads
+during development. The viewer (`viewer/src/`, three.js,
+built with Vite) plays and scrubs the animation and has three panels:
 
 - **Drive** steers the robot with keyboard or gamepad by per-side crank speed, and shows
   contacts, slip and stability live, on the quasi-static model (8.1). Its **physics**
@@ -1762,6 +1929,27 @@ built with Vite) plays and scrubs the animation and has two panels:
   stale one, keeps a client's command or reset sent during the build, compiles the
   model off the event loop, steps at most three frames of physics per tick (slow motion
   under load, not bursts) and caps the live sessions at ten (`{"error": "busy"}`).
+- **Live (MuJoCo)** runs a design that doesn't walk on the same session (2026-10-14):
+  `/ws/sim` serves every kind through the one emitter's model (`sim.mjcf.model_config`: a
+  walker's whole robot, anything else as configured; the query's `mode`, the view on
+  screen, picks an arm's robot or its side, else the design's own `BuildConfig.robot`),
+  and what it takes and streams follows what the model declares, never the kind's name.
+  The hello names the frame's `columns` and what drives the design: `drives`, its cranks
+  (velocity actuators: `{"cmd": [...]}`, one speed per crank, a walker's two sides
+  through the phase lock, a mechanism's lone crank as its servo in position mode tracking
+  its commanded travel, so a zero speed holds it instead of letting it creep) and
+  `joints`, its stepped joints (position actuators: `{"joints": {"q2": 40}}`, degrees as
+  `/api/pose`'s, clipped to each range; a reset keeps the targets). The frame carries the
+  base and every body as before, each crank's travel and torque, each joint's angle and
+  torque, and each site (the output point, the tool's tip, world mm); the feet, the floor,
+  the side phase and the base's acceleration only where the design has them (a walker's
+  17 columns are unchanged). A fixed base's root stays where the glb stands it. The
+  steering check is a walker's alone. In the viewer, the panel of a design that doesn't
+  walk (`viewer/src/arm.ts`, `?live=1`) has a **live** box: the arm's joint sliders then
+  set its steppers' targets instead of asking `/api/pose`, and a mechanism gets a
+  crank-speed slider once the hello declares its crank; the readout shows the sites and
+  the torques. Both go through the walker's client (`drive/physics.ts`, `PhysicsLink`),
+  which reads every frame by its columns.
 - **Tune** has a slider per parameter and redraws a stick figure from `/api/walk` at once.
   It rebuilds the parts only on request, with a full bake that takes tens of seconds.
 
@@ -1901,10 +2089,18 @@ a pass or fail, whether it is hard, and a **tier** saying how the value was obta
 - **estimated**: from nominal inputs: speed at the servo's no-load rpm, mass before a
   build, prices.
 
-`quick` uses only check, plan and walk, plus estimates of mass, size and a cost floor.
-`standard` adds a build, the plan re-checked on 2,880 fresh samples, the contract at two
-crank angles, OCCT clashes and solid validity, sheet packing and the full cost. `full`
-adds two more contract angles, a second clash angle and, for walkers, a MuJoCo run. A
+`quick` uses only check, plan and walk, plus estimates of mass, size and a cost floor,
+and the output's precision without fabricating (a mechanism's whole budget; an arm's
+accuracy, its tilt-dependent rows left unverified). `standard` adds a build, the plan
+re-checked on 2,880 fresh samples, the contract at two crank angles, OCCT clashes and solid
+validity, sheet packing and the full cost, the whole precision budget (an arm's links'
+tilt from the build), and every kind's joint strength (a walker's at its sim or family
+loads, an arm's and a cranked mechanism's at their static loads). A precision budget whose
+model raised fails the report only where the spec sets a `precision` target; else its
+`precision.budget` row is soft, informational. `full`
+adds two more contract angles, a second clash angle and MuJoCo: a walker's run; any other
+design held at its pose with its payload (`sim.holds`) and, cranked, its crank turned once
+(`sim.torque`), both soft. A
 design is `ok` when every hard row passes; its `score` is a weighted mean over the soft
 targets.
 
@@ -1920,7 +2116,8 @@ the current directory:
 ```
 designs/<id>/spec.json            the spec as given
              resolved.json        every default written in; engine version; parent and patch
-             check.json plan.json walk.json export.json verify.<level>.json
+             check.json plan.json walk.json precision.json export.json
+             verify.<level>.json
              build/manifest.json  and build/parts/*.step, one STEP file per distinct part
              exports/             export()'s default folder
              log.jsonl            every operation, its time, cached or not
@@ -1942,9 +2139,9 @@ engine version match. Writes are atomic.
 ### 9.6 Processes, jobs and the MCP server
 
 The MCP server (`spiderpig/mcp/`, built on the official MCP Python SDK 2.x, talking over
-stdio) offers 20 tools: `list_linkages`, `describe` and `catalog` for the catalogs;
-`resolve`, `check`, `plan`, `explain`, `recommend` (which runs `advise`), `walk`, `build`,
-`verify` and `export`; `get_job` and `wait_job`; `compare`, `derive`, `get_design`,
+stdio) offers 21 tools: `list_linkages`, `describe` and `catalog` for the catalogs;
+`resolve`, `check`, `plan`, `explain`, `recommend` (which runs `advise`), `walk`,
+`precision`, `build`, `verify` and `export`; `get_job` and `wait_job`; `compare`, `derive`, `get_design`,
 `list_designs` and `gc`; and `view`. There is no `recheck` tool, because it needs live
 solids. It also serves 33 resources (a guide whose vocabulary tables are generated from
 the code, the spec's schema, a card per linkage, and pages of the parts catalog) and 3
@@ -1952,8 +2149,8 @@ prompts. Across this boundary a design is its id, and a part is the path of its 
 in the store.
 
 Short tools run one at a time in a worker thread behind one lock, because the engine's
-caches aren't thread-safe. `build`, `verify` at the standard and full levels, and `export`
-become **jobs** in a pool of spawned processes (two by default; spawning is safe here,
+caches aren't thread-safe. `build`, `verify` at the standard and full levels, `export`
+and `precision` become **jobs** in a pool of spawned processes (two by default; spawning is safe here,
 because the server's entry point has the guard a spawned process needs): the tool waits up
 to `wait_seconds` (15 by default) and otherwise returns a job id to poll. Job records live
 only in the server's memory.
@@ -1965,15 +2162,19 @@ The command line predates the agent surface. `spiderpig <command>` dispatches to
 
 | command | does |
 |---|---|
-| `build` | STEP, STL, print STLs, DXF sheets and BOM into `build/` |
+| `candidates` | a task's linkages, ranked (`api.candidates`; `--measure N` plans the best N), the best resolved into the store |
+| `build` | STEP, STL, print STLs, DXF sheets, BOM and `ORDER.md` into `build/` |
+| `guide` | the assembly guide, `ASSEMBLY.pdf` and `ASSEMBLY.md` |
+| `precision` | the error budget at a design's output |
 | `bake` | the viewer's glb into the store |
 | `explain` | each stage's verdict in prose |
 | `audit` | the end-to-end re-check of section 8.5 |
-| `export` | `api.export` for a stored design or build options |
+| `export` | `api.export` for a stored design or build options (every format, `guide`, `control` and `order` included) |
 | `view` | serve the viewer for a design |
 | `sim` | a MuJoCo run |
 | `tune` | search phases and parameters |
 | `report` | compare every linkage |
+| `control` | a design's motors, by what drives it: an arm's kinematics and Klipper config, a crank's bus servos' setup and zeroes; `files` writes whichever it needs |
 | `mcp` | the MCP server |
 
 The commands that take a design share options: `--linkage` (Strider by default), `--module`
@@ -1983,7 +2184,11 @@ else `quad`, and the robot for a walker; `single` and one side for a mechanism;
 `--proportion NAME=VALUE`, `--servo`, `--pillar`, `--pin`, `--crank` (by default
 `standoff`, `chicago`, `bolt`; TrotBot's heel and toe `bolt_round`), `--sheet` and
 `--thickness`. Given build options, `build`, `bake`, `explain`, `audit`, `export` and
-`view` resolve them into a design in the store, so they share one stored plan.
+`view` resolve them into a design in the store, so they share one stored plan. Given a
+stored design's id instead (`DESIGN`, from `candidates` or `resolve`), `build`, `guide`,
+`control`, `precision`, `export`, `view` and `sim` take its config as recorded, its
+spec's roles included, and its stored plan (`stages.resolve.load_stored`,
+`stages.planning.plan_stored`).
 
 ### 9.8 The decisions behind it
 
@@ -2435,7 +2640,7 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `walk.py` | 1,047 | the quasi-static walking model | `test_walk.py`, `test_viewer_parity.py` |
 | `server/` | 1,125 | FastAPI app, live reload, `/ws/sim` | `test_walk.py`, `test_view.py`, `test_server_hardening.py`, browser tests |
 | `spec.py` | 920 | Spec v1, targets, validation, schema | `test_spiderpig_api.py` |
-| `api/` | 1,954 | the operations: `reports.py`, `store_ops.py`, `cards.py`, `planning.py`, `walking.py`, `building.py`, `exports.py` | `test_spiderpig_api.py`, `test_seam_reports.py` |
+| `api/` | 1,954 | the operations: `reports.py`, `store_ops.py`, `cards.py`, `planning.py`, `walking.py`, `building.py`, `exports.py` (the maker's formats since 2026-10-14: `control/files.py` writes the controller's) | `test_spiderpig_api.py`, `test_seam_reports.py`, `test_surfaces.py` |
 | `stages/` | 791 | resolve, the stage records, check, plan and `plan_config`, under bake and build (the API re-exports them) | `test_spiderpig_api.py`, `test_spiderpig_store.py` |
 | `design.py` | 386 | the handle, ids, the engine version, `Part` | `test_spiderpig_api.py` |
 | `failure.py` | 274 | failures and patches | `test_spiderpig_api.py` |
@@ -2443,7 +2648,7 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `store.py` | 732 | the store | `test_spiderpig_store.py`, `test_store_concurrency.py` |
 | `mcp/` | 1,555 | the MCP server, jobs, output schemas | `test_spiderpig_mcp.py` |
 | `cli.py`, `view.py` | 80, 335 | the console script (`mise run <command> -- <options>` passes options through); `spiderpig/view.py`: `spiderpig view <design> [--store] [--port] [--open]`, or `spiderpig view --linkage ... --pin bolt` (the build options, resolved into the store) | `test_view.py` |
-| `tools/` | 2,224 | `spiderpig/tools/*.py`: audit, tune (`spiderpig/tools/tune.py`), sim (`spiderpig/tools/sim_walk.py`), export, report, the build profiler (`spiderpig/tools/build_profile.py`), development servers | `test_view.py`, `test_walk.py`, `test_sim.py`, `test_seam_tools.py` |
+| `tools/` | 2,224 | `spiderpig/tools/*.py`: audit, tune (`spiderpig/tools/tune.py`), sim (`spiderpig/tools/sim_walk.py`), export, candidates (`spiderpig/tools/candidates.py`, 2026-10-14), report, the build profiler (`spiderpig/tools/build_profile.py`), development servers | `test_view.py`, `test_walk.py`, `test_sim.py`, `test_seam_tools.py` |
 | `viewer/src/` | 3,018 | the three.js viewer; the drive model in `drive/` | `tests/e2e/`, vitest |
 | `tests/_ctx.py` | 118 | hand-made planner and construction contexts for the seam tests | `tests/test_seam_*.py` |
 | `tests/cache.py`, `tests/tiers.py` | 624, 88 | the suite's fabrication cache; a heavy check's cheap quick-tier case | the tiers |

@@ -295,8 +295,8 @@ def test_a_store_from_another_engine_reverifies_the_plan_and_rebuilds_the_rest(
     pr = api.plan(d)
     api.attach_build(d, side("single", 1.0), 1.0)
     real = d.engine_version
-    # (load reads it in api.store_ops, resolve in stages.resolve)
-    monkeypatch.setattr(api.store_ops, "engine_version", lambda: "0.0.0+fake")
+    # (load and resolve read it in stages.resolve; load keeps its old import path)
+    assert api.store_ops.load is api.load is stages_resolve.load
     monkeypatch.setattr(stages_resolve, "engine_version", lambda: "0.0.0+fake")
 
     solved = _count(monkeypatch, stages_planning, "design_side")
@@ -358,6 +358,37 @@ def test_a_stored_plan_that_no_longer_holds_is_solved_again(tmp_path, design, mo
     assert got.reused is None
     assert not back.log[-1]["cached"]
     assert json.loads(path.read_text())["layers"] == pr.layers
+
+
+def test_a_stored_plan_keeps_the_budget_it_was_searched_under(tmp_path, design, monkeypatch):
+    """The planner's CPU budget (``SPIDERPIG_PLAN_SECONDS``) is outside the design's id, so
+    the plan record keeps the one its search had: a reused plan reports the record's, says
+    so when this process's differs, and a record from before the field says it can't tell."""
+    from spiderpig import stack
+
+    design("single")
+    store = Store(tmp_path)
+    d = api.resolve(KLANN_SINGLE, store)
+    pr = api.plan(d)
+    assert pr.budget_s == stack.StackSpec().max_seconds
+    path = store.report_path(d.id, "plan")
+    doc = json.loads(path.read_text())
+    assert doc["budget_s"] == pr.budget_s
+    assert doc["budget_recorded"] is True
+
+    doc["budget_s"] = other = pr.budget_s + 1234.0 if pr.budget_s else 1234.0  # another
+    path.write_text(json.dumps(doc))
+    solved = _count(monkeypatch, stages_planning, "design_side")
+    got = api.plan(api.load(d.id, store))
+    assert solved == []
+    assert (got.reused, got.layers, got.budget_s) == ("store", pr.layers, other)
+    assert any(f"{other:g} CPU-s planner budget" in w for w in got.warnings)
+
+    del doc["budget_s"]                              # a record from before it was kept
+    path.write_text(json.dumps(doc))
+    got = api.plan(api.load(d.id, store))
+    assert (got.reused, got.budget_s, got.budget_recorded) == ("store", None, False)
+    assert api.load(d.id, store).id == d.id          # the budget never names the design
 
 
 # ---------------------------------------------------------------------------

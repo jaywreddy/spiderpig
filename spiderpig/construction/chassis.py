@@ -197,7 +197,7 @@ class ServoFrame:
 
 
 def servo_frame(build: Build, drive) -> ServoFrame:
-    """The left servo's frame (the side's own servo) for ``drive`` (a :class:`DriveGroup`)."""
+    """The left servo's frame (the side's own servo) for ``drive`` (a :class:`ServoDrive`)."""
     u = np.asarray(drive.direction(build), dtype=float)
     u = u / np.linalg.norm(u)
     o = build.xy("O")

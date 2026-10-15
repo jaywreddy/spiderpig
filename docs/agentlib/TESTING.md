@@ -42,8 +42,12 @@ used other xdist workers or ran at loads over 2x apart, then every delta. CPU is
 workers included). The baseline is `docs/agentlib/scorecard-baseline.json`.
 
 CI (`.github/workflows/ci.yml`: pushes to master and every PR, read-only token, a newer
-run of a ref cancels the older): ruff (W6's extended rules), pyright's ratchet (`mise run pyright-check`:
-the count against `tests/pyright-baseline.json`, which only goes down; `-- --update` lowers it),
+run of a ref cancels the older; `SPIDERPIG_PLAN_SECONDS=3600` for every job, as the gate's:
+the node budgets alone bound a search, so a plan doesn't depend on the runner's speed): ruff
+(W6's extended rules), pyright's ratchet (`mise run pyright-check`: `[tool.pyright]` covers
+`spiderpig/` and `tests/`, each on its own count in `tests/pyright-baseline.json` (the
+package's at the top, the tests' under `"tests"`, hundreds when they were added on
+2026-10-14), neither of which may rise; `-- --update` lowers them),
 `uv lock --check`, the viewer's typecheck + vitest,
 the quick tier (`-n 4`, `SPIDERPIG_OFFLINE=1`; node and the viewer's packages installed with
 `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, so a viewer test that would skip fails; the fabrication
@@ -53,12 +57,33 @@ new engine starts empty), `lint-imports`, and the doc check with `--strict` (blo
 since W7). `.pre-commit-config.yaml` runs ruff and
 `uv lock --check` (opt-in: `uvx pre-commit install`).
 
+**The slow tier on a PR** (opt-in, the `slow` job of `ci.yml`): `-m "slow and not e2e" -n 4`,
+set up as the nightly's (node, `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, the fabrication cache
+under its own key, starting from the nightly's or the quick job's entries for the same
+engine). It runs when
+
+- the PR carries the label `slow`: adding it starts a run at once (the workflow listens
+  for `labeled`), and every push runs it again while the label stays (`gh pr edit N
+  --add-label slow`). Removing the label starts nothing (`unlabeled` isn't a trigger): the
+  later pushes skip the slow tier, and a run already going goes on until it ends or is
+  cancelled (`gh run cancel RUN`). Adding any other label re-runs the cheap jobs too
+  (none of them is ever skipped, so a skipped check can't stand in for a failed one), in a
+  concurrency group of its own: it never cancels the in-flight run, slow tier and all, nor
+  starts the slow tier again;
+- or on a manual run of the workflow: Actions > CI > Run workflow on a branch, or
+  `gh workflow run ci.yml --ref BRANCH` (every job, the slow tier among them).
+
+It takes about as long as the nightly's (up to 4 h on a cold cache; its timeout). The
+browser tests and the gate's determinism check stay nightly-only.
+
 Nightly (`.github/workflows/nightly.yml`: 06:17 UTC on master, and `workflow_dispatch`):
 the slow tests (`-m "slow and not e2e" -n 4`, with node and
 `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`), the browser tests (`mise run viewer-build`, Playwright's
 Chromium, `-m e2e`; `SPIDERPIG_SHOTS` screenshots kept as an artifact) and the identity
 gate as a determinism check: CI has no baseline, so it snapshots the tree twice, each in a
-fresh store, and `compare` must say identical. Each job keeps the fabrication cache under
+fresh store, and `compare` must say identical (and every design pass its audit: a first
+snapshot whose audit fails, exit 3, still goes on to the compare, then fails the job).
+Each job keeps the fabrication cache under
 its own key, starting from the quick job's entries for the same engine.
 
 `mise run doc-check` (`tests/doc_check.py`) resolves every backticked dotted name, path,
@@ -266,6 +291,7 @@ mise run gate -- compare /tmp/gate/before       # on the branch: snapshots again
 mise run gate -- diff A B                       # two snapshots
 mise run gate -- compare DIR --designs klann_quad -j 1
 mise run gate -- doc DIR                        # docs/agentlib/DESIGNS.md from a snapshot
+mise run gate -- audit DIR                      # every design of a snapshot passes its audit
 ```
 
 `doc` writes `docs/agentlib/DESIGNS.md`, the one source of the designs' numbers (layers,
@@ -307,14 +333,33 @@ differs** (1: a DXF's entities in another order or a closed outline from another
 vertex, bodies reordered, a text file's lines reordered, a part's faces/edges counted
 otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged) — a
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
-within 1e-9 relative / 1e-6 mm.
+within 1e-9 relative / 1e-6 mm. Then every design's own audit (2026-10-14): a design whose
+audit has a problem is listed (`FAILS ITS AUDIT`) and the exit status is 3 where it would
+have been 0, unless `KNOWN_AUDIT_FAILURES` says why it fails (the demo `klann` quad's long
+pins, the user's call: a known failure is listed, and one that passes is reported for the
+table to lose it); with an identity difference too, `compare` exits 4 (order differs) or
+5 (DIFFERENT), so neither verdict hides the other (`identity_gate.exit_status`); `mise run gate -- audit DIR` checks a snapshot alone, and the slow
+`tests/test_gate_audits.py` runs the eight audits (a known failure a strict `xfail`).
 
-**Baseline** (the merged walkers-and-arm platform, `77c117c`, 2026-10-14: eight designs, the
+**Current baseline** (the merged walkers-mechanisms-and-arm engine after review round 2,
+2026-10-14): `~/.cache/spiderpig/gate/platform-814096d/`, from which DESIGNS.md is
+generated; compare against it: `mise run gate -- compare
+~/.cache/spiderpig/gate/platform-814096d`. It differs from `platform-9aae3e3` (kept) by the
+two mechanisms' BOMs alone (their controller unnamed is `none`: the kit's lines gone, the
+torque-limit note added). `platform-9aae3e3` differs from `platform-78e35e8` (kept) in BOMs
+and audits only, no part, plan or DXF moved: the cutting model's cut-length term (every
+design), the walkers' foot rows, a mechanism's controller kit and its jam rating at its
+torque limit, the arms' MJCF out of the URDF folder. `platform-78e35e8` differs from
+`platform-5396098` (kept) by
+`palletizer_turret` alone: the approved arm's pivots and links' sheets, its audit passing
+(DECISIONS.md 2026-10-14, wave 2); the other seven identical.
+
+**Earlier baseline** (the merged walkers-and-arm platform, `77c117c`, 2026-10-14: eight designs, the
 user's approved arm `palletizer_reach` among them): `~/.cache/spiderpig/gate/platform-77c117c/`
 on the development box (`/root/.cache/...`), one `<design>.json` per design, their logs and
 `snapshot.json` (commit, branch, time; its walkers snapshotted at `982e67b`, which `77c117c`
 leaves alone). Compare against it from any worktree whose `spiderpig/` should match its
-output: `mise run gate -- compare ~/.cache/spiderpig/gate/platform-77c117c`. It differs from
+output (historically): `mise run gate -- compare ~/.cache/spiderpig/gate/platform-77c117c`. It differs from
 `platform-379ad7e` (kept) by every walker's spacers (stock tubes and shims, no printed
 ones) and honest BOM prices, `palletizer_turret` on the `mt4_compact` turret (the pruning),
 and `palletizer_reach`'s cut-rule fixes and `b4`'s hubs (DECISIONS.md 2026-10-14); from

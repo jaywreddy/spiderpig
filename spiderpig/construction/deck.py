@@ -1,5 +1,7 @@
 """The electronics deck: a laser-cut plate between the two inner frame plates, above the
-servos, carrying the robot's electronics (:mod:`hardware.electronics`, option 1).
+servos, carrying the robot's electronics (:mod:`hardware.electronics`, option 1): the role
+``controller``'s deck kit (:data:`actuators.controllers.DECK_KIT`, a walker's default); with
+the role emptied (your own electronics) the deck is bare (:func:`deck_parts`' ``kit``).
 
 Where it is and why
 -------------------
@@ -95,7 +97,7 @@ from dataclasses import dataclass, replace
 
 from build123d import Axis, Box, Cylinder, Part, Pos, scale
 
-from spiderpig.construction.base import Build, ConstructionError, Context
+from spiderpig.construction.base import Build, ConstructionError, Context, stock_length
 from spiderpig.construction.chassis import (
     MODEL_GAP,
     STEEL,
@@ -106,8 +108,7 @@ from spiderpig.construction.chassis import (
     tie_points_ctx,
 )
 from spiderpig.hardware.bom import BomLine
-from spiderpig.hardware.catalog import get, pick_length
-from spiderpig.hardware.electronics import HV_WARNING
+from spiderpig.hardware.catalog import get
 from spiderpig.hardware.fasteners import CLEARANCE, screw
 from spiderpig.materials import sheet
 from spiderpig.mechanism import Body
@@ -145,7 +146,7 @@ RAIL_SCREW_L = 8.0       # the rail's bore past its plate face (the screw's tip 
 def rail_screw_length(t_plate: float) -> float:
     """The shortest stock button head through an inner plate ``t_plate`` thick and the whole
     nut in its trap (and 0.3 mm past it): 8 mm on the 0.080 in frame, 10 on 0.125 in."""
-    return pick_length(t_plate + NUT_DEPTH + RAIL_NUT_H + 0.3, RAIL_SCREW.lengths)
+    return stock_length(RAIL_SCREW, t_plate + NUT_DEPTH + RAIL_NUT_H + 0.3, "deck: the rail")
 STANDOFF_AF = 5.0
 BOARD_X0 = 1.0           # the board's inner end, from x_c
 JACK_PROUD = 0.9         # the board's DC jack past its front end (Waveshare's STEP model)
@@ -361,7 +362,7 @@ def deck_nut(lay: DeckLayout) -> dict:
     nut = get("m3_nut").dims
     af, h = float(nut.get("af", RAIL_NUT_AF)), float(nut.get("h", RAIL_NUT_H))
     y1 = lay.deck_y - NUT_ROOF - NUT_FIT
-    length = pick_length(lay.pitch + NUT_ROOF + NUT_FIT + h + 0.3, DECK_SCREW.lengths)
+    length = stock_length(DECK_SCREW, lay.pitch + NUT_ROOF + NUT_FIT + h + 0.3, "deck")
     return {"af": af, "h": h, "y0": y1 - h, "y1": y1, "screw_l": length}
 
 
@@ -548,14 +549,18 @@ def _charger_place(lay: DeckLayout, ch: dict, yu: float, obstacles: Sequence[Box
 
 
 def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
-               obstacles: Sequence[Box6] = ()
+               obstacles: Sequence[Box6] = (), kit: bool = True
                ) -> tuple[list[Body], list[BomLine], dict, list[tuple[str, str]]]:
     """The rails, their nuts, screws, deck plate and electronics (world coordinates): bodies,
     the purchases they don't model, what ``mech.meta["deck"]`` says, and the fastened
     pairs. ``obstacles``: the boxes of the static parts between the inner plates (the
     chassis', the pillars' inner heads), which the deck must lower past: the plate is
     notched round them (:func:`path_notches`) and the charger steps back from the front
-    edge; another lowered part in one's way is a :class:`ConstructionError`."""
+    edge; another lowered part in one's way is a :class:`ConstructionError`. ``kit``: the
+    electronics the deck is drawn for (the role ``controller``'s
+    :data:`actuators.controllers.DECK_KIT`: :func:`_electronics`); without them (the role
+    emptied: your own electronics) the deck is bare: the plate on its rails, its screw
+    holes, wire and cable-tie slots and notches only (``electronics: False``)."""
     lay = layout(design, z_mid, place)
     lay = replace(lay, nut_z=nut_z(lay, path_notches(lay, obstacles),
                                    sheet(design.config.sheet).min_edge))
@@ -611,20 +616,54 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
     cuts: list[Part] = [_cyl_y(x, z, CLEARANCE["3"] / 2, yd - 1, yt + 1)
                         for x, z in lay.screws()]
     board = lay.board()
-    cuts += [_cyl_y(x, z, CLEARANCE["2p5"] / 2, yd - 1, yt + 1) for x, z in board["holes"]]
+    if kit:
+        cuts += [_cyl_y(x, z, CLEARANCE["2p5"] / 2, yd - 1, yt + 1) for x, z in board["holes"]]
     ties = [((x + s * _tie_dx(), z), CABLE_TIE_SLOT)
             for x, z in lay.wire_slots() for s in (-1, 1)]
-    for (x, z), (a, b) in ([(c, STRAP_SLOT) for c in lay.strap_slots()]
+    for (x, z), (a, b) in ([(c, STRAP_SLOT) for c in lay.strap_slots() if kit]
                            + [(c, WIRE_SLOT) for c in lay.wire_slots()] + ties):
         cuts.append(_box(x - a / 2, x + a / 2, yd - 1, yt + 1, z - b / 2, z + b / 2))
-    sx, sz = lay.switch()
-    sw = get("toggle_mts102").dims
-    cuts.append(_cyl_y(sx, sz, sw["hole_d"] / 2, yd - 1, yt + 1))
-    cuts += [_cyl_y(x, z, CLEARANCE["3"] / 2, yd - 1, yt + 1) for x, z in lay.cradle_ears()]
+    if kit:
+        sx, sz = lay.switch()
+        sw = get("toggle_mts102").dims
+        cuts.append(_cyl_y(sx, sz, sw["hole_d"] / 2, yd - 1, yt + 1))
+        cuts += [_cyl_y(x, z, CLEARANCE["3"] / 2, yd - 1, yt + 1) for x, z in lay.cradle_ears()]
     cuts += [_box(nx0, nx1, yd - 1, yt + 1, nz0, nz1) for nx0, nx1, nz0, nz1 in notches]
     plate = plate - union(cuts)
     bodies.append(Body(name="deck_plate", part=plate, rigid_with=host["L"], fab="laser",
                        color=DECK_COLOR))
+    charger = (_electronics(lay, board, host, obstacles, bodies, extras, fastened)
+               if kit else None)
+    blocked = _blocked_boxes(bodies, obstacles)
+    if blocked:
+        a, b = blocked[0]
+        raise ConstructionError(f"the deck can't be lowered onto its rails: {a} meets "
+                                f"{b} on the way down")
+    info = {"fitted": True, "x_c": rounded(lay.x_c, 2), "deck_y": rounded(yd, 2),
+            "rail_y": rounded(lay.rail_y0, 2), "plate_mm": [2 * HALF_LEN, rounded(2 * hw, 2)],
+            "screw": key, "spigot_x": place.spigot_x, "nut_z": lay.nut_z,
+            "notches": [[rounded(v, 2) for v in n] for n in notches]}
+    if charger is None:
+        info["electronics"] = False
+    else:
+        cx1, cz0, cz1, pad = charger
+        info.update({"charger_setback_mm": rounded(lay.x_c + HALF_LEN - cx1, 2),
+                     "charger_z_mm": [rounded(cz0, 2), rounded(cz1, 2)],
+                     "charger_pad_mm": rounded(pad, 2)})
+    info["top_y"] = rounded(max(b.part.bounding_box().max.Y for b in bodies), 2)
+    return bodies, extras, info, fastened
+
+
+def _electronics(lay: DeckLayout, board: dict, host: dict[str, str],
+                 obstacles: Sequence[Box6], bodies: list[Body], extras: list[BomLine],
+                 fastened: list[tuple[str, str]]) -> tuple[float, float, float, float]:
+    """The deck's electronics (:data:`actuators.controllers.DECK_KIT`: the board on its
+    standoffs, the battery in its cradle, the charger, the protection board, the switch and
+    the harness's lines), added to ``bodies``, ``extras`` and ``fastened``: the charger's
+    ``(x1, z0, z1, pad)``."""
+    yd, yt = lay.deck_y, lay.deck_top
+    sx, sz = lay.switch()
+    sw = get("toggle_mts102").dims
 
     # the driver board on its standoffs
     so, nut, bs = (get(k).dims for k in ("m25_nylon_standoff_mf_6", "m25_nylon_nut",
@@ -674,7 +713,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
     # button head from above through each ear and the deck, an M3 nut under the deck
     nut_d = get("m3_nut").dims
     nut_af, nut_h = float(nut_d.get("af", RAIL_NUT_AF)), float(nut_d.get("h", RAIL_NUT_H))
-    ear_len = pick_length(EAR_H + lay.pitch + nut_h + 0.5, CRADLE_SCREW.lengths)
+    ear_len = stock_length(CRADLE_SCREW, EAR_H + lay.pitch + nut_h + 0.5, "deck: the cradle")
     ye = yt + EAR_H
     for i, (ex, ez) in enumerate(lay.cradle_ears()):
         side = 1.0 if ez > 0 else -1.0
@@ -764,19 +803,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                BomLine("resistor_33k", 1, "battery divider (bottom)"),
                BomLine("xt30_pigtail_pair", 1, "battery lead to the protection board"),
                BomLine("dc_plug_5521_pigtail", 1, "switched battery to the board's DC jack")]
-    blocked = _blocked_boxes(bodies, obstacles)
-    if blocked:
-        a, b = blocked[0]
-        raise ConstructionError(f"the deck can't be lowered onto its rails: {a} meets "
-                                f"{b} on the way down")
-    info = {"fitted": True, "x_c": rounded(lay.x_c, 2), "deck_y": rounded(yd, 2),
-            "rail_y": rounded(lay.rail_y0, 2), "plate_mm": [2 * HALF_LEN, rounded(2 * hw, 2)],
-            "screw": key, "spigot_x": place.spigot_x, "nut_z": lay.nut_z,
-            "notches": [[rounded(v, 2) for v in n] for n in notches],
-            "charger_setback_mm": rounded(lay.x_c + HALF_LEN - cx1, 2),
-            "charger_z_mm": [rounded(cz0, 2), rounded(cz1, 2)], "charger_pad_mm": rounded(pad, 2),
-            "top_y": rounded(max(b.part.bounding_box().max.Y for b in bodies), 2)}
-    return bodies, extras, info, fastened
+    return cx1, cz0, cz1, pad
 
 
 def _rect_dist(p, x0, x1, y0, y1) -> float:
@@ -864,7 +891,7 @@ def deck_clearance(mech) -> dict:
     (``overlapping``). ``blocked``: what stops the deck going in (:func:`deck_path`, the
     assembly's way down onto the rails). ``ok`` is all of it. The rails' screws are left
     out of the moving-part check: they come up through the inner plate from the leg side,
-    and their heads are the drive group's claims (:meth:`servos.mount.DriveGroup.claims`),
+    and their heads are the drive group's claims (:meth:`servos.mount.ServoDrive.claims`),
     which the planner keeps clear of every moving part in XY over the cycle wherever they
     sit, in the gap under the plate or sunk into the layer there (the plan's ``heads``)."""
     by_name = {b.name: b for b in mech.bodies}
@@ -907,16 +934,17 @@ def deck_clearance(mech) -> dict:
 
 
 DECK_EXTRAS = ("lipo_strap_10mm", "foam_tape")
-HARNESS = ("resistor_100k", "resistor_33k", "xt30_pigtail_pair", "dc_plug_5521_pigtail")
-"""The deck's bought lines that are no body's (:func:`deck_parts`), by the step they're for."""
+"""The deck's bought lines that are no body's (:func:`deck_parts`) its own step takes (the
+harness's: the controller's wiring step, :attr:`actuators.controllers.Controller.wiring_extras`)."""
 
 
 def assembly(view) -> list:
     """How the deck goes on (:mod:`construction.assembly`): each rail on its inner plate
     with the side (its screws from the leg side, nuts in the rail, the deck's captive nuts
     slid into it); the electronics fitted to the deck on the bench; the deck lowered straight down
-    between the inner plates onto the rails and screwed down. ``view``: a ``RobotView``."""
-    from spiderpig.construction.assembly import DECK, SIDES, UNIT, WIRING, Op, whole
+    between the inner plates onto the rails and screwed down. The harness is the controller's
+    wiring step (:func:`construction.assembly.controller_ops`). ``view``: a ``RobotView``."""
+    from spiderpig.construction.assembly import DECK, SIDES, UNIT, Op, whole
 
     ops = []
     for s in SIDES:
@@ -928,21 +956,20 @@ def assembly(view) -> list:
                           "their hex pockets through the slots in the rail's bay face "
                           "(captive: the deck's screws thread into them).", "rail", side=s))
     kit = view.named(r"deck_(?!screw\d)\w+")
-    if kit:
+    board = bool(view.named(r"deck_board"))       # the electronics (else a bare deck)
+    if kit and board:
         ops.append(Op(DECK, (0,), whole(*kit), "Deck electronics, on the bench",
                       "The board on its nylon standoffs; the battery cradle screwed down "
                       "(two M3 button heads through its ears, nuts under the deck), the "
                       "battery strapped in; the charger and the protection board under the "
                       "deck on foam tape; the switch; wires tied down through the cable-tie "
                       "slots.", "electronics", sub=True, extras=DECK_EXTRAS))
-    if kit:     # the harness (deck_parts' lines): wired before the deck goes in
-        ops.append(Op(WIRING, (0,), (), "Bus cables and harness",
-                      "The harness: the XT30 pigtail from the battery's lead to the protection "
-                      "board, the DC plug pigtail from the switch to the board's DC jack, and "
-                      "the battery divider (the 100k resistor from the switched battery to an "
-                      "ESP32 ADC pin, the 33k from that pin to ground). " + HV_WARNING,
-                      "wiring",
-                      extras=HARNESS))
+    elif kit:
+        ops.append(Op(DECK, (0,), whole(*kit), "Deck plate, on the bench",
+                      "The bare deck (the role controller none: your own electronics): fit "
+                      "them to the plate, each servo's bus cable up through a wire slot, "
+                      "wires tied down through the cable-tie slots.", "electronics",
+                      sub=True))
     screws = view.named(r"deck_screw\d+")
     if screws:
         ops.append(Op(DECK, (1,), whole(*screws), "Deck onto the rails",

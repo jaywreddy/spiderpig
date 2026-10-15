@@ -1,4 +1,7 @@
-"""Catalog data: the electronics the deck carries (:mod:`construction.deck`).
+"""Catalog data: the electronics the deck carries (:mod:`construction.deck`): the role
+``controller``'s ``esp32_bus_servo`` (:mod:`actuators.controllers`), an STS3215 walker's
+default; and the U2D2 and its power hub, ``u2d2_dynamixel``, a DYNAMIXEL walker's (bought as
+lines, the deck bare; at the end of this module).
 
 Option 1 of the electronics review (2026-10-03): a Waveshare "Servo Driver with ESP32"
 (drives both STS3215s over their serial bus), a 2S 450 mAh LiPo, an IP2326 2S USB-C
@@ -177,4 +180,32 @@ register(
          dims={"af": 5.0, "h": 2.0, "mass_g": 0.05}),
     Item("m25_nylon_screw_6", "M2.5 x 6 mm nylon pan head screw", "fastener", (_KIT,),
          dims={"d": 2.5, "length": 6.0, "head_d": 5.0, "head_h": 1.7, "mass_g": 0.05}),  # ISO 7045
+)
+
+# A DYNAMIXEL walker's controller (the role ``controller``'s ``u2d2_dynamixel``, the default
+# where the servo speaks DYNAMIXEL protocol 2.0: actuators.controllers.BUS_DEFAULTS): ROBOTIS's
+# USB interface and its power hub, from robotis.us's product pages read 2026-10-14 (no login,
+# no bot check; both shown sold out that day) and the e-manual.
+_ROBOTIS = "robotis.us product page read 2026-10-14 (shown sold out that day)"
+register(
+    Item("u2d2", "ROBOTIS U2D2 (USB-C to DYNAMIXEL TTL 3-pin / RS-485 4-pin)", "electronics",
+         (Offer("ROBOTIS America", "https://www.robotis.us/u2d2/", "902-0132-000",
+                price_usd=36.92, verified=True, note=_ROBOTIS),
+          Offer("ROBOTIS e-manual", "https://emanual.robotis.com/docs/en/parts/interface/u2d2/",
+                verified=True, note="9,600 to 6,000,000 bps; it does not power the servos")),
+         dims={"length": 48.0, "width": 18.0, "height": 14.6, "mass_g": 9.0},
+         notes="A USB serial interface: the computer on its USB-C runs the walk (and "
+               "spiderpig control's setup); the servos' power comes through the power hub. "
+               "Cables to the servos in the box."),
+    Item("u2d2_power_hub_set", "ROBOTIS U2D2 Power Hub Board Set (3.5-24 V in, 10 A)",
+         "electronics",
+         (Offer("ROBOTIS America", "https://www.robotis.us/u2d2-power-hub-board-set/",
+                "902-0145-001", price_usd=21.85, verified=True, note=_ROBOTIS),
+          Offer("ROBOTIS e-manual",
+                "https://emanual.robotis.com/docs/en/parts/interface/u2d2_power_hub/",
+                verified=True, note="3.5-24 V, 10 A; joined to the U2D2 by 3P / 4P cables")),
+         dims={"length": 57.0, "width": 48.0},
+         notes="The U2D2 not included. Puts the supply on the servos' bus (a terminal block or "
+               "a 2P plug): your own supply at the servo's voltage (XL330 5 V, XL430 11.1-12 V; "
+               "spiderpig.servos)."),
 )

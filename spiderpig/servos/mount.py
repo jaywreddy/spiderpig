@@ -9,7 +9,7 @@ Where the horn's outer face ends up inside the plate (a horn recessed into
 its case, like the XL430's), a printed **horn spacer** under the horn brings
 the coupling face down to the plate's bottom face; the crank's horn screws
 pass through it. The horn is turned on its spline so its holes sit between
-the crank webs (:meth:`DriveGroup.pattern_angle`).
+the crank webs (:meth:`ServoDrive.pattern_angle`).
 
 The plate gets the horn clearance hole, the front mounting-screw holes and a
 cut-out under every raised region of the servo's front face; the frame plate
@@ -17,7 +17,7 @@ grows a pad under the servo's footprint.
 
 **Mounting screws** go up through the plate into the servo's front face, so
 their heads sit under the plate, inside the leg stack. Only the front holes
-whose heads clear the crank hub are used (:meth:`DriveGroup.front_screws`;
+whose heads clear the crank hub are used (:meth:`ServoDrive.front_screws`;
 in the robot the rear face is screwed to the centre plates as well), and the
 drive group claims their heads: fixed points ``servo.screw<i>`` are added to
 the side's geometry, with a disc per head in the layer(s) under the plate
@@ -51,12 +51,12 @@ from spiderpig.construction.base import (
     hardware,
 )
 from spiderpig.hardware.fasteners import SIZES, Screw, parse, screw, screw_solid
+from spiderpig.servos import MIN_SPACER
 from spiderpig.servos.model import cad_state, cut_each, horn_part, servo_part
 from spiderpig.servos.spec import MountHole, ServoSpec
 from spiderpig.shapes import Cut, Rect, Shape3D, disc, moved
 from spiderpig.stack import Claim, Disc, Layout, Placed
 
-MIN_SPACER = 1.0          # thinnest printed horn spacer worth making (mm)
 RELIEF_CUT_GROW = 0.0     # a front relief's cut-out past its rectangle, per side (mm): none
 #                           since the assembly audit of 2026-10-04 (0.25 before): the STS3215's
 #                           panel rectangle already holds both models ([SO] |y| <= 7.0,
@@ -108,7 +108,7 @@ def _key(xy, u, z) -> tuple:
 
 @lru_cache(maxsize=64)
 def _placed_servo(spec: ServoSpec, key: tuple, state: tuple = ()):
-    """The servo in the world, cut back to what stands on the plate (see ``DriveGroup.realize``).
+    """The servo in the world, cut back to what stands on the plate (see ``ServoDrive.realize``).
     ``state``: the model in play (:func:`servos.model.cad_state`), so a switch or a
     download mid-process isn't served the earlier one."""
     ox, oy, ux, uy, plate_top = key
@@ -124,7 +124,7 @@ def _placed_servo(spec: ServoSpec, key: tuple, state: tuple = ()):
     return part
 
 
-class DriveGroup(Group):
+class ServoDrive(Group):
     """One servo on the inner frame plate."""
 
     name = GROUP
@@ -203,16 +203,19 @@ class DriveGroup(Group):
         return best
 
     def interface(self, ctx: Context) -> DriveInterface:
-        inputs = linkage.get(ctx.config.linkage).inputs
-        if len(inputs) > 1:
+        lk = linkage.get(ctx.config.linkage)
+        inputs = lk.inputs
+        undriven = [k for k in inputs[1:] if k not in lk.drives]
+        if undriven:
             others = [k for k in linkage.available("mechanism")
                       if len(linkage.get(k).inputs) == 1]
             raise ConstructionError(
                 f"{ctx.topo.name}: the drive turns one input, the crank at O (one servo); "
                 f"{ctx.config.linkage} has {len(inputs)} ({', '.join(inputs)}), and a drive "
-                f"for {', '.join(inputs[1:])} isn't built: a limit of v1 (one servo per "
+                f"for {', '.join(undriven)} isn't built: a limit of v1 (one servo per "
                 f"machine), not of this spec, so no change to it helps; a one-input mechanism "
-                f"builds ({', '.join(others)})")
+                f"builds ({', '.join(others)}) (a second input that declares its drive, "
+                f"Linkage.drives, gets a stepper's JointDrive)")
         s, h = self.spec, self.spec.horn
         t = self.spacer(ctx)
         head = screw("shcs", SIZES.get(h.pattern.thread, "3"))    # an ISO 4762 head, or larger
@@ -349,8 +352,10 @@ class DriveGroup(Group):
 
         out = []
         lk = getattr(ctx.config, "lk", None)
-        if lk is not None and lk.kind != "walker":
-            return out          # a mechanism is one side: no chassis
+        from spiderpig.config import robot_layout
+
+        if lk is not None and robot_layout(lk) != "mirrored_pair":
+            return out          # no chassis between two sides: a mechanism, an arm
         try:
             d = tie_dims(ctx)
             for i, xy in enumerate(tie_points_ctx(ctx)):

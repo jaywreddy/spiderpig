@@ -142,3 +142,59 @@ DEFAULT = "nema17_17hs4401"
 
 def step_angle_rad(spec: StepperSpec) -> float:
     return math.radians(spec.step_deg)
+
+
+NOMINAL_RPM = 300.0
+"""A stepper's speed (rpm) the joints' velocity limits assume (the URDF's ``velocity``)."""
+
+
+@dataclass(frozen=True)
+class JointRating:
+    """A stepped joint's motor seen at the joint through its reduction ``ratio``: its
+    holding torque (``effort``, N·m), its speed at :data:`NOMINAL_RPM` (``velocity``,
+    rad/s), its rotor's inertia (``armature``, kg·m²: ratio²) and holding stiffness
+    (``stiffness``, N·m/rad: ratio², :meth:`StepperSpec.error_terms`'). What the URDF's
+    limits and the MuJoCo model's position actuators both read."""
+
+    motor: str
+    ratio: float
+    effort: float
+    velocity: float
+    armature: float
+    stiffness: float
+
+
+def rating(motor: str, ratio: float) -> JointRating | None:
+    """:class:`JointRating` of stepper ``motor`` through ``ratio`` (``None``: not a
+    stepper of :data:`STEPPERS`, or no reduction)."""
+    m = STEPPERS.get(motor)
+    if m is None or ratio <= 0:
+        return None
+    return JointRating(motor, ratio, m.holding_nm * ratio,
+                       NOMINAL_RPM / 60.0 * 2 * math.pi / ratio,
+                       m.rotor_g_cm2 * 1e-7 * ratio * ratio,
+                       m.holding_stiffness_nm_per_rad * ratio ** 2)
+
+
+def joint_ratings(meta) -> dict[str, JointRating]:
+    """``joint -> JointRating`` of each stepper-driven joint a fabricated design's ``meta``
+    names: its drives' inputs (``meta["drive"]``: each transmission's motor and ratio), a
+    turret's turntable ``q1`` (``meta["turret"]``) and a tool's wrist ``q4`` (direct). A
+    walker's servos are not steppers: none."""
+    out: dict[str, JointRating] = {}
+
+    def rate(name: str, motor: str, ratio: float) -> None:
+        r = rating(motor, ratio)
+        if r is not None:
+            out[name] = r
+
+    for d in (meta.get("drive") or {}).values():
+        if isinstance(d, dict) and {"input", "motor", "ratio"} <= set(d):
+            rate(d["input"], d["motor"], float(d["ratio"]))
+    tu = meta.get("turret")
+    if tu:
+        rate("q1", tu["motor"], float(tu["ratio"]))
+    tool = meta.get("tool")
+    if tool and tool.get("wrist"):
+        rate("q4", tool["wrist"], 1.0)
+    return out

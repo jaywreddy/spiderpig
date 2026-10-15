@@ -111,7 +111,8 @@ markers = [
 # compiled extensions without stubs (OCP, mujoco) get typings/: their names are Any, which
 # silences their noise without turning a rule off anywhere else.
 [tool.pyright]
-include = ["spiderpig"]
+# the tests too (2026-10-14), on a count of their own (tests/pyright_baseline.py)
+include = ["spiderpig", "tests"]
 exclude = ["**/node_modules", "**/__pycache__", "spiderpig/viewer/dist", "build", ".spiderpig"]
 stubPath = "typings"
 venvPath = "."
@@ -144,11 +145,12 @@ name = "layers"
 type = "layers"
 # The front-ends may start one another (the MCP's `view` tool runs the viewer's server:
 # `:`, not independent). The strength check rates the joints at the sim's loads, so it
-# sits over the sim.
+# sits over the sim. The controller's files (`spiderpig.control`) sit beside the guide,
+# under the API, which exports them (2026-10-14: `api.export(design, ["control"])`).
 layers = [
     "spiderpig.mcp : spiderpig.server : spiderpig.cli",
-    "spiderpig.api | spiderpig.control | spiderpig.pose",
-    "spiderpig.bake | spiderpig.build | spiderpig.strength | spiderpig.precision | spiderpig.guide",
+    "spiderpig.api | spiderpig.pose",
+    "spiderpig.bake | spiderpig.build | spiderpig.strength | spiderpig.precision | spiderpig.guide | spiderpig.control",
     "spiderpig.sim | spiderpig.stages | spiderpig.urdf",
     "spiderpig.fabricate",
     "spiderpig.construction",
@@ -167,6 +169,18 @@ name = "the part registries sit under the pipeline"
 type = "forbidden"
 source_modules = ["spiderpig.actuators", "spiderpig.roles", "spiderpig.fabmethods",
                   "spiderpig.repeatability"]
+forbidden_modules = ["spiderpig.fabricate", "spiderpig.sim", "spiderpig.stages",
+                     "spiderpig.urdf", "spiderpig.bake", "spiderpig.build",
+                     "spiderpig.strength", "spiderpig.precision", "spiderpig.guide",
+                     "spiderpig.api", "spiderpig.control", "spiderpig.pose", "spiderpig.mcp",
+                     "spiderpig.server", "spiderpig.cli"]
+
+[[tool.importlinter.contracts]]
+name = "the spec and the task sit under the pipeline"
+# What a design must meet (`spec`) and what a machine is for (`task`) are read by the
+# stages, the API and the front-ends: neither reaches up into what reads it.
+type = "forbidden"
+source_modules = ["spiderpig.spec", "spiderpig.task"]
 forbidden_modules = ["spiderpig.fabricate", "spiderpig.sim", "spiderpig.stages",
                      "spiderpig.urdf", "spiderpig.bake", "spiderpig.build",
                      "spiderpig.strength", "spiderpig.precision", "spiderpig.guide",

@@ -1,4 +1,4 @@
-"""Simulate the walker in MuJoCo and print how it walks.
+"""Simulate a design in MuJoCo: a walker walking, anything else holding its pose.
 
     spiderpig sim                                 # quad, both drives 80 %
     spiderpig sim --module single --seconds 6
@@ -7,6 +7,7 @@
     spiderpig sim --xml build/quad.xml            # + quad.json
     spiderpig sim 1a2b3c4d5e6f7a8b                # a stored design (its exported MJCF if any)
     spiderpig sim --mjcf out/heel/trotbot_heel.xml --linkage trotbot_heel
+    spiderpig sim --linkage palletizer_reach      # an arm: held at its pose under gravity
 
 The design and build options are every other tool's (:mod:`config`:
 ``--linkage``, ``--module``, ``--phases`` in degrees, ``--proportion
@@ -19,6 +20,14 @@ one. Drive speeds are fractions of the servo's no-load speed (``0.8``,
 ``-1``), percentages (``80%``) or crank rpm (``40rpm``); positive walks
 forward. The drives start after ``--settle`` seconds at rest; metrics skip
 the first ``--skip`` seconds.
+
+A design that doesn't walk (an arm, a mechanism: :attr:`linkage.Linkage.walks`) has the
+same model (:mod:`sim.mjcf`), fixed to the world: it is held at its pose under gravity for
+``--seconds`` by its motors (:func:`sim.run.hold`), and the sag of its tool's tip and
+output, its joints' drift, its motors' torques and its loops' closure are printed; a
+cranked one's crank is then turned once at full speed (:func:`sim.run.turn`), its torque
+against the torque limit its servo is set to (exit status 1 when it doesn't hold or the
+crank stalls on it).
 """
 
 from __future__ import annotations
@@ -37,7 +46,14 @@ from spiderpig.config import (
     config_from_args,
 )
 from spiderpig.sim.mjcf import RPM, SimParams, build_mjcf, drive_limits
-from spiderpig.sim.run import compare_with_walk, kinematic_gait, simulate, walk_metrics
+from spiderpig.sim.run import (
+    compare_with_walk,
+    hold,
+    kinematic_gait,
+    simulate,
+    turn,
+    walk_metrics,
+)
 
 
 def parse_speed(text: str, vmax: float) -> float:
@@ -211,21 +227,52 @@ def _contact_sweep(cfg: BuildConfig, params: SimParams, controls, seconds: float
     return {k: [min(r[k] for r in runs), max(r[k] for r in runs)] for k in keys}
 
 
+def _hold_report(cfg: BuildConfig, m: dict, seconds: float) -> None:
+    print(f"{cfg.linkage} ({cfg.lk.kind}{', its robot' if cfg.robot else ', one side'}) held "
+          f"at its pose under gravity for {seconds:g} s by its motors: "
+          + ("HOLDS" if m["holds"] else "DOES NOT HOLD"))
+    for site, mm in m["sag"].items():
+        print(f"  {site:9s} sags {mm:.3f} mm")
+    for name in m["torque"]:
+        print(f"  {name:9s} drifts {m['drift'][name]:.4f} deg, torque {m['torque'][name]:.3f}"
+              f" N·m ({m['torque_fraction'][name] * 100:.0f} % of its limit)")
+    print(f"  model     loop closure error max {m['loop_error']:.3f} mm"
+          + ("" if m["finite"] else "; the state blew up (not finite)"))
+
+
+def _write_xml(path: Path, cfg: BuildConfig, params: SimParams) -> None:
+    xml, meta = build_mjcf(cfg, params)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(xml)
+    path.with_suffix(".json").write_text(json.dumps(meta, indent=1))
+    print(f"wrote {path} and {path.with_suffix('.json')}", file=sys.stderr)
+
+
 def main(argv=None) -> int:
     from spiderpig import servos
 
     args = _args(argv)
     cfg: BuildConfig = args.config
     params = SimParams(friction=args.friction, timestep=args.timestep)
+    if args.xml is not None:
+        _write_xml(args.xml, cfg, params)
+    xml_in, meta_in = args.model or (None, None)
+    if not cfg.lk.walks:            # nothing to walk: held at its pose
+        held = hold(cfg, args.seconds, params=params, model_xml=xml_in, model_meta=meta_in)
+        turned = turn(cfg, params=params, model_xml=xml_in, model_meta=meta_in)  # a crank
+        if args.json:
+            print(json.dumps({"hold": held, "turn": turned}, indent=1))
+        else:
+            _hold_report(cfg, held, args.seconds)
+            if turned is not None:
+                print(f"  turned    one turn at full speed: peak {turned['torque_peak']:.3f} "
+                      f"N·m, mean {turned['torque_mean']:.3f} of its "
+                      f"{turned['torque_limit']:g} N·m torque limit"
+                      + ("" if turned["completed"] else
+                         f"; STALLED at {turned['revolutions']:.2f} of a turn"))
+        return 0 if held["holds"] and (turned is None or not turned["saturates"]) else 1
     vmax, _ = drive_limits(servos.get(cfg.servo))
     left, right = parse_speed(args.left, vmax), parse_speed(args.right, vmax)
-    if args.xml is not None:
-        xml, meta = build_mjcf(cfg, params)
-        args.xml.parent.mkdir(parents=True, exist_ok=True)
-        args.xml.write_text(xml)
-        args.xml.with_suffix(".json").write_text(json.dumps(meta, indent=1))
-        print(f"wrote {args.xml} and {args.xml.with_suffix('.json')}", file=sys.stderr)
-    xml_in, meta_in = args.model or (None, None)
     controls = [(0.0, 0.0, 0.0), (args.settle, left, right)]
     result = simulate(cfg, controls, args.settle + args.seconds, params=params,
                       model_xml=xml_in, model_meta=meta_in)

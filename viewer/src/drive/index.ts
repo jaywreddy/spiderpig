@@ -38,8 +38,10 @@ export interface DriveHost {
   loaded(): LoadedScene | null;
   /** Load the robot baked with design ``query`` ('' = default); rejects with the server's detail. */
   loadRobot(query: string): Promise<void>;
-  /** Load one side (the side-only ``single`` mode) baked with design ``query``. */
-  loadSide(query: string): Promise<void>;
+  /** Load a linkage picked in the linkage picker that has no feet (an arm, a mechanism): its
+   * views on offer (``/api/modes?linkage=``), its default one loaded with the tune panel's
+   * design. */
+  loadLinkage(key: string): Promise<void>;
   status(text: string): void;
   seek(t: number): void;
   reframe(): void;

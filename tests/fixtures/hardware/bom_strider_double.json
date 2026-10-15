@@ -1,34 +1,38 @@
 {
  "data": {
-  "cost_usd": 418.03000000000003,
+  "cost_usd": 428.69,
   "cuts": [],
   "cutting": [
    {
-    "area_cm2": 421.1,
+    "area_cm2": 421.2,
+    "cut_cm": 815.1,
     "name": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
     "parts": 33,
     "service": "SendCutSend",
     "sheet": "acrylic_3mm",
-    "usd": 44.24
+    "usd": 47.6
    },
    {
     "area_cm2": 99.4,
+    "cut_cm": 192.9,
     "name": "5052 aluminium sheet 0.063 in (1.6 mm), laser cut",
     "parts": 6,
     "service": "SendCutSend",
     "sheet": "al5052_1p6mm",
-    "usd": 23.74
+    "usd": 21.54
    },
    {
     "area_cm2": 188.6,
+    "cut_cm": 300.3,
     "name": "5052 aluminium sheet 0.080 in (2.032 mm), laser cut",
     "parts": 4,
     "service": "SendCutSend",
     "sheet": "al5052_2mm",
-    "usd": 26.04
+    "usd": 35.54
    },
    {
     "area_cm2": 43.4,
+    "cut_cm": 123.1,
     "name": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
     "parts": 6,
     "service": "SendCutSend",
@@ -36,7 +40,7 @@
     "usd": 19.9
    }
   ],
-  "cutting_usd": 113.92,
+  "cutting_usd": 124.58,
   "filaments": {
    "PETG filament": 1.9,
    "PLA filament": 19.1,
@@ -44,6 +48,7 @@
   },
   "made": [
    {
+    "cut_cm": 13.584,
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
     "method": "laser",
     "mirrored": 0,
@@ -64,6 +69,7 @@
     "volume_cm3": 1.3727210834499233
    },
    {
+    "cut_cm": 36.334,
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
     "method": "laser",
     "mirrored": 0,
@@ -80,6 +86,7 @@
     "volume_cm3": 5.021049751103129
    },
    {
+    "cut_cm": 23.629,
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
     "method": "laser",
     "mirrored": 0,
@@ -96,6 +103,7 @@
     "volume_cm3": 3.2876054649737116
    },
    {
+    "cut_cm": 19.377,
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
     "method": "laser",
     "mirrored": 0,
@@ -112,6 +120,7 @@
     "volume_cm3": 2.5981328873730227
    },
    {
+    "cut_cm": 36.365,
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
     "method": "laser",
     "mirrored": 0,
@@ -128,6 +137,7 @@
     "volume_cm3": 5.019082328703812
    },
    {
+    "cut_cm": 23.597,
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
     "method": "laser",
     "mirrored": 0,
@@ -144,6 +154,7 @@
     "volume_cm3": 3.2895728873730232
    },
    {
+    "cut_cm": 19.409,
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
     "method": "laser",
     "mirrored": 0,
@@ -160,6 +171,7 @@
     "volume_cm3": 2.5961654649737116
    },
    {
+    "cut_cm": 21.318,
     "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
     "method": "laser",
     "mirrored": 0,
@@ -174,6 +186,7 @@
     "volume_cm3": 2.0273963735007205
    },
    {
+    "cut_cm": 15.667,
     "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
     "method": "laser",
     "mirrored": 0,
@@ -188,6 +201,7 @@
     "volume_cm3": 1.2917339841147195
    },
    {
+    "cut_cm": 24.549,
     "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
     "method": "laser",
     "mirrored": 0,
@@ -202,6 +216,7 @@
     "volume_cm3": 2.1926249394704556
    },
    {
+    "cut_cm": 61.892,
     "material": "5052 aluminium sheet 0.080 in (2.032 mm), laser cut",
     "method": "laser",
     "mirrored": 0,
@@ -216,6 +231,7 @@
     "volume_cm3": 8.648740753254412
    },
    {
+    "cut_cm": 88.264,
     "material": "5052 aluminium sheet 0.080 in (2.032 mm), laser cut",
     "method": "laser",
     "mirrored": 0,
@@ -230,6 +246,7 @@
     "volume_cm3": 10.515317206073316
    },
    {
+    "cut_cm": 33.453,
     "material": "5052 aluminium sheet 0.063 in (1.6 mm), laser cut",
     "method": "laser",
     "mirrored": 0,
@@ -244,6 +261,7 @@
     "volume_cm3": 2.7746696921664515
    },
    {
+    "cut_cm": 33.443,
     "material": "5052 aluminium sheet 0.063 in (1.6 mm), laser cut",
     "method": "laser",
     "mirrored": 0,
@@ -258,6 +276,7 @@
     "volume_cm3": 2.645040691850594
    },
    {
+    "cut_cm": 29.532,
     "material": "5052 aluminium sheet 0.063 in (1.6 mm), laser cut",
     "method": "laser",
     "mirrored": 0,
@@ -272,6 +291,7 @@
     "volume_cm3": 2.5362759337873078
    },
    {
+    "cut_cm": 71.615,
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
     "method": "laser",
     "mirrored": 0,
@@ -285,6 +305,7 @@
     "volume_cm3": 28.121162750299554
    },
    {
+    "cut_cm": 0.0,
     "material": "TPU 95A flexible filament",
     "method": "printed",
     "mirrored": 0,
@@ -305,6 +326,7 @@
     "volume_cm3": 0.1271628770069581
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -319,6 +341,7 @@
     "volume_cm3": 0.039693952727284106
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -333,6 +356,7 @@
     "volume_cm3": 0.03837082096970784
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -347,6 +371,7 @@
     "volume_cm3": 0.6174025920674325
    },
    {
+    "cut_cm": 0.0,
     "material": "PETG filament",
     "method": "printed",
     "mirrored": 0,
@@ -361,6 +386,7 @@
     "volume_cm3": 0.7413149324814513
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -375,6 +401,7 @@
     "volume_cm3": 0.13103740037755687
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -393,6 +420,7 @@
     "volume_cm3": 0.14615710042112112
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -407,6 +435,7 @@
     "volume_cm3": 0.19655610056633582
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -421,6 +450,7 @@
     "volume_cm3": 0.1713566004937289
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -435,6 +465,7 @@
     "volume_cm3": 0.10583790030495042
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -449,6 +480,7 @@
     "volume_cm3": 0.17645069298152435
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -463,6 +495,7 @@
     "volume_cm3": 4.644282357000426
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -477,6 +510,7 @@
     "volume_cm3": 0.44902534041142567
    },
    {
+    "cut_cm": 0.0,
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
@@ -1786,11 +1820,11 @@
   "purchases_usd": 304.11,
   "title": ""
  },
- "engine_version": "0.1.0+cbc6db16875a",
+ "engine_version": "0.1.0+e2cf649bc7a2",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_double]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-50462f600833ae37"
+ "source_key": "gen-729bc36dcbe253f7"
 }

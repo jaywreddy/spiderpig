@@ -272,14 +272,20 @@ def _sliders_are(tune: dict, info: dict) -> None:
 
 
 def test_linkage_dropdown_switches_the_design(page: Page, viewer_server: str) -> None:
-    """The tune panel lists ``/api/linkages``' walkers; picking one rebuilds the sliders
-    from its parameters, limits the module dropdown to its modules and re-bakes the robot
-    with ``linkage=`` (Jansen's mirrored pair here), which then drives on Jansen's feet."""
+    """The tune panel's one linkage picker lists every linkage of ``/api/linkages``, grouped
+    by kind (an ``<optgroup>`` each); picking a walker rebuilds the sliders from its
+    parameters, limits the module dropdown to its modules and re-bakes the robot with
+    ``linkage=`` (Jansen's mirrored pair here), which then drives on Jansen's feet."""
     catalogue = _catalogue(viewer_server)
     _open(page, viewer_server, "tune=1&linkage=klann&module=double")
     page.wait_for_function("() => window.__viewer.drive.lastWalk !== null", timeout=60_000)
     tune = page.evaluate(TUNE_JS)
-    assert tune["linkages"] == [k for k, lk in catalogue.items() if lk["kind"] == "walker"]
+    kinds = list(dict.fromkeys(lk["kind"] for lk in catalogue.values()))
+    assert tune["linkages"] == [k for kind in kinds for k, lk in catalogue.items()
+                                if lk["kind"] == kind]
+    groups = page.evaluate("""() => Array.from(document.querySelectorAll('#tune-gui optgroup'))
+        .map((g) => g.label)""")
+    assert groups == [f"{kind}s" for kind in kinds]
     assert (tune["linkage"], tune["module"]) == ("klann", "double")
     _sliders_are(tune, catalogue["klann"])
 
@@ -297,6 +303,28 @@ def test_linkage_dropdown_switches_the_design(page: Page, viewer_server: str) ->
     feet = _js(page, "window.__viewer.walker.userData.drive.feet.map((f) => f.body)")
     assert feet == ["L.b6_leg0", "L.b6_leg1", "R.b6_leg0", "R.b6_leg1"]
     assert _js(page, "window.__viewer.drive.sim.state.feet.length") == 4
+
+
+def test_the_same_picker_loads_a_mechanism_and_the_view_picker_follows(
+        page: Page, viewer_server: str) -> None:
+    """A linkage with no feet picked in the same dropdown loads in its own default view, and
+    the view picker offers what it declares (``/api/modes``: a mechanism's one side)."""
+    catalogue = _catalogue(viewer_server)
+    key = "hoecken" if "hoecken" in catalogue else next(
+        k for k, lk in catalogue.items() if lk["feet"] == 0)
+    with urllib.request.urlopen(f"{viewer_server}/api/modes?linkage={key}") as r:
+        modes = json.load(r)
+    _open(page, viewer_server, "tune=1", driving=False)
+    page.wait_for_function("() => window.__viewer.drive.tuneGui.controllersRecursive()"
+                           ".some((c) => c.property === 'linkage')", timeout=60_000)
+    page.evaluate(SET_JS, ["linkage", key])
+    page.wait_for_function(
+        f"() => window.__viewer.mode === '{modes['default']}' && "
+        f"new URLSearchParams(location.search).get('linkage') === '{key}'",
+        timeout=BAKE_TIMEOUT_MS)
+    offered = page.evaluate("() => Array.from(document.getElementById('mode').options)"
+                            ".map((o) => o.value)")
+    assert offered == modes["modes"]
 
 
 def test_a_linkage_in_the_url_gets_its_own_default_module(page: Page,
@@ -711,4 +739,88 @@ def test_switching_linkage_with_physics_on_reconnects(page: Page, viewer_server:
     assert f"linkage={other}" in s["glbQuery"]
     assert f"linkage={other}" in s["search"]
     assert "physics=1" in s["search"]
+    assert errors == []
+
+
+# ---------------------------------------------------------------------------
+# The live sim of a design that doesn't walk (``viewer/src/arm.ts``, the same ``/ws/sim``)
+# ---------------------------------------------------------------------------
+
+LIVE_JS = """() => {
+    const v = window.__viewer, p = v.live.physics, f = p.frame, w = v.walker;
+    const kids = w ? w.children.filter((o) => o.userData.name) : [];
+    const crank = document.querySelector('#arm-joints [data-crank]');
+    return { live: v.live.live, info: p.info && { walks: p.info.walks, drives: p.info.drives,
+               joints: p.info.joints, linkage: p.info.design.linkage },
+             values: f && f.values, bound: kids.filter((o) => !o.matrixAutoUpdate).length,
+             nodes: kids.length, walker: w ? w.matrix.toArray() : null,
+             crankShown: !!crank && !crank.parentElement.hidden,
+             status: document.querySelector('#status').textContent };
+}"""
+LIVE_READY = ("() => window.__viewer?.ready && window.__viewer.live.live "
+              "&& window.__viewer.live.physics.frame")
+SLIDE_JS = """([sel, v]) => { const i = document.querySelector(sel); i.value = String(v);
+    i.dispatchEvent(new Event('input')); }"""
+
+
+def _open_live(page: Page, server: str, query: str) -> dict:
+    """Open ``query`` with ``live=1`` and wait for the first live frame (a cold design bakes
+    and its model builds); a timeout reports the page's status."""
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+    page.goto(f"{server}/?{query}&live=1")
+    try:
+        page.wait_for_function(LIVE_READY, timeout=4 * BAKE_TIMEOUT_MS)   # cold: plan, bake, model
+    except PlaywrightTimeout:
+        status = _js(page, "document.querySelector('#status').textContent")
+        raise AssertionError(f"no live frame; status: {status!r}") from None
+    return page.evaluate(LIVE_JS)
+
+
+def test_an_arms_joint_sliders_drive_the_live_sim(page: Page, viewer_server: str) -> None:
+    """``?linkage=palletizer_reach&live=1``: the arm on its turntable in MuJoCo, its parts
+    bound to the model, its base left where the glb stands it; a joint slider is its
+    stepper's target, and the joint gets there; live off hands the nodes back."""
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    a = _open_live(page, viewer_server, "linkage=palletizer_reach")
+    assert a["info"]["walks"] is False
+    assert a["info"]["drives"] == []
+    assert {"q1", "q2", "q3"} <= set(a["info"]["joints"])
+    assert a["bound"] == a["nodes"] > 10
+    assert not a["crankShown"]
+    q2 = a["info"]["joints"]["q2"]
+    target = round(0.5 * (q2["lo"] + q2["hi"]), 1)
+    page.evaluate(SLIDE_JS, ['#arm-joints input[data-joint="q2"]', target])
+    page.wait_for_function(
+        f"() => Math.abs(window.__viewer.live.physics.frame.values['q2.angle'] * 180 / Math.PI "
+        f"- {target}) < 1", timeout=30_000)
+    b = page.evaluate(LIVE_JS)
+    assert b["walker"] == a["walker"]                   # the fixed base never moves the root
+    tool = [b["values"][f"tool0.{c}"] for c in "xyz"]
+    assert math.dist(tool, [a["values"][f"tool0.{c}"] for c in "xyz"]) > 10
+    _js(page, "window.__viewer.live.setLive(false)")
+    page.wait_for_function("() => !window.__viewer.live.live", timeout=10_000)
+    assert page.evaluate(LIVE_JS)["bound"] == 0         # the clip has its nodes back
+    assert errors == []
+
+
+def test_a_mechanisms_crank_turns_live(page: Page, viewer_server: str) -> None:
+    """``?linkage=hoecken_pantograph&live=1``: the mechanism's one side in MuJoCo; the hello
+    declares one crank, so the crank-speed slider shows, and it turns the crank."""
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    a = _open_live(page, viewer_server, "linkage=hoecken_pantograph")
+    assert a["info"]["walks"] is False
+    assert a["info"]["drives"] == ["drive"]
+    assert a["info"]["joints"] == {}
+    assert a["crankShown"]
+    assert a["bound"] == a["nodes"] > 5
+    page.evaluate(SLIDE_JS, ["#arm-joints input[data-crank]", 1])
+    page.wait_for_function(
+        "() => window.__viewer.live.physics.frame.values['drive.angle'] > 2 * Math.PI",
+        timeout=30_000)
+    b = page.evaluate(LIVE_JS)
+    assert b["walker"] == a["walker"]
+    assert "drive" in _js(page, "document.querySelector('#arm-joints .readout').textContent")
     assert errors == []

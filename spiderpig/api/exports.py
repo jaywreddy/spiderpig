@@ -27,6 +27,7 @@ from spiderpig.hardware.bom import bom_from_mechanism, group_made
 from spiderpig.hardware.catalog import sheet_name
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import save_sheets, sheet_lines
+from spiderpig.spec import urdf_unsupported
 from spiderpig.stages.planning import plan
 from spiderpig.stages.records import (
     WARNING_LOGGERS,
@@ -49,6 +50,19 @@ def verify(design: Design, level: str = "quick"):
     return _verify.verify(design, level)
 
 
+MAKE_FORMATS = ("guide", "control", "order")
+"""What a maker reads beside the files a spec's ``outputs`` name: the assembly guide, the
+controller's files, the shopping list (export formats only, never a spec's outputs)."""
+
+
+def formats_all() -> tuple[str, ...]:
+    """Every format :func:`export` writes: a spec's ``outputs`` (:data:`spec.OUTPUTS`) and
+    :data:`MAKE_FORMATS`."""
+    from spiderpig.spec import OUTPUTS
+
+    return (*OUTPUTS, *MAKE_FORMATS)
+
+
 def export(design: Design, formats=None, out_dir: str | Path | None = None,
            force: bool = False) -> ExportReport:
     """Write the chosen ``formats`` (default: the spec's ``outputs``) into ``out_dir``
@@ -56,9 +70,20 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     does: ``step`` / ``stl`` (the whole machine), ``print`` (one STL per different printed
     part + ``parts.csv``), ``dxf`` (kerf-compensated sheets + ``parts.csv``), ``bom``
     (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (the MuJoCo model +
-    its metadata), ``urdf`` (an arm's URDF, its meshes and joint map: :mod:`spiderpig.urdf`);
-    and always ``manifest.json``. Builds first if nothing is built; a
-    sheet-packing failure is ``layout``, a catalog miss ``bom``. What the bake and the
+    its metadata, every kind's: :mod:`spiderpig.sim.mjcf`), ``urdf`` (an arm's URDF for
+    ROS, its meshes and joint map: :mod:`spiderpig.urdf`; asked of a crank's design it is
+    refused, a ``ValueError`` with :func:`spiderpig.spec.urdf_unsupported`'s reason, as
+    ``resolve`` refuses it in a spec's outputs), ``guide`` (the assembly guide,
+    ``ASSEMBLY.pdf`` and ``ASSEMBLY.md``: :mod:`spiderpig.guide.make`), ``control`` (the
+    controller's files in ``control/``, by what drives the design: a crank's bus servos'
+    ``servos.json``, an arm's steppers' Klipper ``printer.cfg``, and either's ``HOMING.md``:
+    :mod:`spiderpig.control.files`), ``order`` (``ORDER.md``, a cart per vendor, an upload
+    per cutting service and the prints, with the files it names: ``laser/parts/`` and
+    ``print/``: :mod:`spiderpig.hardware.order`);
+    and always ``manifest.json``. Plans and builds first if nothing is built (every
+    format, ``guide``, ``control`` and ``order`` included, reads the planned side: an arm's
+    plan is minutes cold, seconds once the store keeps it; the MCP's ``export`` is a job
+    for it); a sheet-packing failure is ``layout``, a catalog miss ``bom``. What the bake and the
     constructions warned about while writing (a purchased model's faces the mesher
     skipped) is on the report (``warnings``) and in the manifest. An export the store
     records for the same formats and folder, whose files are all still there, is
@@ -68,13 +93,17 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
 
 
 def _export(design: Design, formats, out_dir, force: bool) -> ExportReport:
-    from spiderpig.spec import OUTPUTS
-
     t0 = time.time()
+    asked = bool(formats)
     formats = list(formats or design.spec.outputs)
-    bad = [f for f in formats if f not in OUTPUTS]
+    have = formats_all()
+    bad = [f for f in formats if f not in have]
     if bad:
-        raise ValueError(f"unknown formats {bad}; have {list(OUTPUTS)}")
+        raise ValueError(f"unknown formats {bad}; have {list(have)}")
+    # a format the linkage can't have: refused when asked for, as resolve refuses it in a
+    # spec's outputs (a spec stored before that only skips it, with the same reason)
+    if "urdf" in formats and (why := urdf_unsupported(design.lk)) and asked:
+        raise ValueError(why)
     if out_dir is None:
         out_dir = design.store.exports_dir(design.id) if design.store else Path("build")
         if design.edited:       # not over the store's own exports (the unedited design's)
@@ -120,7 +149,12 @@ def _export(design: Design, formats, out_dir, force: bool) -> ExportReport:
         for stale in [*(out / "urdf").glob("*.json"), *(out / "urdf").glob("*.xml")]:
             stale.unlink()                   # an arm's: its URDF and joint map
         clear_generated(out / "urdf")
-        (out / "ORDER.md").unlink(missing_ok=True)
+        for owned in ("ORDER.md", "ASSEMBLY.pdf", "ASSEMBLY.md"):
+            (out / owned).unlink(missing_ok=True)
+        from spiderpig.control.files import FILES
+
+        for name in {f for fs in FILES.values() for f in fs}:
+            (out / "control" / name).unlink(missing_ok=True)
     with contextlib.ExitStack() as stack:
         warned = stack.enter_context(capture_warnings(EXPORT_LOGGERS))
         stack.enter_context(pywarnings.catch_warnings())
@@ -170,7 +204,9 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     filament = mech.meta.get("filament", "pla_filament")
     files: list[Path] = []
     job = job or _start_robot_job(design, formats)
-    grouping = (_start_group_job(mech) if ("print" in formats or "bom" in formats)
+    want_print = "print" in formats or "order" in formats    # ORDER.md lists the prints
+    want_bom = "bom" in formats or "order" in formats        # ... and buys the BOM
+    grouping = (_start_group_job(mech) if (want_print or want_bom)
                 and ("step" in formats or "stl" in formats) else None)
     if "step" in formats:
         with _timed("step"):
@@ -181,7 +217,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
             mech.export_stl(out / f"{name}.stl")
         files.append(out / f"{name}.stl")
     groups = None
-    if "print" in formats or "bom" in formats:
+    if want_print or want_bom:
         with _timed("grouping" if grouping is None else "grouping (waiting for its worker)"):
             groups = _groups(mech, grouping)
     types: list = []
@@ -196,7 +232,8 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
             types.extend(part_types(mech, order, groups, filament))
         return types
 
-    if "print" in formats:
+    print_rows: list[dict] = []
+    if want_print:
         from spiderpig import build as build_cli
 
         assert groups is not None   # grouped just above for "print"
@@ -205,10 +242,10 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
             from spiderpig.hardware.bom import printed_filaments
             from spiderpig.labels import print_stems
 
-            build_cli.export_prints(groups["printed"], out / "print",
-                                    density=filament_density(filament),
-                                    filaments=printed_filaments(mech, filament),
-                                    stems=print_stems(labelled()))
+            print_rows = build_cli.export_prints(groups["printed"], out / "print",
+                                                 density=filament_density(filament),
+                                                 filaments=printed_filaments(mech, filament),
+                                                 stems=print_stems(labelled()))
         files += sorted((out / "print").glob("*"))
     extras = list(mech.bom_extras)
     bom_summary = None
@@ -235,30 +272,34 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
             extras += sheet_lines(mech, cfg.sheet, size)
         except ValueError as e:
             rep.failures.append(Failure.from_exception(e, stage="layout"))
-    elif "bom" in formats:      # the BOM buys the sheets whether or not the DXF is written
+    elif want_bom:      # the BOM buys the sheets whether or not the DXF is written
         try:
             extras += sheet_lines(mech, cfg.sheet, size)
         except ValueError as e:
             rep.failures.append(Failure.from_exception(e, stage="layout"))
-    if "bom" in formats:
-        title = (f"{cfg.module} {'robot' if cfg.robot else 'side'}, {cfg.servo}, {cfg.pillar} "
-                 f"pillars, {cfg.pin} pins, {cfg.crank} crank, {cfg.sheet}")
+    bom = None
+    title = (f"{cfg.module} {'robot' if cfg.robot else 'side'}, {cfg.servo}, {cfg.pillar} "
+             f"pillars, {cfg.pin} pins, {cfg.crank} crank, {cfg.sheet}")
+    if want_bom:
         try:
             bom = bom_from_mechanism(replace(mech, bom_extras=extras), title=title,
                                      filament=filament, groups=groups)
-            if cfg.mirrored and (note := torque_limit_note(cfg)):
+            if note := torque_limit_note(cfg):      # every crank servo's (its motor role)
                 bom.notes.append(note)
-            files += bom.write(out)
+            if "bom" in formats:
+                files += bom.write(out)
             bom_summary = {"items": len(bom.purchased), "cost_usd": round(bom.cost_usd, 2),
                            "printed_g": bom.printed_g,
                            "unpriced": [r.key for r in bom.unpriced]}
         except KeyError as e:
             rep.failures.append(Failure.from_exception(e, stage="bom"))
+    if "order" in formats and bom is not None:
+        assert groups is not None   # grouped above for "order"
+        files += _order_files(design, out, groups, bom, print_rows, labelled, title, kerf,
+                              rep)
     if "urdf" in formats:
-        if design.kind != "arm":
-            logging.getLogger("spiderpig.export").warning(
-                "urdf: %s is a %s: the URDF is an arm's (its inputs drive links over "
-                "ranges), so the format is skipped", cfg.linkage, design.kind)
+        if why := urdf_unsupported(design.lk):      # (a spec's own outputs: _export said)
+            logging.getLogger("spiderpig.export").warning("urdf skipped: %s", why)
         else:
             from spiderpig import urdf
 
@@ -267,15 +308,64 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
                 files += urdf.write(mech, cfg, build_t, out / "urdf", name)
     with _timed("glb/mjcf" if job is None else "glb/mjcf (waiting for its worker)"):
         files += _robot_files(design, formats, out, job)
-    if "mjcf" in formats and design.kind != "walker":
-        # the MJCF is the walking robot's (two sides on a floor, the drives walking it); a
-        # mechanism has nothing to walk, so the format is skipped, not an error
-        logging.getLogger("spiderpig.export").warning(       # on ExportReport.warnings
-            "mjcf: %s is a%s %s, with nothing to walk: the MJCF is a walker's robot model "
-            "(verify(\"full\") runs it), so the format is skipped%s", cfg.linkage,
-            "n" if design.kind == "arm" else "", design.kind,
-            " (an arm's MuJoCo model comes with urdf)" if design.kind == "arm" else "")
+    if "control" in formats:
+        files += _control_files(design, out, rep)
+    if "guide" in formats:
+        with _timed("guide"):
+            files += _guide_files(design, out)
     return files, bom_summary
+
+
+def _order_files(design: Design, out: Path, groups: dict, bom, print_rows: list[dict],
+                 labelled, title: str, kerf: float | None, rep: ExportReport) -> list[Path]:
+    """``ORDER.md`` (:func:`hardware.order.order_markdown`) and the per-part cut files it
+    uploads (``laser/parts/``, :func:`layout.save_parts`), as ``spiderpig build`` writes
+    them; a part that can't be laid out is a ``layout`` failure (no ORDER.md then)."""
+    from spiderpig import build as build_cli
+    from spiderpig.hardware.order import order_markdown
+    from spiderpig.labels import laser_labels
+    from spiderpig.layout import save_parts
+
+    parts = out / "laser" / "parts"
+    build_cli.clear_generated(parts)          # no per-part DXF of another design
+    try:
+        with _timed("order"):
+            rows = save_parts(groups["laser"], parts, design.config.sheet, kerf=kerf,
+                              labels=laser_labels(labelled()))
+    except ValueError as e:
+        rep.failures.append(Failure.from_exception(e, stage="layout"))
+        return []
+    (out / "ORDER.md").write_text(order_markdown(bom, rows, print_rows, title=title,
+                                                 build_dir=str(out)))
+    written = sorted(f for f in parts.rglob("*") if f.is_file()) if parts.is_dir() else []
+    return [*written, out / "ORDER.md"]
+
+
+def _control_files(design: Design, out: Path, rep: ExportReport) -> list[Path]:
+    """The controller's files (:func:`spiderpig.control.files.write`: one dispatch on what
+    drives the design) into ``out/control/``, from its planned side; a servo with no bus
+    protocol spiderpig knows is a ``control`` failure."""
+    from spiderpig.control import files as control_files
+
+    plan(design)                # (the stored plan's side: an arm's axes read its drives)
+    try:
+        with _timed("control"):
+            return control_files.write(design.config, out / "control", design.side)
+    except ValueError as e:
+        rep.failures.append(Failure.from_exception(e, stage="control"))
+        return []
+
+
+def _guide_files(design: Design, out: Path) -> list[Path]:
+    """``ASSEMBLY.pdf`` and ``ASSEMBLY.md`` (:func:`spiderpig.guide.make.build_guide`) of
+    the design's planned side, cached beside its fabrication in its store; an edited
+    handle's from its own parts (not cached)."""
+    from spiderpig.guide.make import build_guide
+
+    plan(design)
+    mech = design.mech if design.edited and design.build_t == 1.0 else None
+    build_guide(design.config, design.store, out, design=design.side, mech=mech)
+    return [out / "ASSEMBLY.pdf", out / "ASSEMBLY.md"]
 
 
 
@@ -325,11 +415,10 @@ def _groups(mech, job) -> dict:
             for m, gs in job.result().items()}
 
 
-def _walker_formats(design: Design, formats: list[str]) -> list[str]:
-    """The formats of the walker at the bake's reference angle: ``glb``, and ``mjcf`` for a
-    walker (a mechanism's is skipped, with a warning)."""
-    return [f for f in ("glb", "mjcf") if f in formats
-            and (f == "glb" or design.kind == "walker")]
+def _robot_formats(formats: list[str]) -> list[str]:
+    """The formats of the design at the bake's reference angle: ``glb`` and ``mjcf`` (every
+    kind's: :mod:`spiderpig.sim.mjcf`)."""
+    return [f for f in ("glb", "mjcf") if f in formats]
 
 
 def _start_robot_job(design: Design, formats: list[str], before_build: bool = False):
@@ -346,7 +435,7 @@ def _start_robot_job(design: Design, formats: list[str], before_build: bool = Fa
 
     from spiderpig import workers
 
-    fmts = _walker_formats(design, formats)
+    fmts = _robot_formats(formats)
     others = [f for f in formats if f not in ("glb", "mjcf")]
     if (not fmts or not (others or before_build) or design.store is None
             or not workers.enabled() or not plan(design).ok):
@@ -401,8 +490,8 @@ def _robot_files(design: Design, formats: list[str], out: Path, job=None) -> lis
             logging.getLogger("spiderpig.export").warning("%s", w)
         return moved
     robot, props = None, {}          # the parts' mass properties: the bake's, for the MJCF
-    if "glb" in formats or ("mjcf" in formats and design.kind == "walker"):
-        # the viewer's bake and the MuJoCo model are both of the walker at the bake's
+    if "glb" in formats or "mjcf" in formats:
+        # the viewer's bake and the MuJoCo model are both of the design at the bake's
         # reference angle: fabricated once here from the design's own side (its plan), not
         # again by each from the config (which, in a fresh process, planned again first)
         from spiderpig.bake import T_REF
@@ -414,13 +503,13 @@ def _robot_files(design: Design, formats: list[str], out: Path, job=None) -> lis
         bake_gltf(out / f"{name}.glb", cfg, profile=False, fabricated=robot, side=design.side,
                   props=props)
         files.append(out / f"{name}.glb")
-    if "mjcf" in formats and design.kind == "walker":
+    if "mjcf" in formats:
         import json
 
-        from spiderpig.sim.mjcf import build_mjcf, set_fabricated
+        from spiderpig.sim.mjcf import build_mjcf, model_config, set_fabricated
 
-        if cfg.robot:        # a one-sided design's MJCF is still the robot's
-            assert robot is not None    # fabricated above for a walker's mjcf
+        if model_config(cfg) == cfg:     # (a walker's one-sided design: still its robot's)
+            assert robot is not None    # fabricated above for the mjcf
             set_fabricated(cfg, robot, props)
         xml, meta = build_mjcf(cfg)
         (out / f"{name}.xml").write_text(xml)

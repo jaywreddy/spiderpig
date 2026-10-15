@@ -98,7 +98,7 @@ def test_a_current_folder_is_current(tmp_path):
 
 @pytest.mark.parametrize("change", [
     "edited output", "stray dxf", "missing output", "plan re-made", "plan removed",
-    "other options", "other store", "servo models switched", "an export's manifest",
+    "other options", "other store", "servo models switched", "strict cad", "an export's manifest",
     "manifest rewritten", "no record", "no manifest", "folder moved"])
 def test_anything_else_builds(tmp_path, monkeypatch, change):
     opts, out, store = _folder(tmp_path)
@@ -119,6 +119,8 @@ def test_anything_else_builds(tmp_path, monkeypatch, change):
         argv[-1] = str(tmp_path / "another")
     elif change == "servo models switched":
         monkeypatch.setenv("SPIDERPIG_SERVO_CAD", "0")
+    elif change == "strict cad":         # a parametric fallback built without it
+        monkeypatch.setenv("SPIDERPIG_CAD_STRICT", "1")
     elif change == "an export's manifest":
         doc = json.loads((out / "manifest.json").read_text())
         doc["written_by"] = "api.export"

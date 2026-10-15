@@ -95,7 +95,11 @@ html, body {
 }
 #arm-joints[hidden] { display: none; }
 #arm-joints label { display: flex; gap: 8px; align-items: center; }
-#arm-joints input { accent-color: #3060ff; width: 160px; }
+#arm-joints input { accent-color: #3060ff; }
+#arm-joints input[type="range"] { width: 160px; }
+#arm-joints label[hidden] { display: none; }
+#arm-joints .readout { font-family: ui-monospace, monospace; font-size: 11px; max-width: 360px; }
+#arm-joints .readout:empty { display: none; }
 
 /* The drive pad: arrow keys, held while pressed (drive/sim.ts ``Input.bindPad``). */
 #pad {

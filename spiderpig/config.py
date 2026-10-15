@@ -65,18 +65,19 @@ doesn't plan (each with why)."""
 DEFAULT_PIVOTS: dict[str, tuple[str, str]] = {
     "walker": ("chicago", "standoff"),
     "mechanism": ("chicago", "standoff"),
-    "arm": ("ball", "ball_pillar"),
+    "arm": ("ball_pair", "ball_pair_pillar"),
 }
 """The ``(pin, pillar)`` a design gets when it names none, per kind (:func:`default_pin`,
 :func:`default_pillar`): a walker's and a mechanism's plain holes (the Chicago screw, the
 standoff column; D1, 2026-10-07); an arm's ball bearings at every pivot (the user's call of
 2026-10-11 for the palletizer: plain holes' play, at the arm's levers, is millimetres at the
-tool; ``spiderpig precision --compare``)."""
+tool; ``spiderpig precision --compare``), since 2026-10-14 the approved arm's: each pivot a
+preloaded bearing pair on a ground pin (ISO 9283 RP 0.047 mm in a session; the single
+``ball``: 0.2 mm), which also holds a crash at the tool where the single bearing's barrel
+bent (the plain ``palletizer``'s elbow pin E, jam SF 0.44: DECISIONS.md 2026-10-14)."""
 
 LINKAGE_PIVOTS: dict[str, tuple[str, str]] = {
-    # the user's arm (2026-10-13/14, docs/agentlib/DECISIONS.md): each pivot a preloaded
-    # bearing pair on a ground pin, ISO 9283 RP 0.047 mm in a session (ball: 0.2 mm)
-    "palletizer_reach": ("ball_pair", "ball_pair_pillar"),
+    # empty since the approved arm's pivots became every arm's (2026-10-14)
 }
 """Per linkage: the ``(pin, pillar)`` it gets when it names none, where its kind's
 :data:`DEFAULT_PIVOTS` aren't its own design's (each with why)."""
@@ -95,9 +96,10 @@ KIND_FIT: dict[str, dict[str, float]] = {
 }
 """Per kind: the :class:`fit.Params` fields a design gets where :class:`fit.Params`' own
 default doesn't build its :data:`DEFAULT_PIVOTS` (each with why): an arm's links are
-6.6 mm in radius, the ``ball_pillar``'s 10 mm bearing seat plus ``min_wall``
-(``BearingSeat.check``). Applied when the config's ``params`` are the plain defaults
-(:func:`default_params`); a spec's ``fit`` starts from them (``FitSpec.params``)."""
+6.6 mm in radius, a pillar's 10 mm bearing seat (``ball_pillar``, ``ball_pair_pillar``)
+plus ``min_wall`` (``BearingSeat.check``). Applied when the config's ``params`` are the
+plain defaults (:func:`default_params`); a spec's ``fit`` starts from them
+(``FitSpec.params``)."""
 
 
 def default_pin(lk: linkage.Linkage) -> str:
@@ -271,6 +273,24 @@ LINKAGE_TORQUE_LIMITS: dict[str, float] = {
     # over its 0.18 is 4.7 x) and puts every joint and link at jam SF >= 2 with no part
     # added or changed.
     "klann_lego": 0.60,
+    # the mechanisms (2026-10-14, when their jam was first rated: strength.crank_loads, the
+    # output blocked while the servo pushes): at the STS3215's 0.85 N·m every one of them
+    # failed (jam SF 0.22-0.85: small cranks on acrylic links, levers up to 10 x near the
+    # output's dead points). Each limit is the largest (rounded down) that puts every joint
+    # and link at jam SF >= 2 with no part changed; a turn at full speed in MuJoCo
+    # (sim.run.turn) peaks at 0.006-0.031 N·m, so each keeps 6.8 x (hoecken_pantograph) or
+    # more of headroom over its own motion (klann_lego's rule: 4.2 x). What a mechanism
+    # drives beyond its own links needs its limit raised and its links rated again.
+    "hoecken": 0.36,
+    "watt_crank": 0.19,
+    "peaucellier_crank": 0.17,
+    "parallelogram_lift": 0.19,
+    "watt_table_lift": 0.19,
+    "hoecken_pantograph": 0.21,
+    "crank_rocker": 0.19,
+    "rocker_amplifier": 0.09,
+    "dwell_rocker": 0.11,
+    "hoecken_table": 0.21,
 }
 """Per linkage: a servo torque limit (N·m) under the servo's own
 (:attr:`servos.spec.ServoSpec.torque_limit_nm`), where a joint or link holds a jam at SF 2
@@ -279,11 +299,18 @@ only below it (each with why): :func:`torque_limit_nm`."""
 
 def torque_limit_nm(config: BuildConfig) -> float | None:
     """The torque limit to set in the robot's servo firmware (N·m), the one the jam loads
-    and the joints' ratings assume: the servo's (``TORQUE_LIMIT_FRACTION`` of stall, at
-    most ``JAM_TORQUE_NM``), lowered to the linkage's :data:`LINKAGE_TORQUE_LIMITS` entry;
-    ``None`` for a servo with no stall torque."""
-    limit = servos.get(config.servo).torque_limit_nm
-    own = LINKAGE_TORQUE_LIMITS.get(config.linkage)
+    and the joints' ratings assume: :func:`servo_torque_limit_nm` of its servo and its
+    linkage; ``None`` for a servo with no stall torque."""
+    return servo_torque_limit_nm(config.servo, config.linkage)
+
+
+def servo_torque_limit_nm(servo: str, linkage_key: str) -> float | None:
+    """Servo ``servo``'s torque limit on linkage ``linkage_key`` (N·m): the servo's own
+    (``TORQUE_LIMIT_FRACTION`` of stall, at most ``JAM_TORQUE_NM``), lowered to the
+    linkage's :data:`LINKAGE_TORQUE_LIMITS` entry; ``None`` for a servo with no stall
+    torque. (An exported MJCF's meta names both: :func:`sim.run.turn` reads them there.)"""
+    limit = servos.get(servo).torque_limit_nm
+    own = LINKAGE_TORQUE_LIMITS.get(linkage_key)
     if limit is None or own is None:
         return limit
     return min(limit, own)
@@ -291,7 +318,15 @@ def torque_limit_nm(config: BuildConfig) -> float | None:
 
 def torque_limit_note(config: BuildConfig) -> str | None:
     """What the builder must set for :func:`torque_limit_nm` (a BOM / ORDER.md note), or
-    ``None`` when the servo has no limit."""
+    ``None`` when the design's motors aren't a crank's servo (its motor role, not
+    ``servo``: :func:`roles.motor_role`; an arm's steppers have no firmware limit) or the
+    servo has no limit. Every crank's servo gets it: a walker's, a walker side's and a
+    mechanism's (2026-10-14; a walker's robot alone before, so a mechanism's far lower
+    limit, :data:`LINKAGE_TORQUE_LIMITS`, never reached its BOM)."""
+    from spiderpig import roles as rolemod
+
+    if rolemod.motor_role(config.lk) != "servo":
+        return None
     limit = torque_limit_nm(config)
     spec = servos.get(config.servo)
     stall = spec.stall_torque_nm
@@ -299,10 +334,11 @@ def torque_limit_note(config: BuildConfig) -> str | None:
         return None
     why = (" (lowered for this linkage: config.LINKAGE_TORQUE_LIMITS)"
            if config.linkage in LINKAGE_TORQUE_LIMITS else "")
+    jam = "a jammed foot" if config.lk.walks else "a blocked output"
     return (f"Servo firmware: before the first run, set the torque limit of every servo "
             f"({spec.name.split(' (')[0]}) to {limit:g} N·m, {limit / stall * 100:.0f} % of "
             f"its {stall:.2f} N·m stall{why}: every joint and link is rated (spiderpig audit, "
-            "strength) at a jammed foot holding the servo at that limit.")
+            f"strength) at {jam} holding the servo at that limit.")
 
 
 def config_crank(config: BuildConfig) -> str:
@@ -318,10 +354,50 @@ def default_crank(lk: linkage.Linkage, module: str = "") -> str:
                              LINKAGE_CRANKS.get(lk.key, DEFAULT_CRANKS[lk.kind]))
 
 
+ROLE_FIELDS: dict[str, str] = {"servo": "servo", "crank_sheet": "crank"}
+""":class:`BuildConfig` fields that belong to a role (:mod:`spiderpig.roles`): the drive
+servo and the crank's sheet, a walker's and a mechanism's. Where the role isn't a slot of
+the design's kind (an arm: steppers, the role ``actuator``, and no crank) the field holds
+its default and naming another is refused (:func:`unused_field`). The default stays in the
+field, the key and the resolved spec rather than being left out: every stored arm's id
+(``BuildConfig.key``, ``design.spec_hash``, ``side_hash``) hashes it, so leaving it out
+would move them all (2026-10-14)."""
+
+
+def role_field_default(lk: linkage.Linkage, name: str) -> str:
+    """The value field ``name`` of :data:`ROLE_FIELDS` holds for ``lk`` when nothing names
+    it."""
+    return servos.DEFAULT if name == "servo" else default_crank_sheet(lk)
+
+
+def unused_field(lk: linkage.Linkage, name: str, value) -> str | None:
+    """Why ``value`` can't be ``lk``'s field ``name`` (:data:`ROLE_FIELDS`: its role isn't a
+    slot of ``lk``'s kind and the value isn't the field's default), or ``None``."""
+    from spiderpig import roles as rolemod
+
+    role = ROLE_FIELDS.get(name)
+    if role is None or rolemod.applies(role, lk.kind) or value in (None, ""):
+        return None
+    if value == role_field_default(lk, name):
+        return None
+    r = rolemod.get(role)
+    article = "an" if lk.kind[0] in "aeiou" else "a"
+    return (f"{lk.key} is {article} {lk.kind}: it has no {r.title} ({name} {value!r}; the role "
+            f"{role!r} is a {' or '.join(r.kinds)}'s"
+            + ("; its motors are the role 'actuator'" if name == "servo"
+               and rolemod.applies("actuator", lk.kind) else "") + ")")
+
+
 ROBOT_LAYOUTS: dict[str, str] = {"walker": "mirrored_pair", "arm": "turret"}
 """The robot each linkage kind makes (:data:`construction.robot.LAYOUTS`): a walker's two
 mirrored sides with the chassis between their servos; an arm's side standing on a turntable
 (2026-10-12). A mechanism makes none: it is one side."""
+
+
+def robot_layout(lk: linkage.Linkage) -> str:
+    """The robot ``lk`` makes (:data:`ROBOT_LAYOUTS`), ``""`` for none: ``"turret"`` is the
+    one whose robot is a choice (``legs.robot``, the turntable), not a second side."""
+    return ROBOT_LAYOUTS.get(lk.kind, "")
 
 
 @dataclass(frozen=True)
@@ -331,9 +407,11 @@ class BuildConfig:
     linkage: str = linkage.DEFAULT    # see linkage.available()
     module: str = ""                  # legs per side: one of the linkage's modules ("": its
     #                                   default, config.default_module: Strider's double)
-    robot: bool = True                # the whole robot (ROBOT_LAYOUTS: a walker's two
-    #                                   mirrored sides, servos back to back in one frame; an
-    #                                   arm's side on its turntable), else one side
+    robot: bool = None  # type: ignore[assignment]   # the whole robot (ROBOT_LAYOUTS: a
+    #                                   walker's two mirrored sides, servos back to back in one
+    #                                   frame; an arm's side on its turntable), else one side;
+    #                                   None: the linkage's kind's (default_robot: a
+    #                                   mechanism is one side), resolved before any key
     phases: tuple[float, ...] | None = None          # crank phase per leg (rad); None = module's
     proportions: tuple[tuple[str, float], ...] = ()  # overrides of the linkage's params
     sheet: str = "acrylic_3mm"        # the default sheet (the links, rings, deck): it sets
@@ -359,11 +437,13 @@ class BuildConfig:
     #                                   DEFAULT_PIVOTS: a walker's 6 mm round standoff column,
     #                                   a stock goBILDA one or else one steel standoff made to
     #                                   length, never spliced, construction.pivots.standoff;
-    #                                   an arm's ball_pillar, an MR106ZZ in every link on it)
+    #                                   an arm's ball_pair_pillar, MR106ZZ pairs in hubs
+    #                                   beside its links on a ground shaft)
     pin: str = ""                     # pivots between links ("": default_pin, the kind's: a
     #                                   walker's M3 Chicago screw (4 mm barrel), printed rings
     #                                   and head spacers, construction.pivots.chicago; an
-    #                                   arm's ball, an MR84ZZ in every rider on the barrel)
+    #                                   arm's ball_pair, preloaded MR84ZZ pairs on a ground
+    #                                   pin)
     crank: str = ""                   # the crankshaft ("": default_crank: the linkage's own,
     #                                   LINKAGE_CRANKS, else its kind's, DEFAULT_CRANKS: "bolt",
     #                                   construction.crank.BoltCrank, single aluminium web plates
@@ -382,6 +462,8 @@ class BuildConfig:
             lk = linkage.get(self.linkage)
         except KeyError as e:
             raise ParamError(e.args[0]) from None
+        if self.robot is None:
+            object.__setattr__(self, "robot", lk.kind in ROBOT_LAYOUTS)   # (default_robot)
         if self.robot and lk.kind not in ROBOT_LAYOUTS:
             raise ParamError(f"{lk.key} is a {lk.kind}, not a walker or an arm: no robot is made "
                              f"of it (a walker's two sides, an arm on its turntable), so it "
@@ -408,7 +490,10 @@ class BuildConfig:
         if self.servo not in servos.available():
             raise ParamError(f"unknown servo {self.servo!r}; have {servos.available()}")
         object.__setattr__(self, "phases", self._phases(lk))
-        if lk.kind == "arm" and (self.crank or self.phases is not None):
+        for what in ROLE_FIELDS:
+            if (why := unused_field(lk, what, getattr(self, what))) is not None:
+                raise ParamError(why)
+        if lk.ranged and (self.crank or self.phases is not None):
             raise ParamError(f"{lk.key} is an arm: its inputs drive links, so it has no crank "
                              f"and no crank phases (crank {self.crank!r}, phases "
                              f"{self.phases})")
@@ -485,13 +570,22 @@ class BuildConfig:
     def applied_roles(self) -> dict[str, str]:
         """Every :mod:`spiderpig.roles` role kept in ``roles`` that applies to this design,
         with the key that fills it (:data:`roles.NONE` for an emptied one), and every
-        per-slot key named: what the resolved spec writes in."""
+        per-slot key named: what the resolved spec writes in. A role filled by its kind's
+        ``implicit`` key, its default here, is left out (:class:`roles.Role`: the designs
+        stored before it reached their kind keep their ids, and read back the same)."""
         from spiderpig import roles as rolemod
 
         kind = self.lk.kind
         named = dict(self.roles)
-        out = {r.name: named.get(r.name) or rolemod.default_key(r.name, self)
-               for r in rolemod.extra() if kind in r.kinds}
+        out = {}
+        for r in rolemod.extra():
+            if kind not in r.kinds:
+                continue
+            default = rolemod.default_key(r.name, self)
+            key = named.get(r.name) or default
+            implicit = r.implicit_for(kind)
+            if not (implicit and key == implicit == default):
+                out[r.name] = key
         out.update({q: k for q, k in named.items() if "@" in q})
         return out
 
@@ -587,9 +681,14 @@ class BuildConfig:
     def side_config(self) -> BuildConfig:
         """The config of the side alone: ``robot`` off, the robot-level roles
         (:attr:`roles.Role.robot`: the turntable, the tool) dropped, so every robot of one
-        side shares its design and plan."""
+        side shares its design and plan. A linkage that makes no robot (a mechanism: its
+        side is the whole machine, :func:`robot_layout`) keeps them: there is no robot round
+        its side to hold them (its controller's lines are the side's,
+        :func:`construction.robot.controller_lines`)."""
         from spiderpig import roles as rolemod
 
+        if not robot_layout(self.lk):
+            return replace(self, robot=False)
         roles = tuple((k, v) for k, v in self.roles
                       if not rolemod.get(rolemod.split(k)[0]).robot)
         return replace(self, robot=False, roles=roles)
@@ -892,13 +991,18 @@ def design_from_query(query: Mapping, base: BuildConfig | None = None,
         # (link_sheets name a linkage's own links: kept only with its linkage)
         from spiderpig import roles as rolemod
 
-        kind = linkage.get(query.get("linkage") or base.linkage).kind
-        materials = {"sheet": base.sheet, "thickness": base.thickness, "servo": base.servo,
+        lk_new = linkage.get(query.get("linkage") or base.linkage)
+        kind = lk_new.kind
+        materials = {"sheet": base.sheet, "thickness": base.thickness,
+                     "servo": (servos.DEFAULT if unused_field(lk_new, "servo", base.servo)
+                               else base.servo),     # (an arm has no drive servo)
                      "frame_sheet": base.frame_sheet, "heads": base.heads,
                      "params": (Params() if base.params == default_params(base.lk)
                                 else base.params),
                      "roles": tuple((n, k) for n, k in base.roles if rolemod.applies(n, kind)),
                      **own}
+        if unused_field(lk_new, "crank_sheet", materials["crank_sheet"]):
+            materials["crank_sheet"] = ""       # (an arm has no crank: its default)
         return design_from_query(query, **{**materials, **fixed})
     props = dict(base.proportions)
     props.update(proportions)

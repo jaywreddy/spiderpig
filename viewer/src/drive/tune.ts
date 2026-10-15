@@ -7,6 +7,7 @@ import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import type { DriveHost } from './index';
 import { parseDrive, straightWalk, type DriveData, type Side, type WalkJson } from './model';
 import { f, fmt, MIN_MARGIN_MM } from './hud';
+import { groupSelect, linkageGroups, linkageOptions } from '../modes';
 import type { DriveView } from './view';
 
 export interface WalkResponse extends WalkJson {
@@ -18,7 +19,7 @@ export interface WalkResponse extends WalkJson {
 
 /** ``/api/design/{id}``: a stored design's card (``spiderpig view``). */
 export interface DesignCard {
-  design: string; kind: 'walker' | 'mechanism'; linkage: string; module: string; sides: number;
+  design: string; kind: 'walker' | 'mechanism' | 'arm'; linkage: string; module: string; sides: number;
   mode: string; phases_deg: number[]; params: Record<string, number>; servo: string;
 }
 
@@ -27,7 +28,7 @@ export interface LinkageInfo {
   key: string; name: string; family: string; notes: string; source: string;
   params: { name: string; default: number; angle: boolean }[];
   modules: Record<string, number>; default_module: string; labels: Record<string, string>; feet: number;
-  kind: 'walker' | 'mechanism'; output: { kind: string; name: string; motion: string } | null;
+  kind: 'walker' | 'mechanism' | 'arm'; output: { kind: string; name: string; motion: string } | null;
 }
 
 /** The glb root's design (``bake.py`` writes ``linkage``/``module`` on the root and the
@@ -77,7 +78,8 @@ export function createTune(ctx: TuneHost) {
     props: Object.fromEntries(paramKeys(url).filter((k) => k.startsWith('p.'))
       .map((k) => [k.slice(2), Number(url.get(k))])) as Record<string, number>,
   };
-  let linkages: LinkageInfo[] | null = null, defaultLinkage = SERVER_DEFAULT.linkage;   // from /api/linkages
+  // every registered linkage (/api/linkages), in the one linkage dropdown grouped by kind
+  let linkages: LinkageInfo[] | null = null, defaultLinkage = SERVER_DEFAULT.linkage;
   const info = (): LinkageInfo | undefined => linkages?.find((l) => l.key === design.linkage);
   /** The module a design of ``design.linkage`` gets when a query names none: the catalogue's
    * ``default_module`` (Strider's double, another walker's quad); ``SERVER_DEFAULT`` before it. */
@@ -131,23 +133,22 @@ export function createTune(ctx: TuneHost) {
     return card;
   }
 
-  /** The registered linkages (once): the walker dropdown, the design controls, and a
-   * mechanism picker (one side, not tuned). */
+  /** The registered linkages (once): the one linkage dropdown (every kind, grouped by kind:
+   * walkers, mechanisms, arms) and the design controls. A linkage picked loads in its own
+   * default view, the view picker offering what it declares (``host.loadLinkage``). */
   async function loadLinkages(): Promise<void> {
     if (linkages) return;
     const r = await getJson<{ default: string; linkages: LinkageInfo[] }>('/api/linkages');
-    [linkages, defaultLinkage] = [r.linkages.filter((l) => l.kind === 'walker'), r.default];
+    [linkages, defaultLinkage] = [r.linkages, r.default];
     if (!info()) design.linkage = r.default;
     // a module guessed before the catalogue came (and not changed since): the catalogue's
     if (guessedModule !== null && design.module === guessedModule) design.module = info()!.default_module;
     design.props = { ...defaults(), ...design.props };     // the URL's p.NAME win
-    linkageC = designF.add(design, 'linkage', Object.fromEntries(linkages.map((l) => [l.name, l.key])))
-      .onChange(() => queueMicrotask(switchLinkage));
-    const mechs = r.linkages.filter((l) => l.kind === 'mechanism');
-    designF.add({ mechanism: '' }, 'mechanism',
-      { '–': '', ...Object.fromEntries(mechs.map((l) => [l.name, l.key])) })
-      .name('mechanism (one side)')
-      .onChange((k: string) => { if (k) host.loadSide(`linkage=${k}`).catch(fail); });
+    const groups = linkageGroups(linkages);
+    linkageC = designF.add(design, 'linkage', linkageOptions(groups))
+      .onChange(() => queueMicrotask(() => void switchLinkage()));
+    const select = linkageC.domElement.querySelector('select');
+    if (select) groupSelect(select, groups);
     buildDesign();
   }
 
@@ -165,20 +166,38 @@ export function createTune(ctx: TuneHost) {
     }
   }
 
-  /** Another linkage: its defaults, its modules (keeping this one if it has it), and the parts re-baked. */
-  function switchLinkage(): void {
-    const mods = Object.keys(info()!.modules);
-    if (!mods.includes(design.module)) design.module = info()!.default_module;
+  /** Another linkage, of any kind: its defaults, its modules (keeping this one if it has it),
+   * and its model loaded; the view picker then offers what it declares (``/api/modes``: a
+   * walker's robot and modules, an arm's robot and side, a mechanism's side). One with feet
+   * walks: its robot re-baked with the tune panel's design, to drive (``rebuild``); one
+   * without loads in its own default view. A load that fails puts the panel back to the
+   * design on screen. */
+  async function switchLinkage(): Promise<void> {
+    const lk = info()!;
+    if (!Object.keys(lk.modules).includes(design.module)) design.module = lk.default_module;
     design.phases = null;
     design.props = defaults();
     buildDesign();
     if (ctx.preview()) request(0);
-    void rebuild();
+    if (lk.feet > 0) return rebuild();
+    tune.status = `loading ${lk.key}…`;
+    try {
+      await host.loadLinkage(lk.key);
+      tune.status = `${lk.key}: its own views (no feet: nothing to drive)`;
+    } catch (e) {
+      adoptLoaded();
+      fail(new Error(`load failed: ${(e as Error).message}`));
+    }
+    ctx.syncUrl();
   }
 
   let timer = 0, inflight: AbortController | null = null;
   function request(delay = 150): void {
     clearTimeout(timer);
+    if (info()?.feet === 0) {          // no feet: no walk to preview
+      tune.status = `${design.linkage} has no feet: the stick preview is a walker's`;
+      return;
+    }
     timer = window.setTimeout(() => {
       inflight?.abort();
       inflight = new AbortController();

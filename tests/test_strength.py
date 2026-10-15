@@ -22,6 +22,7 @@ from spiderpig.construction.wobble import (
     stresses,
 )
 from tests import _strength
+from tests.tiers import quick
 
 _LOADS_REL = 1e-3
 """How far a recorded pin load may move in its currency test (MuJoCo on another machine)."""
@@ -117,7 +118,7 @@ def test_the_loads_say_where_they_came_from():
     assert over["jam_n"] == 50.0
     mech = strength.design_loads(BuildConfig(linkage="parallelogram_lift", module="single",
                                              robot=False))
-    assert mech["source"] == "none"
+    assert mech["source"] == "static"       # a mechanism's own static loads (crank_loads)
 
 
 def test_a_jam_that_did_not_stall_says_so(monkeypatch):
@@ -241,9 +242,10 @@ def test_verify_fails_an_overloaded_joint(monkeypatch):
 
     notes = {"pin:J4_leg0": note({"b3_leg0": 2, "b4_leg0": 6})}
     design = SimpleNamespace(mech=SimpleNamespace(meta={"wobble": notes}),
-                             config=BuildConfig(), store=None, kind="walker")
+                             config=BuildConfig(), store=None, kind="walker",
+                             spec=SimpleNamespace(payload_g=None))
 
-    def loads(config, store=None, override=None, sim=True):
+    def loads(config, store=None, override=None, sim=True, payload_g=None):
         assert sim == "cached"                                   # standard: no sim run
         out = strength.uniform_loads(1.0, 400.0, "override", "test")
         out["torque_limit_nm"] = 0.85
@@ -260,7 +262,7 @@ def test_verify_fails_an_overloaded_joint(monkeypatch):
     assert f.culprits[0]["fixes"]
     assert math.isfinite(f.numbers["sf_jam_min"])
 
-    def family(config, store=None, override=None, sim=True):
+    def family(config, store=None, override=None, sim=True, payload_g=None):
         out = strength.uniform_loads(1.0, 400.0, "fallback", "no sim")
         out["torque_limit_nm"] = 0.85
         return out
@@ -500,3 +502,43 @@ def test_the_order_designs_audit_report(name, monkeypatch):
     assert "hex standoff in hex pockets" in md
     assert "Chicago screws (per side): " in md
     assert f"Wobble, pins: worst {wob['pin']['worst_deg']:.2f} deg" in md
+
+
+@pytest.mark.parametrize("name", quick(list(_strength.ORDER_DESIGNS), ["klann_lego_quad"]))
+def test_the_order_designs_feet_across_the_plane(name, monkeypatch):
+    """strength.foot_stiffness (2026-10-14) of an order design, on its cached plan and its
+    recorded wobble notes: a row per foot of a side (feet x legs), each foot's compliance
+    across the plane, its deflection and link tilt at the sideways load (the weight on the
+    fewest feet touching, times the floor's friction), the pillars' shafts as their notes
+    say; the audit's check carries it and prints it; a mechanism has none."""
+    from spiderpig.sim.mjcf import SimParams
+    from spiderpig.tools.audit import feet_cell, feet_lines
+    from tests import cache
+
+    cfg = _strength.ORDER_DESIGNS[name]
+    _, design = cache.cached_design(cfg)
+    meta = _strength.meta(name)
+    feet = strength.foot_stiffness(cfg, design, meta["wobble"])
+    assert feet is not None
+    assert len(feet["feet"]) == len(cfg.lk.feet) * len(cfg.legs)
+    assert 2 <= feet["contacts"] <= 2 * len(feet["feet"])
+    assert feet["friction"] == SimParams().friction
+    weight = feet["mass_g"] / 1000 * 9.81
+    assert feet["load_n"] == pytest.approx(feet["friction"] * weight / feet["contacts"],
+                                           abs=1e-3)
+    for f in feet["feet"]:
+        assert 0.05 < f["mm_per_n"] < 20, f
+        assert f["deflection_mm"] == pytest.approx(f["mm_per_n"] * feet["load_n"], abs=2e-3)
+        assert 0 < f["tilt_deg"] < 10
+        assert f["splay_deg"] >= 0
+        assert f["tilt_link"].endswith(f"_leg{f['leg']}")
+    worst = max(feet["feet"], key=lambda f: f["mm_per_n"])
+    assert feet["worst"]["mm_per_n"] == worst["mm_per_n"]
+    assert feet_cell({"feet": feet}).startswith(f"{worst['mm_per_n']:g} mm/N")
+    assert len(feet_lines(feet)) == 4 + len(feet["feet"])
+    loads = _strength.strength_loads(name, monkeypatch)
+    st = strength.check(meta["wobble"], meta, cfg, loads, design)
+    assert st["feet"] == feet
+    assert "feet" not in strength.check(meta["wobble"], meta, cfg, loads)
+    mech = BuildConfig(linkage="hoecken_pantograph", robot=False)
+    assert strength.foot_stiffness(mech, design) is None

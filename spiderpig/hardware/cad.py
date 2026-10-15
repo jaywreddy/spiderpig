@@ -11,12 +11,22 @@ Models are never checked into the repo. Where one comes from, in order:
 time, e.g. before going offline.
 
 Every file is checked against its pinned ``sha256`` before use: a file that
-doesn't match is never used (a mismatching download isn't cached). Nothing
+doesn't match is never used (a mismatching download isn't cached). By default nothing
 here raises: a model that can't be had gives ``None`` (logged), and callers
 fall back to their parametric model (the servos' :mod:`servos.model`; a bought part's
 catalog dims). A model with no ``url`` (``vendor`` / ``part_number``: a vendor whose
 pages refuse a scripted fetch) comes only from the cache, which :func:`import_file`
 fills with a file fetched by other means (a browser).
+
+**Strict** (``SPIDERPIG_CAD_STRICT=1``, :func:`strict`): a model a build wants (its switch
+on: ``SPIDERPIG_SERVO_CAD`` / ``SPIDERPIG_PART_CAD``) that can't be drawn raises
+:class:`CadError` instead of falling back: not in the cache and not downloaded (offline,
+a failed download, a hash mismatch, a vendor with no scripted download), a file that
+doesn't import, a servo's horn that can't be stripped, a bought part's model that isn't
+the catalog's size or can't be placed. For a build whose renders and STEP must carry the
+vendors' models; off by default (the gate and the audit run offline, parametric). The
+probes (:func:`fetch`, :func:`state`) never raise; ``spiderpig cad check`` loads every
+registered model this way.
 
 The servos' models went through here first (:mod:`servos.cad` re-exports this module,
 with its own switch ``SPIDERPIG_SERVO_CAD``).
@@ -37,6 +47,7 @@ log = logging.getLogger("spiderpig.cad")
 
 CACHE_ENV = "SPIDERPIG_CAD_CACHE"
 OFFLINE_ENV = "SPIDERPIG_OFFLINE"
+STRICT_ENV = "SPIDERPIG_CAD_STRICT"     # "1": a wanted model that can't be drawn raises
 TIMEOUT = 60.0
 MAX_BYTES = 64 << 20
 
@@ -89,6 +100,25 @@ def _flag(name: str) -> bool:
 def offline() -> bool:
     """``SPIDERPIG_OFFLINE=1``: never download."""
     return _flag(OFFLINE_ENV)
+
+
+def strict() -> bool:
+    """``SPIDERPIG_CAD_STRICT=1``: a vendor model that can't be drawn raises
+    :class:`CadError` instead of the parametric fallback (module docstring)."""
+    return _flag(STRICT_ENV)
+
+
+class CadError(RuntimeError):
+    """A vendor model a build wants and can't draw, under ``SPIDERPIG_CAD_STRICT=1``."""
+
+
+def unavailable(what: str) -> None:
+    """A wanted vendor model can't be drawn (``what`` says why): raised as
+    :class:`CadError` under :func:`strict`, else logged (the caller falls back to its
+    parametric part)."""
+    if strict():
+        raise CadError(f"{what} ({STRICT_ENV}=1: no parametric fallback)")
+    log.warning("%s", what)
 
 
 def cache_dir() -> Path:
@@ -146,20 +176,32 @@ def _write_atomic(path: Path, data: bytes) -> None:
 
 def fetch(ref: CadRef, *, allow_download: bool | None = None,
           timeout: float = TIMEOUT) -> Path | None:
-    """A local, hash-verified copy of ``ref``'s model file, or ``None``.
+    """A local, hash-verified copy of ``ref``'s model file, or ``None`` (never raises: a
+    probe; :func:`load` says why under :func:`strict`).
 
     ``allow_download`` defaults to "not :func:`offline`".
     """
+    return _fetch(ref, allow_download, timeout)[0]
+
+
+def _fetch(ref: CadRef, allow_download: bool | None = None,
+           timeout: float = TIMEOUT) -> tuple[Path | None, str]:
+    """:func:`fetch`'s path, and when there is none, why."""
     if allow_download is None:
         allow_download = not offline()
     try:
         path = cached_path(ref)
         if not ref.sha256:          # unpinned: whatever import_file put there
-            return path if path.is_file() else None
+            return (path, "") if path.is_file() else (None, (
+                f"not in the CAD cache ({path}; `spiderpig cad fetch` or `spiderpig cad "
+                "import`)"))
         if _good(path, ref.sha256):
-            return path
+            return path, ""
         if not allow_download or not ref.url:
-            return None
+            why = ("no download allowed" if ref.url else "no URL to download it from")
+            if ref.url and offline():
+                why = f"{OFFLINE_ENV}=1"
+            return None, f"not in the CAD cache ({path}) and {why}"
         data = _download(ref.url, timeout)
         if ref.member:
             import io
@@ -168,18 +210,19 @@ def fetch(ref: CadRef, *, allow_download: bool | None = None,
             got = hashlib.sha256(data).hexdigest()
             if ref.archive_sha256 and got != ref.archive_sha256.lower():
                 log.warning("%s: archive sha256 mismatch; not using it", ref.url)
-                return None
+                return None, f"{ref.url}: archive sha256 mismatch"
             with zipfile.ZipFile(io.BytesIO(data)) as z:
                 data = z.read(ref.member)
         if hashlib.sha256(data).hexdigest() != ref.sha256.lower():
             log.warning("%s: sha256 mismatch; not using it", ref.url)
-            return None
+            return None, f"{ref.url}: sha256 mismatch"
         _write_atomic(path, data)
-        return path
-    # a download, zip or disk error: never fail the build over a model
+        return path, ""
+    # a download, zip or disk error: never fail the build over a model (unless strict:
+    # load raises with this reason)
     except Exception as e:  # noqa: BLE001
         log.warning("model %s unavailable: %s", ref.filename, e)
-        return None
+        return None, f"download failed: {e}"
 
 
 def _trsf(ref: CadRef):
@@ -249,17 +292,21 @@ def write_prepared(path: Path, doc: dict) -> None:
 
 
 def load(ref: CadRef, *, allow_download: bool | None = None):
-    """``ref``'s model in the part's frame (a build123d shape), or ``None``."""
-    path = fetch(ref, allow_download=allow_download)
+    """``ref``'s model in the part's frame (a build123d shape), or ``None``
+    (:class:`CadError` instead under :func:`strict`)."""
+    path, why = _fetch(ref, allow_download)
     if path is None:
+        if strict():
+            raise CadError(f"model {ref.filename}: {why} ({STRICT_ENV}=1: no parametric "
+                           "fallback)")
         return None
     try:
         digest = "" if ref.sha256 else sha256_file(path)
         return _load_cached(str(path), ref.format, ref, digest)
     # OCCT's import errors aren't one class (Standard_Failure and kin through pybind11): a
-    # model that doesn't load is left out, never fails the build
+    # model that doesn't load is left out, never fails the build (unless strict)
     except Exception as e:  # noqa: BLE001
-        log.warning("model %s didn't load: %s", path, e)
+        unavailable(f"model {path} didn't load: {e}")
         return None
 
 
@@ -337,8 +384,9 @@ def load_axisymmetric(ref: CadRef, od: float, width: float, tol: float = 0.02):
         axis = min(range(3), key=lambda i: abs(size[i] - width))
         others = [size[i] for i in range(3) if i != axis]
         if abs(size[axis] - width) > tol or any(abs(o - od) > tol for o in others):
-            log.warning("model %s is %.2f x %.2f x %.2f mm, not the catalog's %g x %g x %g: "
-                        "not used", ref.filename, *size, od, od, width)
+            unavailable(f"model {ref.filename} is {size[0]:.2f} x {size[1]:.2f} x "
+                        f"{size[2]:.2f} mm, not the catalog's {od:g} x {od:g} x {width:g}: "
+                        "not used")
             return None
         from build123d import Axis
 
@@ -349,7 +397,9 @@ def load_axisymmetric(ref: CadRef, od: float, width: float, tol: float = 0.02):
         elif axis == 1:             # along y: onto z about x
             moved = moved.rotate(Axis.X, 90.0)
         return moved.moved(Location((0, 0, width / 2)))
+    except CadError:
+        raise
     # an OCCT failure on a vendor's file: draw the part from the catalog instead
     except Exception as e:  # noqa: BLE001
-        log.warning("model %s couldn't be placed: %s", ref.filename, e)
+        unavailable(f"model {ref.filename} couldn't be placed: {e}")
         return None

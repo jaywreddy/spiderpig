@@ -6,7 +6,7 @@ one (80 teeth: 5:1) bolted to the driven link's pad with four M3 screws into hol
 and tapped on a 30 mm circle; a stock closed-loop belt
 (:data:`hardware.motion_catalog.GT2_LOOPS`): the shortest whose centre distance keeps the
 pulleys apart and the motor clear of the pillar heads. The motor stands on a slider plate
-outside its frame plate (``tensioned``: :meth:`DriveGroup._slider`), clamped by two screws
+outside its frame plate (``tensioned``: :meth:`JointDrive._slider`), clamped by two screws
 from outside: the belt is tensioned (±``TENSION``) any time, the stack built.
 
 A loop of length ``L`` over pitch diameters ``D`` and ``d`` sits at the centre distance
@@ -28,7 +28,7 @@ import numpy as np
 
 from spiderpig.construction.base import Build, Context, Realized, hardware
 from spiderpig.construction.joints import ErrorTerms
-from spiderpig.construction.transmissions.base import ALU, DriveGroup, DriveHub, Transmission
+from spiderpig.construction.transmissions.base import ALU, DriveHub, JointDrive, Transmission
 from spiderpig.hardware.catalog import get
 from spiderpig.hardware.motion_catalog import (
     GT2_LOOPS,
@@ -152,7 +152,7 @@ class BeltDrive(Transmission):
         rs[-1] = max(rs[-1], self.motor_side_r(ctx))
         return [float(r) for r in rs]
 
-    def realize(self, build: Build, group: DriveGroup, hub: DriveHub, out: Realized,
+    def realize(self, build: Build, group: JointDrive, hub: DriveHub, out: Realized,
                 layers: list[int]) -> None:
         z0, z1 = build.z(layers[0])[0], build.z(layers[-1])[1]
         zm = (z0 + z1) / 2

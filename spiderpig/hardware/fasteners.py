@@ -48,6 +48,31 @@ class Screw:
     def key(self, length: float) -> str:
         return f"m{self.size}_{self.kind}_{length:g}"
 
+    def priced(self, length: float) -> bool:
+        """Whether the BOM's first offer for this length shows a price (Bolt Depot has no
+        M3 x 14: its first offer is McMaster's, unpriced)."""
+        from spiderpig.hardware.catalog import get
+
+        try:
+            offer = get(self.key(length)).offer
+        except KeyError:
+            return False
+        return offer is not None and offer.price_usd is not None
+
+    def length_for(self, need: float, *, longest: bool = False) -> float:
+        """The shortest length at least ``need`` mm, a priced one first (:meth:`priced`),
+        else any listed: the one way a part picks a screw's length (2026-10-14: twenty
+        inline picks before). ``longest``: none reaches it, so take the longest instead of
+        raising."""
+        listed = sorted(float(L) for L in self.lengths)
+        for pool in ([L for L in listed if self.priced(L)], listed):
+            for L in pool:
+                if need - 1e-6 <= L:
+                    return L
+        if longest and listed:
+            return listed[-1]
+        raise LookupError(f"no {self.kind} M{self.d:g} reaches {need:.2f} mm "
+                          f"(lengths: {listed})")
 
 SCREWS: dict[tuple[str, str], Screw] = {(s.kind, s.size): s for s in (
     # ISO 4762 socket heads: (head diameter dk, head height k)

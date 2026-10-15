@@ -363,7 +363,7 @@ class FramePlates(Group):
                           "Outer frame plate and pillar columns",
                           "Lay the outer frame plate down, leg side up.", "plate"))
         arm = getattr(getattr(view.ctx, "config", None), "lk", None)
-        arm = arm is not None and arm.kind == "arm"
+        arm = arm is not None and arm.ranged
         if inner is not None and inner in view.z:
             ops.append(Op(UNIT, (0,), whole(inner),
                           "Inner plate" if arm else "Inner plate and servo",

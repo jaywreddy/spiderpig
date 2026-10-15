@@ -7,7 +7,8 @@ without fabricating the robot (20-45 s a design) or building its MJCF (3-4 s) ag
   copy** of :func:`tests.cache.cached_robot`'s: meshing a part stores its triangulation
   on the shape, and a shape keeps its first one (``mesh.py``), so the MJCF's hulls (0.5 mm)
   and the bake's meshes (0.1 mm) must never mesh the same shapes in one process.
-* :func:`mjcf_of` -- ``build_mjcf(cfg, params)`` of that robot (:func:`spiderpig.sim.mjcf
+* :func:`mjcf_of` -- ``build_mjcf(cfg, params)`` of that robot (any kind's: a walker's
+  whole robot, :func:`spiderpig.sim.mjcf.model_config`) (:func:`spiderpig.sim.mjcf
   .set_fabricated`), cached on disk beside the fabrications (``CACHE_DIR/sim/``: keyed by
   the engine version like every entry, so it is always the engine's own model).
 * :func:`seed` -- that MJCF compiled as :func:`spiderpig.sim.mjcf.load_model`'s answer
@@ -30,7 +31,7 @@ import gzip
 import hashlib
 import json
 import tempfile
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from pathlib import Path
 
 from tests import cache
@@ -48,9 +49,11 @@ def private(mech):
 
 def robot_at_ref(cfg):
     """A private copy of the robot of ``cfg`` at the model's reference angle (cached)."""
-    from spiderpig.sim.mjcf import T_REF
+    from spiderpig.sim.mjcf import T_REF, model_config
 
-    return private(cache.cached_robot(cfg, T_REF))
+    cfg = model_config(cfg)         # (a mechanism's model is of its side: it has no robot)
+    return private(cache.cached_robot(cfg, T_REF) if cfg.robot
+                   else cache.cached_side(cfg, T_REF))
 
 
 def side_at_ref(cfg):
@@ -76,13 +79,13 @@ def _build(cfg, params) -> tuple[str, dict]:
 
 
 def mjcf_of(cfg, params=None) -> tuple[str, dict]:
-    """``(xml, meta)``: :func:`spiderpig.sim.mjcf.build_mjcf` of ``cfg`` (robot) and
+    """``(xml, meta)``: :func:`spiderpig.sim.mjcf.build_mjcf` of ``cfg`` (its model's) and
     ``params`` on the cached robot, from ``CACHE_DIR/sim/`` when there. The meta is what
     JSON gives back (as an exported model's ``.json``); one pair per key per process:
     never mutate it."""
-    from spiderpig.sim.mjcf import SimParams
+    from spiderpig.sim.mjcf import SimParams, model_config
 
-    cfg, params = replace(cfg, robot=True), params or SimParams()
+    cfg, params = model_config(cfg), params or SimParams()
     memo = ("mjcf", cfg, params)
     if memo in _MEMO:
         return _MEMO[memo]
@@ -108,10 +111,10 @@ def mjcf_of(cfg, params=None) -> tuple[str, dict]:
 def steering_of(cfg, params=None) -> dict:
     """:func:`spiderpig.sim.run.steering_check` of :func:`mjcf_of`'s model (cached on disk:
     MuJoCo is deterministic, the check is ~15 s of stepping)."""
-    from spiderpig.sim.mjcf import SimParams
+    from spiderpig.sim.mjcf import SimParams, model_config
     from spiderpig.sim.run import steering_check
 
-    cfg, params = replace(cfg, robot=True), params or SimParams()
+    cfg, params = model_config(cfg), params or SimParams()
     memo = ("steering", cfg, params)
     if memo in _MEMO:
         return _MEMO[memo]
@@ -139,7 +142,7 @@ def seed(cfg, params=None, *, steering: bool = False):
     hands it over."""
     from spiderpig.sim import mjcf
 
-    cfg, params = replace(cfg, robot=True), params or mjcf.SimParams()
+    cfg, params = mjcf.model_config(cfg), params or mjcf.SimParams()
     xml, meta = mjcf_of(cfg, params)
     if cfg not in mjcf._FABRICATED:
         # a model asked for with params nobody seeded is built from the cached robot (3-5 s),
@@ -235,8 +238,14 @@ def mjcf_from_doc(doc: dict) -> tuple[str, dict]:
     return xml, doc["meta"]
 
 
-RECORDED = {"klann_single": ("klann", "single"), "strider_single": ("strider", "single")}
-"""The recorded MJCFs: fixture name -> (linkage, module), each the default build."""
+RECORDED = {"klann_single": ("klann", "single"), "strider_single": ("strider", "single"),
+            "palletizer_reach": ("palletizer_reach", ""),
+            "hoecken_pantograph": ("hoecken_pantograph", "")}
+"""The recorded MJCFs: fixture name -> (linkage, module), each the default build (an
+arm's: its robot on its turret, the module its default; a mechanism's: its one side)."""
+
+WALKERS = ("klann_single", "strider_single")
+"""The recorded walkers (the rest are fixed designs: :func:`spiderpig.sim.run.hold`)."""
 
 
 def fresh_mjcf(name: str) -> dict:

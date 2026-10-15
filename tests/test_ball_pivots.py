@@ -251,6 +251,39 @@ def test_an_imported_model_is_aligned_and_size_checked(monkeypatch, tmp_path, mc
     assert cad.load_axisymmetric(ref, 8.0, 3.0) is None      # vendor models switched off
 
 
+def test_strict_mode_draws_the_vendor_model_or_raises(monkeypatch, tmp_path, mcmaster_mr84,
+                                                     capsys):
+    """``SPIDERPIG_CAD_STRICT=1``: a bought part's model missing from the cache, or not the
+    catalog's size, raises instead of drawing the catalog's ring; the right one draws.
+    ``spiderpig cad check`` says which, strictly, whatever the environment."""
+    from spiderpig.construction.pivots.ball import bearing_solid
+    from spiderpig.hardware import cad
+    from spiderpig.tools import cad as cad_tool
+
+    monkeypatch.setenv(cad.CACHE_ENV, str(tmp_path / "cache"))
+    monkeypatch.delenv(cad.PART_CAD_ENV, raising=False)
+    monkeypatch.delenv(cad.STRICT_ENV, raising=False)
+    ref = cad.part_cad("bearing_mr84zz")
+    assert ref is not None
+    assert cad_tool.main(["check", "bearing_mr84zz"]) == 1
+    assert "FAILED" in capsys.readouterr().out
+    assert not cad.strict()                                  # (the switch restored)
+    monkeypatch.setenv(cad.STRICT_ENV, "1")
+    with pytest.raises(cad.CadError, match="not in the CAD cache"):
+        bearing_solid("bearing_mr84zz", (0, 0), 0.0)
+    cad.import_file(ref, _step(tmp_path, 9.0, 4.0, 3.0, "wrong.step"))
+    with pytest.raises(cad.CadError, match="not the catalog's"):
+        bearing_solid("bearing_mr84zz", (0, 0), 0.0)
+    cad.import_file(ref, _step(tmp_path, 8.0, 4.0, 3.0, "vendor.step"))
+    assert pytest.approx(8.0) == bearing_solid("bearing_mr84zz", (0, 0), 0.0).bounding_box(
+        ).size.X
+    assert cad_tool.main(["check", "bearing_mr84zz"]) == 0
+    monkeypatch.setenv(cad.PART_CAD_ENV, "0")               # models off: nothing is wanted
+    cad.import_file(ref, _step(tmp_path, 9.0, 4.0, 3.0, "wrong.step"))
+    assert pytest.approx(8.0) == bearing_solid("bearing_mr84zz", (0, 0), 0.0).bounding_box(
+        ).size.X
+
+
 @pytest.mark.no_fabricate
 def test_the_fab_cache_keys_on_the_models_the_pins_draw(monkeypatch, tmp_path, mcmaster_mr84):
     from spiderpig.fabcache import parts_cad_state

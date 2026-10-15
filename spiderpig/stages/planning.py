@@ -29,7 +29,7 @@ from spiderpig.fabricate import (
 )
 from spiderpig.fabricate import template_for as _template_for
 from spiderpig.failure import Failure, Recommendation
-from spiderpig.stack import ClearanceError, PlanError, verify_plan
+from spiderpig.stack import ClearanceError, PlanError, StackSpec, verify_plan
 from spiderpig.stages.records import (
     _cached,
     _commit,
@@ -166,6 +166,7 @@ def plan(design: Design, force: bool = False) -> PlanReport:
             design.side = design_side(_template(design), design.config)
     except (PlanError, ConstructionError) as e:
         rep.failures.append(Failure.from_exception(e, lk=design.lk))
+        rep.budget_s = budget_of(StackSpec().max_seconds)     # what the search had
         return _finish(design, "plan", rep, t0)
     rep = _plan_report(design.side, rep)
     rep.warnings = list(warned)
@@ -198,7 +199,14 @@ def plan_config(config: BuildConfig, store: Store | str | Path | None = PROJECT)
     one side), the very design ``spiderpig export`` / ``view`` by the same options make:
     ``explain`` (one side) and ``audit`` / ``export`` / ``view`` (the robot) share it."""
     config = replace(config, robot=default_robot(config.linkage))
-    design = resolve(spec_of(config), store)
+    return plan_stored(resolve(spec_of(config), store))
+
+
+def plan_stored(design: Design) -> SideDesign:
+    """The planned side of ``design`` (a stored one: a CLI's ``DESIGN`` argument, its plan
+    reused from its store, re-made and verified), as :func:`plan_config` gives a config's:
+    :func:`fabricate.design_side` then answers with it for the design's config, and the
+    same errors."""
     rep = plan(design)
     if not rep.ok or design.side is None:
         msg = "\n  ".join(f.message for f in rep.failures[:1]) or "no plan"
@@ -221,6 +229,35 @@ def _plan_report(d: SideDesign, rep: PlanReport | None = None) -> PlanReport:
     rep.heads, rep.gaps_mm = p.heads, {str(k): v for k, v in sorted(p.gaps.items())}
     rep.ground_clearance_mm = d.ground_clearance_mm
     rep.table = p.describe()
+    rep.budget_s = budget_of(p.spec.max_seconds)
+    return rep
+
+
+def budget_of(seconds: float) -> float | None:
+    """A planner budget as a report keeps it (:attr:`PlanReport.budget_s`): ``None`` for
+    no clock."""
+    return float(seconds) if math.isfinite(seconds) else None
+
+
+def _say_budget(seconds: float | None) -> str:
+    return "no clock" if seconds is None else f"{seconds:g} CPU-s"
+
+
+def _recorded_budget(rep: PlanReport, doc: dict) -> PlanReport:
+    """``rep`` (a plan re-made from the record ``doc``) with the budget its search had, the
+    record's, not this process's (:attr:`PlanReport.budget_s`); a warning when they differ:
+    the plan's reach (its proof, a cheaper route) was another budget's."""
+    now = rep.budget_s
+    if "budget_s" not in doc:
+        rep.budget_s, rep.budget_recorded = None, False
+        return rep
+    was = doc["budget_s"]
+    rep.budget_s = None if was is None else float(was)
+    if rep.budget_s != now:
+        rep.warnings.append(
+            f"the stored plan was searched under a {_say_budget(rep.budget_s)} planner budget "
+            f"(this process's: {_say_budget(now)}, SPIDERPIG_PLAN_SECONDS); re-made and "
+            "verified, its proof and route are that search's")
     return rep
 
 
@@ -246,7 +283,7 @@ def _reuse_plan(design: Design) -> PlanReport | None:
         side = _remake_plan(design, own, same)
         if side is not None:
             design.side = side
-            rep = _plan_report(side)
+            rep = _recorded_budget(_plan_report(side), own)
             rep.reused, rep.seconds = "store", round(time.time() - t0, 3)
             return _commit(design, "plan", rep, cached=same)
         if same:
@@ -259,7 +296,7 @@ def _reuse_plan(design: Design) -> PlanReport | None:
         side = _remake_plan(design, doc, same_engine=False)
         if side is not None:
             design.side = side
-            rep = _plan_report(side)
+            rep = _recorded_budget(_plan_report(side), doc)
             rep.reused, rep.seconds = other, round(time.time() - t0, 3)
             return _commit(design, "plan", rep)
     return None

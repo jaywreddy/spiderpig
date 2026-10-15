@@ -1,5 +1,6 @@
 import type * as THREE from 'three';
 import type { Drive } from './drive';
+import type { ArmPanel } from './arm';
 
 /** A server mode id (see ``/api/modes``): ``robot``, ``klann``, ``double``, … */
 export type Mode = string;
@@ -25,6 +26,8 @@ export interface ViewerHandle {
   loadMode(m: Mode, query?: string): Promise<void>;
   /** Drive mode + tune panel (``drive/index.ts``). */
   readonly drive: Drive;
+  /** A fixed design's panel (``arm.ts``): its joint sliders and its live sim. */
+  readonly live: ArmPanel;
   ready: boolean;
 }
 

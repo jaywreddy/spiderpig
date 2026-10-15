@@ -197,7 +197,7 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
         log.info("%-14s %6.2f s", key, now - since)
         return now
 
-    all_steps = assembly_steps(mech, design)
+    all_steps = assembly_steps(mech, design, config=config)
     chosen = all_steps[:max_steps] if max_steps else all_steps
     mesh_path = _meshes(mech, cache)
     t = lap("meshes", t)
@@ -278,8 +278,8 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
             with Image.open(img / f"{h}.png") as im:
                 bubbles(im.convert("RGB"), sorted(best.items()))[0].save(path,
                                                                           compress_level=6)
-        else:   # the wiring step
-            nodes, links, left = wiring_of(mech, tags)
+        else:   # the wiring step: the design's controller's
+            nodes, links, left = wiring_of(mech, tags, _controller(config))
             draw(nodes, links, left, path, PICTURE)
         counts = counts_of[st.number - 1]
         callouts = [Callout(lab, round(counts[lab]), typ[lab].name, img / f"{thumbs[lab]}.png")
@@ -297,8 +297,7 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
                        ty.file, ty.detail) for ty in types]
     title = (f"{config.linkage} {config.module} {'robot' if config.robot else 'side'}")
     doc = Doc("Assembly guide",
-              [title, f"{config.servo} servo, {config.pin} pins, {config.pillar} pillars, "
-                      f"{config.crank} crank",
+              [title, constructions_line(config),
                f"{len(all_steps)} steps, {len(types)} part types, "
                f"{sum(ty.qty for ty in types)} parts"
                + (f" (the first {len(chosen)} steps)" if max_steps else "")],
@@ -319,6 +318,37 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
     except OSError:     # another run published it first
         shutil.rmtree(work, ignore_errors=True)
     return GuideReport(out / "ASSEMBLY.pdf", pages, len(chosen), False, n_drawn, times)
+
+
+def _controller(config):
+    """The design's controller (the role ``controller``), ``None`` for none or one that
+    can't drive it."""
+    from spiderpig.actuators.controllers import of
+
+    try:
+        return of(config)
+    except ValueError:
+        return None
+
+
+def constructions_line(config) -> str:
+    """The cover's line of what the design is built from: every role that applies to it
+    (:mod:`spiderpig.roles`), its key and the role's word ("sts3215 servo, chicago pins,
+    ..., skr_pico_pi_zero controller")."""
+    from spiderpig import roles
+
+    words = {"servo": "servo", "pin": "pins", "pillar": "pillars", "crank": "crank"}
+    out = []
+    for r in roles.ROLES.values():
+        if not roles.applies(r.name, config.lk.kind) or r.name == "pin_stack":
+            continue
+        try:
+            key = config.role(r.name)
+        except (KeyError, ValueError):
+            continue
+        if key:
+            out.append(f"{key} {words.get(r.name, r.name.replace('_', ' '))}")
+    return ", ".join(out)
 
 
 def _batches(jobs_all: list[dict], n: int) -> list[list[dict]]:
@@ -391,11 +421,13 @@ def markdown(title: str, steps, types, counts_of, mech) -> str:
 
 def main(argv=None) -> int:
     from spiderpig.config import add_build_args, add_design_args, config_from_args
+    from spiderpig.stages.resolve import DESIGN_HELP
     from spiderpig.store import Store
 
     p = argparse.ArgumentParser(prog="spiderpig guide", description=(
         "The assembly guide: ASSEMBLY.pdf (numbered steps with pictures, the parts with "
         "their labels, print batches, bag labels) and ASSEMBLY.md, into --out."))
+    p.add_argument("design", nargs="?", metavar="DESIGN", help=DESIGN_HELP)
     add_design_args(p)
     add_build_args(p)
     p.add_argument("--out", type=Path, default=Path("build"), help="the folder (build)")
@@ -407,10 +439,22 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("fontTools").setLevel(logging.WARNING)
-    config = config_from_args(args)
     store = Store.of(args.store) if args.store else Store.default()
+    side = None
+    if args.design:         # a stored design: its config and plan as recorded
+        from spiderpig.stages.planning import plan_stored
+        from spiderpig.stages.resolve import load_stored
+
+        try:
+            design = load_stored(args.design, store)
+            side = plan_stored(design)
+        except (KeyError, ValueError) as e:
+            p.error(str(e))
+        config = design.config
+    else:
+        config = config_from_args(args)
     rep = build_guide(config, store, args.out, jobs=args.jobs, max_steps=args.steps,
-                      force=args.force)
+                      force=args.force, design=side)
     how = "from the cache" if rep.cached else f"{rep.drawn} pictures drawn"
     print(f"wrote {rep.pdf} and ASSEMBLY.md: {rep.pages} pages, {rep.steps} steps ({how}, "
           f"{rep.seconds.get('total', 0):.1f} s)")

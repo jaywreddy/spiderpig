@@ -167,6 +167,48 @@ def test_load_never_raises(monkeypatch, tmp_path):
     assert cadlib.load(ref) is None
 
 
+def test_strict_mode_raises_where_the_default_falls_back(monkeypatch, tmp_path):
+    """``SPIDERPIG_CAD_STRICT=1``: a model that can't be had or doesn't import raises
+    :class:`CadError` with the reason, where the default gives ``None`` (the parametric
+    part); the probe (:func:`fetch`) never raises either way."""
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
+    monkeypatch.delenv(cadlib.OFFLINE_ENV, raising=False)
+    monkeypatch.delenv(cadlib.STRICT_ENV, raising=False)
+    junk = _ref(tmp_path, b"not a STEP file")
+    assert cadlib.load(junk) is None                       # (now in the cache)
+    tampered = replace(_ref(tmp_path, b"the real model"), sha256="0" * 64)
+    assert cadlib.load(tampered) is None
+
+    monkeypatch.setenv(cadlib.STRICT_ENV, "1")
+    assert cadlib.strict()
+    with pytest.raises(cadlib.CadError, match="didn't load"):
+        cadlib.load(junk)                                  # (cached by now: an import error)
+    with pytest.raises(cadlib.CadError, match="sha256 mismatch"):
+        cadlib.load(tampered)
+    assert cadlib.fetch(tampered) is None                  # a probe: never raises
+    monkeypatch.setenv(cadlib.OFFLINE_ENV, "1")
+    missing = replace(_ref(tmp_path, b"another model"), filename="other.step")
+    with pytest.raises(cadlib.CadError, match=f"{cadlib.OFFLINE_ENV}=1"):
+        cadlib.load(missing)
+
+
+def test_a_strict_servo_with_no_model_in_reach_raises(offline, monkeypatch):
+    """Offline with an empty model cache the servo is parametric by default; strict, the
+    build stops on it (every model's reason), unless its models are switched off."""
+    key = next(k for k in KEYS if servos.get(k).cads)
+    s = servos.get(key)
+    assert model.cad_state(s) != ()                      # its models are wanted
+    assert model.cad_servo(s, model.cad_state(s)) is None        # default: parametric
+    monkeypatch.setenv(cadlib.STRICT_ENV, "1")
+    with pytest.raises(cadlib.CadError, match=f"{key}: no manufacturer model"):
+        model.cad_servo(s, model.cad_state(s), True)
+    with pytest.raises(cadlib.CadError, match=f"{cadlib.OFFLINE_ENV}=1"):
+        model.servo_part(s)
+    monkeypatch.setenv(cadlib.USE_CAD_ENV, "0")
+    assert model.cad_state(s) == ()                      # models off: nothing is wanted, so
+    #                                                      servo_part draws parametric
+
+
 # -- models -------------------------------------------------------------------------
 
 
@@ -385,3 +427,18 @@ def test_the_strip_uses_the_recorded_indices(monkeypatch, tmp_path):
     assert model.cad_servo(spec).volume == pytest.approx(1027)
     assert cadlib.read_prepared(path)["solids"] == 3
     clear_model_caches()
+
+
+@pytest.mark.no_fabricate
+@pytest.mark.parametrize("module", ["spiderpig.servos.mount", "spiderpig.construction.crank.base",
+                                    "spiderpig.construction"])
+def test_each_drive_module_imports_first(module):
+    """Imported first in a fresh interpreter (2026-10-14: ``servos.mount`` -> the
+    constructions -> the crank -> ``servos.mount`` was a cycle a test file importing the
+    mount first tripped on)."""
+    import subprocess
+    import sys
+
+    r = subprocess.run([sys.executable, "-c", f"import {module}"], capture_output=True,
+                       text=True, timeout=120)
+    assert r.returncode == 0, r.stderr[-800:]

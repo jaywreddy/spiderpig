@@ -1,5 +1,10 @@
-"""Step the MuJoCo model of the walker and measure how it walks.
+"""Step the MuJoCo model of a design: a walker walking, anything else held at its pose.
 
+:func:`hold` holds a design that doesn't walk (an arm, a mechanism: the same model, fixed)
+at its pose under gravity with its motors (a crank's servo in position mode) and measures
+its sag; :func:`turn` drives a fixed design's crank through one turn and measures its
+servo's torque against the torque limit it is set to (:func:`crank_torque_limit`, the one
+its joints are rated at; a walker's ``sim.torque`` is against its stall). For a walker,
 :func:`simulate` runs the model (:mod:`sim.mjcf`) under crank-speed commands
 and records a :class:`SimResult` time series; :func:`walk_metrics` reduces it
 to numbers (speed, stride, bob, attitude, drive torque against the servo's
@@ -31,7 +36,7 @@ from typing import Literal
 import numpy as np
 
 from spiderpig import linkage
-from spiderpig.config import BuildConfig, torque_limit_nm
+from spiderpig.config import BuildConfig, servo_torque_limit_nm, torque_limit_nm
 from spiderpig.fabricate import template_for
 from spiderpig.linkage import feet_of
 from spiderpig.sim.mjcf import (
@@ -332,6 +337,205 @@ def simulate(
                      loops=loop_names, speed_max=vmax, torque_max=tau,
                      torque_rated=meta["actuators"][drives[0]].get("rated_torque"),
                      mass=meta["mass"]["total"], config=config, meta=meta)
+
+
+HOLD_SECONDS = 3.0
+HOLD_SAG_MM = 10.0          # a held site sagging further than this: it doesn't hold
+HOLD_GAIN = 50.0            # 1/s: a crank servo's position mode, a P loop over its speed loop
+TURN_SPEED = 1.0            # a crank turned at this share of its servo's no-load speed
+TURN_TIMEOUT = 3.0          # ... given this many times the no-load turns' time to finish
+
+
+def _fixed_model(config: BuildConfig | None, params: SimParams | None,
+                 model_xml: str | None, model_meta: dict | None):
+    """``(config, model, meta)`` of a design that doesn't walk: its model built (a copy:
+    the cached one is shared), or an exported MJCF; :class:`ValueError` for a walker's."""
+    import mujoco
+
+    config = config or BuildConfig()
+    params = params or SimParams()
+    if model_xml is not None:
+        if model_meta is None:
+            raise ValueError("model_xml needs model_meta (the .json written beside the MJCF)")
+        model, meta = mujoco.MjModel.from_xml_string(model_xml), model_meta
+    else:
+        model, meta = load_model(config, params)
+        model = copy.copy(model)            # motor_line edits it
+    if meta.get("freejoint"):
+        raise ValueError(f"{config.linkage}: a walker's model stands on its feet: simulate "
+                         "it walking (simulate, walk_metrics), not held")
+    return config, model, meta
+
+
+def _cranks(model, meta: dict) -> list[int]:
+    """The velocity actuators (a crank's servo) of ``model``, by index."""
+    return [i for i in range(model.nu)
+            if meta["actuators"].get(model.actuator(i).name, {}).get("type") == "velocity"]
+
+
+def crank_torque_limit(config: BuildConfig, meta: dict) -> float | None:
+    """The torque limit a fixed design's crank servo is set to (N·m): what ``spiderpig
+    control servo`` writes into it and the strength rates its joints at
+    (:func:`config.torque_limit_nm`), of the servo and linkage the model's meta names (an
+    exported MJCF's too), else ``config``'s; ``None`` for a servo with none."""
+    named = meta.get("config") or {}
+    if named.get("servo") and named.get("linkage"):
+        try:
+            return servo_torque_limit_nm(named["servo"], named["linkage"])
+        except KeyError:            # a servo or linkage this engine no longer has
+            pass
+    return torque_limit_nm(config)
+
+
+def _cap(model, act, limit: float | None) -> None:
+    """Narrow actuators ``act``'s ``forcerange`` to ``±limit`` (a servo's firmware torque
+    limit under its stall); ``None``: as they are."""
+    if limit is None:
+        return
+    model.actuator_forcerange[act, 0] = np.maximum(model.actuator_forcerange[act, 0], -limit)
+    model.actuator_forcerange[act, 1] = np.minimum(model.actuator_forcerange[act, 1], limit)
+
+
+def _held_ctrl(model, data, meta: dict) -> None:
+    """Every position actuator (a stepper) told its joint's angle at ``qpos0``."""
+    for i in range(model.nu):
+        if meta["actuators"].get(model.actuator(i).name, {}).get("type") == "position":
+            j = model.actuator_trnid[i, 0]
+            data.ctrl[i] = model.qpos0[model.jnt_qposadr[j]]
+
+
+def hold(config: BuildConfig | None = None, seconds: float = HOLD_SECONDS, *,
+         params: SimParams | None = None, model_xml: str | None = None,
+         model_meta: dict | None = None, torque_limit: float | None = None) -> dict:
+    """A design that doesn't walk (an arm, a mechanism) held at its model's pose under
+    gravity for ``seconds``: every position actuator (a stepper) told its joint's angle at
+    ``qpos0``, every crank's servo in position mode (its speed told :data:`HOLD_GAIN` x its
+    angle's error: a P loop over its stiff speed loop, as the servo's own position mode; a
+    zero-speed command alone crept under gravity, before 2026-10-14), up to the torque limit
+    it is set to (``torque_limit``, else :func:`crank_torque_limit`: the firmware's, not its
+    stall, since 2026-10-14's third round). ``params.payload_g``
+    rides the tool's tip or the output (:func:`sim.mjcf._payload_at`). ``model_xml`` with
+    ``model_meta`` runs an exported MJCF instead of building it.
+
+    Returns (lengths in mm, angles in degrees): ``sag`` (each site's, the tool's tip and
+    the output's, at the end, from where it started) and ``sag_max``; ``drift`` (each
+    actuated joint's at the end); ``torque`` (each actuator's at the end, N·m) and
+    ``torque_fraction`` (of its force limit; ``saturated`` when one sits on it);
+    ``loop_error`` (the worst loop's gap); ``finite`` (the state stayed a number);
+    ``holds`` (finite, unsaturated and every site within :data:`HOLD_SAG_MM`)."""
+    import mujoco
+
+    config, model, meta = _fixed_model(config, params, model_xml, model_meta)
+    data = mujoco.MjData(model)
+    names = [model.actuator(i).name for i in range(model.nu)]
+    _held_ctrl(model, data, meta)
+    mujoco.mj_forward(model, data)
+    start = data.site_xpos.copy()
+    sites = [model.site(i).name for i in range(model.nsite)]
+    q0 = data.actuator_length.copy()
+    cranks = _cranks(model, meta)
+    if cranks:
+        _cap(model, cranks, torque_limit if torque_limit is not None
+             else crank_torque_limit(config, meta))
+    vmax = np.array([meta["actuators"][names[i]]["ctrlrange"][1] for i in cranks])
+    gaps = _LoopGaps(model)
+    finite, loop = True, 0.0
+    for _ in range(round(seconds / model.opt.timestep)):
+        if cranks:      # the servo's position mode
+            err = q0[cranks] - data.actuator_length[cranks]
+            data.ctrl[cranks] = np.clip(HOLD_GAIN * err, -vmax, vmax)
+        mujoco.mj_step(model, data)
+        if not np.isfinite(data.qacc).all():
+            finite = False
+            break
+        if gaps.eq.size:
+            loop = max(loop, float(gaps(model, data).max()))
+    held = [s for s in sites if s not in ("base", *meta.get("feet", {}))]
+    sag = {s: float(np.linalg.norm(data.site_xpos[sites.index(s)] - start[sites.index(s)]))
+           * 1e3 for s in held}
+    limit = np.maximum(np.abs(model.actuator_forcerange).max(axis=1), 1e-12)
+    force = data.actuator_force.copy()
+    frac = {n: float(abs(force[i]) / limit[i]) for i, n in enumerate(names)}
+    saturated = any(f > 0.999 for f in frac.values())
+    sag_max = max(sag.values(), default=0.0)
+    return {
+        "seconds": float(data.time), "finite": finite, "sag": sag, "sag_max": sag_max,
+        "drift": {n: math.degrees(float(data.actuator_length[i] - q0[i]))
+                  for i, n in enumerate(names)},
+        "torque": {n: float(force[i]) for i, n in enumerate(names)},
+        "torque_fraction": frac, "saturated": saturated, "loop_error": loop * 1e3,
+        "holds": finite and not saturated and sag_max <= HOLD_SAG_MM,
+    }
+
+
+def turn(config: BuildConfig | None = None, *, speed: float = TURN_SPEED,
+         params: SimParams | None = None, model_xml: str | None = None,
+         model_meta: dict | None = None, torque_limit: float | None = None) -> dict | None:
+    """A fixed design's crank driven through two turns (its servo at ``speed`` of its no-load
+    speed, on its speed-torque line, :func:`sim.mjcf.motor_line`, as a walker's in
+    :func:`simulate`, and never over the torque limit it is set to: ``torque_limit``, else
+    :func:`crank_torque_limit`, the one its joints are rated at), any stepper held: the
+    drive's torque over the turn against that limit (against the stall before 2026-10-14's
+    third round, so a mechanism's turn passed at torques its firmware never gives). ``None``
+    for a design with no crank (an arm's steppers hold it: :func:`hold`).
+
+    The second turn is measured (the first's spin-up from rest sits on the stall: the
+    servo's, not the load's). Returns:
+    ``torque_peak`` / ``torque_mean`` (N·m, the drives' largest), ``torque_limit`` (the
+    limit, else the stall), ``stall``, ``peak_fraction`` (of the limit), ``saturated`` (the
+    share of the steps at 98 % of the limit or more), ``revolutions`` (the least turned),
+    ``completed`` (every crank turned twice within :data:`TURN_TIMEOUT` x the no-load time),
+    ``saturates`` (it stalled: not completed, or on the limit), ``seconds``, ``loop_error``
+    (mm), ``finite``."""
+    import mujoco
+
+    config, model, meta = _fixed_model(config, params, model_xml, model_meta)
+    cranks = _cranks(model, meta)
+    if not cranks:
+        return None
+    data = mujoco.MjData(model)
+    _held_ctrl(model, data, meta)
+    mujoco.mj_forward(model, data)
+    names = [model.actuator(i).name for i in cranks]
+    vmax = float(meta["actuators"][names[0]]["ctrlrange"][1])
+    stall = float(meta["actuators"][names[0]]["forcerange"][1])
+    limit = torque_limit if torque_limit is not None else crank_torque_limit(config, meta)
+    tau = stall if limit is None else min(stall, float(limit))
+    act = np.array(cranks)
+    gaps = _LoopGaps(model)
+    w = max(speed, 1e-3) * vmax
+    steps = round(TURN_TIMEOUT * 4 * math.pi / w / model.opt.timestep)
+    peak, total, n, at_stall, loop, finite = 0.0, 0.0, 0, 0, 0.0, True
+    start = data.actuator_length[act].copy()
+    q0 = None               # where the measured turn starts: the first turn done
+    for _ in range(steps):
+        data.ctrl[act] = w
+        motor_line(model, data, act, vmax, stall)     # the servo's speed-torque line,
+        _cap(model, act, tau)                          # under its firmware's limit
+        mujoco.mj_step(model, data)
+        if not np.isfinite(data.qacc).all():
+            finite = False
+            break
+        if q0 is None:      # the first turn's spin-up from rest left out
+            if np.all(np.abs(data.actuator_length[act] - start) >= 2 * math.pi):
+                q0 = data.actuator_length[act].copy()
+            continue
+        f = float(np.abs(data.actuator_force[act]).max())
+        peak, total, n = max(peak, f), total + f, n + 1
+        at_stall += int(f >= 0.98 * tau)
+        if gaps.eq.size:
+            loop = max(loop, float(gaps(model, data).max()))
+        if np.all(np.abs(data.actuator_length[act] - q0) >= 2 * math.pi):
+            break
+    revs = (0.0 if q0 is None else
+            float(np.abs(data.actuator_length[act] - q0).min() / (2 * math.pi)))
+    completed = finite and revs >= 1.0 - 1e-9
+    saturated = at_stall / max(n, 1)
+    return {"torque_peak": peak, "torque_mean": total / max(n, 1), "torque_limit": tau,
+            "stall": stall, "peak_fraction": peak / tau if tau else 0.0, "saturated": saturated,
+            "revolutions": revs, "completed": completed,
+            "saturates": not completed or saturated > 0.0, "seconds": float(data.time),
+            "loop_error": loop * 1e3, "finite": finite}
 
 
 # ---------------------------------------------------------------------------

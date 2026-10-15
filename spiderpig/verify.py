@@ -14,13 +14,26 @@ the target, whether it passed, and its ``tier``:
   the parts, the envelope, the DXF sheet count, the filament;
 * ``estimated``: nominal or unverified inputs: the walk model's nominal mass
   before a build, the envelope before a build, ``speed_mm_s`` (the servo's
-  no-load rpm), prices with unverified links.
+  no-load rpm), prices with unverified links;
+* ``bound``: a necessary condition only (an arm's traced band before its lost
+  motion is known, its side's reach with no bench under it): a miss refutes, a
+  met bound confirms nothing (informational, its requirement ``unverified``).
 
-Levels: ``quick`` (check + plan + walk; ~1 s), ``standard`` (+ build, the
-contract at two crank angles, clashes and solids at the build's, the DXF
-pack, the BOM), ``full`` (the audit's four contract angles, clashes at two,
-and a MuJoCo run when ``mujoco`` imports: its speed is reported beside the
-walk model's, informational).
+A spec that carries its **task** (``spec.task``: what ``candidates`` writes) gets the
+task re-checked on the design beside its targets, the ``task.*`` rows
+(:func:`task_rows`, hard): a place task's area or points and height against where the
+planned robot's tool gets down to the bench and how high it lifts there, a trace task's
+path traced by an arm's inverse kinematics (its band plus the budget's lost motion
+against a straight path's tol) or against a cranked output's stroke and straightness.
+
+Levels: ``quick`` (check + plan + walk, and the output's precision where it
+needs no fabrication; ~1 s), ``standard`` (+ build, the contract at two crank
+angles, clashes and solids at the build's, the DXF pack, the BOM, the whole
+precision budget and every kind's joint strength), ``full`` (the audit's four
+contract angles, clashes at two, and MuJoCo when ``mujoco`` imports: a walker's run, its
+speed reported beside the walk model's, informational; any other design held at its pose
+under gravity by its motors with its payload, ``sim.holds``, and a cranked one's crank
+driven through a turn, ``sim.torque`` as a walker's, both soft).
 
 A hard target's miss fails the report (``ok``); a soft miss lowers ``score``
 (the weighted mean over the soft targets of ``max(0, 1 - miss / |bound|)``).
@@ -30,9 +43,12 @@ Targets a level doesn't measure are listed in ``unverified``.
 from __future__ import annotations
 
 import importlib.util
+import math
 import time
 from dataclasses import dataclass, field, replace
 from typing import cast, overload
+
+import numpy as np
 
 from spiderpig import api, servos
 from spiderpig.api import building as api_building
@@ -245,7 +261,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
             _push(rows, target_row(design, target_field("motion", "transmission_angle_deg"),
                                    angle, "check", detail=f"the least over the closures is at "
                                    f"{at}, folded about 90°; the ranges are on the card"))
-    if design.kind != "walker" and cr.output is not None:
+    if not design.lk.walks and cr.output is not None:
         rows.append(Row("output.promises", "check", cr.output["broken"] or "hold", None,
                         not cr.output["broken"], "proven"))
         for name in OUTPUT_METRICS:
@@ -270,7 +286,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     rows.append(_stage_row("static.crank_route", "check", static,
                            f"{len(cr.clearances)} static clearances, every link has a "
                            "crank point"))
-    if design.kind == "walker":
+    if design.lk.walks:
         _push(rows, target_row(design, target_field("motion", "ground_clearance_mm"),
                                cr.ground_clearance_mm, "static",
                                detail=(f"the body's lowest point is {cr.lowest_body_part}"
@@ -303,6 +319,9 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     rows += wr.rows
 
     if level == "quick":
+        if pr.ok:
+            rows += _precision_rows(design, rep, level)
+            rows += task_rows(design, cr)
         _push(rows, _mass_estimate(design, wr))
         if pr.ok:
             rows += _envelope_estimate(design)
@@ -389,13 +408,16 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
 
     rows += _cut_rule_rows(br.cut_rules or api.cut_rules_of(mech, cfg.sheet), rep)
 
-    # -- joint strength -----------------------------------------------------------
-    if design.kind == "walker":
-        rows += _strength_rows(design, rep, level)
+    # -- the output's precision, the joints' strength (every kind) -----------------
+    rows += _precision_rows(design, rep, level)
+    rows += _strength_rows(design, rep, level)
+    rows += task_rows(design, cr)       # (after the budget: an arm's line adds its lost motion)
 
     # -- sim (full) --------------------------------------------------------------
-    if level == "full" and design.kind == "walker":
+    if level == "full" and design.lk.walks:
         rows += _sim_rows(design, rep)
+    elif level == "full":              # the same model, fixed: held at its pose
+        rows += _hold_rows(design, rep)
     return _done(design, rep, t0)
 
 
@@ -424,27 +446,67 @@ def _cut_rule_rows(m: dict, rep: VerifyReport) -> list[Row]:
     return rows
 
 
+def _precision_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
+    """The output's error budget against the spec's ``precision.*`` targets
+    (:func:`api.precision`; a walker has no output: none). At ``standard`` and ``full`` the
+    whole budget, stored (a ranged linkage's links' tilt from the build's wobble notes); at
+    ``quick`` the stored one when there is one, else the budget without fabricating: a
+    cranked mechanism's is whole, a ranged linkage's leaves out the links' tilt, so its
+    ``repeatability_mm``, ISO RP, out-of-plane and sag stay ``unverified`` until
+    ``standard``. A budget whose model raised fails the report only when the spec sets a
+    ``precision`` target (there is something to verify); else its row is soft,
+    informational."""
+    from spiderpig.api import accuracy
+
+    if design.lk.output is None:
+        return []
+    if level != "quick":
+        pr = accuracy.precision(design)
+    else:
+        from spiderpig.api.reports import PrecisionReport
+
+        pr = api._cached(design, "precision", PrecisionReport)
+        if pr is None:
+            pr = (accuracy.precision(design) if not design.lk.ranged
+                  else accuracy.measure(design, planar=True))
+    if pr.failures:
+        # the budget's model raised: a failure only where the spec asks for a precision
+        # (a target to verify); else what it says is informational, a soft row
+        targeted = bool(design.spec.precision)
+        if targeted:
+            rep.failures += [f for f in pr.failures if f not in rep.failures]
+        return [Row("precision.budget", "precision", pr.failures[0].code, None, False,
+                    "estimated", targeted, pr.failures[0].message.splitlines()[0]
+                    + ("" if targeted else " (no precision target: informational)"))]
+    return list(pr.rows)
+
+
 def _strength_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
     """Every joint's safety factor at the design's loads (:func:`strength.check`): a
     joint under jam SF 1 fails (``strength`` / ``joint_overload``, the joint, its
-    numbers and fixes as culprits) when the loads are the design's own (simulated, or
-    given); one under the warning limits is a soft row. ``full`` simulates the loads
-    (cached per design); ``standard`` uses them when stored, else the family's, whose
-    verdict is an estimate: a soft row, no failure (``verify full`` decides)."""
+    numbers and fixes as culprits) when the loads are the design's own (simulated, given,
+    or the static model, a linkage's with no floor: its weight and payload operating, a
+    crash jammed, the output blocked while the drives push at the most they give, an arm's
+    holding torque, a cranked mechanism's servo at its torque limit); one under the warning
+    limits is a soft row. A walker: ``full`` simulates the loads (cached per design);
+    ``standard`` uses them when stored, else the family's, whose verdict is an estimate: a
+    soft row, no failure (``verify full`` decides)."""
     from spiderpig import strength
 
     mech = design.mech
     assert mech is not None  # run after the build stage passed
     try:
         loads = strength.design_loads(design.config, design.store,
-                                      sim=True if level == "full" else "cached")
+                                      sim=True if level == "full" else "cached",
+                                      payload_g=design.spec.payload_g)
     except Exception as e:  # noqa: BLE001 - never fail verify over the loads themselves
         return [Row("strength.joints", "strength", None, None, True, "estimated", False,
                     f"no loads: {e}")]
     st = strength.check(mech.meta.get("wobble") or {}, mech.meta, design.config, loads)
     tier = "measured" if loads.get("source") == "sim" else "estimated"
-    own = loads.get("source") in ("sim", "override")
-    sfs = [r["jam"]["safety"] for r in st["rows"] if r.get("jam")]
+    own = loads.get("source") in ("sim", "override", "static")
+    sfs = [r["jam"]["safety"] for r in st["rows"]
+           if r.get("jam") and r["jam"].get("safety") is not None]
     errors = [f for f in st["findings"] if f["level"] == "error"]
     warns = [f for f in st["findings"] if f["level"] == "warning"]
     if errors and own:
@@ -464,6 +526,240 @@ def _strength_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
         rows.append(Row("strength.warnings", "strength", len(warns), None, True, tier, False,
                         "; ".join(f"{f['message']} (fix: {f['fixes'][0]})"
                                   for f in warns[:4])))
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# The task the spec was written for
+# ---------------------------------------------------------------------------
+
+def _task(design: Design):
+    from spiderpig.task import Task
+
+    doc = getattr(design.spec, "task", None)      # (a seam's stand-in spec may hold none)
+    return None if doc is None else Task.from_dict(doc)
+
+
+def task_requirements(design: Design) -> set[str]:
+    """The ``task.*`` rows the spec's task asks of :func:`task_rows` (a level that doesn't
+    reach them lists them ``unverified``): a place task's area (``task.points_mm`` when
+    its points give it) and height (when it rises); a trace task's ``task.path_mm`` (else,
+    an arm's, ``task.stroke_mm`` for a stroke), an arm's ``task.straightness_mm`` and the
+    ``task.motion`` asked. A walk task's numbers are the spec's targets (no rows)."""
+    task = _task(design)
+    if task is None:
+        return set()
+    out: set[str] = set()
+    if task.do == "place":
+        out.add("task.points_mm" if task.area_mm is None else "task.area_mm")
+        if task.height():
+            out.add("task.height_mm")
+    elif task.do == "trace":
+        needs = task.needs()
+        if task.motion:
+            out.add("task.motion")
+        if task.path_mm:
+            out.add("task.path_mm")
+        elif design.lk.ranged and "stroke_mm" in needs:
+            out.add("task.stroke_mm")
+        if design.lk.ranged and "straightness_mm" in needs and (task.path_mm
+                                                                or "stroke_mm" in needs):
+            out.add("task.straightness_mm")
+    return out
+
+
+def _task_row(name: str, source: str, value: float | str | None, target: str, met: bool,
+              tier: str, detail: str, unit: str = "mm") -> Row:
+    """A row of the task: hard (the task is what the design is for), except a ``bound``
+    that is met: a necessary condition confirms nothing, so the row is informational and
+    its requirement stays ``unverified`` (:func:`_done`); a bound that misses refutes."""
+    if tier == "bound" and met:
+        return Row(name, source, value, target, True, tier, False,
+                   detail + "; a bound: it refutes, never confirms", unit=unit)
+    return Row(name, source, value, target, met, tier, True, detail, unit=unit)
+
+
+def task_rows(design: Design, check=None) -> list[Row]:
+    """The spec's task (``spec.task``, what ``candidates`` writes) re-checked on the
+    design, beside its targets: a place task's area or points and height against where
+    the planned robot's tool gets down to the bench and how high it lifts there
+    (:func:`api.tasks.bench_reach`, the turret's plan; an arm's side alone has no yaw), a
+    trace task's path traced by an arm's inverse kinematics at the design's proportions
+    (:func:`api.tasks.trace_path`), its band across the line plus twice the stored
+    precision budget's worst-case lost motion, or a cranked output's stroke and
+    straightness over a turn (``check``: the design's :class:`CheckReport`). The tiers are
+    the evidence's: ``measured`` (the kinematics at every point, a crank's output check),
+    ``estimated`` (the plan's sampled band, a budget added), ``bound`` (a necessary
+    condition: it refutes, never confirms)."""
+    task = _task(design)
+    if task is None:
+        return []
+    if task.do == "place":
+        return _place_rows(design, task)
+    if task.do == "trace":
+        return _trace_rows(design, task, check)
+    return []
+
+
+def _place_rows(design: Design, task) -> list[Row]:
+    from spiderpig.api import tasks as api_tasks
+
+    lk, cfg = design.lk, design.config
+    area = task.area()
+    assert area is not None             # (a place task names its area or its points)
+    w, d = area
+    name = "task.points_mm" if task.area_mm is None else "task.area_mm"
+    what = (f"the points' extent {w:g} x {d:g} mm" if task.area_mm is None
+            else f"{w:g} x {d:g} mm")
+    need = f"{what} in reach"
+    height = task.height()
+    rows: list[Row] = []
+    if not lk.ranged:
+        return [_task_row(name, "linkage", None, need, False, "proven",
+                          f"{lk.key}'s output follows one curve over its crank's turn: it "
+                          "places nothing over an area")]
+    bench = api_tasks.bench_reach(design)
+    if bench is None:           # no turret under it: its output's box about its shoulder
+        reach = api_tasks.box_reach(lk, cfg.values)
+        band = reach["r_mm"]
+        src = "kinematics"
+        why = ("its side alone (legs.robot false): no turntable, no bench" if not cfg.robot
+               else "no turret plan")
+        if band is None:
+            rows.append(_task_row(name, src, None, need, False, "bound",
+                                  f"{why}; its output never gets in front of its shoulder"))
+        else:
+            slack, how = api_tasks.sector_fit(w, d, band[0], band[1], None)
+            rows.append(_task_row(name, src, round(slack, 2), need, slack >= 0, "bound",
+                                  f"{why}: the output over its inputs' box, {band[0]:.0f} to "
+                                  f"{band[1]:.0f} mm out from its shoulder: {how}"))
+        if height:
+            rows.append(_task_row("task.height_mm", src, round(reach["rise_mm"], 2),
+                                  f">= {height:g}", reach["rise_mm"] >= height, "bound",
+                                  f"{why}: the output's rise over its inputs' box"))
+        return rows
+    lo, hi, yaw = bench["lo"], bench["hi"], bench["yaw_deg"]
+    src = "turret plan"
+    if not (math.isfinite(lo) and math.isfinite(hi)):
+        rows.append(_task_row(name, src, None, need, False, "estimated",
+                              bench["note"] or "the tool never gets down to the bench"))
+        if height:
+            rows.append(_task_row("task.height_mm", src, None, f">= {height:g}", False,
+                                  "estimated", "no area on the bench to rise over"))
+        return rows
+    slack, how, (r_in, r_out) = api_tasks.sector_place(w, d, lo, hi, yaw[1] - yaw[0])
+    rows.append(_task_row(
+        name, src, round(slack, 2), need, slack >= 0, "estimated",
+        f"{'slack' if slack >= 0 else 'misses by'} {abs(slack):.1f} mm: {how}; the tool gets "
+        f"down to the bench from {lo:.0f} to {hi:.0f} mm out from the yaw axis over "
+        f"{yaw[0]:g}..{yaw[1]:g} deg of yaw (the plan's band, its inputs' box sampled)"))
+    if height:
+        lift = api_tasks.rise_over(bench["r_mm"], bench["h_mm"], r_in, r_out)
+        if lift is None:
+            rows.append(_task_row("task.height_mm", src, None, f">= {height:g}", False,
+                                  "estimated", f"no pose of its box between {r_in:.0f} and "
+                                  f"{r_out:.0f} mm out"))
+        else:
+            rise, at = lift
+            rows.append(_task_row(
+                "task.height_mm", src, round(rise, 2), f">= {height:g}", rise >= height,
+                "estimated", f"the tool's tip over the bench, the highest at each radius "
+                f"the area spans ({r_in:.0f} to {r_out:.0f} mm out), least at {at:.0f} mm"))
+    return rows
+
+
+def _trace_rows(design: Design, task, check) -> list[Row]:
+    from spiderpig.api import tasks as api_tasks
+    from spiderpig.task import TOL_MM
+
+    lk, cfg = design.lk, design.config
+    out = lk.output
+    rows: list[Row] = []
+    if out is None:
+        return rows
+    if task.motion:
+        ok = out.motion == task.motion or (lk.ranged and task.motion in ("line", "path", "xy"))
+        rows.append(_task_row("task.motion", "linkage", out.motion, task.motion, ok, "proven",
+                              "its drives coordinated: any path its inverse kinematics reach"
+                              if lk.ranged else "its output's motion over a turn", unit=""))
+    needs = task.needs()
+    info = task.path()
+    tol = task.plain.get("tol_mm", TOL_MM)
+    if not lk.ranged:
+        if info is None:          # (the task's numbers are the spec's motion targets)
+            return rows
+        o = (check.output if check is not None else None) or {}
+        stroke, band = o.get("stroke_mm"), o.get("straightness_mm")
+        need = (f"stroke >= {info['length_mm']:.4g}"
+                + (f", straightness <= {tol:g}" if info["line"] else ""))
+        if stroke is None:
+            rows.append(_task_row("task.path_mm", "output", None, need, False, "measured",
+                                  f"its {out.motion} output has no stroke: it traces no line"))
+            return rows
+        met = stroke >= info["length_mm"] and (not info["line"] or (band is not None
+                                                                      and band <= tol))
+        detail = (f"its {out.motion} output over a turn: a {stroke:.4g} mm stroke"
+                  + (f", {band:.3g} mm across its line" if band is not None else "")
+                  + f"; the path {info['length_mm']:.4g} mm long"
+                  + (f", a line within {tol:g} mm" if info["line"] else
+                     ", not a line: its length only (the shape is the crank's coupler "
+                     "curve, unchecked)"))
+        rows.append(_task_row("task.path_mm", "output", round(float(stroke), 4), need, met,
+                              "measured" if info["line"] else "bound", detail))
+        return rows
+    # an arm: its drives coordinated, the path solved point by point
+    stroke = needs.get("stroke_mm")
+    length = None if stroke is None else (stroke.min if stroke.min is not None else stroke.value)
+    if task.path_mm:
+        assert info is not None
+        tries = [(np.asarray([q[:2] for q in task.path_mm], dtype=float), "the task's path",
+                  info["length_mm"])]
+        name, need = "task.path_mm", "every point in reach"
+    elif length:
+        tries = [(np.array([[0.0, 0.0], [length * math.cos(math.radians(a)),
+                                         length * math.sin(math.radians(a))]]),
+                  f"a {length:g} mm line at {a:g} deg", length) for a in api_tasks.LINE_DEG]
+        name, need = "task.stroke_mm", f">= {length:g}"
+    else:
+        return rows
+    src = "ArmModel.ik"
+    got: dict = {}
+    for path, what, along in tries:
+        got = api_tasks.trace_path(lk, path, values=cfg.values)
+        if got["ok"]:
+            rows.append(_task_row(name, src, round(float(along), 4), need, True, "measured",
+                                  f"{what}, {got['waypoints']} waypoints a "
+                                  f"{api_tasks.SEG_MM:g} mm apart each solved at the design's "
+                                  f"proportions, its points moved by {got['offset_mm']} mm "
+                                  "(the arm stands where it fits)"))
+            break
+    else:
+        rows.append(_task_row(name, src, None, need, False, "measured",
+                              f"{tries[-1][1]}: {got.get('why', '')}"))
+        return rows
+    if "straightness_mm" not in needs:
+        return rows
+    t = needs["straightness_mm"]
+    band = float(got["band_mm"])
+    from spiderpig.api.reports import PrecisionReport
+
+    prec = api._cached(design, "precision", PrecisionReport)
+    lost = (prec.metrics.get("repeatability_mm")
+            if prec is not None and prec.ok and prec.complete else None)
+    if lost is not None and math.isfinite(float(lost)):
+        v = band + 2 * float(lost)
+        rows.append(_task_row("task.straightness_mm", src, round(v, 4), t.describe(),
+                              t.check(v)[0], "estimated",
+                              f"the tip's band across the line ({band:.3g} mm, "
+                              f"{got['chord_mm']:.3g} of it the sag between waypoints) and the "
+                              f"worst-case lost motion either side ({float(lost):.3g} mm, the "
+                              "precision budget); what calibrates out (accuracy) left out"))
+    else:
+        rows.append(_task_row("task.straightness_mm", src, round(band, 4), t.describe(),
+                              t.check(band)[0], "bound",
+                              f"the tip's band across the line ({got['chord_mm']:.3g} mm of it "
+                              "the sag between waypoints) without its lost motion: the "
+                              "precision budget adds it (precision(design), verify standard)"))
     return rows
 
 
@@ -546,7 +842,7 @@ def stack_floor_note(design: Design, pr) -> str:
     note = (f"{pr.height_mm:g} mm is proven the thinnest for {cfg.linkage}'s {cfg.module} "
             f"module on {cfg.pitch:g} mm layers ({pr.n_layers} layers, the frame plates "
             f"included)")
-    if design.kind == "walker":
+    if design.lk.walks:
         lk = design.lk
         legs = len(lk.leg_modules[cfg.module])
         fewer = [m for m, ls in lk.leg_modules.items() if len(ls) < legs]
@@ -649,7 +945,7 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     cfg = design.config
     sides = cfg.sides
     kind = cfg.lk.kind
-    cranked = rolemod.applies("crank", kind)        # a servo on a crank, else a motor a drive
+    cranked = rolemod.motor_role(cfg.lk) == "servo"    # a servo on a crank, else steppers
     from spiderpig.materials import link_sheets
 
     named: list[str] = [cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values()]
@@ -739,8 +1035,6 @@ def _envelope_estimate(design: Design) -> list[Row]:
     """The envelope before a build: the joints' sweep over the cycle plus a frame arm's
     half-width (x, y), and across the sides (z) the robot's width from the mid-plane plus
     what the plan places outside the outer frame plate (an axle's head or clip)."""
-    import numpy as np
-
     from spiderpig.construction.robot import mid_plane
 
     side, cfg = design.side, design.config
@@ -800,6 +1094,61 @@ def _sim_rows(design: Design, rep: VerifyReport) -> list[Row]:
     ]
 
 
+def hold_payload_g(design: Design) -> float:
+    """What a held design carries at its output in MuJoCo (g): the spec's
+    ``precision.payload_g``, else a ranged linkage's :data:`repeatability.PAYLOAD_G` (what
+    its precision and strength assume), a cranked one's none."""
+    from spiderpig.repeatability import PAYLOAD_G
+
+    given = design.spec.payload_g
+    if given is not None:
+        return float(given)
+    return PAYLOAD_G if design.lk.ranged else 0.0
+
+
+def _hold_rows(design: Design, rep: VerifyReport) -> list[Row]:
+    """A design that doesn't walk in MuJoCo (the one model, :mod:`spiderpig.sim.mjcf`,
+    fixed): ``sim.holds``, its motors holding it at its pose under gravity with its payload
+    (:func:`hold_payload_g`, at its tool's tip or output: :func:`spiderpig.sim.run.hold`),
+    the value the worst site's sag (mm); a cranked one's ``sim.torque`` too, its crank
+    driven through a turn (:func:`spiderpig.sim.run.turn`): the peak against the torque
+    limit its servo is set to (:func:`config.torque_limit_nm`, the one its strength rates
+    its joints at; the stall before 2026-10-14's third round), not a walker's stall."""
+    if importlib.util.find_spec("mujoco") is None:
+        return [Row("sim.mujoco", "sim", "not installed", None, True, "estimated", False,
+                    "pip install mujoco to simulate")]
+    from spiderpig.sim.mjcf import SimParams
+    from spiderpig.sim.run import HOLD_SAG_MM, HOLD_SECONDS, hold, turn
+
+    payload = hold_payload_g(design)
+    params = SimParams(payload_g=payload)
+    try:
+        m = hold(design.config, params=params)
+        t = turn(design.config, params=params)
+    except Exception as e:  # noqa: BLE001 - MuJoCo's own errors are not ours to classify
+        rep.failures.append(Failure("sim", "sim_failed", str(e)))
+        return [Row("sim.run", "sim", "failed", None, False, "measured", True, str(e))]
+    worst = max(m["torque_fraction"].items(), key=lambda kv: kv[1], default=None)
+    detail = (f"held {HOLD_SECONDS:g} s under gravity by its motors"
+              + (f", a {payload:g} g payload at its output" if payload else "") + ": "
+              + ", ".join(f"{s} sags {v:.3f} mm" for s, v in m["sag"].items())
+              + (f"; {worst[0]} at {worst[1] * 100:.0f} % of its torque" if worst else "")
+              + f"; loops closed to {m['loop_error']:.3f} mm"
+              + ("" if m["finite"] else "; the state blew up"))
+    rows = [Row("sim.holds", "sim", round(m["sag_max"], 4), f"<= {HOLD_SAG_MM:g}",
+                bool(m["holds"]), "measured", False, detail, unit="mm")]
+    if t is not None:
+        rows.append(Row(
+            "sim.torque", "sim", t["torque_peak"], f"<= {t['torque_limit']:g}",
+            not t["saturates"], "measured", False,
+            f"one turn at the servo's full speed: peak {t['torque_peak']:.3f} N·m of the "
+            f"{t['torque_limit']:g} N·m torque limit it is set to ({t['stall']:g} stall), "
+            f"mean {t['torque_mean']:.3f}"
+            + ("" if t["completed"] else
+               f"; it stalled ({t['revolutions']:.2f} of a turn)"), unit="N·m"))
+    return rows
+
+
 def fall_detail(m: dict, design: Design | None = None) -> str:
     """The ``sim.stays_up`` row's detail: the max tilt, and for a fall when it happened
     (from the drives' start), about which axis, and how far the quasi-static walk model
@@ -824,11 +1173,15 @@ def fall_detail(m: dict, design: Design | None = None) -> str:
 
 
 def _done(design: Design, rep: VerifyReport, t0: float) -> VerifyReport:
-    targeted = {f.path for f, _ in design.spec.targets()}
+    targeted = {f.path for f, _ in design.spec.targets()} | task_requirements(design)
     hard = {f.path for f, t in design.spec.targets() if effective_hard(t, f)}
-    # a hard target only an estimate read (the nominal mass, the swept envelope) is unverified
-    seen = {r.requirement for r in rep.rows if r.value is not None
-            and not (r.tier == "estimated" and not r.hard and r.requirement in hard)}
+    # a hard target only an estimate read (the nominal mass, the swept envelope) is unverified;
+    # a task's row is seen when it decides (a miss with no number refutes too), not when a
+    # bound is met (informational: it confirms nothing)
+    seen = {r.requirement for r in rep.rows
+            if (r.value is not None or (r.requirement.startswith("task.") and r.hard))
+            and not (r.tier == "estimated" and not r.hard and r.requirement in hard)
+            and not (r.tier == "bound" and not r.hard)}
     rep.unverified = sorted(targeted - seen)
     rep.ok = not rep.failures and all(r.passed for r in rep.rows if r.hard)
     soft = [r for r in rep.rows if r.score is not None and r.target is not None]

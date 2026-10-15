@@ -19,6 +19,7 @@ from spiderpig.construction.base import (
     Group,
     Realized,
     hardware,
+    stock_length,
 )
 from spiderpig.construction.joints import ErrorTerms
 from spiderpig.hardware.bom import BomLine
@@ -37,6 +38,10 @@ HEAD_CLEAR = 1.0     # a motor body's clearance to the frame's pillar heads and 
 SCREW_HOLE = 3.4     # an M3 clearance hole (ISO 273 medium)
 TAP_HOLE = 2.5       # an M3 tap drill: the frame plate's holes the slider's screws thread into
 TENSION = 2.0        # a tensioned motor's slider travel either way along the belt (mm)
+HARD_STOP = (("m3_shcs_10", 1.0), ("m3_nut", 1.0))
+"""What a drive buys for its hard stop at the end of its travel when its homing sensor
+homes on one (:attr:`actuators.sensors.HomingSensor.needs_stop`: a stall): an M3 screw and
+nut (the turntable's stop is the turret's own, :mod:`construction.rotary.base_pair`)."""
 ENGAGE = 1.2         # the least thread a motor screw takes in the motor, in diameters
 PAD_EDGE = 2.0       # a pad's web round the bolt holes it carries (mm)
 
@@ -130,7 +135,7 @@ class Transmission:
     def check(self, ctx: Context, hub: DriveHub) -> None:
         return None
 
-    def realize(self, build: Build, group: DriveGroup, hub: DriveHub, out: Realized,
+    def realize(self, build: Build, group: JointDrive, hub: DriveHub, out: Realized,
                 layers: list[int]) -> None:
         raise NotImplementedError
 
@@ -199,7 +204,7 @@ def screw_length(sk, grip: float, depth: float) -> float:
 
 
 @dataclass
-class DriveGroup(Group):
+class JointDrive(Group):
     """One arm input's drive: a stepper on a frame plate and its transmission to the driven
     link's hub (module docstring). The drives on one pivot alternate sides: the first's
     motor under the outer plate (its hub under its link), the next's on the inner plate
@@ -234,7 +239,7 @@ class DriveGroup(Group):
         lo, hi = lk.ranges.get(self.input, (0.0, 360.0))
         pts = lk.solve(params=dict(zip(lk.params, ctx.config.values, strict=True))).at(
             *[np.array([math.radians((a + b) / 2)]) for a, b in
-              (lk.ranges[k] for k in lk.inputs)])
+              (lk.ranges.get(k, (0.0, 360.0)) for k in lk.inputs)])    # (a crank's: a turn)
         joints = lk.links[self.link][0]
         other = next(j for j in joints if j != self.about)
         d = pts[other][0] - pts[self.about][0]
@@ -505,9 +510,14 @@ class DriveGroup(Group):
                     raise Unbuildable(f"{g}: the nuts on its hub's bolts and their tips need "
                                       f"{past} layers past {self.link}")
                 out += [Placed(j, Disc(b, 3.2), g, f"{g} nut") for b in bolts for j in beyond]
-            else:               # heads on the link's far face, threaded into the hub
+            else:               # heads on the link's far face, threaded into the hub: the
+                # layer beyond it, and the clearance gap between them where the plan puts
+                # one (the head bears on the link: it stands in that gap first; before
+                # 2026-10-14 it was outside its claims there)
                 out += [Placed(k - s, Disc(b, sk.head_d / 2), g, f"{g} bolt head")
                         for b in bolts]
+                out += [Placed(min(k, k - s), Disc(b, sk.head_d / 2), g, f"{g} bolt head",
+                               gap=True) for b in bolts]
             return out
 
         return [Claim(g, frozenset({self.link}), make)]
@@ -517,7 +527,7 @@ class DriveGroup(Group):
         it; or 6 mm into the hub's tapped holes."""
         sk = screw("bhcs", "3")
         need = link_t + (hub_t + 2.4 if self.transmission.nuts else 6.0)
-        return float(next((L for L in sk.lengths if need - 1e-6 <= L), sk.lengths[-1]))
+        return sk.length_for(need, longest=True)
 
     def _bolt_past(self, ctx: Context, pitch: float) -> int:
         """The layers a nutted bolt (its nut, its tip) takes past the hub."""
@@ -606,7 +616,7 @@ class DriveGroup(Group):
         if sensor is not None and sensor.bom_key:
             out.extras.append(BomLine(sensor.bom_key, 1, f"{self.name}: {self.link}'s angle "
                                       "(on the link, its x along it)"))
-        for key, qty in (sensor.stop if sensor is not None else ()):
+        for key, qty in (HARD_STOP if sensor is not None and sensor.needs_stop else ()):
             out.extras.append(BomLine(key, qty, f"{self.name}: {self.link}'s hard stop at the "
                                       "end of its travel (sensorless homing)"))
         out.notes.setdefault("drive", {})[self.name] = {
@@ -644,7 +654,7 @@ class DriveGroup(Group):
             out.bodies.append(hardware(f"{stem}_motor_screw{i}", screw_solid(
                 xy, sk, outer_face, length, up=not hub.down), frame, fab="purchased",
                 bom_key=sk.key(length), color=STEEL))
-        clamp = next(L for L in sk.lengths if st + ctx.sheet_t("frame") - 1e-6 <= L)
+        clamp = stock_length(sk, st + ctx.sheet_t("frame"), "drive: the slider's clamp")
         for i, xy in enumerate(self.clamp_points(hub)):
             out.bodies.append(hardware(f"{stem}_clamp{i}", screw_solid(
                 xy, sk, outer_face + sgn * st, clamp, up=hub.down), frame, fab="purchased",

@@ -9,6 +9,7 @@ import asyncio
 import socket
 import threading
 import time
+from pathlib import Path
 from typing import ClassVar
 
 import pytest
@@ -275,6 +276,187 @@ def test_the_watchers_rebake_changes_the_sessions_state_on_the_loop(monkeypatch)
     loop_thread = asyncio.run(main())
     assert builds.cleared_on == [loop_thread]
     assert srv._SIM_GENERATION == 8
+
+
+# ---------------------------------------------------------------------------
+# The bake cache keyed on what shapes a bake, not the config alone
+# ---------------------------------------------------------------------------
+
+
+def test_a_bake_is_keyed_on_the_code_and_the_cad_state_not_the_config_alone(stored,
+                                                                            monkeypatch):
+    """A file under the same config but other code, another servo model or another bought
+    part's model in reach is another bake: the old one is never served for it."""
+    from spiderpig import fabcache
+    from spiderpig.hardware import cad
+
+    # this process's own code key (not a worker's: sources edited during the run would)
+    monkeypatch.setattr(srv, "_stale_code", lambda: False)
+    monkeypatch.delenv(cad.STRICT_ENV, raising=False)
+    cfg = BuildConfig(linkage="hoecken", robot=False, proportions=(("unit", 16.5),))
+    first = srv._glb_path(cfg)
+    assert first.name.startswith(f"{cfg.key}-")
+    assert srv._glb_path(cfg) == first
+    assert srv._code_key().startswith("bake-")
+    baked: list[Path] = []
+
+    def bake(c):
+        path = srv._glb_path(c)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"glb")
+        baked.append(path)
+        return path
+
+    monkeypatch.setattr(srv, "_bake", bake)
+    monkeypatch.setattr(srv, "_BAKED", {})
+    assert srv._ensure_baked(cfg) == first
+    assert baked == [first]
+    assert srv._ensure_baked(cfg) == first
+    assert baked == [first]                            # served, not baked
+
+    changes = [
+        (srv, "_code_key", lambda: "bake-another-engine"),
+        (fabcache, "servo_state", lambda c, download=None: ("cad", (("sha", True),), ())),
+        (fabcache, "parts_cad_state", lambda c: (("bearing_mr84zz", ("cad", "abc")),)),
+        (None, cad.STRICT_ENV, "1"),        # strict CAD: a parametric fallback never answers
+    ]
+    seen = {first}
+    for module, name, fake in changes:
+        with monkeypatch.context() as m:
+            if module is None:
+                m.setenv(name, fake)
+            else:
+                m.setattr(module, name, fake)
+                m.setattr(srv, "_BAKE_KEYS", {})      # (the memo can't see a patched probe)
+            path = srv._ensure_baked(cfg)
+        assert path not in seen, name                  # a new key: a new bake
+        assert baked[-1] == path
+        seen.add(path)
+    assert srv._ensure_baked(cfg) == first
+    assert len(baked) == 1 + len(changes)
+
+
+def test_a_bake_key_is_probed_once_per_cad_state_and_never_downloads(stored, monkeypatch):
+    """``GET /api/glb`` keys every request: the CAD probe (a servo's strip record, each
+    model's hash, a download with a 60 s timeout) runs once per config, code and CAD cache
+    state, and never downloads; a file added to the CAD cache probes again."""
+    from spiderpig import fabcache
+    from spiderpig.hardware import cad
+
+    monkeypatch.setattr(srv, "_stale_code", lambda: False)
+    monkeypatch.setenv(cad.CACHE_ENV, str(srv.store().root / "cad"))
+    monkeypatch.setattr(srv, "_BAKE_KEYS", {})
+    probes: list = []
+    real = fabcache.servo_state
+
+    def probe(c, download=None):
+        probes.append(download)
+        return real(c, download=download)
+
+    monkeypatch.setattr(fabcache, "servo_state", probe)
+    cfg = BuildConfig(linkage="hoecken", robot=False, proportions=(("unit", 16.5),))
+    key = srv.bake_key(cfg)
+    assert srv.bake_key(cfg) == key
+    assert probes == [False]                           # once, downloads off
+    other = srv._data_dir().parent / "cad" / "deadbeef" / "model.step"
+    other.parent.mkdir(parents=True)
+    other.write_bytes(b"ISO-10303-21;")
+    srv.bake_key(cfg)
+    assert probes == [False, False]                    # the cache moved: probed again
+
+
+def test_a_request_waiting_on_the_lock_keys_its_bake_when_its_turn_comes(stored, monkeypatch):
+    """The sources change while a request waits behind another bake: its key is taken under
+    the lock, and the file it gets is the one its bake wrote (before, the path keyed before
+    the wait was returned, never written: a 500)."""
+    monkeypatch.setattr(srv, "_stale_code", lambda: False)
+    monkeypatch.setattr(srv, "_BAKED", {})
+    monkeypatch.setattr(srv, "_code_key", lambda: "bake-before")
+
+    def bake(c):
+        path = srv._glb_path(c)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"glb")
+        return path
+
+    monkeypatch.setattr(srv, "_bake", bake)
+    cfg = BuildConfig(linkage="hoecken", robot=False, proportions=(("unit", 16.5),))
+    got: list[Path] = []
+    srv._BAKE_LOCK.acquire()            # a bake is running
+    try:
+        t = threading.Thread(target=lambda: got.append(srv._ensure_baked(cfg)))
+        t.start()
+        time.sleep(0.2)                 # (the request waits on the lock)
+        monkeypatch.setattr(srv, "_code_key", lambda: "bake-after")     # an edit meanwhile
+    finally:
+        srv._BAKE_LOCK.release()
+    t.join(20)
+    assert got
+    assert got[0].is_file()
+    assert got[0] == srv._glb_path(cfg)
+    assert {got[0]: cfg} == srv._BAKED
+
+    # the bake leaves another CAD state (a model it downloaded): its own file is the answer
+    other = BuildConfig(linkage="hoecken", robot=False, proportions=(("unit", 16.6),))
+
+    def bake_downloading(c):
+        monkeypatch.setattr(srv, "_code_key", lambda: "bake-downloaded")
+        return bake(c)
+
+    monkeypatch.setattr(srv, "_bake", bake_downloading)
+    path = srv._ensure_baked(other)
+    assert path.is_file()
+    assert path == srv._glb_path(other)
+    assert srv._ensure_baked(other) == path             # served, not baked again
+
+
+def test_the_code_key_of_changed_sources_comes_from_a_fresh_process(monkeypatch):
+    """This process's key memo is its import's code: once the sources changed under it, the
+    key is computed in a worker (which imports the new code), once per sources' mtime."""
+    calls = []
+
+    class Done:
+        def __init__(self, v):
+            self.v = v
+
+        def result(self):
+            return self.v
+
+    monkeypatch.setattr(srv, "_CODE_KEYS", {})
+    monkeypatch.setattr(srv, "_stale_code", lambda: True)
+    monkeypatch.setattr(srv.workers, "submit",
+                        lambda fn, *a: calls.append(fn) or Done("bake-fresh"))
+    assert srv._code_key() == "bake-fresh"
+    assert srv._code_key() == "bake-fresh"
+    assert calls == [srv._code_key_job]
+
+
+def test_the_watcher_rebakes_a_default_only_when_its_key_moved(stored, monkeypatch):
+    cfg = BuildConfig()
+    old = srv._glb_path(cfg)
+    old.parent.mkdir(parents=True, exist_ok=True)
+    old.write_bytes(b"glb")
+    baked = []
+
+    def bake(c):
+        path = srv._glb_path(c)
+        path.write_bytes(b"glb")
+        baked.append(c)
+        return path
+
+    monkeypatch.setattr(srv, "_bake", bake)
+    monkeypatch.setattr(srv, "_BAKED", {old: cfg})
+    monkeypatch.setattr(srv, "_SIM_BUILDS", {})            # (the watcher's other work)
+    monkeypatch.setattr(srv, "_SIM_GENERATION", 0)
+    srv._rebake_all()                                  # an edit the bake doesn't reach
+    assert baked == []
+    assert {old: cfg} == srv._BAKED
+    monkeypatch.setattr(srv, "_code_key", lambda: "bake-edited")
+    srv._rebake_all()
+    new = srv._glb_path(cfg)
+    assert baked == [cfg]
+    assert {new: cfg} == srv._BAKED
+    assert new.is_file()
 
 
 # ---------------------------------------------------------------------------

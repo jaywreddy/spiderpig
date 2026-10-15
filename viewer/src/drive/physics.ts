@@ -1,11 +1,15 @@
 /**
- * Physics drive: the robot in MuJoCo on the server (``/ws/sim``,
- * ``spiderpig.sim.live``), driven live. Commands go up as crank-speed
- * fractions; frames come back in real time and are drawn with the node
- * contract of ``sim.mjcf``: the ``walker`` root at the base's world pose, each
- * glb node at ``D_body @ M0`` (``M0`` its frame-0 matrix). Each draw
- * interpolates between the last two frames by wall time (frames arrive at
- * 60 Hz with jitter; rAF runs at the display's rate).
+ * The live sim's client: a design in MuJoCo on the server (``/ws/sim``,
+ * ``spiderpig.sim.live``), driven live, whatever its kind. Commands go up as what drives
+ * the design (the hello's ``drives``: crank-speed fractions, a walker's two sides or a
+ * mechanism's one crank; its ``joints``: stepped joints' angles in degrees, an arm's);
+ * frames come back in real time and are drawn with the node contract of ``sim.mjcf``: the
+ * ``walker`` root at the base's world pose where the design walks (a fixed base stays
+ * where the glb put it), each glb node at ``D_body @ M0`` (``M0`` its frame-0 matrix).
+ * The frame's header is read by the hello's ``columns``. Each draw interpolates between
+ * the last two frames by wall time (frames arrive at 60 Hz with jitter; rAF runs at the
+ * display's rate). The walker's physics drive is ``physicsMode.ts``; a fixed design's
+ * live panel is ``arm.ts``.
  */
 import * as THREE from 'three';
 import type { LoadedScene } from '../loader';
@@ -23,11 +27,27 @@ export interface Steering {
     yaw_rate: number; side_support_low: number; side_phase_max?: number }>;
 }
 
+/** A stepped joint the session takes targets for (degrees: an input's design angle, a spatial
+ * joint's from its zero) and its holding torque (N·m). */
+export interface LiveJoint { lo: number; hi: number; value: number; effort: number }
+
 export interface Hello {
   bodies: string[]; nodes: Record<string, string>; header: number; vmax: number; feet: number;
-  crank_sign: number; rest_height: number; design: { linkage: string; module: string; key: string };
+  crank_sign: number; rest_height: number;
+  design: { linkage: string; module: string; key: string };
+  /** The design is its whole robot (else one side): the session's, from its query. */
+  robot?: boolean;
+  /** The frame header's column names (``sim.live``); an older server sends none (a walker's
+   * fixed 17, ``LEGACY_COLUMNS``). */
+  columns?: string[];
+  /** What the design declares: free on a floor (a walker), its cranks' drives (one ``cmd`` value
+   * each), its stepped joints (``joints`` targets) and its sites (the output, the tool's tip).
+   * An older server's session was a walker's: ``walks`` absent means true. */
+  walks?: boolean; drives?: string[]; joints?: Record<string, LiveJoint>; sites?: string[];
   /** The servo's stall and rated (continuous, null when the catalog has none) torque, N·m. */
-  torque_stall: number; torque_rated: number | null; steering: Steering;
+  torque_stall: number; torque_rated: number | null;
+  /** The steering check: a walker's (a fixed design has none). */
+  steering?: Steering;
   /** The straight run's verdict (``steering.forward``): the physics gate. */
   forward?: Steering['forward'];
   /** The no-slip stride the kinematics promise (mm per revolution): the measured stride is it minus the skating. */
@@ -48,11 +68,37 @@ export interface PhysicsFrame {
   sidePhase: number;
   /** The base's vertical acceleration (m/s²) and the largest in-plane force a loop's pin carries (N). */
   az: number; pinLoad: number;
+  /** The latest frame's header by column name (``hello.columns``): any design's joints' angles
+   * (rad) and torques, its sites (world mm), its cranks'. */
+  values: Record<string, number>;
 }
 
-/** The frame header's columns past the feet count (``sim.live.HEADER``); an older server's header ends
- * before them, and the frame reads 0 there. */
-const TORQUE_AT = 11, BODY_DOWN_AT = 13, SIDE_PHASE_AT = 14, AZ_AT = 15, PIN_AT = 16;
+/** A walker's header before the hello named its columns (``sim.live.HEADER``, 17; an even older
+ * server's header ends earlier, and the frame reads 0 past it). ``crank.<k>`` / ``torque.<k>`` are
+ * the k-th drive's (``columnIndex`` aliases a named header's to them). */
+export const LEGACY_COLUMNS = ['t', 'base.x', 'base.y', 'base.z', 'base.qw', 'base.qx', 'base.qy', 'base.qz',
+  'crank.0', 'crank.1', 'feet_down', 'torque.0', 'torque.1', 'body_down', 'side_phase', 'az', 'pin_load'] as const;
+
+/** Column name -> index in a frame of ``h``'s session: its ``columns`` (else the legacy walker's),
+ * with each drive's ``<drive>.angle`` / ``.torque`` also under ``crank.<k>`` / ``torque.<k>``. */
+export function columnIndex(h: Pick<Hello, 'columns' | 'header' | 'drives'>): Map<string, number> {
+  const cols: readonly string[] = h.columns ?? LEGACY_COLUMNS.slice(0, h.header);
+  const ix = new Map(cols.map((c, i) => [c, i]));
+  (h.drives ?? []).forEach((d, k) => {
+    const a = ix.get(`${d}.angle`), t = ix.get(`${d}.torque`);
+    if (a !== undefined) ix.set(`crank.${k}`, a);
+    if (t !== undefined) ix.set(`torque.${k}`, t);
+  });
+  return ix;
+}
+
+/** A frame's header by column name (``columnIndex``'s names, aliases included). */
+export function readValues(frame: ArrayLike<number>, ix: Map<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  ix.forEach((i, name) => { out[name] = i < frame.length ? frame[i]! : 0; });
+  return out;
+}
+
 const RATE_WINDOW_MS = 3000;   // of frame arrivals behind ``rate`` and ``fps``
 
 interface Bound { node: THREE.Object3D; body: number; m0: THREE.Matrix4 }
@@ -94,6 +140,8 @@ export class PhysicsLink {
   private bound: Bound[] = [];
   private boundTo: LoadedScene | null = null;
   private sent = '';
+  private sentJoints = '';
+  private ix = new Map<string, number>();
   private readonly d = new THREE.Matrix4();
   frame: PhysicsFrame | null = null;
   /** The session ended after its hello (the socket dropped, or the server's model went
@@ -101,6 +149,10 @@ export class PhysicsLink {
   onLost: ((reason: string, stale: boolean) => void) | null = null;
   /** A JSON ``error`` after the hello (a rejected command). */
   onError: ((message: string) => void) | null = null;
+  /** The session's hello (what drives the design, what it streams), null until connected. */
+  get info(): Hello | null { return this.hello; }
+  /** Free on a floor (a walker: the root follows the base), else fixed. */
+  get walks(): boolean { return this.hello?.walks !== false; }
   get feet(): number { return this.hello?.feet ?? 0; }
   get design(): Hello['design'] | null { return this.hello?.design ?? null; }
   get steering(): Steering | null { return this.hello?.steering ?? null; }
@@ -177,7 +229,8 @@ export class PhysicsLink {
             }
           }
           this.hello = h;
-          this.sent = '';
+          this.ix = columnIndex(h);
+          this.sent = this.sentJoints = '';
           finish(h);
         }
       };
@@ -196,10 +249,18 @@ export class PhysicsLink {
     ws?.close();
   }
 
-  /** Crank commands, fractions of the servo's speed (robot left, right); sent on change. */
-  command(left: number, right: number): void {
-    const msg = JSON.stringify({ cmd: [left, right] });
+  /** Crank commands, fractions of the servo's speed, one per drive (``hello.drives``: a walker's
+   * robot left, right; a mechanism's one crank); sent on change. */
+  command(...speeds: number[]): void {
+    const msg = JSON.stringify({ cmd: speeds });
     if (this.open && msg !== this.sent) { this.ws!.send(msg); this.sent = msg; }
+  }
+
+  /** Stepped joints' targets, degrees by name (``hello.joints``: an arm's); sent on change. */
+  joints(targets: Record<string, number>): void {
+    if (!Object.keys(targets).length) return;
+    const msg = JSON.stringify({ joints: targets });
+    if (this.open && msg !== this.sentJoints) { this.ws!.send(msg); this.sentJoints = msg; }
   }
 
   reset(): void { if (this.open) this.ws!.send(JSON.stringify({ reset: true })); }
@@ -214,14 +275,21 @@ export class PhysicsLink {
     const n = h.header;
     const pos = _va.set(p[1]!, p[2]!, p[3]!).lerp(_vb.set(f[1]!, f[2]!, f[3]!), s).clone();
     const quat = _qa.set(p[5]!, p[6]!, p[7]!, p[4]!).slerp(_qb.set(f[5]!, f[6]!, f[7]!, f[4]!), s).clone();
-    const k = h.crank_sign, col = (i: number): number => (n > i ? f[i]! : 0);
+    const at = (a: Float32Array, name: string): number => {
+      const i = this.ix.get(name);
+      return i === undefined || i >= n ? 0 : a[i]!;
+    };
+    const k = h.crank_sign, col = (name: string): number => at(f, name);
+    const crank = (c: string): number => k * (at(p, c) + (at(f, c) - at(p, c)) * s);
     this.frame = {
       t: p[0]! + (f[0]! - p[0]!) * s, pos, quat,
-      crank: [k * (p[8]! + (f[8]! - p[8]!) * s), k * (p[9]! + (f[9]! - p[9]!) * s)], feetDown: f[10]!,
-      torque: [col(TORQUE_AT), col(TORQUE_AT + 1)],
-      bodyDown: col(BODY_DOWN_AT) > 0.5, sidePhase: col(SIDE_PHASE_AT), az: col(AZ_AT), pinLoad: col(PIN_AT),
+      crank: [crank('crank.0'), crank('crank.1')], feetDown: col('feet_down'),
+      torque: [col('torque.0'), col('torque.1')],
+      bodyDown: col('body_down') > 0.5, sidePhase: col('side_phase'), az: col('az'), pinLoad: col('pin_load'),
+      values: readValues(f.subarray(0, n), this.ix),
     };
-    l.walker.matrix.compose(pos, quat, _one);
+    // A walker's root follows its free base; a fixed base stays where the glb stands it.
+    if (this.walks) l.walker.matrix.compose(pos, quat, _one);
     for (const b of this.bound) {
       blend(p, f, n + 12 * b.body, s, this.d);
       b.node.matrix.multiplyMatrices(this.d, b.m0);
@@ -248,7 +316,7 @@ export class PhysicsLink {
     }
     l.mixer.stopAllAction();
     for (const b of this.bound) b.node.matrixAutoUpdate = false;
-    l.walker.matrixAutoUpdate = false;
+    if (this.walks) l.walker.matrixAutoUpdate = false;
     this.boundTo = l;
   }
 

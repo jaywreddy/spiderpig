@@ -36,8 +36,12 @@ stage          code                            raised by
 ``sim``        ``sim_failed``                  MuJoCo
 ``strength``   ``joint_overload``              :func:`strength.check`: a pin, pillar or
                                                the crank under jam SF 1 at the design's
-                                               loads (culprits: joint, links, case,
-                                               SF, load, fixes)
+                                               loads (a walker's sim loads, an arm's
+                                               static ones; culprits: joint, links,
+                                               case, SF, load, fixes)
+``precision``  the exception's class           :func:`api.precision`: the error budget's
+                                               model raised (a plan failure is the
+                                               plan's own)
 ``manufacture`` ``cut_rule``                   :func:`manufacture.check` (``verify``
                                                standard/full): a part the service
                                                won't cut (culprits: part, sheet, rule,

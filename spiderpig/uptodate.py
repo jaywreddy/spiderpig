@@ -22,9 +22,11 @@ build answers in well under a second.
   exactly as given but ``--out`` and ``--force``, and the store's folder;
 - the store's **plan** is the one the build read (``designs/<id>/plan.json``, less when it
   was written): a re-planned or removed design builds again;
-- the **servo model**: ``SPIDERPIG_SERVO_CAD``, ``SPIDERPIG_OFFLINE`` and
-  ``SPIDERPIG_CAD_CACHE`` as they were, each pinned CAD file as it was (path, size,
-  modification time), and none missing that a build could download now;
+- the **servo model**: ``SPIDERPIG_SERVO_CAD``, ``SPIDERPIG_OFFLINE``,
+  ``SPIDERPIG_CAD_CACHE``, ``SPIDERPIG_PART_CAD`` and ``SPIDERPIG_CAD_STRICT`` as they were
+  (a build without strict CAD may hold a parametric fallback a strict one refuses), each
+  pinned CAD file as it was (path, size, modification time), and none missing that a build
+  could download now;
 - **every output** there with its size and SHA-256, and no other cut, print, STEP or
   STL file beside them (the files a build owns: :func:`outputs`). A file whose size,
   modification and change times and inode are the recorded ones isn't read again (a
@@ -54,7 +56,7 @@ their ``parts.csv`` / ``order.csv`` / ``<name>_sheet_parts.csv``) and an arm's `
 
 TOP_OUTPUTS = ("ORDER.md", "bom.csv", "bom.md", "bom.json")
 CAD_ENV = ("SPIDERPIG_SERVO_CAD", "SPIDERPIG_OFFLINE", "SPIDERPIG_CAD_CACHE",
-           "SPIDERPIG_PART_CAD")
+           "SPIDERPIG_PART_CAD", "SPIDERPIG_CAD_STRICT")
 _OURS = ("--out", "--store", "--force")
 STORE_ENV, DEFAULT_ROOT = "SPIDERPIG_STORE", ".spiderpig"
 """:mod:`spiderpig.store`'s (that module imports the engine; ``tests/test_uptodate.py``
@@ -240,16 +242,19 @@ def servo_files(config) -> list[list]:
     return out
 
 
-def inputs(opts: Options, config) -> dict:
+def inputs(opts: Options, config, plan_id: str | None = None) -> dict:
     """What the build of ``config`` reads beside its code, captured when it reads it
-    (after the plan, before fabricating): the stored plan, the servo model's files."""
+    (after the plan, before fabricating): the stored plan, the servo model's files.
+    ``plan_id``: the stored design whose plan it read (``spiderpig build DESIGN``), else
+    the design the options resolve to."""
     from dataclasses import replace
 
     from spiderpig.config import default_robot
     from spiderpig.stages.resolve import resolve, spec_of
 
-    plan_id = resolve(spec_of(replace(config, robot=default_robot(config.linkage))),
-                      store=None).id
+    if plan_id is None:
+        plan_id = resolve(spec_of(replace(config, robot=default_robot(config.linkage))),
+                          store=None).id
     out = {"plan_design": plan_id, "plan_hash": plan_hash(plan_file(opts.store, plan_id)),
            "cad_env": cad_env(), "servo_files": servo_files(config)}
     parts = part_files(config)

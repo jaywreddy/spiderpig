@@ -1107,3 +1107,719 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   parts, 187 before; 17 laser parts, 30 before; DXF sheets 4 -> 3, one of them now the
   base's 1/8 in 5052; BOM 54 lines, $477.75, $558.28 before; audit OK, 3 warnings).
   DESIGNS.md regenerated from it.
+
+### 2026-10-14: one controller role and one control surface for every robot (wave 1)
+
+- **The decision:** a walker's electronics are the role `controller`, the arm's role, not
+  catalog items the deck hard-wires; `spiderpig control` drives a walker's servos through
+  the arm's entry point. Toward the user's "one seamless repo", not two forked code paths.
+- **What a controller drives decides where it goes:** `Controller.drives` (`stepper` or
+  `bus_servo`) is matched to the design's motors (`controllers.motors_of`: the role
+  `servo`'s bus servos or the role `actuator`'s steppers), never to the kind's name. The
+  walker's set (the ESP32 servo driver, the 2S LiPo, charger, protection board, switch and
+  harness) is `esp32_bus_servo`, its parts the deck's bodies (`mount="deck"`,
+  `controllers.DECK_KIT`); `none` leaves the deck bare (the plate on its rails, its wire
+  and cable-tie slots; nothing of the kit bought; the guide's "Deck plate" step, no
+  harness; the sim carries the kit's 61 g for your own; an audit warning). A stepper board
+  on a walker, or the deck's board on an arm, is a `ConstructionError`.
+- **Mechanisms:** none carried electronics (no robot is made of one side), so the role
+  stays the walkers' and the arms' (changed later the same day: review fix round 1 (machines) gives a
+  mechanism the role too, its controller tied to having motors); `spiderpig control` still sets a mechanism's one servo
+  up (your own board).
+- **The ids stay:** a role reaching the walkers would have written `controller` into every
+  walker's resolved spec and moved every stored design's id. `roles.Role.implicit` names
+  what the designs carried before the role: where it is the default it isn't written
+  (`BuildConfig.applied_roles`), and it is pinned (never move a walker's default). The
+  resolved specs of the eight gate designs, a side, and an XL330 walker hash as at
+  `f3bd61b` (`design.spec_hash`, `side_hash`).
+- **The servos' setup** (`control.servos`): each crank's servo (a walker's `L` ID 1, `R`
+  ID 2), its legs' crank phases, the forward sense facing its horn (the mirrored sides
+  turn opposite ways: `sim.mjcf.crank_sign` and the sides' mirror), the zero (the first
+  crankpin's angle at crank angle 0) and `servos.json`: IDs, baud, speed mode, the torque
+  limit the joints are rated at, the protocol's register writes (Feetech STS, DYNAMIXEL
+  2.0), the sim's phase-lock gains. Zeroing is once per servo: its absolute encoder's
+  offset (`control.servos.zero_offset`; the STS's own middle calibration). Whether the
+  servo's positive speed is the forward sense is checked by a jog and kept as a `sign`.
+- **Found, not changed:** an XL330 or XL430 walker gets the deck's ESP32 board, which
+  speaks Feetech's protocol, not DYNAMIXEL's (as before this change: its BOM is the same);
+  `spiderpig control servo` says so (`controllers.protocol_note`). Changing its default
+  would move those designs' ids and BOMs: the user's call. (Changed in wave 2, below: "the
+  controller follows the servo", under the user's request of 2026-10-14 to merge the
+  walkers and the arm holistically and fix what the reviews found.)
+- **The gate** (against `platform-77c117c`): all eight designs identical (parts, plans,
+  BOM, DXF, audit), so no new baseline and DESIGNS.md unchanged.
+
+### 2026-10-14: hardening, wave 1 (no product change: the gate identical)
+
+- **The slow tier on a PR, opt-in.** `ci.yml` gains a `slow` job (`-m "slow and not e2e"`,
+  set up as the nightly's) that runs on a PR labelled `slow` (and on every push while the
+  label stays) or on a manual run (`workflow_dispatch`). Why opt-in: up to four runner-hours
+  a run. Why a label in the same workflow, not a second one: the cheap jobs re-run on a
+  `labeled` event rather than being skipped there, since a skipped job reports success and
+  would stand in for a failed one on the PR's checks. TESTING.md says how to trigger it.
+- **The planner's budget, pinned and recorded.** `SPIDERPIG_PLAN_SECONDS` is CPU time,
+  outside a design's id, so how far a search gets (a plan found, its proof, a cheaper
+  route) depends on the machine. CI's and the nightly's jobs pin it to 3600, as the gate
+  does (the node budgets alone bound a search); a stored plan records the budget its search
+  had (`PlanReport.budget_s`, `None` for no clock) and a plan re-made from the store reports
+  the record's, with a warning when this process's differs (`budget_recorded` false for a
+  record from before). Plans and design ids are unchanged.
+- **Strict vendor CAD.** `SPIDERPIG_CAD_STRICT=1`: a vendor model a build wants that can't
+  be drawn (not cached and not downloaded, a hash mismatch, an import or placement failure,
+  the wrong size, a horn that won't strip) raises `hardware.cad.CadError` instead of the
+  parametric fallback; `spiderpig cad check` loads every registered model that way. Off by
+  default: the gate, the audit and CI stay offline and parametric.
+- **The server's bakes keyed on what shapes them.** `bakes/<config key>-<bake key>.glb`
+  (`server.app.bake_key`): the config, the code a bake reaches (the fabrication's roots, the
+  plan through the store and the bake; computed in a fresh worker once the sources changed
+  under the server), the fab cache's env tag and the servo's and bought parts' CAD state.
+  Before, a file named by the config alone was served while newer than the sources'
+  mtimes: another worktree's code sharing the store, an installed package or a vendor model
+  imported since could all serve a stale bake. A watcher's re-bake now skips a default
+  whose key didn't move. `spiderpig bake`'s own file (`bakes/<config key>.glb`) is no
+  longer served by the viewer's server.
+- **pyright over the tests.** `[tool.pyright]` includes `tests/`; they held 743 errors
+  when the ratchet began (optional reads of reports and parts, mostly; the baseline file
+  holds 740 since wave 1's merge, `0e0557a`), so they are ratcheted on a count of their
+  own (`tests/pyright-baseline.json`'s `"tests"`) beside the package's 21, each failing CI
+  if it rises; the scorecard's `errors` stays the package's.
+- **The roadmap** gained the platform's phases (2026-10-11 to 2026-10-14) and what is open.
+
+### 2026-10-14: precision and strength are task targets for every kind (merge, wave 1)
+
+- **The decision:** the output's error budget and the parts' strength go through the same
+  spec, `verify`, API, MCP and scorecard for walkers, mechanisms and arms, chosen by what a
+  linkage can do, never by its kind's name. Before, `spiderpig/precision.py` was a CLI only,
+  and `strength.design_loads` gave an arm no loads ("a mechanism"), so `verify` rated
+  nothing that doesn't walk.
+- **The spec:** a `precision` section of targets (`spec.TARGET_FIELDS["precision"]`):
+  `repeatability_mm` (the worst-case bound) and `accuracy_mm` (what calibrates out) for any
+  linkage with an output; `rp_mm`, `rp_powerup_mm` (ISO 9283), `out_of_plane_mm` and
+  `payload_sag_mm` for ranged inputs; and one plain number, `precision.payload_g` (an arm's,
+  default `repeatability.PAYLOAD_G`). Each field names the capability it needs
+  (`TargetField.needs`, `spec.CAPABILITIES`: `output`, `ranged`), and a spec asking a
+  linkage without it is refused with the reason. `rp_mm` and `repeatability_mm` are hard by
+  default (what a task asks of the placement), the rest soft. A spec without the section
+  resolves as before (the same id).
+- **The stage:** `api.precision(design)` (`api/accuracy.py`, `PrecisionReport`,
+  `precision.json` in the store; an MCP tool, a job). An arm's budget is complete only with
+  its links' tilt, which reads a fabricated side's wobble notes, so `verify("quick")` reports
+  what needs no fabrication (a mechanism's whole budget; an arm's `accuracy_mm`) and leaves
+  an arm's tilt-dependent targets unverified until `standard` (the build's notes: no extra
+  fabrication) or a stored `precision` report. Measured on the approved arm at load ~30:
+  the budget without the tilt 0.8-1.8 s (the turntable's plans now made once a budget, they
+  were made three times), the complete one 44 s cold.
+- **Strength for an arm:** `strength.arm_loads`, from the quasi-static model the ISO RP
+  already solves (`repeatability.static_loads`, over a 5 x 5 grid of the inputs' box):
+  operating (the walker's `walk` column), the arm's weight and the payload x 1.5 for the
+  moves' accelerations; jammed, a crash, the tool blocked while every drive pushes at its
+  holding torque x ratio, gravity added (the walker's jam is its servo stalled at the torque
+  limit with a foot pinned: the same idea). These are the design's own loads, so a jam SF
+  under 1 fails `verify` and the audit; the fix may be a lower run current. A link's hole is
+  its pivot's bearing seat where it holds one (`strength.link_hole`; a plain pin's is the
+  6.35 mm it was). A cranked mechanism's loads are still what it drives: not rated (said; changed later
+  the same day: review fix round 1 (machines) rates its jam at the servo's torque limit, `strength.crank_loads`).
+  Walkers' numbers are unchanged.
+- **Found on the way:** an arm spec with any target validated in about a minute: the
+  validator ran the arm's output check (its whole tour) for every section. It now runs only
+  for a motion output target.
+- **The scorecard** records the approved arm's RP (section `precision`, default on):
+  0.042 mm within a session, 0.065 mm across power-ups (the model's, 2026-10-14).
+- **The gate** (`platform-5396098` against `platform-77c117c`): the six walkers and the two
+  mechanisms identical; parts, plans, BOMs and DXFs identical everywhere. Only the arms'
+  audit strength sections differ, as intended: `palletizer_reach` is rated (static loads,
+  a 44 N crash at the tool; the worst joint the elbow `pin:E`, jam SF 1.67: one more
+  warning, the audit still OK); `palletizer_turret` (the older `palletizer`, acrylic `b4`
+  and single-bearing pins) fails at a crash: `pin:E` jam SF 0.44 and `link:b4` 0.48, with
+  the fixes the approved arm already has (an aluminium `b4`, the `ball_pair` pins, the
+  links adjacent). DESIGNS.md regenerated from it.
+
+### 2026-10-14: walker models from the arm's: the cut length priced, the feet across the plane (wave 1)
+
+- **The cut length in the cutting cost** (`bom.cut_estimate`, `bom.cut_length_cm`,
+  `sheet_catalog.CUT_RATES`): the area model priced the Strider's hole-dense aluminium
+  8.9 % under SendCutSend's live quote (61.69 against 67.70). Each part's cut length (every
+  contour of its face, holes included: the DXF's contours) is now a term, refitted by
+  least squares of log(estimate / quote) on the 42 one-off prices recorded on 2026-10-08
+  (the Strider double, 21) and 2026-10-12 (the arm, 16 plus 5 alternatives), each quoted
+  DXF measured again. No new quotes; more would settle 6061.
+  - **5052** (14 prices): 0.076 / cm² + 0.104 / cm of cut, no fixed charge, at least 2.70
+    (just under the cheapest aluminium part quoted; never seen as a floor). Per part rms
+    24 % -> 12 %, worst +45 % -> +26 %; each part left out in turn 27 % -> 14 %.
+  - **6061** (8 prices): unchanged (3.20 + 0.138 / cm²). A cut rate fits its prices a
+    little better (rms 20 -> 15 %) but predicts a part left out worse (22 -> 35 %): the
+    arm's b4 and b1 pull it opposite ways; their bounding rectangles tell them apart (the
+    next term, on more prices).
+  - **Acrylic**: unchanged, no cut term: every 3 mm part up to 36 cm of cut quoted the
+    2.00 floor, which bounds any cut rate under 0.002 / cm.
+  - **Against the quotes:** the Strider's aluminium 67.70 at 68.98 (+1.9 %, was -8.9 %); its
+    acrylic 49.44 at 48.72 (unchanged); the arm 163.01 at 161.58 (-0.9 %, was +0.5 %; its
+    5052 -0.6 %, was +1.4 %).
+- **One file per shape** (`bom.same_files`): rows of one area to 1e-3 were priced as one
+  file, so the Strider's b4 and b8 (8.66 and 8.65 cm²) and b3 / b7 shared a quantity break
+  SendCutSend doesn't give them (it quoted them as separate files). Now area and cut length
+  to 1e-5. This is most of the acrylic's change below.
+- **The BOMs** (cutting, then the total; the gate `walker-f7036a7` against `platform-77c117c`):
+  - `strider_double`: cutting $113.92 -> $124.58, total $418.03 -> $428.69. 5052 0.080 in
+    26.04 -> 35.54 (the torso and frame plates), 0.063 in 23.74 -> 21.54, acrylic 44.24 ->
+    47.60.
+  - `strider_quad`: $163.55 -> $175.80; total $526.86 -> $539.11.
+  - `klann_lego_quad`: $164.51 -> $174.65; total $434.89 -> $445.03.
+  - `klann_quad`: $160.22 -> $178.28; total $522.57 -> $540.63.
+  - `hoecken_pantograph`: $32.61 -> $33.90; total $141.89 -> $143.18.
+  - `dwell_rocker`: $31.54 -> $36.49; total $130.42 -> $135.37.
+  - `palletizer_turret`: $83.40 -> $87.43; total $501.51 -> $505.54.
+  - `palletizer_reach`: $106.10 -> $109.21; total $618.89 -> $622.00.
+  - verify's cost floor counts a 5052 part at 2.70 (was 3.30).
+- **The feet across the plane** (`strength.foot_stiffness`, `linkage.stiffness.across`):
+  a walker's feet take sideways loads (a turn, a slip) that nothing reported. The arm's 3D
+  frame model now serves walkers by capability (`stiffness.outputs`: a ranged linkage's
+  tool point, a walker's feet; `stiffness.drives`: the inputs, or a crank held at its
+  centre; a segment split at a joint partway along it, Strider's J1 on b2). The arm's
+  numbers are unchanged, bit for bit.
+  - **The model:** each leg's links at their plan's layers, their own sheets' sections; each
+    pin and pillar its own shaft (the wobble note's section, with its modulus: the Al
+    standoff 69 GPa, `wobble.Section.modulus_mpa`); the crank rigid and driven; the frame
+    plates rigid.
+  - **The sideways load** (`strength.foot_load`): the robot's nominal weight on the fewest
+    feet touching over a straight walk (`walk.support`), times the sim's floor friction
+    (0.65): the most a foot takes before it slips.
+  - **Reported in the audit:** each foot's compliance across the plane (mm/N, worst over
+    the revolution), and at that load its deflection and the worst link tilt and splay.
+    This is the elastic part; the joints' play (the wobble check) comes on top. No limit.
+  - **Numbers:** the Strider double 2.05 mm/N, 2.35 mm at 1.15 N (719 g on 4 feet), b4
+    tilting 1.95°. klann_lego quad 0.48 mm/N (its 6061 foot links), 0.70 mm at 1.47 N,
+    0.37°. The demo Klann quad 9.6 mm/N, 15 mm at 1.59 N, 4.5° (its long acrylic b4).
+- **Open:** a bounding-rectangle (material) term for 6061 and 5.4 mm acrylic, on more
+  quotes. The feet's numbers count the swing too (the worst over the revolution), and a
+  joint held only by its play is not modelled (the wobble's separate row).
+
+### 2026-10-14: one homing-sensor registry for every joint, the turntable's included (wave 2)
+
+- **The decision:** every joint's homing is one registry, `actuators.sensors.SENSORS`
+  (`HomingSensor`; it was `ANGLE_SENSORS` for the planar inputs beside
+  `construction.rotary.SENSORS` for the turntable: one method, stall homing, in two
+  registries as `stall` and `hard_stop`). Each sensor declares how it homes
+  (`HomingSensor.method`: `endstop`, `stall` or none), whether it reads against gravity
+  (`gravity`: no use about the yaw's vertical axis) and what it buys; `control.homing.method`,
+  the Klipper config, the host, `precision` and a drive's BOM read the declaration, never
+  a key's name. The turntable preset `mt4_compact` names `stall` from it
+  (`RotaryPreset.check`: the turret builds a stall's stop only); each construction builds
+  that method's hardware at its joint (the turret's post and screw, `base_pair`; a planar
+  drive's M3 screw and nut, `transmissions.base.HARD_STOP`, as before).
+- **A stall's repeatability, derived:** `sensors.STALL_FULL_STEPS` (2) full steps of the
+  joint's motor through the joint's own reduction (`HomingSensor.at_joint`): the rotor lags
+  its field by up to a full step before it slips and a TMC2209 updates its StallGuard
+  result once a full step (an estimate, unmeasured). The belts' 5:1 keeps the planar
+  inputs' 0.72 deg; the yaw's 3.75:1 makes 0.96 deg, where the old fixed 0.75 mm at its
+  26 mm stop was 1.65 deg (it assumed nothing of the yaw's ratio).
+- **`palletizer_reach` (`spiderpig precision`, before / after):** ISO RP 0.042 mm in a
+  session and 0.065 across power-ups, both unchanged (the camera,
+  `vision_fiducial_ov5647`, sets every zero: each input's homing row stays its 0.015 mm);
+  the turntable's coarse stall homing at the output 8.863 -> 5.118 mm (a note, outside the
+  budget with the camera).
+- **The gate** (against `platform-5396098`): all eight designs identical, audits included.
+  DESIGNS.md unchanged.
+
+### 2026-10-14: the surfaces start from a task, for any kind of linkage (wave 2)
+
+- **The decision:** the ways in (the Python API, the MCP server; the CLI's `spiderpig
+  candidates` since fix round 1, the viewer not yet: it picks a linkage, not a task) take a task
+  and answer for every kind by what each linkage declares, toward the user's "one seamless
+  repo that can generate surfaces and linkages for a given task". A task
+  (`spiderpig.task.Task`: `walk`, `place` or `trace` and its numbers) names no linkage;
+  `api.candidates(task)` ranks the registered ones that can do it, each with its checks
+  (value, need, ok, tier, source) and a spec that asks for the task's numbers as targets,
+  and says why each other one can't. The MCP tool `candidates`, the resource
+  `spiderpig://schema/task` and the prompt `design(task)` replace the walker-only
+  prompt.
+- **Capabilities, never kinds:** feet (`Linkage.walks`), an output and its motion
+  (`spec.CAPABILITIES`), ranged inputs and how many, and the roles a design fills: a place
+  task takes three axes (two across the bench, one to lift), so one input (a path) and two
+  in a plane are refused with their count, and an arm's two inputs plus its turntable's yaw
+  (the role `turntable` applies) qualify. An arm's `repeatability_mm` is ISO 9283's
+  `precision.rp_mm` (what a maker quotes), a cranked mechanism's the worst-case bound.
+- **Cheap first, nothing fabricated:** the cards and the kinematics (an arm's reach over its
+  box about its yaw axis is a `bound`: it refutes, never confirms, since the bench its
+  turret stands on is the plan's); then what the store already measured for the same
+  machine whatever its targets; `measure=N` plans the best N (an arm's plan took 4-6 min
+  cold at load ~70, and its re-made plan 3.7 min). Measured: the approved arm's tool gets
+  down to the bench 149-288 mm out from its yaw axis over 240 deg of yaw, so a 200 x 150 mm
+  area misses by 29 mm (`sector_fit`); x1.19 of its lengths would hold it (unchecked, the
+  base's keep-out doesn't scale); its stored ISO RP, 0.042 mm, meets 0.1 mm.
+- **The viewer:** `/api/modes?linkage=` is the views the linkage declares
+  (`server.app.modes_of`: a robot per `config.robot_layout`, a walker's module sides, an arm's
+  or a mechanism's one side); the page's picker follows the linkage on screen, and a machine
+  picker lists every linkage without feet (it listed mechanisms only, and an arm's
+  `?linkage=` fell back to the Strider).
+- **The arm's guide:** the turret's base goes on in seven steps on the bench, then the side
+  stands on it (`base_pair.assembly`, its sentences the turret's meta, tagged), in the
+  layout's order (`assembly.LAYOUT_ORDERS`, `TURRET_ORDER`). The wiring step and its diagram
+  are the controller's declared wiring (`Controller.nodes`, `wiring`, `wiring_text`,
+  `wiring_extras`; `assembly.controller_ops`, `guide.wiring.wiring_of`): the walker's
+  harness sentence moved from the deck's hook into `esp32_bus_servo`, word for word; the
+  arm's step names its supply, host, ports (`q1 on X, q2 on Y, q3 on Z`), outputs and
+  camera, and its parts list buys the board's lines. A BOM line is a box only where no body
+  is its role's.
+- **The gate** (against `platform-5396098`): all eight designs identical (parts, plans,
+  BOM, DXF), so no new baseline and DESIGNS.md unchanged; the hooks stay out of the
+  fabrication's code key (the turret's sentences are `turret_parts`' meta, its steps
+  `base_pair.assembly`'s).
+
+### 2026-10-14: one MuJoCo model path for every design (wave 2)
+
+- **The decision:** `spiderpig/sim/mjcf.py` is the one MJCF emitter: every design (walker,
+  arm, mechanism) goes through one reduction (`sim.mjcf.robot_model`: the planar side's
+  bodies and pins, the spatial joints of `meta["tree"]`, `kinematics.RobotTree`, the tree
+  the bake and the URDF read) and one emitter, chosen by what the design declares, never by
+  its kind's name. Before, an arm's model came from a second writer beside its URDF
+  (`urdf.mjcf`, removed with its `urdf/<name>.mjcf.xml`), the export skipped `mjcf` for
+  anything that doesn't walk, and `spiderpig sim` ran walkers only.
+- **What a design declares:** `Linkage.walks` puts it free on a floor with its feet's
+  contacts (the walker's model, byte for byte as before: the Klann single and quad, the
+  Strider single and double and the TrotBot built before and after, identical XML and
+  metadata); anything else is fixed to the world, upright, with no floor (its base's floor
+  at the origin: a turret's under the yaw axis, so MuJoCo's world is the URDF's
+  `base_link` and `control.arm.ArmModel`'s base frame). A crank gets the servo's velocity
+  actuator as before; a joint `actuators.joint_ratings` rates (an input's transmission, the
+  turntable, the wrist: the URDF's limits read the same ratings) gets a stepper's position
+  actuator: its holding stiffness through the reduction (T_hold x rotor teeth x ratio²),
+  no stiffer than `HOLD_OMEGA_DT` (1.0) allows at the 1 ms step on the joint's tree inertia
+  (`dof_M0`), critically damped, its force its holding torque x ratio, its rotor's inertia
+  x ratio² the joint's armature. An input's hinge hangs from the frame on its drive's
+  pivot and reads its design angle (`ref`), so its `ctrl` is the input in radians.
+- **Why the tree inertia, not the loops':** capped on the inertia the elbow drives through
+  its parallelogram (a null-space projection of the joint-space inertia), the elbow's
+  stiff actuator fought its light rod's soft loop (a 2 N·m oscillation, 0.7 mm open,
+  measured on the palletizer). On `dof_M0` it is calm: the approved arm's `q3` at 184 of
+  500 N·m/rad, `q1` and `q2` at their motors' own.
+- **What runs it:** `api.export` writes `mjcf` for every kind through one path (the URDF
+  stays the ROS export, an arm's); `spiderpig sim` and `verify("full")` hold a fixed
+  design at its pose under gravity with its motors (`sim.run.hold`, the row `sim.holds`,
+  soft): `palletizer_reach` sags 0.043 mm at the tool's tip in 3 s, `q2` at 8 % of its
+  holding torque, its loops closed to 0.009 mm. A recorded fixture of it
+  (`tests/fixtures/sim/mjcf_palletizer_reach.json`) makes that a fast test.
+- **The gate:** parts, plans, BOMs and DXFs identical on all eight designs; the two arms'
+  `spiderpig build` no longer writes `urdf/<name>.mjcf.xml` (its MuJoCo model is the
+  export's `mjcf`), the one intended difference.
+
+### 2026-10-14: every design's defaults pass their audit; the controller follows the servo (wave 2)
+
+- **The decision:** the default build of every design the gate holds passes its own audit,
+  and a design's defaults follow what it is (its servo's protocol, its kind's roles), toward
+  the user's "one seamless repo".
+- **The plain `palletizer` holds a crash now:** it failed at a crash at the tool (`pin:E` jam SF 0.44, acrylic
+  `link:b4` 0.48). The approved arm's pivots are now every arm's (`config.DEFAULT_PIVOTS`:
+  `ball_pair` / `ball_pair_pillar`; `LINKAGE_PIVOTS` empty) and its links' sheets both
+  palletizers' (`materials.PALLETIZER_LINKS`): the audit OK, 8 warnings (the worst jam SF
+  pillar `O` 1.24, pin `E` 1.76). Its geometry, roles (gauge homing) and turret stay. The
+  approved arm is unchanged (config, ids, plan).
+- **Found on the way:** a drive hub's bolt heads were claimed in the layer past their link,
+  but bear on the link, so on a plan with a clearance gap there (the palletizer's new one)
+  they stood outside their claims (the contract, 26.8 mm³ each). They claim that gap too.
+- **The demo `klann` quad still fails** (`tests/gate/identity_gate.py`
+  `KNOWN_AUDIT_FAILURES`): pins `C`, `D`, `E` of two legs span 27-40 mm (jam SF 0.30-0.43 at
+  the family's 155 N; 0.71 on ground `ball_pair` pins). Tried, with the planner at 3600 s:
+  its barrels capped at 16, 20 or 23 mm (`chicago.MAX_BARREL`), every pin's links at most a
+  layer apart, the variants' 0, 0, 180, 180 phasing: no plan within the node budgets (the
+  crank's riders and the cantilever pillars `B` keep a leg's links far apart; capped at
+  14 mm with that phasing and ten times the budgets, none in 21 layers or fewer, proven; at
+  16 mm with ten times the budgets, stopped unfinished after an hour). A torque limit
+  can't fix it: its walking SF is 0.39. **Proposed, the user's call:** prune the demo
+  (superseded by `klann_lego`, the order design, and the diywalkers variants); it is the
+  family's measured loads (`strength.FALLBACK_PIN_LOADS`) and a test design in 44 test files
+  (72 files in all), so pruning it means moving those to a variant.
+- **Pruning the plain `palletizer`** (proposed): it is superseded by `palletizer_reach` too (the same links; a
+  shorter elbow crank and a box that doesn't reach the table). Pruning it would touch 10 test
+  files (`test_arm`, `test_band`, `test_control`, `test_pair`, `test_precision`,
+  `test_repeatability`, `test_stiffness`, `test_transmissions`, `test_turret`,
+  `viewer/src/arm.test.ts`) and the gate's `palletizer_turret`: proposed, not done.
+- **The gate checks the audits:** `compare` / `snapshot` list a design whose audit fails and
+  exit 3, unless `KNOWN_AUDIT_FAILURES` says why (one that passes is reported for the table
+  to lose it); `mise run gate -- audit DIR`; the slow `tests/test_gate_audits.py` runs the
+  eight audits (a known failure a strict `xfail`).
+- **The controller follows the servo** (`controllers.BUS_DEFAULTS`; the wave-1 entry left it
+  as the user's call: changed under the user's request of 2026-10-14 to merge the walkers
+  and the arm holistically and fix what the reviews found): an XL330 / XL430 walker
+  had the deck's ESP32 board, which speaks Feetech's protocol, not DYNAMIXEL's. It now gets
+  `u2d2_dynamixel`: ROBOTIS's U2D2 (USD 36.92) on its Power Hub Board Set (USD 21.85), both
+  from robotis.us's product pages read 2026-10-14 (no login, no bot check; both shown sold
+  out that day), bought as lines, the deck bare; your computer runs the walk over its USB,
+  your supply at the servo's voltage powers the bus. An STS3215 walker keeps the deck kit
+  (the role's `implicit` key): every STS3215 design's id is as it was; an XL walker's resolved
+  spec now names its controller, so its `spec_hash` moves (`side_hash` and `config.key`
+  don't).
+- **An arm doesn't carry a servo or a crank sheet** (`config.ROLE_FIELDS`): the roles
+  `servo` and `crank` aren't an arm's, so another servo or crank sheet is refused (a config,
+  a spec, a switch of linkage) and `spec_of` leaves them out. They are not dropped from the
+  key or the resolved spec: every stored arm's `config.key`, `spec_hash` and `side_hash`
+  hashes their defaults, so dropping them would move every arm's id (checked on the eight
+  gate designs: all unchanged by this part).
+- **One profiler:** the bake profiles with `spiderpig/tools/profiler.py`'s `Profiler`
+  (`bake._profiler`: title `bake`, total `bake_total`, logger `bake_gltf`), its copy gone; the
+  summary's text and the stage keys as they were.
+- **The gate** (`platform-78e35e8` against `platform-5396098`): the six walkers, the two
+  mechanisms and `palletizer_reach` identical; `palletizer_turret` different, as intended:
+  `ball_pair` pins and pillars, the 5.4 mm acrylic links and the 1/8 in 5052 `b4` (a fourth
+  DXF sheet), 16 layers 61.7 mm (46.1 before; heads in a 3.5 mm gap over layer 6), 201 parts
+  (167), 19 laser parts (17), BOM 71 lines $595.79 ($501.51; two DIN 988 6 x 12 shim
+  thicknesses newly unpriced, not guessed), audit OK with 8 warnings (FAIL (2) before);
+  `klann_quad` fails, known. DESIGNS.md regenerated from it.
+
+### 2026-10-14: hardening after the merge's reviews (no part, plan or BOM moved)
+
+(The merge's reviews ran in rounds: after waves 1 and 2, review fix round 1 merged four
+branches, surfaces, tasks and spec, machines, and this hardening; after review round 2,
+review fix round 2 merged task verify, torque and live sim. The entries below name their
+round and branch that way.)
+
+- **The viewer's server keys a bake under its lock** (`server.app._ensure_baked`): the key
+  was taken before a request waited its turn, and `_bake` keyed again, so a source edit
+  meanwhile returned a file never written (a 500, remembered as baked). Now the key is
+  taken under the lock and the answer is the file `_bake` wrote, named by the code it ran
+  (keyed as it starts) and the CAD state it left (a model it downloaded).
+- **Strict vendor CAD is in every cache's key**: the fabrication cache's entry
+  (`fabcache.entry_name`), the server's `bake_key` and the build skip (`uptodate.CAD_ENV`).
+  Before, an entry, a bake or a build made without `SPIDERPIG_CAD_STRICT=1`, which may hold
+  a parametric fallback, answered a strict request. Off (the default) the names are as
+  they were.
+- **A bake key is probed once:** every `GET /api/glb` keyed its design, and the servo's
+  probe could download (60 s timeout, again on every request offline). `bake_key` is
+  memoised per config, code key and a stat of the CAD cache and its switches
+  (`server.app._cad_stamp`), and probes the cache without downloading
+  (`fabcache.servo_state(config, download=False)`); the bake may still download, and its
+  file is named by the state it left.
+- **One file per shape, the cut to its rounding** (`bom.same_files`, `bom.CUT_TOL_CM`): cut
+  lengths are settled to 0.001 cm, so a shape's copies could read a step apart, which a
+  relative 1e-5 split into two files under 100 cm of cut. They match within 0.002 cm now.
+  On the gate's `strider_double` and `palletizer_reach` every sheet's files and price are
+  as before (their rows are already grouped).
+- **CI:** a label other than `slow` runs in a concurrency group of its own, so adding one
+  no longer cancels an in-flight slow tier (nor starts it again); removing `slow` starts
+  nothing (TESTING.md). The nightly gate goes on to its determinism compare after a first
+  snapshot whose audit fails (exit 3) and fails the job after it; `compare` reports both
+  verdicts (`identity_gate.exit_status`: 4 and 5 are "order differs" and "DIFFERENT" with
+  an audit failure).
+- **The cut model, left out:** `tests/test_order.py` now refits 5052's two rates with each
+  quote the repository records left out (the Strider's six one-off prices of 2026-10-08
+  and the arm's two 5052 sheets of 2026-10-12, summed: its per-part prices aren't kept
+  here) and predicts it: rms 23 % with the cut term against 42 % for a fixed charge and the
+  area, the fit on all of them within 6 and 9 % of the shipped rates. The per-part figures
+  of 2026-10-14 (14 % against 27 %, 14 prices) were measured on the quoted DXFs, which
+  this repository doesn't hold.
+- **`spiderpig.spec` and `spiderpig.task`** are under a lint-imports contract: neither
+  reaches into the pipeline or a front-end.
+
+### 2026-10-14: one task flow on every surface, from the task to the files that make, wire and buy it (review fix round 1: surfaces)
+
+- **The decision:** a design id carries from `candidates` to every file a maker needs, on
+  every surface, toward the user's "a seamless merge of capabilities, not just two forking
+  code paths". The flow stopped at `export`: an agent holding an id had no assembly guide,
+  wiring, controller files or `ORDER.md`, and the CLI took only build options (a task's
+  spec, its roles, didn't survive).
+- **The maker's formats:** `api.export` writes `guide` (`ASSEMBLY.pdf` / `.md`, cached
+  beside the fabrication), `control` (`control/`) and `order` (`ORDER.md` with the
+  per-part DXFs of `laser/parts/` it uploads and the `print/` STLs it lists) beside the
+  spec's outputs (`api.MAKE_FORMATS`: export formats only, not a spec's `outputs`, whose
+  vocabulary `spec.py` owns). The MCP's `FORMATS` and `spiderpig export --formats` are
+  `api.formats_all()` (a test holds them equal); the MCP `design(task)` prompt goes on past
+  the files to the guide, the controller's files and the order.
+- **One dispatch on the motors:** `spiderpig.control.files` writes what drives the design
+  needs (`actuators.controllers.motors_of`, a key of `files.WRITERS`): a crank's bus servos'
+  `servos.json`, an arm's steppers' Klipper `printer.cfg`, and either's `HOMING.md`; `spiderpig
+  control servo|klipper|homing` print and write through the same functions, and `spiderpig
+  control files` writes them all. No kind's name is read.
+- **The layers:** `spiderpig.control` moved a layer down, beside the guide (it imports
+  nothing above the sim and the stages), so the API exports its files; `load` (and the
+  config of a recorded design) moved from `api.store_ops` to `stages.resolve` (re-exported,
+  the old path kept), so `spiderpig build`, `guide`, `precision` and `control` open a stored
+  design under the API: `stages.resolve.load_stored`, its plan through
+  `stages.planning.plan_stored`.
+- **The CLI:** `spiderpig build|guide|control|precision DESIGN` (as `export`, `view`, `sim`
+  already did): the config as recorded, its roles kept (a Strider on your own controller
+  writes `servos.json` with none, where the options' default names the ESP32 board);
+  `build`'s manifest names the design (another `--kerf` or `--sheet-size`, another design).
+  `spiderpig candidates TASK.json [--measure N] [--limit K] [--resolve K]` is
+  `api.candidates`, the best `K` (1) resolved into the store for their ids. The help says
+  what `sim`, `control` and `export` do for every kind.
+- **The viewer:** one linkage picker lists every linkage of `/api/linkages`, grouped by kind
+  (an `optgroup` each, `modes.linkageGroups`); the view picker follows the linkage picked
+  (one with feet re-baked as a robot to drive, one without in its own default view). The
+  separate machine picker of wave 2 is gone.
+- **The docs:** `docs/ARCHITECTURE.md` sections 1 and 3 now start from the task and run
+  the pipeline for all three kinds (a stage reads capabilities), API.md has the task flow
+  from the command line, the MCP guide a "make it" loop.
+- **The gate** (against `platform-78e35e8`, `strider_double` and `palletizer_reach`): the
+  parts and the plans identical. The BOM differs as that baseline predates the cut model
+  (`cut_cm`, the cutting estimate, ORDER.md's cutting line), the Strider's audit has the
+  feet's strength row (wave 1) and the arm's export no `urdf/*.mjcf.xml` (wave 2's one
+  MuJoCo path): none of it this change's, so no new baseline and DESIGNS.md unchanged.
+
+### 2026-10-14: one task and spec vocabulary for every kind; an arm traces a line (review fix round 1: tasks and spec)
+
+- **The decision:** a task and a spec say the same thing the same way whatever the machine,
+  toward the user's "a seamless merge of capabilities, not two forking code paths".
+- **An arm takes a trace task.** `api.candidates` excluded a ranged linkage whenever a task
+  asked an output metric beside the stroke, and a straight `path_mm` always asks a
+  straightness, so no arm could ever trace a line. Now the task's path (else a line of its
+  stroke, tried at 0, 90, 45 and -45 deg) is solved point by point by the controller's own
+  inverse kinematics (`api.tasks.trace_path`: `control.arm.ArmModel.ik`, a waypoint every
+  5 mm as `control.host.line` moves, the joints linear between them, the inputs' ranges and
+  band held), the arm standing where the path fits in its plane (translated, not turned;
+  the placements deepest in its inputs' box tried first). The path reached is a `path_mm`
+  check and the stroke, `measured`; the tip's band across the line (the sag between
+  waypoints: 0.005 mm on a 100 mm line for `palletizer_reach`) is a `bound` on the
+  straightness until a precision budget adds twice its worst-case lost motion. A crank's
+  measures (`dwell_deg`, `swing_deg`, `on_line_fraction`, `rotation_deg`) still exclude an
+  arm. A bound's number no longer ranks as merit, and a bound met is "not ruled out", not
+  met, wherever it is (an arm's box-diagonal stroke too). For it the layers put `control`
+  under `api` (`pyproject.toml`: `control` imports nothing of the API's).
+- **(Superseded by the next entry: a task's repeatability is ISO RP where the design has one.)**
+  **`repeatability_mm` is the worst-case bound for every kind** (`precision.repeatability_mm`,
+  which every linkage with an output has): the guarantee, where ISO 9283 RP is a
+  Monte Carlo estimate of the scatter under one-sided approach, and an arm's only. An arm's
+  RP is shown beside it (`numbers.rp_mm`, the check's detail); a spec may still target
+  `precision.rp_mm`. The cost, the user's to weigh: the approved arm's bound is several
+  times its RP (`test_the_approved_arms_precision_is_a_stored_report`: RP under 0.1 mm,
+  the bound over it), so a 0.1 mm place task no longer passes it on its RP.
+- **One spec vocabulary:** `kind` is read from the linkage when not given (checked when it
+  is); `legs.robot` is every kind's robot (a walker's two sides, an arm's turret; a
+  mechanism's `false` only), `legs.sides` its older name, still read for a stored spec (a
+  walker's 2 is `robot: true`) and written into `robot` by `Spec.from_dict`; `spec_of`
+  writes `robot`. `design.resolved` keeps `legs.sides` (and an arm's `legs.robot`) as
+  before. `BuildConfig()`'s `robot` defaults to the linkage's kind's (`default_robot`), so
+  `BuildConfig(linkage="hoecken")` is its one side instead of an error.
+- **Every id kept:** on the eight gate designs, `config.key`, `spec_hash` and `side_hash`
+  are unchanged from specs written the old way (`spec_of` with `sides`, `kind` given, a
+  walker's `sides: 1`) and resolve to the same from the new (no `kind`, `legs.robot`).
+- **Bugs:** a precision metric a budget left unbounded (a singular pose) was skipped as
+  unmeasured; it is a miss. An obstacle replaced the task's whole `lift_mm` (its max, tol,
+  weight, hardness lost); it raises the min only. A walker's speed read `BuildConfig()`'s
+  servo, not the linkage's default (`config.role_field_default`).
+
+### 2026-10-14: a task's repeatability is ISO 9283 RP where the design has one (supersedes the "worst-case bound for every kind" bullet above)
+
+- **The rule:** a task's `repeatability_mm` targets ISO 9283 RP (`precision.rp_mm`, the mean
+  plus 3 sigma a maker quotes) wherever the design has one, i.e. a positioner with ranged
+  inputs. Elsewhere it targets the worst-case bound (`precision.repeatability_mm`), which
+  stays beside RP as information (`numbers.bound_mm`).
+- **Why:** the user's requirement for the arm was "ISO 9283 repeatability <= 0.1 mm".
+  Holding it to the worst-case bound made the approved arm (RP 0.042 mm) fail a 0.1 mm
+  placement task it meets.
+- **Straightness of a traced line** keeps the bound: twice the worst-case lost motion either
+  side of the line, a guarantee rather than a scatter.
+- The choice is made by capability (whether the `rp_mm` target applies to the linkage), not
+  by kind.
+- **Gate:** no part, plan or BOM moves (a task's targets only); the baseline after the
+  round is `platform-9aae3e3`.
+
+### 2026-10-14: one engine for every machine: controllers, strength, sim and exports by capability (review fix round 1: machines)
+
+- **The decision:** what a design gets follows what it declares (its inputs, `Linkage.ranged`
+  / `walks`, its robot layout), never its kind's name, toward the user's "one seamless repo
+  ... for a given task".
+- **Every design with motors has a controller.** (A mechanism's default changed in review
+  fix round 2 (torque): unnamed, it is `none`, so stored designs keep their BOMs; a task's
+  candidate names its board.) The role `controller` applies to mechanisms
+  too (and `pin` / `pillar` to arms, whose `ball_pair` pivots the guide's cover now names).
+  A mechanism's default is its servo's protocol's (`controllers.BUS_DEFAULTS`: the ESP32 board
+  for the STS3215, `u2d2_dynamixel` for an XL); its side is the whole machine (no robot is
+  made of it), so `BuildConfig.side_config` keeps its robot roles and `fabricate_side` buys
+  the controller as lines (`construction.robot.controller_lines(deck=False)`, no deck to draw
+  it), wired in its side's last step (`SIDE_ORDER`'s wiring stage; the step lists every part
+  bought). The default STS3215 mechanisms' ids stay (the role's `implicit` key); their BOM
+  gains the ESP32 kit's 14 lines (the board, its 2S LiPo, charger, protection board, switch,
+  harness, the board's nylon standoffs): a one-sided demo on a bench still needs a board and
+  power, and the kit's battery keeps it untethered (`none` buys nothing).
+- **One drive vocabulary:** the motor role is chosen once from the inputs
+  (`roles.motor_role`: a crank's `servo`, ranged inputs' `actuator`); `Controller.drives`,
+  `controllers.DRIVES`, `construction.DRIVES` and `spiderpig control` use those names
+  (`"bus_servo"` / `"stepper"` before). `construction._joint_drives` serves any declared drive,
+  and a cranked linkage's second input may declare one (`Linkage.drives`, a stepper's
+  `JointDrive` beside the crank's servo, the constraints' layout holding it): the engine side
+  of a five-bar. `five_bar` declares none yet, so it still stops at `drive` /
+  `second_input_no_drive` (the API's note is another package's this round).
+- **A mechanism's jam is rated** as the arm's crash (`strength.crank_loads`: the static model
+  over a turn of the crank; operating its weight x 1.5, jammed its output blocked while the
+  servo pushes at its torque limit, the output's dead points, under 10 % of the crank's
+  largest lever, left out). At the STS3215's 0.85 N·m every one-input mechanism failed (jam SF
+  0.22-0.85: small cranks on acrylic links). Each now has its own limit
+  (`config.LINKAGE_TORQUE_LIMITS`, klann_lego's lever: no part changed): the largest that puts
+  every joint and link at jam SF 2, 0.09 (rocker_amplifier) to 0.36 N·m (hoecken); MuJoCo
+  turns each at 0.006-0.031 N·m, so each keeps 6.8 x or more of headroom over its own motion.
+  The torque limit is what `spiderpig control servo` writes into the servo, as a walker's,
+  hence the rating at it rather than the stall. **The user's call:** a mechanism driving a load
+  needs its limit raised and its links rated again (aluminium links clear it: the fixes say).
+- **The fixed designs' sim:** `sim.run.hold` holds a crank in the servo's position mode (a P
+  loop over its speed loop; the zero-speed command alone crept) and an arm with the payload
+  its precision assumes (`verify.hold_payload_g`: the spec's, else `PAYLOAD_G`); `sim.run.turn`
+  drives a fixed design's crank through a turn (the second, past the spin-up): `verify full`'s
+  soft `sim.torque`, as a walker's.
+- **Smaller fixes:** a DYNAMIXEL walker's bare deck carries the U2D2 and its hub
+  (`controllers.carried_g`, `sim.mjcf.bare_deck_g`), not the ESP32 kit's 61 g; `u2d2_dynamixel`
+  declares its wiring (boxes, links, sentences, its two lines in its step); the walker's
+  port sentence moved into `esp32_bus_servo.wiring_text`, the chassis' routing stays the
+  mirrored pair's (`ROBOT_ORDER`'s wiring intro); a robot's mechanism names its layout
+  (`meta["layout"]`, no `"mirrored_pair"` fallback; the drive groups no `"walker"` one); a
+  precision budget that raised fails `verify` only with a precision target.
+- **The URDF** stays a ranged linkage's: `urdf.write` refuses a crank's design with
+  `urdf.unsupported`'s reason (its joints follow the crank's full turn, which a URDF tree can
+  only table; a walker has no fixed base), not exported half-way; its MuJoCo model holds it.
+- **The gate** (against `platform-78e35e8`): every design's parts, plans, DXF and meshes
+  identical. Intended: the two mechanisms' BOMs gain the ESP32 kit's 14 lines
+  (`hoecken_pantograph` USD 141.89 -> 248.59, `dwell_rocker` 130.42 -> 240.78, the cutting's
+  share of it the cut model's) and their audits' strength is rated (worst jam SF 2.04 and
+  2.01, link `b1`; the crank 15.8 and 38.0 at the new limits), both audits OK. The cut model's
+  BOM diffs (`cut_cm`, cutting USD), the walkers' `feet` and the arms' dropped
+  `urdf/*.mjcf.xml` predate this round (the baseline is older than the merged waves).
+  DESIGNS.md is not regenerated (no part moved).
+
+### 2026-10-14: a design carries its task, and verify confirms a place or a trace task (review fix round 2: task verify)
+
+- **The decision:** the flow task -> candidates -> spec -> plan -> build -> verify -> export
+  holds for walk, place and trace alike. A walk task's numbers were already spec targets;
+  a place task's area, points and height and a trace task's path never reached the spec, so
+  verify could not confirm either. The Spec gains a `task` section (the Task document,
+  validated whole under `task.`, the linkage able to do it: a walk needs feet, a place or a
+  trace an output); `candidates` writes it into every candidate's spec.
+- **It enters the id** (it changes what verify checks), only when given: a spec without one
+  resolves to the resolved spec it had (the eight gate designs' resolved-spec hashes
+  checked unchanged), and `design.side_hash` leaves it out, so a candidate's design shares
+  the side plan of the same design without its task; the candidates' store lookup
+  (`tasks._body`) leaves it out too.
+- **The `task.*` rows** (`verify.task_rows`, hard, at `quick` once planned and at
+  `standard`): a place task's area or points and its height against the planned robot's
+  bench reach (`tasks.bench_reach`: the turret plan's band, the tool's tip over the bench
+  per radius, `tasks.rise_over`), `estimated`; a trace task's path by an arm's inverse
+  kinematics at the design's proportions (`measured`) and its straightness as the traced
+  band plus twice the complete budget's worst-case lost motion (`estimated`; a `bound`
+  without it), or a crank's output check against the path (`measured`; a curved path's
+  length only, a `bound`). A met bound confirms nothing: the row is soft and its
+  requirement stays `unverified`; a missed bound refutes.
+- **The five-bar:** `construction._joint_drives` builds a drive for a cranked linkage's
+  second input that declares one (`Linkage.drives`). The registered `five_bar` declares none,
+  so it still stops at `drive` / `second_input_no_drive`; the screen (`tasks._drivable`) and
+  resolve (`stages.resolve.undriven_inputs`, `second_input_note`) now say that (an input
+  declaring no drive), not "v1 drives one crank". Tried: a five-bar declaring `t2`'s drive
+  on `b3` about `O2` stops at check instead (`crank.horn0` moves on a toured geometry with no
+  lateral bound): the crank's construction, another package's, is the next step.
+- **The URDF:** `resolve` refuses `outputs: [urdf]` for a crank's design with
+  `urdf.unsupported`'s reason (now `spec.urdf_unsupported`, which the stages can read);
+  `export(design, ["urdf"])` raises it; a spec stored with it before only skips it, warning
+  the same words.
+- **Export plans first:** `export` plans and builds a design that isn't built, whatever the
+  formats (`guide`, `control`, `order` read the planned side); an arm's plan is minutes cold.
+  The MCP's `export` was a job already: its description and API.md say so (no new job).
+- **The gate** (against `platform-9aae3e3`): all eight designs identical (no part, plan,
+  BOM or cut file moved; `klann_quad`'s audit fails as known). The verify rows are new
+  output, not parts: on the approved arm, a place task of 100 x 60 mm rising 20 mm reads
+  `task.area_mm` slack 74.2 mm (the bench band 149-288 mm over -120..120 deg) and
+  `task.height_mm` 238 mm, both `estimated`, `verify standard` ok; the Hoecken traces a
+  60 mm path within 0.5 mm as a 66.9 mm stroke 0.064 mm across, `measured`, ok.
+  DESIGNS.md is not regenerated (no part moved).
+
+### 2026-10-14: a crank servo's torque limit everywhere it matters; a mechanism's controller unnamed stays none (review fix round 2: torque)
+
+- **The torque limit reaches every servo design's BOM.** `config.torque_limit_note` is
+  keyed on the design's motor role (`roles.motor_role`: a crank's `servo`), not on a
+  walker's robot (`BuildConfig.mirrored` before): the export (`api.exports`) and `spiderpig
+  build` add it to every design a crank's servo drives. A mechanism's limit
+  (`config.LINKAGE_TORQUE_LIMITS`, 0.09-0.36 N·m) is far under the STS3215's own 0.85 and
+  its joints are rated at it (`strength.crank_loads`): left at the servo's own, every one of
+  them fails a jam. A walker side's BOM gets the note too; an arm's steppers have no
+  firmware limit (none).
+- **A fixed design's turn is bounded by that limit.** `sim.run.turn` caps the crank's servo
+  at the limit it is set to (`sim.run.crank_torque_limit`: `config.torque_limit_nm` of the
+  servo and linkage the model's meta names, an exported MJCF's too; `torque_limit=` to
+  override) on top of its speed-torque line, and reports against it (`torque_limit`, `stall`
+  beside it); `verify` full's `sim.torque` row is bounded by it, and `sim.run.hold` caps the
+  crank the same way. Before, the turn ran up to the stall (1.91 N·m), so a mechanism passed
+  at torques its firmware never gives. A walker's `simulate` is unchanged (its jam loads pin a
+  foot at the limit, `sim.loads`).
+- **The fixes name the lever of the design's own motors.** `strength.stepped` (the motor
+  role `actuator`): only a stepper design's findings name the drives' holding torque (their
+  run current); a mechanism, rated as an arm's crash since round 2, got that stepper advice
+  beside its servo-limit fix.
+- **Same id, same parts and BOM, for the mechanisms too.** Round 2 gave a mechanism the
+  ESP32 kit by default under the role's `implicit` key, so its id stayed while its BOM gained
+  14 lines: a mechanism stored before read back with a kit it never had. A resolved spec that
+  doesn't name a role reads back with the role's default (`stages.resolve` builds the config
+  from the stored keys alone), so an unnamed role must mean, forever, what the kind's stored
+  designs carried. `roles.Role.implicit` is now per kind (`((kind, key), ...)`): the walkers'
+  `esp32_bus_servo`, the mechanisms' `none`; where it is `none` it is also the kind's default
+  (`roles.default_key`). A mechanism's controller is `none` unless named; naming the kit
+  (`esp32_bus_servo`, bought as lines, wired in its last step) writes it into the resolved
+  spec and the id. The alternative, the kit by default with its key in new mechanisms' ids,
+  needs a stored spec without the key read as the kind's implicit key: one line in
+  `stages.resolve._config_from_resolved` (another package's this round). With it a
+  mechanism's default could be the kit again, and a DYNAMIXEL walker stored before its
+  default moved to `u2d2_dynamixel` (the user's call, round 2) would read back with the kit it
+  had; until then that one case still reads back with the U2D2.
+- **The motor role stays a function of the inputs** (`roles.motor_role`: a crank's servo,
+  ranged inputs' steppers), not a design choice: not contained. The controllers
+  (`Controller.drives`), `construction.DRIVES` and `verify.cost_floor` already key on
+  `roles.MOTOR_ROLES`, but a DYNAMIXEL-servo arm or a stepper-driven crank also needs: a
+  `JointDrive` for a servo (its body and horn on a transmission's hub; the `actuator`
+  registry offers `StepperSpec`s only) and a crank driven by a stepper through a hub (the
+  bolt crank seats a servo horn); the MJCF's actuator chosen per motor, not per kind of input
+  (a crank a velocity servo from `ServoSpec`, a ranged input a stepper's position gains);
+  strength's jam lever per motor (`crank_loads` the servo's limit, `arm_loads` the steppers'
+  holding torque x ratio); and control (`control.servos`' speed mode and crank phases against
+  Klipper's ranged, homed axes: a stepper crank needs continuous rotation, a servo arm
+  position mode and its IK in servo ticks). This is an open item for ROADMAP (not edited here:
+  another package's this round): "the motor role a design choice: servo arms, stepper cranks".
+- **The gate** (against `platform-9aae3e3`): every design's parts, plans, DXF and meshes
+  identical; the walkers and the arms identical in all. Intended: the two mechanisms' BOMs
+  drop the ESP32 kit's 14 lines round 2 added (`hoecken_pantograph` USD 248.59 -> 143.18,
+  `dwell_rocker` 240.78 -> 135.37: unnamed, their controller is `none`) and gain the
+  servo-firmware note (0.21 and 0.11 N·m); their audits OK. `klann_quad` fails its audit as
+  known. DESIGNS.md is not regenerated (no part moved).
+
+### 2026-10-14: one live sim for every kind (review fix round 2: live sim)
+
+- **The finding:** `/ws/sim` was a walker's protocol (crank L/R in, feet on the floor out)
+  and forced `robot=True`, which raises for a mechanism; an arm could only be posed
+  (`/api/pose`). Two code paths where the user asked for "one seamless repo".
+- **The decision:** one session over the one emitter's model, its commands and state by
+  what the model declares (`sim.live.LiveSim`): velocity actuators are cranks (`cmd`, one
+  speed per crank), position actuators stepped joints (`joints`, degrees, as `/api/pose`'s
+  `j.`), a free base walks (feet, floor, `az`), sites stream (the output, the tool's tip).
+  The hello lists the frame's `columns`; a walker's 17 are what they were (its viewer and
+  tests unchanged). The design's robot flag is its own (`BuildConfig.robot`'s default, the
+  query's `mode` for the view on screen); a walker's model is still its whole robot
+  (`sim.mjcf.model_config`). The steering check runs for a model that walks only.
+- **A lone crank is a servo in position mode** tracking its commanded travel (`HOLD_GAIN`,
+  as `sim.run.hold`, the lag bounded where the loop saturates): a zero speed holds the
+  crank, where a zero velocity command crept under gravity. Two cranks keep the walker's
+  phase lock. A reset keeps the commands (a walker walks on, an arm returns to its targets).
+- **The viewer** goes through the same client (`drive/physics.ts`, read by columns; a fixed
+  base's root is left where the glb stands it): the fixed design's panel (`arm.ts`) has a
+  live box, the arm's sliders then drive its steppers and a mechanism gets a crank-speed
+  slider from the hello. `/api/linkages` declares `walks` and `ranged`, which pick the
+  panel and the sliders (the `kind === 'arm'` test is gone).
+- **Tests:** the Hoecken pantograph's MJCF is recorded beside the arm's
+  (`tests/fixtures/sim/mjcf_hoecken_pantograph.json`), so the arm and the mechanism step live
+  through the websocket in the quick tier, in-process and on a real server on a free port
+  (`tests/test_sim_live_kinds.py`); the recorded fixed designs' hold test is by capability.
+- No part, plan or BOM moves (the emitter and the fabrication are untouched).
+
+### 2026-10-14: review round 3's last findings (the merge's reviews signed off)
+
+- **The reviews:** round 3 found no MUST left. The merge-goal reviewer's verdict: one
+  engine for the three shipped kinds, from a task through verify to the guide, control
+  files, BOM and the live viewer.
+- **A place task needs three positional axes,** checked at resolve (`spec.TASK_CAN`,
+  `spec.PLACE_AXES`, which `api.tasks` now reads): a one-input mechanism with an output is
+  refused with the reason, where before it validated and every verify failed it.
+- **The live sim caps a fixed design's crank** at the torque limit its servo is set to
+  (`sim.live.LiveSim.limit`, the hello's `torque_limit`), as `sim.run.turn` and `hold` do.
+  A walker's live sim keeps the stall it always had.
+- **A task's mechanism candidate names its board** (`api.tasks._name_controller`: the one
+  that speaks its servo's protocol). The kind's default stays `none` so stored mechanisms
+  keep their BOMs, while the machine a task builds is wired and powered. A candidate's spec
+  already has a new id, from its task.
+- **Smaller fixes:**
+  - the live-sim server test hands uvicorn its bound socket (no port race under xdist);
+  - `control/files.py`'s docstring uses the motor roles' names.
+- **Gate:** no part, plan or BOM moved; the baseline is `platform-814096d` (the two
+  mechanisms' BOMs without the kit, from review fix round 2).

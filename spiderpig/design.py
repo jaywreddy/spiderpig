@@ -206,10 +206,12 @@ them can share a plan (always re-made and verified: :func:`stages.planning._reus
 
 
 def side_hash(resolved: Mapping) -> str:
-    """:func:`spec_hash` without :data:`SIDE_FREE_ROLES`: what a design's side plan shares."""
+    """:func:`spec_hash` without :data:`SIDE_FREE_ROLES` and the task the spec was written
+    for (what verify checks, not what is built): what a design's side plan shares."""
     cons = {k: v for k, v in dict(resolved.get("constructions") or {}).items()
             if k not in SIDE_FREE_ROLES}
-    return spec_hash({**resolved, "constructions": cons})
+    return spec_hash({**{k: v for k, v in resolved.items() if k != "task"},
+                      "constructions": cons})
 
 
 def now_iso() -> str:

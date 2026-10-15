@@ -90,7 +90,7 @@ log = logging.getLogger("spiderpig.store")
 
 STORE_ENV = "SPIDERPIG_STORE"
 DEFAULT_ROOT = ".spiderpig"
-STAGES = ("check", "plan", "walk", "build", "recheck", "verify", "export")
+STAGES = ("check", "plan", "walk", "precision", "build", "recheck", "verify", "export")
 META_KEYS = ("stage", "design", "engine_version", "written_at")
 PROJECT = "project"          # the ``store`` argument's default: the project store
 

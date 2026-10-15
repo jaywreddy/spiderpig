@@ -217,6 +217,8 @@ class Linkage:
     # MT4's elbow stops, a parallelogram kept off its dead points); None: the box is the
     # ranges' rectangle (:meth:`inputs_at`)
     band: tuple[float, float] | None = None
+    # (a cranked linkage's second input may declare one too: a stepper's JointDrive beside
+    # the crank's servo, construction._joint_drives)
     drives: Mapping[str, tuple[str, str]] = field(default_factory=dict)
     angles: frozenset[str] = frozenset()
     labels: Mapping[str, str] = field(default_factory=dict)
@@ -254,8 +256,14 @@ class Linkage:
         """A cranked linkage's inputs are ``t`` and maybe ``t2`` (full turns); an arm's
         (no crank) each turn over a range and drive a link about a frame joint."""
         if self.crank:
-            if self.inputs not in (("t",), ("t", "t2")) or self.ranges or self.drives:
+            if self.inputs not in (("t",), ("t", "t2")) or self.ranges:
                 raise ValueError(f"{self.key}: inputs are the crank angle t, and maybe t2")
+            # the crank's servo turns t; a second input may declare its own drive (a link
+            # turning on a frame joint: construction._joint_drives builds it)
+            if "t" in self.drives or not set(self.drives) <= set(self.inputs):
+                raise ValueError(f"{self.key}: only a cranked linkage's second input may "
+                                 f"declare a drive (t is the crank's), got {sorted(self.drives)}")
+            self._check_drives(joints)
             return
         names = list(self.inputs)
         if not names or len(set(names)) != len(names) or \
@@ -271,13 +279,16 @@ class Linkage:
         for n, (lo, hi) in self.ranges.items():
             if not lo < hi or hi - lo > 360:
                 raise ValueError(f"{self.key}: input {n}'s range {lo}..{hi} deg")
+        self._check_drives(joints)
+        if self.output is None or self.feet:
+            raise ValueError(f"{self.key}: an arm has an output, no feet")
+
+    def _check_drives(self, joints: set[str]) -> None:
         for n, (link, about) in self.drives.items():
             if link not in self.links or about not in self.links[link][0] or \
                     about not in self.frame:
                 raise ValueError(f"{self.key}: input {n} drives {link!r} about {about!r}: a "
                                  "link turning on a frame joint")
-        if self.output is None or self.feet:
-            raise ValueError(f"{self.key}: an arm has an output, no feet")
 
     @property
     def kind(self) -> str:
@@ -286,6 +297,21 @@ class Linkage:
         if self.feet:
             return "walker"
         return "mechanism" if self.crank else "arm"
+
+    @property
+    def ranged(self) -> bool:
+        """Its inputs turn over ranges, not full circles: no crank and no phases, a
+        :meth:`tour` over the inputs' box for a cycle, each input a drive turning a link
+        about a frame joint (an arm). What a stage tests to treat the inputs as drives;
+        :attr:`kind` is only the label. (A ranged linkage has no feet: its validation.)"""
+        return not self.crank
+
+    @property
+    def walks(self) -> bool:
+        """It has feet on a floor: a gait, the walk model, the sim's ground loads and
+        MuJoCo's contacts apply (a walker). What a stage tests for the floor; :attr:`kind`
+        is only the label."""
+        return bool(self.feet)
 
     # -- an arm's tour --------------------------------------------------------
 
@@ -296,7 +322,7 @@ class Linkage:
         box normalised to unit sides (one input: there and back). Every stage that samples
         a crank cycle samples the workspace by it; the rows' spacing is
         :meth:`tour_lateral`'s."""
-        if self.kind != "arm":
+        if not self.ranged:
             raise ValueError(f"{self.key} is a {self.kind}: its inputs turn full circles")
         u = np.mod(np.asarray(ts, dtype=float), 2 * math.pi) / (2 * math.pi)
         names = self.inputs
@@ -365,7 +391,7 @@ class Linkage:
         """How far each point moves between two neighbouring rows of the tour (mm): what a
         stage that samples the tour adds to its bound between samples, so its guarantee
         covers every pose in the box, not only the tour's (0 with one input)."""
-        if self.kind != "arm" or len(self.inputs) == 1:
+        if not self.ranged or len(self.inputs) == 1:
             return dict.fromkeys(self.points, 0.0)
         n = 4 * TOUR_ROWS + 1
         ua = np.linspace(0.0, 1.0, n)
@@ -471,7 +497,7 @@ class Linkage:
         bad = next((s for s in steps if s.fails_deg is not None), None)
         if bad is not None:
             raise AssemblyError(f"{self.key}: {bad.describe()}")
-        if self.kind == "arm":
+        if self.ranged:
             from spiderpig.linkage.checks import check_drives, check_rigid
             from spiderpig.linkage.constraints import LOCK_COND, check_conditioning
 
@@ -618,7 +644,7 @@ class LegSolution:
         """
         lk = self.linkage
         ts = np.asarray(ts, dtype=float)
-        if lk.kind == "arm" and not others:     # an arm's one time: its tour (one unit)
+        if lk.ranged and not others:     # an arm's one time: its tour (one unit)
             ins = lk.tour(ts)
             ts_, others = ins[0], ins[1:]
             flat = lk.compiled(ts_, *others, *(self.values or lk.defaults))
@@ -642,7 +668,7 @@ class LegSolution:
         an arm's inputs themselves, never its tour (:meth:`evaluate` with one array is the
         tour's time); a cranked linkage's, as :meth:`evaluate`."""
         lk = self.linkage
-        if lk.kind != "arm":
+        if not lk.ranged:
             return self.evaluate(*inputs)
         if len(inputs) != len(lk.inputs):
             raise ValueError(f"{lk.key} takes inputs {lk.inputs}, got {len(inputs)}")

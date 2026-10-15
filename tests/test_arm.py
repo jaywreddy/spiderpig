@@ -170,6 +170,36 @@ def test_a_flattening_parallelogram_is_refused():
         BuildConfig(linkage="palletizer", robot=False, crank="bolt")
 
 
+def test_an_arm_is_refused_a_drive_servo_and_a_crank_sheet():
+    """``config.ROLE_FIELDS``: an arm has neither the role ``servo`` nor ``crank``, so its
+    ``servo`` and ``crank_sheet`` hold their defaults (kept in its key and resolved spec: the
+    ids stay) and naming another is refused, in a config, a spec and on a switch of
+    linkage; a CLI's spec of an arm leaves them out."""
+    from spiderpig import servos
+    from spiderpig.config import BuildConfig, ParamError, design_from_query
+    from spiderpig.spec import validate
+    from spiderpig.stages.resolve import spec_of
+
+    with pytest.raises(ParamError, match="drive servo"):
+        BuildConfig(linkage="palletizer_reach", servo="xl330_m288")
+    with pytest.raises(ParamError, match="no crank"):
+        BuildConfig(linkage="palletizer_reach", crank_sheet="al6061_2mm")
+    arm = BuildConfig(linkage="palletizer_reach", servo=servos.DEFAULT,
+                      crank_sheet="al6061_2p5mm")             # the defaults: as stored
+    assert arm == BuildConfig(linkage="palletizer_reach")
+    assert BuildConfig(servo="xl330_m288", crank_sheet="al6061_2mm").servo == "xl330_m288"
+    errs = validate({"kind": "arm", "linkage": {"key": "palletizer_reach"},
+                     "materials": {"servo": "xl430_w250", "crank_sheet": "al6061_2mm"}})
+    assert sorted(e.path for e in errs) == ["materials.crank_sheet", "materials.servo"]
+    assert not validate({"kind": "arm", "linkage": {"key": "palletizer_reach"},
+                         "materials": {"servo": servos.DEFAULT}})
+    assert "servo" not in spec_of(arm)["materials"]
+    assert "crank_sheet" not in spec_of(arm)["materials"]
+    walker = BuildConfig(servo="xl330_m288", crank_sheet="al6061_2mm")
+    moved = design_from_query({"linkage": "palletizer_reach"}, base=walker)
+    assert (moved.servo, moved.crank_sheet) == (servos.DEFAULT, "al6061_2p5mm")
+
+
 def test_the_bound_covers_poses_off_the_tour():
     """Brute force: two points' sampled-and-bounded distance (the planner's lower bound)
     never exceeds their true distance anywhere in a dense grid over the box."""

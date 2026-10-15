@@ -54,12 +54,12 @@ from spiderpig.actuators import sensors
 from spiderpig.config import BuildConfig, add_build_args, add_design_args, config_from_args
 from spiderpig.linkage.constraints import gains, layout, sample_inputs
 from spiderpig.linkage.stiffness import Compliance, Rod, Section, compliance
-from spiderpig.repeatability import Rp, gravity_loads, iso_rp
+from spiderpig.repeatability import PAYLOAD_G, Rp, gravity_loads, iso_rp
 
 DEFAULT_TARGET_MM = 0.1     # the placement the report asks each input's resolution for
 DEFAULT_DT_K = 10.0         # the temperature swing the thermal row assumes (K)
 DEFAULT_HOLE_TOL_MM = 0.13  # a laser-cut hole's position tolerance (SendCutSend, about)
-DEFAULT_PAYLOAD_G = 50.0    # the load at the output the sag row assumes (a few glass slides)
+DEFAULT_PAYLOAD_G = PAYLOAD_G   # the load at the output the sag row assumes (a few slides)
 SLIDE_G = 5.0               # one glass microscope slide (75 x 25 x 1 mm soda-lime: 4.7 g)
 PAIR_TILT_K_PIN = 180e3     # N·mm/rad: a preloaded MR84 pair's moment stiffness, its balls'
 #                             Hertz contact at ~30 N (the review's, 180-430: the low one)
@@ -101,7 +101,7 @@ class PlayMap:
 @dataclass(frozen=True)
 class InputBudget:
     """One input's drive at the output: its transmission's and motor's terms
-    (:meth:`construction.transmissions.DriveGroup.error_terms`) through the input's lever:
+    (:meth:`construction.transmissions.JointDrive.error_terms`) through the input's lever:
     backlash (repeatability), resolution, and the sag a payload's moment on the lever
     makes against the drive's stiffness."""
 
@@ -117,7 +117,7 @@ class InputBudget:
     accuracy_mm: float = 0.0       # its systematic error (a microstep off its place)
     capacity_nm: float = 0.0       # what it holds at the joint (holding torque x ratio)
     load_nm: float = 0.0           # the payload's moment on its lever (an upper bound)
-    homing_mm: float = 0.0         # its homing switch's repeatability (lost on each homing)
+    homing_mm: float = 0.0         # its homing sensor's repeatability (lost on each homing)
 
 
 @dataclass(frozen=True)
@@ -163,6 +163,32 @@ class Precision:
     def accuracy_links_mm(self) -> float:
         return self.plays.accuracy_mm
 
+    @property
+    def accuracy_mm(self) -> float:
+        """What is the same every time, added up (worst case): every hole off by its
+        tolerance, the temperature swing over the reach, the turntable's systematic error,
+        and each drive's systematic error and one step of its resolution. It calibrates
+        out; the spec's ``precision.accuracy_mm``."""
+        return (self.accuracy_links_mm + self.thermal_mm + self.turret_accuracy_mm
+                + sum(b.accuracy_mm + b.resolution_mm for b in self.inputs.values()))
+
+    def metrics(self) -> dict[str, float | None]:
+        """The spec's ``precision.*`` metrics this budget measured (``None``: unbounded, a
+        singular pose), keyed by the target's name: ``repeatability_mm`` and
+        ``accuracy_mm`` always; a ranged linkage's ``rp_mm``, ``rp_powerup_mm``,
+        ``out_of_plane_mm`` and ``payload_sag_mm`` when the budget counted them (the links'
+        tilt read from a fabricated side)."""
+        out = {"repeatability_mm": _num(self.repeatability_mm),
+               "accuracy_mm": _num(self.accuracy_mm)}
+        if self.rp is not None:
+            out["rp_mm"] = _num(self.rp.session_mm)
+            out["rp_powerup_mm"] = _num(self.rp.powerup_mm)
+        if self.oop is not None:
+            out["out_of_plane_mm"] = _num(self.oop.worst_mm)
+        if self.stiffness is not None:
+            out["payload_sag_mm"] = _num(self.stiffness.sag_mm)
+        return out
+
     def as_dict(self) -> dict:
         pm = self.plays
         return {"linkage": self.linkage, "output": self.output, "target_mm": self.target_mm,
@@ -177,6 +203,7 @@ class Precision:
                 "conditioning": _num(pm.conditioning, 1), "singular_poses": pm.singular,
                 "tolerance_mm_per_mm": _rounded(self.tolerance_mm_per_mm),
                 "accuracy_links_mm": _num(self.accuracy_links_mm),
+                "accuracy_mm": _num(self.accuracy_mm),
                 "hole_tol_mm": self.hole_tol_mm, "reach_mm": round(self.reach_mm, 2),
                 "thermal_mm": round(self.thermal_mm, 4), "dt_k": self.dt_k,
                 "payload_g": self.payload_g, "tilt_mm": _num(self.tilt_mm),
@@ -255,6 +282,8 @@ class Precision:
                    f"{self.accuracy_links_mm:.3f} mm (calibrates out)")
         out.append(f"  accuracy, {self.dt_k:g} K at {self.cte_um_per_m_k:g} um/m/K over "
                    f"{self.reach_mm:.0f} mm: {self.thermal_mm:.3f} mm")
+        out.append(f"  accuracy in all (these, the drives' systematic errors and a step "
+                   f"each, added): {self.accuracy_mm:.3f} mm")
         out += [f"  note: {n}" for n in self.notes]
         return out
 
@@ -590,7 +619,7 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
     elif config.robot:                # (the side's design, given, stays: one module)
         config = config.side_config()
     clearances, notes = joint_clearances(config, design)
-    if lk.kind == "arm" and oop and wobble is None and design is None:
+    if lk.ranged and oop and wobble is None and design is None:
         wobble = _wobble(config)
     for (j, body), c in radial_by_link(config, wobble or {}).items():   # a link's own
         if (j, body) in clearances:
@@ -618,7 +647,7 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
     if inputs:
         notes.append("the drives' sag counts the payload only (the links' own weight is "
                      "constant: it calibrates out at a given pose)")
-    if lk.kind == "arm" and not inputs:
+    if lk.ranged and not inputs:
         notes.append("no transmission: the inputs' own backlash and resolution are not in "
                      "the budget (their levers say what they must be)")
     tilt = turret_acc = 0.0
@@ -630,9 +659,9 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
                 **need}
         notes += yaw_notes
     across = None
-    if lk.kind == "arm" and not oop:
+    if lk.ranged and not oop:
         notes.append("out of the plane: left out (the links' tilt is not in the budget)")
-    elif lk.kind == "arm":
+    elif lk.ranged:
         if wobble is None:
             notes.append("out of the plane: no wobble notes given (the side not fabricated): "
                          "the links' tilt is not in the budget")
@@ -645,7 +674,7 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
                          "offset across the stack, which turns tilt into a shift in the plane, "
                          "not counted); the turntable's tilt is its own row")
     stiff = None
-    if lk.kind == "arm" and oop:
+    if lk.ranged and oop:
         stiff = link_compliance(config, design, payload_g,
                                 _tool_drop(robot_cfg, design) if turret else 0.0)
         notes.append("the links' bending: a 3D frame of each link's section (width "
@@ -653,13 +682,13 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
                      "steel rods between layers, the frame plates and turntable rigid "
                      "(linkage.stiffness); the payload's sag at a given payload calibrates "
                      "out, a change of payload and a load across the plane do not")
-    ref = sensors.REFERENCES.get(robot_cfg.role("homing_reference")) if lk.kind == "arm" \
+    ref = sensors.REFERENCES.get(robot_cfg.role("homing_reference")) if lk.ranged \
         else None
     if ref is not None and ref.tool_mm is not None:    # every zero from the sheet
         inputs = {k: replace(b, homing_mm=ref.tool_mm) for k, b in inputs.items()}
         notes.append(f"homing: {ref.label} ({ref.source})")
     rp = None
-    if lk.kind == "arm" and oop:
+    if lk.ranged and oop:
         clamped = frozenset(radial_by_link(config, wobble or {}))
         rp = _iso(config, pm, inputs, lev, across, payload_g, clamped)
     return Precision(lk.key, layout(lk).output_point, target_mm, lev, need, pm, tol,
@@ -739,10 +768,26 @@ def _wobble(config: BuildConfig) -> dict:
 
 def _tool_drop(config: BuildConfig, design) -> float:
     """How far the tool's tip hangs below the output point (mm; 0 without a tool)."""
+    _, tool = _turret_plans(config, design)
+    return tool.tool.drop() if tool is not None else 0.0
+
+
+_PLANS: dict = {}
+
+
+def _turret_plans(config: BuildConfig, design):
+    """``Turret().plans`` of the side's design for ``config`` (the turntable's and the
+    tool's), once per design: the budget reads them three times."""
     from spiderpig.construction.robot import Turret
 
-    _, tool = Turret().plans(_side_design(config, design), config)
-    return tool.tool.drop() if tool is not None else 0.0
+    d = _side_design(config, design)
+    key = (config, id(d))
+    hit = _PLANS.get(key)
+    if hit is None or hit[0] is not d:          # (the design held: its id isn't reused)
+        if len(_PLANS) >= 8:
+            _PLANS.clear()
+        hit = _PLANS[key] = (d, Turret().plans(d, config))
+    return hit[1]
 
 
 def _side_design(config: BuildConfig, design):
@@ -757,10 +802,7 @@ def _side_design(config: BuildConfig, design):
 def _yaw_lever(config: BuildConfig, design) -> float:
     """How far the output moves per radian of the turntable (mm/rad): its horizontal
     distance from the yaw axis, the most over the box."""
-    from spiderpig.construction.robot import Turret
-
-    d = _side_design(config, design)
-    tp, _ = Turret().plans(d, config)
+    tp, _ = _turret_plans(config, design)
     lk = config.lk
     pts = linkage.LegSolution(1, 0.0, config.values, lk.key).at(*lk.box(21))
     f = pts[layout(lk).output_point].reshape(-1, 2)
@@ -771,17 +813,17 @@ def turret_budget(config: BuildConfig, design, target_mm: float
                   ) -> tuple[InputBudget, float, float, list[str]]:
     """The turntable's drive at the output (``q1``: its support's, transmission's and
     motor's terms, :meth:`construction.rotary.turret.TurretPlan.error_terms`, and its
-    homing's repeatability over the hard stop's radius, through the output's horizontal
-    reach), its tilt there (the support's tilt over the farthest the tool's tip gets from
-    the bearings' middle), and its systematic error there (the drive's eccentricity over its
+    homing's repeatability at the joint, :meth:`actuators.sensors.HomingSensor.at_joint` of
+    its motor through its own reduction, through the output's horizontal reach), its tilt
+    there (the support's tilt over the farthest the tool's tip gets from the bearings'
+    middle), and its systematic error there (the drive's eccentricity over its
     pitch radius, the shaft's tilt in its collars). No sag: gravity has no moment about a
     vertical axis."""
-    from spiderpig.construction.robot import Turret
     from spiderpig.construction.rotary import AXIS_RUNOUT_MM, ECCENTRICITY_MM
     from spiderpig.hardware.catalog import get
 
     d = _side_design(config, design)
-    tp, tool = Turret().plans(d, config)
+    tp, tool = _turret_plans(config, d)
     t = tp.error_terms()
     lever = _yaw_lever(config, d)
     lk = config.lk
@@ -792,8 +834,8 @@ def turret_budget(config: BuildConfig, design, target_mm: float
     far = float(np.hypot(f[:, 0] - tp.x_a, f[:, 1] - drop - mid).max())
     _, tr, motor, sensor = tp.preset.parts
     ratio = tr.ratio(None)
-    switch = sensor.repeat_mm
-    homing = switch / tp.sensor_r * lever
+    homing_deg = sensor.at_joint(motor, ratio)
+    homing = math.radians(homing_deg) * lever
     budget = InputBudget("q1", ratio, t.backlash_deg, t.resolution_deg, t.stiffness_nm_per_rad,
                          math.radians(t.backlash_deg) * lever,
                          math.radians(t.resolution_deg) * lever, 0.0, t.source,
@@ -802,8 +844,8 @@ def turret_budget(config: BuildConfig, design, target_mm: float
     collar = float(get("collar_8mm").dims["od"])
     systematic = ECCENTRICITY_MM / tp.drive_r() * lever + AXIS_RUNOUT_MM / collar * far
     notes = [f"the turntable ({tp.preset.key}): {n}" for n in t.notes]
-    notes.append(f"the turntable's homing: {switch * 1000:g} um at its {sensor.key}'s "
-                 f"{tp.sensor_r:.0f} mm radius, {homing:.3f} mm at the output (unverified)")
+    notes.append(f"the turntable's homing ({sensor.key}): {homing_deg:.3f} deg at the joint "
+                 f"through {ratio:.3g}:1, {homing:.3f} mm at the output ({sensor.source})")
     notes.append(f"the turntable's drive {ECCENTRICITY_MM:g} mm off centre and its shaft "
                  f"{AXIS_RUNOUT_MM:g} mm out across a collar (estimates): {systematic:.3f} mm "
                  "at the output, once a turn (it calibrates out)")
@@ -821,9 +863,10 @@ def drive_budgets(config: BuildConfig, design, lev: dict[str, float],
     """Each arm input's drive through its lever (:class:`InputBudget`): the design's drive
     groups' error terms; the sag is a payload's moment on the input's lever over the
     drive's stiffness, seen at the output (an upper bound: the whole lever horizontal); its
-    homing, the zero its angle sensor leaves each time (:mod:`actuators.sensors`: a gauge
-    by hand, an inclinometer)."""
-    from spiderpig.construction.transmissions import DriveGroup
+    homing, the zero its sensor leaves each time
+    (:meth:`actuators.sensors.HomingSensor.at_joint`: a gauge by hand, an inclinometer, a
+    stall's motor steps through the drive's ratio)."""
+    from spiderpig.construction.transmissions import JointDrive
 
     if design is None:
         from spiderpig.fabricate import design_side, template_for
@@ -831,7 +874,7 @@ def drive_budgets(config: BuildConfig, design, lev: dict[str, float],
         design = design_side(template_for(config), config)
     out = {}
     for g in design.groups:
-        if not isinstance(g, DriveGroup):
+        if not isinstance(g, JointDrive):
             continue
         t = g.error_terms(design.ctx)
         lever = lev.get(g.input, 0.0)                    # mm per radian
@@ -846,7 +889,7 @@ def drive_budgets(config: BuildConfig, design, lev: dict[str, float],
             t.stiffness_nm_per_rad, math.radians(t.backlash_deg) * lever,
             math.radians(t.resolution_deg) * lever, sag, f"{t.source}; zero: {sensor.key}",
             math.radians(t.accuracy_deg) * lever, g.motor.holding_nm * ratio, torque,
-            math.radians(sensor.repeat_deg) * lever)
+            math.radians(sensor.at_joint(g.motor, ratio)) * lever)
     return out
 
 
@@ -873,7 +916,7 @@ def compare_options(config: BuildConfig) -> list[tuple[str, BuildConfig]]:
     from spiderpig import roles as rolemod
 
     pivots = pivot_options(config)
-    if config.lk.kind != "arm":
+    if not config.lk.ranged:
         return pivots
     out = []
     for label, cfg in pivots:
@@ -884,9 +927,14 @@ def compare_options(config: BuildConfig) -> list[tuple[str, BuildConfig]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from spiderpig.stages.resolve import DESIGN_HELP
+
     ap = argparse.ArgumentParser(prog="spiderpig precision",
                                  description="the error budget at a design's output: joint "
                                              "play, the inputs' levers, tolerances, heat")
+    ap.add_argument("design", nargs="?", metavar="DESIGN", help=DESIGN_HELP)
+    ap.add_argument("--store", metavar="PATH",
+                    help="the store DESIGN is in (default: $SPIDERPIG_STORE, else ./.spiderpig)")
     add_design_args(ap)
     add_build_args(ap)
     ap.add_argument("--target", type=float, default=DEFAULT_TARGET_MM,
@@ -905,7 +953,18 @@ def main(argv: list[str] | None = None) -> int:
                     help="the same design with each pivot option (plain holes, ball pins, "
                          "ball pins and pillars), and an arm's with each transmission")
     args = ap.parse_args(argv)
-    config = config_from_args(args)
+    if args.design:         # a stored design: its config as recorded (its spec's roles)
+        from spiderpig.stages.planning import plan_stored
+        from spiderpig.stages.resolve import load_stored
+
+        try:
+            design = load_stored(args.design, args.store)
+            plan_stored(design)     # (its stored plan: the budget's fabrication reuses it)
+        except (KeyError, ValueError) as e:
+            ap.error(str(e))
+        config = design.config
+    else:
+        config = config_from_args(args)
     from dataclasses import replace
 
     if config.mirrored:

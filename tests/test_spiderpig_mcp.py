@@ -10,6 +10,7 @@ import asyncio
 import json
 import time
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -29,9 +30,10 @@ KLANN_SINGLE_CFG = BuildConfig(linkage="klann", module="single",
                                robot=False)               # KLANN_SINGLE's config
 # the plan the heel's checked patch (its default unit, 10.5) has
 HEEL_DEFAULT = BuildConfig(linkage="trotbot_heel", module="single")
-TOOLS = {"list_linkages", "describe", "catalog", "resolve", "check", "plan", "explain",
-         "recommend", "walk", "build", "verify", "export", "compare", "derive", "get_design",
-         "list_designs", "gc", "get_job", "wait_job", "view"}
+TOOLS = {"candidates", "list_linkages", "describe", "catalog", "resolve", "check", "plan",
+         "explain",
+         "recommend", "walk", "precision", "build", "verify", "export", "compare", "derive",
+         "get_design", "list_designs", "gc", "get_job", "wait_job", "view"}
 MUTATING = {"export", "gc", "view"}
 DIST = Path(__file__).resolve().parents[1] / "spiderpig" / "viewer" / "dist"
 needs_dist = pytest.mark.skipif(not (DIST / "index.html").is_file(),
@@ -143,7 +145,7 @@ def test_every_tool_is_listed_with_schemas_and_hints(server):
     assert tools["gc"].annotations.destructive_hint is True
     assert tools["export"].annotations.destructive_hint is False
     spec = tools["resolve"].input_schema["properties"]["spec"]
-    assert spec["required"] == ["kind", "linkage"]
+    assert spec["required"] == ["linkage"]          # (the kind is the linkage's)
     assert spec["properties"]["linkage"]["properties"]["key"]["enum"][0] == "strider"
     assert spec["additionalProperties"] is False
     assert tools["verify"].input_schema["properties"]["level"]["enum"] == ["quick", "standard",
@@ -445,12 +447,13 @@ def test_resources_and_prompts_read(server, single):
             listed = await client.list_resources()
             templates = await client.list_resource_templates()
             reads = {uri: (await client.read_resource(uri)).contents[0]
-                     for uri in ("spiderpig://schema/spec", "spiderpig://linkages/klann",
+                     for uri in ("spiderpig://schema/spec", "spiderpig://schema/task",
+                                 "spiderpig://linkages/klann",
                                  "spiderpig://catalog/servos",
                                  f"spiderpig://designs/{single}/plan",
                                  f"spiderpig://designs/{single}/summary")}
             prompts = await client.list_prompts()
-            walker = await client.get_prompt("design_walker", {"goal": "a 60 mm stride"})
+            walker = await client.get_prompt("design", {"task": "walk with a 60 mm stride"})
             diag = await client.get_prompt("diagnose", {"design": single})
             it = await client.get_prompt("iterate", {"design": single, "metric": "bob_mm"})
             try:
@@ -463,13 +466,14 @@ def test_resources_and_prompts_read(server, single):
 
     listed, templates, reads, prompts, walker, diag, it, missing = run(go())
     uris = {str(r.uri) for r in listed.resources}
-    assert {"spiderpig://guide", "spiderpig://schema/spec", "spiderpig://linkages/klann",
+    assert {"spiderpig://guide", "spiderpig://schema/spec", "spiderpig://schema/task",
+            "spiderpig://linkages/klann",
             "spiderpig://catalog/servos", "spiderpig://catalog/constructions"} <= uris
     assert {str(t.uri_template) for t in templates.resource_templates} == {
         "spiderpig://linkages/{key}", "spiderpig://catalog/{category}",
         "spiderpig://designs/{design}/{stage}"}
     schema = json.loads(reads["spiderpig://schema/spec"].text)
-    assert schema["required"] == ["kind", "linkage"]
+    assert schema["required"] == ["linkage"]
     assert reads["spiderpig://schema/spec"].mime_type == "application/json"
     assert json.loads(reads["spiderpig://linkages/klann"].text)["key"] == "klann"
     assert json.loads(reads["spiderpig://catalog/servos"].text)["servos"][0]["key"] == "sts3215"
@@ -477,8 +481,14 @@ def test_resources_and_prompts_read(server, single):
     assert json.loads(reads[f"spiderpig://designs/{single}/summary"].text)["id"] == single
     assert missing is not None
     assert "unknown stage" in missing
-    assert {p.name for p in prompts.prompts} == {"design_walker", "diagnose", "iterate"}
+    task_schema = cast(Any, reads["spiderpig://schema/task"])     # (text, not a blob)
+    assert json.loads(task_schema.text)["required"] == ["do"]
+    assert {p.name for p in prompts.prompts} == {"design", "diagnose", "iterate"}
     assert "a 60 mm stride" in walker.messages[0].content.text
+    assert "candidates(task)" in cast(Any, walker.messages[0].content).text
+    # past the files to make it: the guide, the controller's files, the shopping list
+    assert "export(design, ['guide', 'control', 'order'])" in \
+        cast(Any, walker.messages[0].content).text
     assert walker.messages[0].role == "user"
     assert single in diag.messages[0].content.text
     assert "bob_mm" in it.messages[0].content.text
@@ -753,7 +763,7 @@ def test_r5_view_refuses_a_design_that_cannot_be_built_and_resolve_warns_of_a_se
     r = call(server, "resolve", spec={"kind": "mechanism", "linkage": {"key": "five_bar"}})
     assert r["ok"]
     (w,) = r["warnings"]                                                       # entry 4
-    assert w.startswith("five_bar has 2 inputs (t, t2) and v1 builds one drive")
+    assert w.startswith("five_bar has 2 inputs (t, t2) and t2 declares no drive")
     rec = call(server, "recommend", design=r["design"])
     assert rec["stage"] == "drive"
     assert rec["notes"][-1].startswith("no fix: five_bar")
@@ -762,3 +772,24 @@ def test_r5_view_refuses_a_design_that_cannot_be_built_and_resolve_warns_of_a_se
     assert v["url"] == ""
     assert v["failures"][0]["code"] == "second_input_no_drive"
     _no_solids(v)
+
+
+def test_candidates_answers_a_task_with_specs_and_refuses_a_bad_one(fresh):
+    """``candidates`` over MCP: a place task's candidates are the linkages that place (an
+    arm's two inputs and its turntable's yaw), each with checks and a spec that ``resolve``
+    takes; an invalid task is the spec's failure envelope with its errors."""
+    server = fresh
+    doc = call(server, "candidates", task={"do": "place", "area_mm": [200, 150],
+                                           "repeatability_mm": 0.1}, limit=3)
+    assert doc["ok"]
+    assert doc["do"] == "place"
+    assert {c["kind"] for c in doc["candidates"]} == {"arm"}
+    first = doc["candidates"][0]
+    assert first["spec"]["precision"]["rp_mm"] == {"max": 0.1}     # a positioner: ISO RP
+    assert {k["requirement"] for k in first["checks"]} >= {"repeatability_mm", "area_mm"}
+    assert any("feet" in x["why"] for x in doc["excluded"])
+    assert call(server, "resolve", spec=first["spec"])["ok"]
+    bad = call(server, "candidates", task={"do": "fly", "stride_mm": 10})
+    assert bad["ok"] is False
+    assert bad["failures"][0]["code"] == "invalid_spec"
+    assert bad["errors"][0]["path"] == "do"

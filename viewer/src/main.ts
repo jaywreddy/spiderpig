@@ -8,6 +8,7 @@ import { connectLiveReload } from './live-reload';
 import { createDrive } from './drive';
 import { createArmPanel } from './arm';
 import { chromeInsets } from './layout';
+import { fetchModes, pickMode, withMode, type ModeCatalogue } from './modes';
 import type { Mode, View, ViewerHandle } from './types';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
@@ -29,6 +30,23 @@ let currentMode: Mode = 'robot';  // last requested (live reload re-requests it)
 let currentQuery = '';            // its design parameters ('' = default)
 let loadedMode: Mode = '';        // on screen; set only once its GLB has swapped in
 let loadedQuery = '';             // its query
+
+// The view picker offers what the linkage on screen declares (``/api/modes?linkage=``): a
+// walker's robot and one side of each module, an arm's robot on its turntable and its side, a
+// mechanism's one side. ``own``: a stored design's mode, offered even when the catalogue
+// lacks it.
+let catalogue: ModeCatalogue | null = null;
+let ownMode: Mode | null = null;
+async function syncModes(linkage: string, keep?: Mode): Promise<ModeCatalogue | null> {
+  if (!catalogue || (catalogue.linkage ?? '') !== linkage) {
+    const cat = await fetchModes(linkage || undefined);
+    if (!cat) return catalogue;
+    catalogue = cat;
+  }
+  const { modes, labels } = withMode(catalogue, ownMode);
+  ui.setModes(modes, pickMode(catalogue, keep ?? ui.modeValue(), ownMode), labels);
+  return catalogue;
+}
 
 // Render on demand: while playing, while the camera moves, or after a change.
 // A paused viewer then costs nothing (the env-mapped, translucent robot is
@@ -58,21 +76,30 @@ const drive = createDrive({
   stage,
   loaded: () => loaded,
   loadRobot: (query) => loadMode('robot', query),
-  loadSide: (query) => loadMode('klann', query),   // 'klann': the server's side-only single mode (an old URL id, any linkage)
+  // a linkage with no feet picked (an arm, a mechanism): its own views, its default one loaded
+  loadLinkage: async (key) => {
+    const cat = await syncModes(key);
+    const mode = cat ? cat.default : 'side';
+    await loadMode(mode, drive.baseQuery(mode));
+  },
   status: (text) => ui.setStatus(text),
   seek,
   reframe: () => { if (loaded) frameView(stage, loaded.root, view); invalidate(); },
 });
 
-// An arm's joint sliders (arm.ts): built on each load, hidden for a walker.
+// A fixed design's panel (arm.ts): an arm's joint sliders and the live sim (MuJoCo) of any
+// design that doesn't walk; built on each load, hidden for a walker (its live sim is drive's).
 const arm = createArmPanel({
   container: document.getElementById('arm-joints')!,
   current: () => (loaded ? {
     root: loaded.root, mode: loadedMode, query: loadedQuery,
     pause: () => { playing = false; ui.setPlaying(false); if (loaded) loaded.action.paused = true; },
   } : null),
+  loaded: () => loaded,
+  restoreClip: () => { if (loaded) { loaded.action.play(); seek(0); } },
   invalidate,
   status: (text) => ui.setStatus(text),
+  autoLive: params.get('live') === '1',
 });
 
 // The chrome over the canvas (the top bar, the dock): the camera frames the band between,
@@ -142,6 +169,7 @@ const loadMode = latestLoader<LoadedScene, Mode>({
       `${next.clip.tracks.length} tracks · ${next.clipDuration.toFixed(2)}s loop`,
     );
     ui.setReadout(formatTime(0));
+    await syncModes(String(next.root.userData.linkage ?? ''), mode);
     await drive.onLoad(next, query);
     await arm.onLoad(next.root).catch((err: unknown) => console.error(err));
     invalidate();
@@ -153,6 +181,9 @@ function tick(): void {
   const dt = clock.update().getDelta();
   if (drive.active) {
     drive.frame(dt);   // drive mode renders continuously
+    dirty = true;
+  } else if (arm.live) {
+    arm.frame();       // the live sim poses the parts: render continuously too
     dirty = true;
   } else if (loaded && playing) {
     loaded.mixer.update(dt);
@@ -189,28 +220,15 @@ const viewerHandle: ViewerHandle = {
   },
   loadMode,
   drive,
+  live: arm,
   ready: false,
 };
 window.__viewer = viewerHandle;
 
-/** Server's mode catalogue (ids in order, their labels); falls back to the static
- * options in index.html. */
-interface ModeCatalogue { modes: Mode[]; default: Mode; labels?: Record<string, string> }
-
-async function fetchModes(): Promise<ModeCatalogue | null> {
-  try {
-    const res = await fetch('/api/modes');
-    if (!res.ok) return null;
-    return (await res.json()) as ModeCatalogue;
-  } catch {
-    return null;
-  }
-}
-
 async function init(): Promise<void> {
-  const catalogue = await fetchModes();
   // ?design=<id>: the stored design's card seeds the tune panel and picks the mode
-  // (robot, or `side` for a one-sided design) unless ?mode= says otherwise.
+  // (robot, or `side` for a one-sided design) unless ?mode= says otherwise; the views on
+  // offer are its linkage's (else ?linkage='s, else the server's default linkage's).
   const designId = params.get('design');
   const card = designId
     ? await drive.loadDesign(designId).catch((err: unknown) => {
@@ -218,18 +236,11 @@ async function init(): Promise<void> {
       return null;
     })
     : null;
+  ownMode = card?.mode ?? null;
   const requested = params.get('mode') ?? card?.mode ?? null;
   let initial = ui.modeValue();
-  if (catalogue) {
-    // The server's dropdown ids, plus the design's own mode when it isn't one of them
-    // (`side`: one side of a one-sided design; an id for URLs, not offered otherwise).
-    const modes = card && !catalogue.modes.includes(card.mode) ? [...catalogue.modes, card.mode]
-      : catalogue.modes;
-    const labels = card && !catalogue.modes.includes(card.mode)
-      ? { ...catalogue.labels, [card.mode]: `${card.mode} (this design)` } : catalogue.labels;
-    initial = requested && modes.includes(requested) ? requested : catalogue.default;
-    ui.setModes(modes, initial, labels);
-  }
+  const cat = await syncModes(card?.linkage ?? params.get('linkage') ?? '', requested ?? undefined);
+  if (cat) initial = pickMode(cat, requested, ownMode);
   // ?linkage=... (the tune panel's). A design that can't be built still tunes (stick preview).
   await loadMode(initial, drive.baseQuery(initial))
     .catch((err: unknown) => ui.setStatus(`error: ${(err as Error).message}`));

@@ -1,54 +1,157 @@
-"""``spiderpig control``: an arm's kinematics, steps and controller files.
+"""``spiderpig control``: a robot's motors, its kinematics and its controller's files.
 
     spiderpig control axes  --linkage palletizer            # each joint's ratio and steps
     spiderpig control fk    --linkage palletizer --q q1=0 q2=70 q3=-10   # degrees -> tip
     spiderpig control ik    --linkage palletizer --at 200 0 120          # tip (mm) -> degrees
     spiderpig control klipper --linkage palletizer --out build/klipper   # printer.cfg
     spiderpig control homing  --linkage palletizer          # the homing sequence
+    spiderpig control axes                                  # a walker: each crank's servo
+    spiderpig control servo --out build/servos              # its servos' setup: servos.json
+    spiderpig control homing                                # each crank's one-time zero
+    spiderpig control files 1a2b3c4d5e6f7a8b --out build/control   # a stored design's files
 
-The design options are the build's (``--linkage``, ``--turntable``, ``--tool``, ...); the
-tip is in the base frame (:mod:`.arm`).
+``DESIGN`` (after the action): a stored design's id, its config as recorded (its spec's
+roles: the controller, the sensors) in place of the design options.
+
+What a design's motors are (:func:`actuators.controllers.motors_of`) picks the actions: an
+arm's steppers (``axes``, ``fk``, ``ik``, ``klipper``, ``homing``: :mod:`.mapping`,
+:mod:`.arm`, :mod:`.klipper`, :mod:`.homing`), a crank's serial-bus servos (``axes``,
+``servo``, ``homing``: :mod:`.servos`); ``files`` writes every file its motors need
+(:mod:`.files`: ``servos.json`` or ``printer.cfg``, and ``HOMING.md``). The design options
+are the build's (``--linkage``, ``--controller``, ...); an arm's tip is in the base frame
+(:mod:`.arm`).
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 from pathlib import Path
 
+ACTIONS = ("axes", "fk", "ik", "klipper", "homing", "servo", "files")
+STEPPER_ONLY = ("fk", "ik", "klipper")
+SERVO_ONLY = ("servo",)
+
 
 def _parse(argv):
     from spiderpig.config import add_build_args, add_design_args, config_from_args
+    from spiderpig.stages.resolve import DESIGN_HELP
 
     p = argparse.ArgumentParser(prog="spiderpig control", description=(__doc__ or "")
                                 .splitlines()[0])
-    p.add_argument("action", choices=("axes", "fk", "ik", "klipper", "homing"))
+    p.add_argument("action", choices=ACTIONS)
+    p.add_argument("design", nargs="?", metavar="DESIGN", help=DESIGN_HELP)
+    p.add_argument("--store", metavar="PATH",
+                   help="the store DESIGN is in (default: $SPIDERPIG_STORE, else ./.spiderpig)")
     add_design_args(p)
     add_build_args(p)
-    p.add_argument("--side-only", action="store_true", help="the side alone (no turntable)")
+    p.add_argument("--side-only", action="store_true",
+                   help="the side alone (an arm's without its turntable, a walker's one crank)")
     p.add_argument("--q", nargs="*", default=[], metavar="NAME=DEG",
                    help="fk: the joints' angles (degrees; the planar inputs' design angles)")
     p.add_argument("--at", nargs=3, type=float, metavar=("X", "Y", "Z"),
                    help="ik: the tip's target (mm, the base frame)")
-    p.add_argument("--out", type=Path, default=Path("build") / "klipper",
-                   help="klipper: the folder printer.cfg is written to")
+    p.add_argument("--out", type=Path, default=None,
+                   help="klipper: the folder printer.cfg is written to (build/klipper); "
+                        "servo: the folder servos.json is written to (build/servos); "
+                        "files: the folder of every file (build/control)")
     args = p.parse_args(argv)
-    args.config = config_from_args(args, robot=False if args.side_only else None)
+    args.side = None
+    if args.design:
+        from spiderpig.actuators.controllers import motors_of
+        from spiderpig.stages.planning import plan
+        from spiderpig.stages.resolve import load_stored
+
+        try:
+            design = load_stored(args.design, args.store)
+        except (KeyError, ValueError) as e:
+            p.error(str(e))
+        args.config = design.config.side_config() if args.side_only else design.config
+        if motors_of(args.config) == "actuator" and plan(design).ok:
+            args.side = design.side     # its stored plan (re-made and verified), not a new one
+    else:
+        args.config = config_from_args(args, robot=False if args.side_only else None)
     return args
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse(sys.argv[1:] if argv is None else argv)
-    from spiderpig.control import homing, klipper
+    from spiderpig.actuators.controllers import motors_of
+
+    cfg = args.config
+    motors = motors_of(cfg)
+    if args.action == "files":
+        from spiderpig.control import files
+
+        out = args.out or Path("build") / "control"
+        try:
+            written = files.write(cfg, out, args.side)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        print(f"wrote {', '.join(str(f) for f in written)} ({cfg.linkage}: {motors})")
+        return 0
+    if motors == "servo" and args.action in STEPPER_ONLY:
+        print(f"error: {args.action} is a stepper-driven design's (an arm's); "
+              f"{cfg.linkage}'s cranks turn on bus servos: axes, servo, homing",
+              file=sys.stderr)
+        return 2
+    if motors == "actuator" and args.action in SERVO_ONLY:
+        print(f"error: {args.action} is a bus-servo design's (a crank's); {cfg.linkage}'s "
+              "joints turn on steppers: axes, fk, ik, klipper, homing", file=sys.stderr)
+        return 2
+    if motors == "actuator":
+        return _stepper_main(args)
+    try:
+        return _servo_main(args)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+
+def _servo_main(args) -> int:
+    """A crank's servos (:mod:`.servos`, their files :mod:`.files`')."""
+    from spiderpig.control import files, servos
+
+    cfg = args.config
+    if args.action == "axes":
+        for s in servos.bus_servos(cfg):
+            where = f", {s.side} side" if s.side else ""
+            print(f"{s.name}: bus ID {s.id}{where}, {s.servo}; legs' crank phases "
+                  + ", ".join(f"{p:g}" for p in s.phases_deg)
+                  + f" deg; forward {s.forward} facing its horn; zero: crankpin {s.zero_pin} "
+                    f"at {s.zero_deg:g} deg about O")
+        return 0
+    if args.action == "homing":
+        for i, (name, action) in enumerate(files.servo_homing(cfg), 1):
+            print(f"{i}. [{name}] {action}")
+        return 0
+    doc = files.servo_json(cfg)
+    out = args.out or Path("build") / "servos"
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "servos.json"
+    path.write_text(json.dumps(doc, indent=1) + "\n")
+    ctl = doc["controller"]
+    print(f"wrote {path} ({len(doc['servos'])} servo{'s' if len(doc['servos']) > 1 else ''} "
+          f"on a {doc['bus']['protocol']} bus at {doc['bus']['baud']} bit/s; "
+          + (f"the {ctl['key']} controller)" if ctl else "your own controller)"))
+    for note in doc["notes"]:
+        print(f"note: {note}")
+    return 0
+
+
+def _stepper_main(args) -> int:
+    """An arm's steppers (:mod:`.mapping`, :mod:`.arm`, :mod:`.klipper`)."""
+    from spiderpig.control import files
     from spiderpig.control.arm import ArmModel, IKError
-    from spiderpig.control.mapping import axes as axes_of
     from spiderpig.fabricate import design_side, template_for
 
     cfg = args.config
     side = cfg.side_config()
-    design = design_side(template_for(side), side)
-    axes = axes_of(cfg, design)
+    design = args.side if args.side is not None else design_side(template_for(side), side)
+    axes = files.stepper_axes(cfg, design)
     if args.action == "axes":
         for n, a in axes.items():
             print(f"{n}: {a.ratio:.6g}:1, {a.motor}, {a.steps_per_rev} x {a.microsteps} steps "
@@ -56,15 +159,15 @@ def main(argv: list[str] | None = None) -> int:
                   f"direction {a.direction:+d}")
         return 0
     if args.action == "homing":
-        sensors = homing.sensors_of(cfg, axes)
-        for i, s in enumerate(homing.plan(axes, sensors), 1):
-            print(f"{i}. [{s.axis}] {s.action}")
+        for i, (axis, action) in enumerate(files.stepper_homing(cfg, axes), 1):
+            print(f"{i}. [{axis}] {action}")
         return 0
     if args.action == "klipper":
-        args.out.mkdir(parents=True, exist_ok=True)
-        path = args.out / "printer.cfg"
+        out = args.out or Path("build") / "klipper"
+        out.mkdir(parents=True, exist_ok=True)
+        path = out / "printer.cfg"
         ctl = cfg.role("controller")
-        path.write_text(klipper.printer_cfg(axes, cfg.linkage, ctl, homing.sensors_of(cfg, axes)))
+        path.write_text(files.printer_cfg(cfg, axes))
         print(f"wrote {path} ({len(axes)} joints; "
               + (f"the {ctl} controller's pins)" if ctl else "fill its <PLACEHOLDER> pins)"))
         return 0
