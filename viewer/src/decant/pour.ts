@@ -3,9 +3,10 @@
  * wine's surface level in the world as the cradle tips it, the stream from the mouth once
  * the wine reaches it, and the vessel under the mouth (a decanter or a glass picked from
  * ``vessels.ts``, on the table or a riser) filling as it pours. A small panel picks the
- * vessel and the print colour and reads out the gap from the mouth to the rim, whether
- * the vessel fits the room under the mouth (``motion.room``, when the API sends it) and
- * how much has poured.
+ * vessel and the print colour and reads out the gap from the mouth to the rim, the printed
+ * riser it stands on (the highest stack the rule allows: its rim 20 mm under the light's
+ * clip, ``liquid.riserFits``, once the API sends the room under the mouth) and how much has
+ * poured.
  *
  * The wine: the bottle starts full (its nominal volume, ~6 cm ullage), and at each tilt
  * keeps what lies under its mouth's lowest point (``liquid.ts``); swinging back to rest
@@ -24,24 +25,41 @@ import {
 } from './motion';
 import {
   bestRiser, bottleInside, fitsRoom, heightFor, keptFromRest, levelFor, nominalVolume, radiusAt,
-  startingFill, surfaceRuns, ML, type Profile, type Room,
+  riserFits, riserStack, stackWords, startingFill, surfaceRuns, ML, RISER_RULE, type Profile,
+  type RiserRule, type Stack,
 } from './liquid';
 import {
-  DEFAULT_VESSEL, VESSELS, brimMl, cavityOf, heightOf, maxRadiusOf, type Vessel,
+  DEFAULT_BOTTLE, DEFAULT_VESSEL, VESSELS, brimMl, cavityOf, heightOf, maxRadiusOf, vesselFor,
+  type Vessel,
 } from './vessels';
 import { createLook, PRINT_COLORS, type Look } from './realism';
 import './pour.css';
+
+/** The room under the mouth and the riser's rule (``/api/cradle/{key}/room``,
+ * ``cradle_report.room``). */
+export interface RoomData {
+  /** the room over the whole swing: ``[[height_over_table_mm, max_radius_mm], ...]`` */
+  room: [number, number][];
+  /** the room once the cradle is past -20° (the pour), the same form: not offered (one riser
+   * for the whole swing, never raised mid-pour) */
+  room_pouring: [number, number][];
+  /** the cradle box's lowest part over the drawn decanter's rim over the swing */
+  lowest?: { part: string; mm: number; tilt_deg: number; within_mm: number };
+  /** the rule (``construction.cradle.RISER_CLEAR``): the rim this far under the lowest part,
+   * this far off the room's side */
+  rule?: { rim_under_mm: number; side_mm: number };
+  /** every stack the printed riser makes, its height and pieces */
+  stacks?: [number, string[]][];
+}
 
 /** What the API may add to the swing for the pour (optional). */
 interface PourMotion extends CradleMotion {
   /** a riser under the vessel, mm */
   riser_mm?: number;
-  /** the room under the mouth: ``[[height_over_table_mm, max_radius_mm], ...]`` */
-  room?: [number, number][];
-  /** the room once the cradle is past -20° (the pour), the same form: not offered (one jack
-   * height for the whole swing, never raised mid-pour) */
-  room_pouring?: [number, number][];
+  room?: RoomData;
 }
+
+
 
 /** A mesh a bottle's setting moves (``motion.adjust``): its geometry as baked, its group, and
  * the cradle's frame at clip time 0 in its own (a setting's shift there, in its geometry). */
@@ -62,8 +80,8 @@ export interface Pour {
   attach(loaded: LoadedScene, motion: CradleMotion): void;
   detach(): void;
   update(f: number): void;
-  /** The room under the mouth arrived (``/api/cradle/{key}/room``): re-pick the riser. */
-  setRoom(room: [number, number][], pouring: [number, number][]): void;
+  /** The room under the mouth arrived (``/api/cradle/{key}/room``): pick the riser. */
+  setRoom(room: RoomData): void;
   /** Show or hide the vessel, the wine and the stream (the flat pack hides them). */
   setVisible(v: boolean): void;
   /** Put another bottle size in the cradle (``motion.bottles``' ``key``): its V blocks and its
@@ -72,9 +90,7 @@ export interface Pour {
 }
 
 const ULLAGE_MM = 60;
-/** The riser's range, and where it puts a vessel's rim by default: under the mouth by a
- * little more than the front saddle comes down at rest (~70 mm). */
-const RISER_MAX = 160, RIM_UNDER_MOUTH = 85;
+const RISER_HIGH = 250;          // the highest riser the rule is tried at
 const WINE_INSET = 0.5;          // the wine stays this far inside the glass (no z-fight)
 
 // -- geometry ---------------------------------------------------------------------------------
@@ -165,45 +181,31 @@ function labelMesh(radius: number, s0: number, s1: number, size = 'MAGNUM · 1,5
   return m;
 }
 
-/** A lab jack ``h`` mm tall: a 100 × 100 mm platform on a scissor over a base plate, the
- * screw across the scissor's middle and its knob (a plain plate when too low to scissor). */
-function labJack(h: number, steel: THREE.Material, alu: THREE.Material): THREE.Group {
+/** The printed riser ``stack`` (``liquid.Stack``: its pieces bottom up, ``blocks`` the two
+ * 100 × 49.8 mm blocks side by side, else a 100 × 100 mm plate that thick): each piece a
+ * rounded block, its 2 mm boss on top up into the next one's recess (``riser_pieces``, the
+ * fabricated riser). */
+function riserStackMesh(stack: Stack, mat: THREE.Material, block = 85, lip = 2): THREE.Group {
   const g = new THREE.Group();
-  g.name = 'lab_jack';
-  const W = 100, plate = 4;
+  g.name = 'riser_stack';
+  const W = 100;
   const add = (m: THREE.Mesh): void => { m.castShadow = m.receiveShadow = true; g.add(m); };
-  const top = new THREE.Mesh(new RoundedBoxGeometry(W, W, plate, 2, 1.2), alu);
-  top.position.z = h - plate / 2;
-  add(top);
-  if (h < 3 * plate + 6) { top.scale.z = h / plate; top.position.z = h / 2; return g; }
-  const base = new THREE.Mesh(new RoundedBoxGeometry(W, W * 0.9, plate, 2, 1.2), alu);
-  base.position.z = plate / 2;
-  add(base);
-  // the scissor: an X each side (y = ±38), its bars pinned at the plates' edges
-  const z0 = plate + 3, z1 = h - plate - 3, span = W - 18, rise = z1 - z0;
-  const len = Math.hypot(span, rise), ang = Math.atan2(rise, span);
-  for (const y of [-38, 38]) {
-    for (const sgn of [1, -1]) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(len, 3, 9), steel);
-      bar.position.set(0, y + sgn * 2, (z0 + z1) / 2);
-      bar.rotation.y = -sgn * ang;
-      add(bar);
+  let z = 0;
+  for (const piece of stack[1]) {
+    const h = piece === 'blocks' ? block : Number(piece);
+    const parts = piece === 'blocks' ? [-W / 4 - 0.1, W / 4 + 0.1] : [0];
+    for (const y of parts) {
+      const m = new THREE.Mesh(new RoundedBoxGeometry(W, parts.length > 1 ? W / 2 - 0.2 : W, h, 2, 2), mat);
+      m.position.set(0, y, z + h / 2);
+      add(m);
     }
-    for (const [x, z] of [[-span / 2, z0], [span / 2, z0], [-span / 2, z1], [span / 2, z1]] as const) {
-      const pin = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 12, 16), steel);
-      pin.position.set(x, y, z);
-      add(pin);
-    }
+    z += h;
   }
-  // the screw through the scissor's middle and its knurled knob
-  const screw = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, W + 30, 16), steel);
-  screw.rotation.z = Math.PI / 2;
-  screw.position.set(-15, 0, (z0 + z1) / 2);
-  add(screw);
-  const knob = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 12, 24), alu);
-  knob.rotation.z = Math.PI / 2;
-  knob.position.set(-(W / 2 + 30), 0, (z0 + z1) / 2);   // out to the cradle's open end
-  add(knob);
+  if (stack[1].length) {           // the top piece's boss
+    const boss = new THREE.Mesh(new RoundedBoxGeometry(W - 9, W - 9, lip, 1, 0.8), mat);
+    boss.position.z = z + lip / 2;
+    add(boss);
+  }
   return g;
 }
 
@@ -282,11 +284,14 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
   const riserIn = el('input');
   riserIn.type = 'range';
   riserIn.min = '0';
-  riserIn.max = String(RISER_MAX);
+  riserIn.max = '0';
   riserIn.step = '1';
-  riserIn.title = 'The lab jack under the vessel (0: on the table)';
+  riserIn.title = 'The printed riser’s stack under the vessel (by the rule: its rim 20 mm '
+    + 'under the light’s clip); slide to try another';
+  riserIn.disabled = true;
   const riserVal = el('span', 'v');
-  riserRow.append(el('span', 'k', 'Lab jack'), riserIn, riserVal);
+  riserRow.append(el('span', 'k', 'Riser'), riserIn, riserVal);
+  const riserNote = el('div', 'note');
   const gapRow = el('div', 'row');
   const gapVal = el('b');
   const badge = el('span', 'badge');
@@ -318,7 +323,8 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
   const watch = el('button', 'watch', 'Watch the pour');
   watch.title = 'Frame the camera on the mouth and the vessel (from the mouth’s side)';
   printRow.appendChild(watch);
-  panel.append(bottleRow, pickRow, facts, riserRow, gapRow, pourRow, bar, keptRow, printRow);
+  panel.append(bottleRow, pickRow, facts, riserRow, riserNote, gapRow, pourRow, bar, keptRow,
+    printRow);
   if (look.quality === 'low') panel.append(el('div', 'note', 'simplified glass (software GPU): ?quality=high for refraction'));
   // in the right-hand column under the readouts if the page has one, else floating
   const hud = document.getElementById('hud');
@@ -354,23 +360,45 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
   streamMat.color.set('#7d0f26');
   streamMat.emissive.set('#2a0309');      // a thin stream glows garnet against the light
 
-  // the riser under the vessel: the API's, else the rim RIM_UNDER_MOUTH under the mouth;
-  // the panel's slider sets it by hand (kept across vessels once set)
-  let riserMm = 0, riserByHand = false, mouthZ = 0;
-  const riser = (): number => riserMm;
-  function defaultRiser(): number {
-    if (motion?.riser_mm !== undefined) return Math.max(0, motion.riser_mm);
-    if (motion?.room?.length) return bestRiser(vessel.profile, motion.room, RISER_MAX) ?? 0;
-    return Math.min(RISER_MAX, Math.max(0, mouthZ - RIM_UNDER_MOUTH - heightOf(vessel)));
+  // the riser under the vessel: the highest printed stack the rule allows (the room under
+  // the mouth, from the API: none until it arrives); the panel's slider tries another
+  let stack: Stack = [0, []], riserByHand = false, mouthZ = 0;
+  let vesselByHand = params.has('vessel');
+  let modelRiser: THREE.Object3D[] = [];           // the baked model's riser (it packs)
+  /** The vessel for a bottle by its name's volume (``vesselFor``); whether it changed. */
+  function pickVessel(bottleName: string): boolean {
+    const v = vesselFor(nominalVolume(bottleName, 750) / ML);
+    if (v.key === vessel.key) return false;
+    vessel = v;
+    pick.value = v.key;
+    return true;
   }
-  function setRiser(mm: number): void {
-    riserMm = Math.round(Math.min(RISER_MAX, Math.max(0, mm)));
-    riserIn.value = String(riserMm);
-    riserVal.textContent = riserMm > 0 ? `${riserMm} mm` : 'none';
+  const riser = (): number => stack[0];
+  const stacks = (): Stack[] => (motion?.room?.stacks ?? []) as Stack[];
+  function ruleOf(): RiserRule {
+    const r = motion?.room?.rule;
+    return r ? { up: r.rim_under_mm, side: r.side_mm } : RISER_RULE;
+  }
+  /** The best stack for the vessel by the rule; null until the room is known. */
+  function defaultStack(): Stack | null {
+    const room = motion?.room;
+    if (!room?.room.length || !room.stacks?.length) return null;
+    return riserStack(bestRiser(vessel.profile, room.room, RISER_HIGH, ruleOf()), stacks());
+  }
+  function setStack(s: Stack): void {
+    stack = s;
+    const all = stacks();
+    const i = all.findIndex((x) => x[0] === s[0]);
+    riserIn.max = String(Math.max(0, all.length - 1));
+    riserIn.value = String(Math.max(0, i));
+    riserIn.disabled = !all.length;
+    riserVal.textContent = s[0] > 0 ? `${s[0].toFixed(0)} mm` : 'none';
   }
   riserIn.addEventListener('input', () => {
+    const s = stacks()[Number(riserIn.value)];
+    if (!s) return;
     riserByHand = true;
-    setRiser(Number(riserIn.value));
+    setStack(s);
     buildStand();
     pose(lastF);
     onChange();
@@ -408,7 +436,7 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     stand = new THREE.Group();
     stand.name = 'vessel';
     const h0 = riser();
-    if (h0 > 0) stand.add(labJack(h0, look.materials.steel, look.materials.alu));
+    if (h0 > 0) stand.add(riserStackMesh(stack, look.materials.print));
     const glass = new THREE.Mesh(glassSolid(vessel.profile, cavityOf(vessel), 'z'), look.materials.glassClear);
     glass.position.z = h0;
     glass.castShadow = false;
@@ -435,20 +463,29 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     src.rel = 'noopener';
     facts.appendChild(src);
     const room = motion?.room;
-    if (room && room.length) {
-      const fit = fitsRoom(vessel.profile, h0, room);
+    if (room?.room.length) {
+      // the one rule (round 2's stand review: the page had kept 3 mm, in the toggle dwell)
+      const rule = ruleOf();
+      const ok = riserFits(vessel.profile, h0, room.room, rule);
+      const fit = fitsRoom(vessel.profile, h0, room.room);
+      const rimZ = h0 + heightOf(vessel);
+      const low = room.lowest;
+      const under = low ? low.mm - rimZ : NaN;
       badge.hidden = false;
-      badge.className = `badge ${fit.fits ? 'ok' : 'bad'}`;
-      badge.textContent = fit.fits ? 'fits the whole swing'
-        : `hit at rest (${(-fit.margin).toFixed(0)} mm at ${fit.at.toFixed(0)} mm)`;
-      // one jack height for the whole swing: raised mid-pour, the worm would drive the
-      // cradle box down onto the glass on the way back to rest (round 1's stand review)
-      if (fit.fits && h0 > 0) {
-        facts.appendChild(el('div', 'note', `Set the jack to ${h0.toFixed(0)} mm at rest and `
-          + `leave it there until the bottle is back at rest: never raise it during a pour.`));
-      }
+      badge.className = `badge ${ok ? 'ok' : 'bad'}`;
+      badge.textContent = ok ? 'clears the whole swing'
+        : !fit.fits ? `hit (${(-fit.margin).toFixed(0)} mm at ${fit.at.toFixed(0)} mm)`
+          : `too high: ${under.toFixed(0)} mm under the clip (${rule.up} at least)`;
+      const who = low?.part === 'led_clip' ? 'the light’s printed clip'
+        : (low?.part ?? 'the lowest part').replace(/_/g, ' ');
+      riserNote.textContent = (h0 > 0 ? `Riser: ${stackWords(stack)}. ` : 'No riser: on the table, in the locator. ')
+        + (low ? `Its rim ${under.toFixed(0)} mm under ${who} (the lowest part over it, `
+          + `${low.mm.toFixed(0)} mm over the table at rest; the rule: ${rule.up} mm or more). ` : '')
+        + 'Set it at rest and leave it the whole pour: never raise the decanter during a pour.';
     } else {
       badge.hidden = true;
+      riserNote.textContent = 'Measuring the room under the mouth (a minute the first time): '
+        + 'the riser comes once it is known.';
     }
   }
 
@@ -531,14 +568,14 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     barIn.style.width = `${Math.min(100, (poured / brim) * 100)}%`;
     bar.classList.toggle('over', poured > brim);
     keptRow.textContent = `${litres(inBottle)} left in the bottle (${litres(fill)} at the start, ${ULLAGE_MM / 10} cm ullage)`;
-    if (poured > brim + 1 * ML) {
+    if (fill > brim) {      // a bigger bottle than its decanter: poured in turns (the swap)
       overflow.hidden = false;
-      overflow.className = 'badge bad';
-      overflow.textContent = `overflows: full at ${turnsWhenPoured(brim).toFixed(1)} turns`;
-    } else if (fill > brim) {
-      overflow.hidden = false;
-      overflow.className = 'badge info';
-      overflow.textContent = `full at ${turnsWhenPoured(brim).toFixed(1)} turns`;
+      overflow.className = `badge ${poured > brim + 1 * ML ? 'bad' : 'info'}`;
+      overflow.textContent = `full at ${turnsWhenPoured(brim).toFixed(1)} turns: turn back a `
+        + 'turn and swap the decanter';
+      overflow.title = 'Turn back about a turn until the stream stops, slide the decanter off '
+        + 'its riser and out under the raised cradle box, and set the next one on the same '
+        + 'riser (one whose stack is the same).';
     } else {
       overflow.hidden = true;
     }
@@ -602,10 +639,11 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     motion = m as PourMotion;
     look.dress(l);
     const bottle = l.root.getObjectByName('bottle') as THREE.Mesh | undefined;
-    for (const n of ['decanter', 'decanter_riser']) {    // the picked vessel instead
-      const o = l.root.getObjectByName(n);
-      if (o) o.visible = false;
-    }
+    modelRiser = [];                                       // the picked vessel instead
+    l.root.traverse((o) => {
+      if (o.name === 'decanter') o.visible = false;
+      else if (o.name.startsWith('decanter_riser')) { o.visible = false; modelRiser.push(o); }
+    });
     if (!bottle || !m.bottle.outline.length) { onChange(); return; }
 
     // the cradle frame at clip time 0, in the bottle node's frame
@@ -651,8 +689,9 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
       bottlePick.appendChild(o);
     }
     bottleRow.hidden = !bottlePick.options.length;
-    const wanted = m.bottles?.find((b) => b.key === params.get('bottle'));
+    const wanted = m.bottles?.find((b) => b.key === (params.get('bottle') ?? DEFAULT_BOTTLE));
     if (wanted) m.bottle = { ...wanted };
+    if (!vesselByHand) pickVessel(m.bottle.name);       // a decanter that holds it
     bottlePick.value = m.bottles?.find((b) => b.name === m.bottle.name)?.key ?? '';
     applySetting(m.bottle.setting);
     buildBottle(m);
@@ -664,9 +703,8 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     const mouth = frame.getWorldPosition(new THREE.Vector3());
     anchor = new THREE.Vector3(mouth.x, mouth.y, 0);
     mouthZ = mouth.z;                            // the mouth's centre over the table, from the posed scene
-    const asked = Number(params.get('riser'));
-    riserByHand = params.has('riser') && Number.isFinite(asked);
-    setRiser(riserByHand ? asked : defaultRiser());
+    riserByHand = false;
+    setStack(defaultStack() ?? [0, []]);
     buildStand();
     stream = new THREE.Mesh(new THREE.BufferGeometry(), streamMat);
     stream.name = 'pour_stream';
@@ -711,7 +749,9 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
   bottlePick.addEventListener('change', () => setBottle(bottlePick.value));
   pick.addEventListener('change', () => {
     vessel = VESSELS.find((v) => v.key === pick.value) ?? vessel;
-    if (!riserByHand) setRiser(defaultRiser());
+    vesselByHand = true;
+    riserByHand = false;
+    setStack(defaultStack() ?? [0, []]);
     const url = new URL(location.href);
     url.searchParams.set('vessel', vessel.key);
     history.replaceState(null, '', url);
@@ -785,15 +825,19 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     motion.bottle = { ...b };
     applySetting(b.setting);
     buildBottle(motion);
+    if (!vesselByHand && pickVessel(b.name)) {
+      riserByHand = false;
+      setStack(defaultStack() ?? [0, []]);
+      buildStand();
+    }
     pose(lastF);
     onChange();
   }
 
-  function setRoom(room: [number, number][], pouring: [number, number][]): void {
+  function setRoom(room: RoomData): void {
     if (!motion) return;
     motion.room = room;
-    motion.room_pouring = pouring;
-    if (!riserByHand) setRiser(defaultRiser());
+    if (!riserByHand) setStack(defaultStack() ?? [0, []]);
     buildStand();
     pose(lastF);
     onChange();
@@ -801,6 +845,7 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
 
   function setVisible(v: boolean): void {
     for (const o of [stand, stream, gapLine, frame]) if (o) o.visible = v;
+    for (const o of modelRiser) o.visible = !v;          // (it packs: the flat pack shows it)
     gapLabel.hidden = !v || gapLabel.hidden;
     onChange();
   }

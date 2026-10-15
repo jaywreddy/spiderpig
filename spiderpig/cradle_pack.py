@@ -213,11 +213,13 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
         host = _side(p.rigid_with or "")[0] or crank_side
         if _board_part(n):
             put("base", "Base board", "base", n)
-        elif n.startswith("foot_bracket"):
+        elif n.startswith(_SIDE_EXTRAS):
             if _on_board(p, through):
                 put("base", "Base board", "base", n)     # a carriage bolt or its nut
             else:
                 put(panel[host], f"{panel[host].capitalize()} side panel", "panel", n)
+        elif n.startswith(RISER):
+            put("risers", RISER_LABEL, "fill", n)
         elif m := re.fullmatch(r"((?:base_|bay_)?tie_[A-Za-z0-9]+)(?:_screw[LR])?", n):
             put(m.group(1), f"Tie rod {m.group(1).removeprefix('tie_')}", "fill", n)
         elif any(n == sd or n.startswith(f"{sd}_") for sd in saddles):
@@ -384,9 +386,19 @@ def _on_board(p: PartInfo, through: Sequence[np.ndarray]) -> bool:
 
 
 def _board_part(name: str) -> bool:
-    """The base board, its cleats, its jack locator's layers and its TPU feet."""
-    return name == "base_plate" or name.startswith(("base_cleat_", "jack_locator_",
+    """The base board, its cleats, its riser locator's layers and its TPU feet."""
+    return name == "base_plate" or name.startswith(("base_cleat_", "riser_locator_",
                                                     "foot_boot"))
+
+
+_SIDE_EXTRAS = ("foot_bracket", "toggle_flag")
+"""A side's own parts the cradle adds by name (a foot's bracket and its screws, B's toggle
+flag on the drive side's rear leg): each travels with the side it's screwed to (its host)."""
+RISER = "decanter_riser"
+RISER_LABEL = "Riser (its blocks and plates)"
+"""The decanter's printed riser (``construction.cradle.riser_pieces``): it travels as one
+piece, its plates on its blocks (its blocks are the drive panel's lay-flat blocks on the way
+apart and back together)."""
 
 
 def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fastened=()
@@ -414,6 +426,7 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
     drive = ("drive", "Drive side panel", "panel")
     passive = ("passive", "Passive side panel", "panel")
     box = ("box", "Cradle box", "fill")
+    risers = ("risers", RISER_LABEL, "fill")
     for n in sorted(parts):
         p = parts[n]
         s, stem = _side(n)
@@ -423,9 +436,11 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
             put(*(box if stem == link else passive if s == other else drive), n)
         elif _board_part(n) or (n.startswith("foot_bracket") and _on_board(p, through)):
             put("base", "Base board", "base", n)
-        elif n.startswith("foot_bracket"):
+        elif n.startswith(_SIDE_EXTRAS):
             host = _side(p.rigid_with or "")[0] or crank_side
             put(*(passive if host == other else drive), n)
+        elif n.startswith(RISER):
+            put(*risers, n)
         else:
             put(*box, n)
     for s, key in ((other, "passive"), (crank_side, "drive")):
@@ -435,21 +450,22 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
                    for mine, o, j in ((a, b, ja), (b, a, jb))
                    if mine == f"{other}.{link}" and o in parts and not is_frame(o)})
     breakdown, reassembly = cr.module_steps(lk, pins)
-    frees = {"hand_crank": ["hand_crank"], "base": ["base"], "lift": ["passive"],
-             "box": ["box", "drive"]}
+    frees = {"pose": ["risers"], "hand_crank": ["hand_crank"], "base": ["base"],
+             "lift": ["passive"], "box": ["box", "drive"]}
     steps: list[tuple[str, list[str]]] = []
-    for text, tag in breakdown:
-        if tag == "base" and "base" in out:
+    for m in breakdown:
+        text = m.words
+        if m.tag == "base" and "base" in out:
             text = _base_step(out["base"].parts, parts, "the cradle", text)
-        keys = [k for k in frees.get(tag, []) if k in out]
-        if tag in frees and not keys:
+        keys = [k for k in frees.get(m.tag, []) if k in out]
+        if m.tag in frees and not keys and m.tag != "pose":
             continue                        # (no such piece: no step)
         steps.append((text, keys))
     for text, keys in steps:
         for k in keys:
             if k in out and not out[k].how:
                 out[k].how = text
-    return list(out.values()), steps, reassembly
+    return list(out.values()), steps, [m.words for m in reassembly]
 
 
 def slide_hits(panel: dict, unit: dict, step: float = 0.5, way: float | None = None
@@ -697,11 +713,17 @@ def gather(mech, lk, t: float = 0.0, config=None) -> dict:
     ``slide_off`` (:func:`slide_hits`: the passive side panel off its cradle link's pins;
     ``box``: the cradle box off the drive side's)."""
     from spiderpig.config import BuildConfig
-    from spiderpig.cradle_report import part_mass_kg
     from spiderpig.hardware import mass as mass_mod
     from spiderpig.mesh import tessellate_many
 
     cfg = config or BuildConfig(linkage=lk.key, robot=False)
+
+    def part_mass_kg(b) -> float:          # (``cradle_report.part_mass_kg``'s)
+        _, dens, fixed = mass_mod.material_of(b, cfg.sheet, "pla_filament", None)
+        if fixed is not None:
+            return fixed / 1000.0
+        return mass_mod.part_props(b.placed_part()).volume * dens / 1e6
+
     bodies = [b for b in mech.bodies if b.part is not None and b.fab != "display"]
     infos = part_infos(mech)
     shapes = [b.placed_part() for b in bodies]
@@ -712,7 +734,7 @@ def gather(mech, lk, t: float = 0.0, config=None) -> dict:
         i = infos[b.name]
         parts[b.name] = {"fab": b.fab, "bom_key": b.bom_key, "rigid_with": b.rigid_with,
                          "lo": i.lo.tolist(), "hi": i.hi.tolist(),
-                         "volume": float(props.volume), "mass": float(part_mass_kg(cfg, b)),
+                         "volume": float(props.volume), "mass": float(part_mass_kg(b)),
                          "com": [float(v) for v in props.com]}
         mesh_of[b.name] = (np.asarray(pos, np.float32).reshape(-1, 3),
                            np.asarray(idx, np.uint32).reshape(-1, 3))
@@ -1039,23 +1061,131 @@ def cached_input(linkage: str, store=None, reuse_plan: bool = True) -> dict:
     return inp
 
 
-def payload(linkage: str, store: str | None = None) -> dict:
-    """``/api/cradle/{key}/pack``'s and ``/room``'s bodies: :func:`flat_pack` of the cradle
-    fabricated at its pack pose (:func:`pack_t`) and :func:`spiderpig.cradle_report.room` of
-    it at crank angle 0 (the baked clip's first frame; the fabrication cache in ``store``
-    keeps both), a package function for :func:`spiderpig.workers.submit`."""
-    from spiderpig.config import BuildConfig
-    from spiderpig.cradle_report import room
-    from spiderpig.fabricate import fabricate, template_for
-    from spiderpig.store import Store
+# -- how each piece rests on the table on the way apart and back ------------------------------
 
-    cfg = BuildConfig(linkage=linkage, robot=False)
-    tmpl = template_for(cfg)
-    at = Store.of(store) if store else None
-    mech = fabricate(tmpl, cfg, 0.0, store=at)
-    inp = cached_input(linkage, at, reuse_plan=False) if at is not None else None
-    if inp is None:
-        t = pack_t(cfg)
-        packed = mech if t == 0.0 else fabricate(tmpl, cfg, t, store=at)
-        inp = gather(packed, cfg.lk, t, cfg)
-    return {"pack": pack_input(inp), "room": room(cfg, mech)}
+G = 9.81
+
+
+def resting(points: np.ndarray, com: np.ndarray, mass: float, down: np.ndarray,
+            owner: Sequence[str] | None = None) -> dict:
+    """How a rigid body (``points``, its centre of mass ``com``, ``mass`` kg) set down with
+    ``down`` toward the table settles: on the stable face of its points' convex hull (the
+    centre of mass over it) whose outward normal is nearest ``down``. That face's ``tilt``
+    off ``down`` (degrees), the ``margin`` (mm) from the centre's foot to the face's nearest
+    edge, the centre's height over it, the tip angle (``atan(margin / height)``), the push at
+    the body's top that tips it (``m g margin / top``) and what touches (``on``: the
+    ``owner`` of the face's points, by name)."""
+    from scipy.spatial import ConvexHull, QhullError
+
+    down = np.asarray(down, float) / np.linalg.norm(down)
+    hull = ConvexHull(points)
+    faces: list[tuple[np.ndarray, float]] = []
+    for eq in hull.equations:               # each plane once (a face is many triangles)
+        if not any(np.dot(n, eq[:3]) > 1 - 2e-6 and abs(off - eq[3]) < 0.05
+                   for n, off in faces):
+            faces.append((eq[:3].copy(), float(eq[3])))
+    best = None
+    for n, off in faces:
+        h = -(n @ com + off)                     # the centre's height over the face
+        if h <= 0:
+            continue
+        on = points[np.abs(points @ n + off) < 0.5]
+        u = np.cross(n, [1.0, 0.0, 0.0] if abs(n[0]) < 0.9 else [0.0, 1.0, 0.0])
+        u /= np.linalg.norm(u)
+        v = np.cross(n, u)
+        q = np.column_stack([on @ u, on @ v])
+        if len(q) < 3:
+            continue
+        try:
+            h2 = ConvexHull(q)
+        except QhullError:                       # (collinear: an edge, not a face)
+            continue
+        c2 = np.array([com @ u, com @ v])
+        margin = float(np.min(-(h2.equations[:, :2] @ c2 + h2.equations[:, 2])))
+        if margin <= 0:
+            continue
+        score = float(n @ down)
+        if best is None or score > best[0]:
+            best = (score, n, off, h, margin)
+    if best is None:
+        raise ValueError("no stable face: it can't rest")
+    score, n, off, h, margin = best
+    top = float(np.max(-(points @ n + off)))
+    on_names: list[str] = []
+    if owner is not None:
+        on_names = sorted({owner[i] for i in np.flatnonzero(np.abs(points @ n + off) < 0.5)})
+    return {"tilt_deg": round(math.degrees(math.acos(min(1.0, score))), 1),
+            "margin_mm": round(margin, 1), "com_mm": round(float(h), 1),
+            "tip_deg": round(math.degrees(math.atan2(margin, h)), 1),
+            "push_n": round(mass * G * margin / max(top, 1.0), 1),
+            "top_mm": round(top, 1), "on": on_names}
+
+
+def lay_blocks(inp: dict, lk) -> list[np.ndarray]:
+    """The riser's two blocks' points where they stand under the drive side's outer plate,
+    the cradle lying on its drive side (``construction.cradle.LAY_BLOCKS``): each block moved
+    from the riser (its meshes in ``inp``) to stand outboard of the plate's outer face, its
+    boss against it, centred on its node (a post's screw head in its relief), its length
+    along x."""
+    nodes = cr.LAY_BLOCKS.get(lk.key, ())
+    if not nodes:
+        return []
+    crank = next((s for s in SIDES if f"{s}.conn" in inp["parts"]), "L")
+    lo, hi = (np.asarray(inp["parts"][f"{crank}.frame_outer"][k], float) for k in ("lo", "hi"))
+    out_z = 1.0 if (lo[2] + hi[2]) / 2 > 0 else -1.0       # outboard along z
+    face = hi[2] if out_z > 0 else lo[2]
+    pts = lk.solve().evaluate(np.array([inp["t"]]))
+    stand = cr.stand_of(lk)
+    mouth = pts[cr.mouth_name(lk)][0]
+    out = []
+    names = sorted(n for n in inp["meshes"] if n.startswith(RISER + "_block"))
+    for node, name in zip(nodes, names, strict=False):
+        if not isinstance(node, str):           # (x, y) from the mouth
+            at = mouth + np.asarray(node, float)
+        else:
+            at = (mouth + np.asarray(stand.nodes[node], float) if node in stand.nodes
+                  else pts[node][0])
+        p = np.asarray(inp["meshes"][name][0], float)
+        c = (p.min(axis=0) + p.max(axis=0)) / 2
+        q = p - [c[0], p[:, 1].max(), c[2]]      # its boss's top's middle at the origin
+        # its height (y) outboard along the plate's normal, its width (z) along y, its
+        # length (x) along x: the boss up against the face
+        q = np.column_stack([q[:, 0], q[:, 2], -q[:, 1] * out_z])
+        out.append(q + np.array([at[0], at[1], face]))
+    return out
+
+
+def rest_poses(inp: dict, lk) -> list[dict]:
+    """Each of the guide's resting poses of cradle ``lk`` (``construction.cradle.REST_POSES``)
+    rated by :func:`resting` from :func:`gather`'s input ``inp`` (its pack pose): the pieces'
+    parts' meshes, masses and centres, set down drive side down, passive side down, or the
+    cradle box levelled and turned over (its saddles' tops down), on the riser's blocks where
+    the pose says (:func:`lay_blocks`; their own weight left out)."""
+    poses = cr.REST_POSES.get(lk.key, ())
+    if not poses:
+        return []
+    pcs, _, _ = _pieces_of(inp, lk)
+    by = {pc.key: pc for pc in pcs}
+    crank = next((s for s in SIDES if f"{s}.conn" in inp["parts"]), "L")
+    lo, hi = (np.asarray(inp["parts"][f"{crank}.frame_outer"][k], float) for k in ("lo", "hi"))
+    drive_out = np.array([0.0, 0.0, 1.0 if (lo[2] + hi[2]) / 2 > 0 else -1.0])
+    level = vp.rot_about("z", -inp["tilt"])         # the box levelled (as it packs)
+    rows = []
+    for rest in poses:
+        keys = ([k for k in by if k not in ("base", "hand_crank", "risers")]
+                if rest.pieces == ("*",) else list(rest.pieces))
+        names = [n for k in keys for n in by[k].parts]
+        mass = sum(inp["parts"][n]["mass"] for n in names)
+        com = sum(inp["parts"][n]["mass"] * np.asarray(inp["parts"][n]["com"], float)
+                  for n in names) / mass
+        pts = [np.asarray(inp["meshes"][n][0], float) for n in names]
+        owner = [n for n, p in zip(names, pts, strict=True) for _ in range(len(p))]
+        if rest.blocks:
+            blocks = lay_blocks(inp, lk)
+            pts += blocks
+            owner += [f"riser block {i}" for i, b in enumerate(blocks) for _ in range(len(b))]
+        down = {"drive": drive_out, "passive": -drive_out,
+                "top": level.T @ np.array([0.0, 1.0, 0.0])}[rest.down]
+        got = resting(np.concatenate(pts), com, mass, down, owner)
+        rows.append({"pose": rest.key, "words": rest.words, "kg": round(mass, 2), **got})
+    return rows

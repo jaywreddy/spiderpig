@@ -264,3 +264,18 @@ export function maxRadiusOf(v: Vessel): number {
 export function brimMl(v: Vessel): number {
   return profileVolume(cavityOf(v)) / 1000;
 }
+
+/** A vessel that holds a bottle's ``ml``: the first decanter rated for it whose brim holds
+ * it, the smallest first; else the biggest decanter (a bigger bottle is poured in turns: the
+ * swap, the guide's Decanting step). */
+export function vesselFor(ml: number, vessels: readonly Vessel[] = VESSELS): Vessel {
+  const decanters = vessels.filter((v) => v.kind === 'decanter')
+    .sort((a, b) => a.capacity_ml - b.capacity_ml || brimMl(a) - brimMl(b));
+  return decanters.find((v) => v.capacity_ml >= ml && brimMl(v) >= ml)
+    ?? decanters[decanters.length - 1] ?? vessels[0]!;
+}
+
+/** The bottle the cradle page opens with (``motion.bottles``' key): a magnum, poured into a
+ * decanter that holds it (:func:`vesselFor`; design review round 2's M5: the page had opened
+ * pouring a 6 L into a 750 ml decanter). */
+export const DEFAULT_BOTTLE = 'magnum';

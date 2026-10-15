@@ -17,7 +17,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import {
   createPack, movedModule, packFraction, snappedDelta, type Pack, type PackData, type PackModule,
 } from './pack';
-import { createPour } from './pour';
+import { createPour, type RoomData } from './pour';
 import {
   fractionAtTurns, phaseAt, tiltAt, tiltWords, turnsAt, type CradleMotion,
 } from './motion';
@@ -177,6 +177,39 @@ function renderAbout(m: CradleMotion): void {
   $('diagram-title').textContent = `${m.name}: one side, in its plane`;
 }
 
+/** How it's used (``motion.use``: the guide's own lines): the use limits' five-line card,
+ * then each use step folded (design review round 2's M5: the page had no use limits). */
+export function renderUse(box: HTMLElement, m: CradleMotion): void {
+  box.replaceChildren();
+  const use = m.use ?? [];
+  box.hidden = !use.length;
+  if (!use.length) return;
+  const h = document.createElement('h3');
+  h.textContent = 'Using it: the five rules';
+  const limits = use.find((u) => u.tag === 'limits');
+  const card = document.createElement('ol');
+  card.className = 'card';
+  for (const line of (limits?.lines ?? []).filter((l) => /^\d\.\s/.test(l))) {
+    const li = document.createElement('li');
+    li.textContent = line.replace(/^\d\.\s*/, '');
+    card.appendChild(li);
+  }
+  box.append(h, card);
+  for (const u of use) {
+    const d = document.createElement('details');
+    const s = document.createElement('summary');
+    s.textContent = u.tag === 'limits' ? 'The rest of the use limits' : u.title;
+    const ul = document.createElement('ul');
+    for (const line of u.lines.filter((l) => u.tag !== 'limits' || !/^\d\.\s/.test(l))) {
+      const li = document.createElement('li');
+      li.textContent = line;
+      ul.appendChild(li);
+    }
+    d.append(s, ul);
+    box.appendChild(d);
+  }
+}
+
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, { signal });
   if (!res.ok) {
@@ -207,6 +240,7 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
     motion = m;
     diagram = createDiagram(svg, m);
     renderAbout(m);
+    renderUse($('use'), m);
     slider.max = String(m.ratio);
     const fullAt = (m.turns_to_full / m.ratio) * 100;
     $('tick-full').style.left = `${fullAt}%`;
@@ -225,10 +259,9 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
     status('');
     dirty = true;
     // the room under the mouth (a fabrication: a minute the first time), then the riser
-    void getJson<{ room: [number, number][]; room_pouring: [number, number][] }>(
-      `/api/cradle/${encodeURIComponent(key)}/room`, signal).then((r) => {
+    void getJson<RoomData>(`/api/cradle/${encodeURIComponent(key)}/room`, signal).then((r) => {
       if (mine === ticket && loaded === next) {
-        pour.setRoom(r.room, r.room_pouring);
+        pour.setRoom(r);
         if (packTarget > 0 || packS > 0) pour.setVisible(false);   // (packed meanwhile)
         dirty = true;
       }
@@ -454,7 +487,7 @@ async function togglePack(): Promise<void> {
     loaded.action.time = f * loaded.clipDuration;
     loaded.mixer.update(0);
     dirty = true;
-    pack = createPack(loaded.walker, packData, ['bottle', 'decanter', 'decanter_riser']);
+    pack = createPack(loaded.walker, packData, ['bottle', 'decanter']);
   }
   renderPackInfo(packData);
   setPlaying(false);
