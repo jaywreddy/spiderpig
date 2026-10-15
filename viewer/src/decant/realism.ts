@@ -37,7 +37,7 @@ export interface Look {
     wine: THREE.MeshPhysicalMaterial;
     print: THREE.MeshPhysicalMaterial;
     tpu: THREE.MeshPhysicalMaterial;
-    /** zinc-plated steel and bead-blasted aluminium, for what the page adds (the lab jack) */
+    /** zinc-plated steel and bead-blasted aluminium, for what the page adds */
     steel: THREE.Material;
     alu: THREE.Material;
   };
