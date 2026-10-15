@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
+from spiderpig import fabmethods
 from spiderpig.api import building  # (build, fabricate_at: through the module, where a patch goes)
 from spiderpig.api.reports import BuildReport, ExportReport, PlanReport
 from spiderpig.api.store_ops import _manifest, design_lock, load
@@ -55,7 +56,8 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     does: ``step`` / ``stl`` (the whole machine), ``print`` (one STL per different printed
     part + ``parts.csv``), ``dxf`` (kerf-compensated sheets + ``parts.csv``), ``bom``
     (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (the MuJoCo model +
-    its metadata); and always ``manifest.json``. Builds first if nothing is built; a
+    its metadata), ``urdf`` (an arm's URDF, its meshes and joint map: :mod:`spiderpig.urdf`);
+    and always ``manifest.json``. Builds first if nothing is built; a
     sheet-packing failure is ``layout``, a catalog miss ``bom``. What the bake and the
     constructions warned about while writing (a purchased model's faces the mesher
     skipped) is on the report (``warnings``) and in the manifest. An export the store
@@ -115,6 +117,9 @@ def _export(design: Design, formats, out_dir, force: bool) -> ExportReport:
 
         clear_generated(out / "laser")
         clear_generated(out / "print")
+        for stale in [*(out / "urdf").glob("*.json"), *(out / "urdf").glob("*.xml")]:
+            stale.unlink()                   # an arm's: its URDF and joint map
+        clear_generated(out / "urdf")
         (out / "ORDER.md").unlink(missing_ok=True)
     with contextlib.ExitStack() as stack:
         warned = stack.enter_context(capture_warnings(EXPORT_LOGGERS))
@@ -241,7 +246,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         try:
             bom = bom_from_mechanism(replace(mech, bom_extras=extras), title=title,
                                      filament=filament, groups=groups)
-            if cfg.robot and (note := torque_limit_note(cfg)):
+            if cfg.mirrored and (note := torque_limit_note(cfg)):
                 bom.notes.append(note)
             files += bom.write(out)
             bom_summary = {"items": len(bom.purchased), "cost_usd": round(bom.cost_usd, 2),
@@ -249,18 +254,30 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
                            "unpriced": [r.key for r in bom.unpriced]}
         except KeyError as e:
             rep.failures.append(Failure.from_exception(e, stage="bom"))
+    if "urdf" in formats:
+        if design.kind != "arm":
+            logging.getLogger("spiderpig.export").warning(
+                "urdf: %s is a %s: the URDF is an arm's (its inputs drive links over "
+                "ranges), so the format is skipped", cfg.linkage, design.kind)
+        else:
+            from spiderpig import urdf
+
+            with _timed("urdf"):
+                build_t = design.build_t if design.build_t is not None else 1.0
+                files += urdf.write(mech, cfg, build_t, out / "urdf", name)
     with _timed("glb/mjcf" if job is None else "glb/mjcf (waiting for its worker)"):
         files += _robot_files(design, formats, out, job)
     if "mjcf" in formats and design.kind != "walker":
         # the MJCF is the walking robot's (two sides on a floor, the drives walking it); a
         # mechanism has nothing to walk, so the format is skipped, not an error
         logging.getLogger("spiderpig.export").warning(       # on ExportReport.warnings
-            "mjcf: %s is a mechanism, with nothing to walk: the MJCF is a walker's robot "
-            "model (verify(\"full\") runs it), so the format is skipped", cfg.linkage)
+            "mjcf: %s is a%s %s, with nothing to walk: the MJCF is a walker's robot model "
+            "(verify(\"full\") runs it), so the format is skipped%s", cfg.linkage,
+            "n" if design.kind == "arm" else "", design.kind,
+            " (an arm's MuJoCo model comes with urdf)" if design.kind == "arm" else "")
     return files, bom_summary
 
 
-GROUPED = ("laser", "printed")
 
 
 @contextmanager
@@ -282,7 +299,7 @@ def _start_group_job(mech):
     if not workers.enabled():
         return None
     made = [(b.name, b.fab, workers.dump_shape(b.part)) for b in mech.bodies
-            if b.fab in GROUPED and b.part is not None]
+            if b.fab in fabmethods.made() and b.part is not None]
     return workers.submit(_group_job, made)
 
 
@@ -293,8 +310,8 @@ def _group_job(made) -> dict[str, list[tuple[str, list[str], list[str]]]]:
     from spiderpig.workers import load_shape
 
     bodies = [SimpleNamespace(name=n, fab=fab, part=load_shape(d)) for n, fab, d in made]
-    return {m: [(g.ref.name, list(g.names), list(g.mirrored)) for g in group_made(bodies, m)]
-            for m in GROUPED}
+    return {m: [(g.ref.name, list(g.names), list(g.mirrored))
+                for g in group_made(bodies, m)] for m in fabmethods.made()}
 
 
 def _groups(mech, job) -> dict:
@@ -302,7 +319,7 @@ def _groups(mech, job) -> dict:
     from spiderpig.hardware.bom import MadeGroup
 
     if job is None:
-        return {m: group_made(mech.bodies, m) for m in GROUPED}
+        return {m: group_made(mech.bodies, m) for m in fabmethods.made()}
     by_name = {b.name: b for b in mech.bodies}
     return {m: [MadeGroup(m, by_name[ref], names, mirrored) for ref, names, mirrored in gs]
             for m, gs in job.result().items()}

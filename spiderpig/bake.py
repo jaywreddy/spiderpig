@@ -61,8 +61,8 @@ from pathlib import Path
 import numpy as np
 import pygltflib
 
+from spiderpig import fabmethods, walk
 from spiderpig import linkage as linkage_mod
-from spiderpig import walk
 from spiderpig.config import (
     BuildConfig,
     ParamError,
@@ -70,10 +70,11 @@ from spiderpig.config import (
     add_design_args,
     config_from_args,
 )
-from spiderpig.construction.robot import robot_template
+from spiderpig.construction.robot import layout_of
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware.catalog import get as catalog_get
 from spiderpig.hardware.mass import PartProps, part_props
+from spiderpig.kinematics import RobotTree, planar_matrix, quat_from_matrix
 from spiderpig.mechanism import Body, Mechanism, MechanismTemplate
 from spiderpig.mesh import mesh_part, read_meshes
 from spiderpig.stack import body_class, is_link
@@ -182,7 +183,7 @@ _ROOT_ROTATION = (math.sqrt(0.5), 0.0, 0.0, math.sqrt(0.5))   # xyzw
 def _build_template(config: BuildConfig) -> MechanismTemplate:
     """The kinematics the animation samples: one side, or both sides of the robot."""
     tmpl = template_for(config)
-    return robot_template(tmpl) if config.robot else tmpl
+    return layout_of(config).template(tmpl) if config.robot else tmpl
 
 
 # ---------------------------------------------------------------------------
@@ -224,11 +225,12 @@ def _catalog_category(bom_key: str | None) -> str | None:
 def _material_of(body: Body) -> str:
     """Material key for a body: by ``fab``, then by role."""
     cls = body_class(body.name)
-    if body.fab == "laser":
+    made_of = fabmethods.stock(body.fab)
+    if made_of == "sheet":
         return "acrylic" if is_link(body.name) else "acrylic_frame"
-    if body.fab == "printed":
+    if made_of == "filament":
         return "printed"
-    if body.fab == "purchased":
+    if body.fab == fabmethods.PURCHASED:
         category = _catalog_category(body.bom_key)
         if category == "electronics":
             return "electronics"
@@ -559,6 +561,8 @@ class _Animation:
     rotations: dict[str, np.ndarray]
     thetas: dict[str, np.ndarray]
     motion: dict[str, tuple[np.ndarray, np.ndarray]]
+    matrices: dict[str, np.ndarray] = field(default_factory=dict)   # a spatial joint's
+    #                                   bodies' rotations, (T, 3, 3) (the rest turn about z)
 
 
 def _reference(config: BuildConfig, prof: _Profiler, fabricated: Mechanism | None = None
@@ -683,7 +687,35 @@ def _animate(config: BuildConfig, ref: _Reference, meshes: _Meshes, n_frames: in
                 anim.translations[body.name] = trans.astype(np.float32)
                 anim.rotations[body.name] = _quat_hemisphere_continuous(
                     _quat_z(theta)).astype(np.float32)
+            tree = RobotTree.from_meta(ref.mech.meta.get("tree"))
+            if tree is not None:
+                _spatial(tree, ref, meshes, anim, ts - T_REF)
     return anim
+
+
+def _spatial(tree: RobotTree, ref: _Reference, meshes: _Meshes, anim: _Animation,
+             ts: np.ndarray) -> None:
+    """The bodies a spatial joint carries (:mod:`spiderpig.kinematics`): each joint's
+    sweep over the clip composed with the planar motions (the turntable's yaw over the
+    side's tour, the wrist's roll after the end plate's motion)."""
+    n = len(ts)
+    planar = {name: planar_matrix(th, tr) for name, (th, tr) in anim.motion.items()}
+    joints = tree.joint_transforms(tree.sweep(ts), planar)
+    for body in ref.bodies:
+        jname = tree.carried.get(body.name)
+        if jname is None:
+            continue
+        if tree.joint(jname).host is not None:       # its host's motion is in the joint's
+            g = meshes.plan.place.get(body.name, _Planar())
+            inner = planar_matrix(np.full(n, g.theta), np.tile([*g.txy, g.dz], (n, 1)))
+        else:
+            inner = planar_matrix(anim.thetas[body.name],
+                                  anim.translations[body.name].astype(float))
+        m = np.einsum("tij,tjk->tik", joints[jname], inner)
+        anim.matrices[body.name] = m[:, :3, :3]
+        anim.translations[body.name] = m[:, :3, 3].astype(np.float32)
+        anim.rotations[body.name] = _quat_hemisphere_continuous(
+            quat_from_matrix(m[:, :3, :3])).astype(np.float32)
 
 
 def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim: _Animation,
@@ -713,8 +745,11 @@ def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim:
             if key is not None:
                 node.mesh = geom.mesh_index[key]
                 v = meshes.class_mesh[key][0]
-                th = anim.thetas[body.name]
-                y = np.outer(np.sin(th), v[:, 0]) + np.outer(np.cos(th), v[:, 1])
+                if body.name in anim.matrices:
+                    y = np.einsum("tj,vj->tv", anim.matrices[body.name][:, 1, :], v)
+                else:
+                    th = anim.thetas[body.name]
+                    y = np.outer(np.sin(th), v[:, 0]) + np.outer(np.cos(th), v[:, 1])
                 ground = min(ground, float((y.min(axis=1) + anim.translations[body.name][:, 1])
                                            .min()))
             node.extras = {
@@ -759,7 +794,7 @@ def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animati
         # Drawn just outside that foot's link (first side), in model Z.
         link = next((by_name[b] for b, _ in ref.feet if by_name[b].part), None)
         foot_z = link.part.bounding_box().min.Z - 0.5 if link is not None else 0.0
-    if config.robot:
+    if config.mirrored:
         extras = root.extras
         assert extras is not None  # _nodes_and_channels (stage 5) set the root's extras
         with prof.timed("6b_drive_extra"):
@@ -779,6 +814,12 @@ def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animati
     }
     if lk.output:
         scene.extras["output"] = asdict(lk.output)
+    if ref.mech.meta.get("tree"):      # an arm's spatial joints (the viewer's joint sliders)
+        scene.extras["tree"] = ref.mech.meta["tree"]
+    if lk.kind == "arm":               # its inputs at the clip's first frame (the sliders')
+        q0 = lk.tour(np.array([T_REF]))
+        scene.extras["inputs0"] = {n: math.degrees(float(v[0]))
+                                   for n, v in zip(lk.inputs, q0, strict=True)}
     return scene
 
 

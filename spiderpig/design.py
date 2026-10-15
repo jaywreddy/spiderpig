@@ -199,6 +199,19 @@ def spec_hash(resolved: Mapping) -> str:
     return hashlib.sha256(canonical_json(resolved).encode()).hexdigest()[:16]
 
 
+SIDE_FREE_ROLES = ("turntable", "homing_reference", "controller")
+"""An arm's robot roles that don't shape its side's layer plan (what stands under the side,
+the homing's camera, the electronics): designs differing only in
+them can share a plan (always re-made and verified: :func:`stages.planning._reuse_plan`)."""
+
+
+def side_hash(resolved: Mapping) -> str:
+    """:func:`spec_hash` without :data:`SIDE_FREE_ROLES`: what a design's side plan shares."""
+    cons = {k: v for k, v in dict(resolved.get("constructions") or {}).items()
+            if k not in SIDE_FREE_ROLES}
+    return spec_hash({**resolved, "constructions": cons})
+
+
 def now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 

@@ -52,6 +52,8 @@ from ezdxf import units as dxf_units
 from ezdxf.filemanagement import new as new_dxf
 from rectpack import newPacker
 
+from spiderpig import fabmethods
+
 if TYPE_CHECKING:
     from rectpack.packer import PackerBBF
 
@@ -64,7 +66,7 @@ DEFAULT_KERF = 0.15  # mm: the kerf of a sheet whose item names none (no service
 
 
 def laser_bodies(mech) -> list:
-    return [b for b in mech.bodies if b.fab == "laser" and b.part is not None]
+    return [b for b in mech.bodies if fabmethods.flat(b.fab) and b.part is not None]
 
 
 def sheet_kerf(key: str) -> float:

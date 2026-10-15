@@ -34,6 +34,28 @@ from spiderpig.store import PROJECT, Store, diff_json, report_doc
 # ---------------------------------------------------------------------------
 
 
+def _stored_roles(cons: dict) -> tuple[tuple[str, str], ...]:
+    """The roles a resolved spec's ``constructions`` names beside its own keys; a key that is
+    neither its own nor a known role (or a known per-slot role's ``role@slot``) fails: a
+    stored design is rebuilt as recorded or not at all."""
+    from spiderpig import roles as rolemod
+
+    out = []
+    for q, key in cons.items():
+        if q in ("pillar", "pin", "crank", "heads"):
+            continue
+        name, slot = rolemod.split(q)
+        try:
+            role = rolemod.get(name)
+        except KeyError:
+            raise ParamError(f"this stored design names a construction role {q!r} the engine "
+                             f"no longer has (roles: {sorted(rolemod.ROLES)})") from None
+        if not role.stored_in_roles or (slot and role.per == "design"):
+            raise ParamError(f"this stored design's constructions.{q} isn't a role's key")
+        out.append((q, key))
+    return tuple(sorted(out))
+
+
 def _config_from_resolved(resolved: dict) -> BuildConfig:
     """The config of a recorded design, from its resolved spec alone (every value written
     in, so a default that moved since never changes a stored design)."""
@@ -43,7 +65,8 @@ def _config_from_resolved(resolved: dict) -> BuildConfig:
         if (gone := removed_param(name, value)) is not None:
             raise ParamError(gone)
     return BuildConfig(
-        linkage=lk.key, module=legs["module"], robot=legs["sides"] == 2,
+        # an arm's robot is its own key (legs.robot); a design stored before it was a side
+        linkage=lk.key, module=legs["module"], robot=bool(legs.get("robot", legs["sides"] == 2)),
         phases=tuple(math.radians(p) for p in legs["phases_deg"]),
         proportions=tuple(sorted(resolved["linkage"]["params"].items())),
         sheet=mat["sheet"], thickness=mat.get("thickness_mm"), servo=mat["servo"],
@@ -52,6 +75,7 @@ def _config_from_resolved(resolved: dict) -> BuildConfig:
         link_sheets=tuple(sorted((mat.get("link_sheets") or {}).items())),
         pillar=cons["pillar"], pin=cons["pin"], crank=cons["crank"],
         heads=cons.get("heads") or "sink",
+        roles=_stored_roles(cons),
         params=Params(**{k: fit[k] for k in FIT_FIELDS if k in fit}),
     )
 
@@ -119,8 +143,12 @@ def derive(design: Design, patch: dict, store=PROJECT) -> Design:
     says otherwise."""
     if store == PROJECT:
         store = design.store
-    return resolve(apply_patch(design.spec.to_dict(), patch), store,
-                   derived_from=design.id, patch=patch)
+    spec = design.spec.to_dict()
+    legs = design.resolved.get("legs", {})
+    if design.kind == "arm" and "robot" not in spec.get("legs", {}):
+        # what the parent resolved to (a side, for an arm stored before legs.robot)
+        spec.setdefault("legs", {})["robot"] = bool(legs.get("robot", legs.get("sides") == 2))
+    return resolve(apply_patch(spec, patch), store, derived_from=design.id, patch=patch)
 
 
 def compare(a: Design | str, b: Design | str, store: Store | str | Path | None = PROJECT

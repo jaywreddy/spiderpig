@@ -80,7 +80,10 @@ class StepCheck:
 
 def _inputs(lk: Linkage, n: int = 720) -> list[np.ndarray]:
     """What a stage check samples: ``n`` crank angles; with two inputs, a grid of
-    ``(n/4)²`` over their torus."""
+    ``(n/4)²`` over their torus; an arm's, a grid over its inputs' box (``n`` along one
+    input, ``n/4`` a side over two)."""
+    if lk.kind == "arm":
+        return list(lk.box(n if len(lk.inputs) == 1 else n // 4))
     if len(lk.inputs) == 1:
         return [2.0 * math.pi * np.arange(n) / n]
     g = 2.0 * math.pi * np.arange(n // 4) / (n // 4)
@@ -93,7 +96,7 @@ def check_steps(key: str, values: tuple[float, ...], n: int = 720) -> tuple[Step
     ins = _inputs(lk, n)
     ts = ins[0]
     with np.errstate(all="ignore"):
-        pts = LegSolution(1, 0.0, values, key).evaluate(*ins)
+        pts = LegSolution(1, 0.0, values, key).at(*ins)
     out = []
     failed_before = False
     for name, expr in lk.steps:
@@ -248,7 +251,7 @@ def check_output(key: str, values: tuple[float, ...], n: int = 720) -> OutputChe
     assert o is not None  # Linkage.output_check calls this for mechanisms only
     ins = _inputs(lk, n)
     deg = np.degrees(ins[0])
-    pts = LegSolution(1, 0.0, values, key).evaluate(*ins)
+    pts = LegSolution(1, 0.0, values, key).at(*ins)
     p, a, b = pts[o.point], pts[o.frame[0]], pts[o.frame[1]]
     ang = np.degrees(np.unwrap(np.arctan2(b[:, 1] - a[:, 1], b[:, 0] - a[:, 0])))
     got: dict[str, Any] = {"extent_mm": tuple(float(v) for v in np.ptp(p, axis=0))}
@@ -282,3 +285,55 @@ def check_output(key: str, values: tuple[float, ...], n: int = 720) -> OutputChe
                 broken.append(f"output {o.name} stands still (±{tol:g}°) for only {dwell:.1f}° of "
                               f"the turn, less than the {need:g}° it promises")
     return OutputCheck(key, o, **got, broken="; ".join(broken) or None)
+
+
+RIGID_TOL = 1e-6    # mm: how much a link's joint-to-joint distance may vary and still be rigid
+
+
+@cache
+def check_rigid(key: str, values: tuple[float, ...]) -> tuple[tuple[str, str, str, float], ...]:
+    """Every link whose shape changes over the inputs' sampling (``(link, joint, joint,
+    variation mm)``): an arm's program places points with offsets and parallelograms, not
+    loop closures, so nothing else would notice two of a link's joints drifting apart."""
+    lk = get(key)
+    with np.errstate(all="ignore"):
+        pts = LegSolution(1, 0.0, values, key).at(*_inputs(lk))
+    out = []
+    for j in lk.frame:                  # the frame's joints don't move at all
+        var = float(np.nanmax(np.ptp(pts[j], axis=0))) if np.isfinite(pts[j]).any() \
+            else math.inf
+        if not var <= RIGID_TOL:
+            out.append(("torso", j, j, var))
+    for link, (joints, _) in lk.links.items():
+        for i, a in enumerate(joints):
+            for b in joints[i + 1:]:
+                d = np.linalg.norm(pts[a] - pts[b], axis=-1)
+                var = float(np.nanmax(d) - np.nanmin(d)) if np.isfinite(d).any() else math.inf
+                if not var <= RIGID_TOL:
+                    out.append((link, a, b, var))
+    return tuple(out)
+
+
+DRIVE_TOL_DEG = 1e-6
+
+
+@cache
+def check_drives(key: str, values: tuple[float, ...]) -> tuple[tuple[str, str, float], ...]:
+    """Each arm input whose link doesn't turn with it one to one (``(input, link, the
+    variation of their difference in deg)``): the drive is what the transmission turns, so
+    it must be the link the input names."""
+    lk = get(key)
+    ins = _inputs(lk)
+    with np.errstate(all="ignore"):
+        pts = LegSolution(1, 0.0, values, key).at(*ins)
+    out = []
+    for i, name in enumerate(lk.inputs):
+        link, about = lk.drives[name]
+        other = next(j for j in lk.links[link][0] if j != about)
+        v = pts[other] - pts[about]
+        diff = np.degrees(np.unwrap(np.arctan2(v[:, 1], v[:, 0]) - ins[i]))
+        var = float(np.nanmax(diff) - np.nanmin(diff)) if np.isfinite(diff).any() else math.inf
+        if not var <= DRIVE_TOL_DEG:
+            out.append((name, link, var))
+    return tuple(out)
+

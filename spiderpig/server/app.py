@@ -77,6 +77,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import QueryParams
 from starlette.websockets import WebSocketState
 
 from spiderpig import api, linkage, walk, workers
@@ -331,7 +332,7 @@ def _ensure_baked(config: BuildConfig, gone=None) -> Path:
     its file serves the next request. Two requests for one design are one bake: the second
     finds the first's file fresh.
     """
-    if config.robot:
+    if config.mirrored:
         try:
             walk.side_legs(config)
         except walk.LinkageError as e:
@@ -615,6 +616,8 @@ def linkage_info(lk: linkage.Linkage) -> dict:
         "feet": len(lk.feet),
         "kind": lk.kind,
         "output": asdict(lk.output) if lk.output else None,
+        "inputs": list(lk.inputs),
+        "ranges": {k: list(v) for k, v in lk.ranges.items()},     # an arm's (degrees)
     }
 
 
@@ -655,7 +658,7 @@ def get_design(design_id: str) -> dict:
     design = cfg.design_json()
     return {
         "design": d.id, "kind": d.kind, "linkage": design["linkage"], "module": design["module"],
-        "sides": 2 if cfg.robot else 1, "mode": mode, "phases_deg": design["phases_deg"],
+        "sides": cfg.sides, "mode": mode, "phases_deg": design["phases_deg"],
         "params": design["proportions"], "servo": cfg.servo, "sheet": cfg.sheet,
         "thickness_mm": cfg.thickness,
         "constructions": {"pillar": cfg.pillar, "pin": cfg.pin, "crank": cfg.crank},
@@ -698,6 +701,40 @@ def get_glb(mode_id: str, request: Request) -> Response:
         return Response(status_code=499)            # nobody reads it (nginx's "client closed")
     return FileResponse(path, media_type="model/gltf-binary",
                         headers={**_NO_CACHE, "X-Spiderpig-Glb": source})
+
+
+@app.get("/api/pose/{mode_id}")
+def get_pose(mode_id: str, request: Request) -> Response:
+    """An arm's baked model posed at joint angles (``j.q2=70&j.q1=30``: degrees; the rest of
+    the query names the design, as ``/api/glb``'s): each node's matrix from the clip's first
+    frame (:func:`spiderpig.pose.node_poses`). The glb is baked first when it isn't."""
+    from spiderpig.pose import node_poses
+
+    if mode_id not in MODES:
+        raise HTTPException(status_code=404, detail=f"unknown mode {mode_id!r}")
+    mode = MODES[mode_id]
+    params = request.query_params
+    q: dict[str, float] = {}
+    for k, v in params.items():
+        if k.startswith("j."):
+            try:
+                q[k[2:]] = float(v)
+            except ValueError:
+                raise HTTPException(status_code=422, detail=f"{k}={v!r}: degrees") from None
+    rest = QueryParams([(k, v) for k, v in params.multi_items() if not k.startswith("j.")])
+    try:
+        config, d = _query_design(rest, robot=mode.robot,
+                                  **({"module": mode.module} if mode.module else {}))
+        if config.lk.kind != "arm":        # before any bake
+            raise ValueError(f"{config.linkage} is a {config.lk.kind}: joint poses are an arm's")
+        path, _ = _design_glb(d, config, gone=_disconnected(request))
+        poses = node_poses(config, path, q)
+    except ClientGone:
+        return Response(status_code=499)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    return Response(json.dumps(poses, separators=(",", ":")), media_type="application/json",
+                    headers=_NO_CACHE)
 
 
 def _disconnected(request: Request):

@@ -163,9 +163,9 @@ class Build:
         """World XY of a topology point at this ``t``.
 
         A point a group added to the geometry (not a joint) is where the
-        geometry says if it's fixed (e.g. a servo mounting screw); if it moves,
-        it's fixed to the crank (:meth:`stack.Topology.add_crank_point`)
-        and has turned with it about O.
+        geometry says if it's fixed (e.g. a servo mounting screw); if it moves, it's
+        fixed to a link (``Topology.link_points``: an arm's hub bolts) or to the crank
+        (:meth:`stack.Topology.add_crank_point`) and has turned with it.
         """
         node = self._node(point)
         if node is not None:
@@ -176,6 +176,12 @@ class Build:
         p = np.asarray(g[point][0], dtype=float)
         if not np.ptp(g[point], axis=0).any():
             return p.copy()
+        fixed = self.plan.topo.link_points.get(point)
+        if fixed is not None:               # fixed to a link: where its two points say
+            about, toward, (along, across), _ = fixed
+            o, q = self.xy(about), self.xy(toward)
+            u = (q - o) / np.linalg.norm(q - o)
+            return o + along * u + across * np.array([-u[1], u[0]])
         pin = self.plan.topo.axes_of("crankpin")[0].name
         v, w = p - g["O"][0], g[pin][0] - g["O"][0]
         turn = self.angle("O", pin) - math.atan2(w[1], w[0])
@@ -247,8 +253,8 @@ class Group:
     """A functional part of a side, built by one construction (the contract above).
 
     A group implements :meth:`claims` and :meth:`realize`; :meth:`keepouts`,
-    :meth:`interface` and :meth:`motion` are optional. ``cuts``: the group cuts what the
-    others asked for (holes, pads), so it realizes after them.
+    :meth:`interface`, :meth:`motion` and :meth:`error_terms` are optional. ``cuts``: the
+    group cuts what the others asked for (holes, pads), so it realizes after them.
     """
 
     name: str
@@ -270,6 +276,13 @@ class Group:
         """The group's parts for the solved plan; ``done`` is what the groups before it
         built (a plate cuts the holes and adds the pads they asked for)."""
         raise NotImplementedError
+
+    def error_terms(self, ctx: Context, got: Realized | None = None):
+        """How far the joint this group builds lets it wander
+        (:class:`construction.joints.ErrorTerms`), from what :meth:`realize` built when
+        ``got`` is given (its notes); ``None``: the group is no joint part, or reports
+        nothing (the precision analysis takes it as rigid and says so)."""
+        return
 
     def assembly(self, view) -> list:
         """How the group's parts go on (:mod:`construction.assembly`): ``Op`` records over

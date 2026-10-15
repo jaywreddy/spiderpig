@@ -109,8 +109,8 @@ that leaves open.
 There are three ways to drive it, all calling one engine, and a browser viewer for looking
 at the result:
 
-- **a command line**, `spiderpig <command>` (`build`, `bake`, `explain`, `audit` and six
-  more);
+- **a command line**, `spiderpig <command>` (`build`, `bake`, `explain`, `audit` and the
+  rest: `spiderpig --help`);
 - **a Python API**, `spiderpig.api`, designed for AI agents: a validated JSON *spec* goes
   in, typed reports come out, and an agent can reach the live CAD solids and edit them;
 - **an MCP server** that offers the same operations to AI agents speaking the Model
@@ -1294,6 +1294,115 @@ few angles is strong evidence, but it is not a proof, and the chassis has nothin
 
 With every part built, the last stage writes them out.
 
+### 6.6 The platform registries
+
+The engine grew from one walker into a design system for other robots (the robot-arm
+workstream of 2026-10-11). Every kind of choice is a registry, so a new part, process or
+robot is an entry rather than an edit across the stages:
+
+- **Fab methods** (`spiderpig/fabmethods.py`): how a body is made (`laser`, `printed`,
+  `purchased`). The BOM, the labels, the build's per-method folders and the fabrication
+  cache iterate `fabmethods.made()` instead of spelling the keys.
+- **Construction roles** (`spiderpig/roles.py`): the slots of a design a construction fills.
+  `pillar`, `pin` and `crank` keep their own `BuildConfig` fields. Every later role is kept in
+  `BuildConfig.roles`, applies to the linkage kinds it lists, and flows through the spec's
+  `constructions` object, the resolved spec, the CLI (`--<role>`), the store and the MCP
+  catalog from that one table.
+- **Joint error terms** (`spiderpig/construction/joints.py`): a revolute joint is a support,
+  a transmission, an actuator and a sensor, each a construction that reports
+  `ErrorTerms` (play, backlash, resolution, stiffness). The precision analysis adds them
+  along the chain; lost motion (repeatability) is kept apart from compliance and
+  systematic error (accuracy, which calibration removes).
+- **Vendor CAD** (`spiderpig/hardware/cad.py`): every bought part's model goes through
+  one pinned-hash cache (the servos' too, `servos/cad.py` re-exports it). A model with no
+  direct URL (McMaster-Carr, whose pages refuse a scripted download) enters the cache
+  through `cad.import_file`, still checked against its pinned hash; clearances always use
+  the catalog's dimensions, never the model.
+- **Material constants** (`hardware/mass.py`): `MODULUS_GPA` and `CTE_UM_PER_M_K` beside
+  the density table; `materials.Sheet` carries both.
+- **Arms** (linkage kind `arm`, `linkage.Linkage.ranges` / `drives`): inputs that turn
+  over ranges and drive links about frame pivots, no crank. The template's one time walks
+  a closed serpentine tour over the inputs' box (`Linkage.tour`), so every stage that
+  samples a crank cycle samples that tour. The planner's bound between samples adds each
+  point's move between the tour's rows (`Linkage.tour_lateral`, `Geometry.lateral`), so
+  its guarantee (and `verify_plan`'s) covers every pose in the box; the contract and the
+  bake see the poses they sample on the tour, no more. The arm checks refuse a link that
+  isn't rigid, an input that doesn't turn its link, and a parallelogram that flattens
+  (`linkage/constraints.py`, the linearised constraints' condition number).
+  `LegSolution.at` evaluates explicit inputs. The first arm
+  is `linkages/palletizer.py`, an MT4-like palletizer side (130 / 150 mm, two
+  parallelograms keep the tool level, the elbow driven from the shoulder).
+- **Precision** (`spiderpig/precision.py`, `spiderpig precision`): the error budget at a
+  design's output. Every link's clearance on its axle goes through the linearised
+  rigid-body constraints of the planar linkage (`linkage/constraints.py`: each pin an axle,
+  each body on it an interface; worst case and root sum square); each input's lever says
+  the resolution it needs; every hole's tolerance through the same gains, and the link
+  sheet's expansion, are the accuracy rows. `--compare` runs the pivot options.
+- **Drives for an arm** (`construction/transmissions/`, `spiderpig/actuators/`): each
+  input a stepper (role `actuator`) and a transmission (role `transmission`, per drive:
+  `transmission@q3=belt`): a GT2 belt (5:1, `belt`), its motor on a slider plate outside
+  its frame plate, tensioned from outside. The hub's parts stand in
+  the layers beside
+  the driven link, coaxial with its pivot, whose axle then claims only a seat inside them
+  (`nested`: `DriveHub`), the link growing a pad round the pivot for the hub's bolts
+  (`plates.hub_pads`); the drives on one pivot alternate plates (the first's motor under
+  the outer plate, the next's on the inner) so their hubs and shafts don't meet. Motors
+  are placed before planning, clear of the frame's pillar heads; their shafts are cut to
+  the hub by default. Their error terms (the belt's stretch, the teeth's backlash, the stepper's microstep and holding stiffness through the ratio) join the
+  precision budget per input.
+- **Ball-bearing pivots** (`construction/pivots/ball.py`): `ball` (pins) and `ball_pillar`
+  (pillars) seat a shielded bearing in each link that turns on the axle (`AxleDims.seat`:
+  the bore the bearing fills); their play is the bearing's, their models McMaster-Carr's
+  through `spiderpig cad` (`spiderpig/tools/cad.py`), else drawn from the catalog.
+- **Robot layouts** (`construction.robot.LAYOUTS`, `config.ROBOT_LAYOUTS`): how a robot
+  is made of its planar side. A walker's `mirrored_pair` is the two-sided chassis robot; an
+  arm's `turret` stands its side on a turntable about the vertical
+  (`construction/rotary/turret.py`, the plan and the feet; `construction/rotary/base_pair.py`
+  builds it): a base of an acrylic bottom plate and an aluminium top plate on seven hex
+  columns with the yaw motor hanging under the top plate, an F608 bonded into each plate
+  and the 8 mm shaft turning in them, the pair preloaded by a wave washer, the large
+  pulley and the turntable clamped on the shaft, the frame plates grown a foot onto it
+  and held by stock angle brackets clear of the drives' motors, and a hard stop past the
+  yaw's lower end its driver stalls on (the camera sets the fine zero). The turntable is
+  the preset of the role `turntable` (`construction.rotary.PRESETS`: a support, a
+  transmission, a motor and a sensor): `mt4_compact` alone, the user's approved one
+  (2026-10-14: the others pruned, `config.REMOVED_CONSTRUCTIONS`). The arm's tool is the role `tool` (`construction/tools.py`): a
+  vacuum cup under a laser-cut shelf T-slotted to a hanger plate bolted beside the end
+  plate (the homing camera hung under the shelf beside it), or on a NEMA 11 wrist hung
+  under the flange, placed where no link sweeps over the inputs' box. A layout adds its
+  side-level groups before the plates are cut (`robot_groups`: the frame ties, a turret's
+  feet and tool) and assembles the robot round the fabricated side (`assemble_robot`).
+  The robot-level roles (`roles.Role.robot`) are dropped from the side's config
+  (`BuildConfig.side_config`), so one plan serves every turntable and tool.
+- **Control** (`spiderpig/control/`, `spiderpig control`): an arm driven by steppers on a
+  3D-printer board running Klipper. `control.arm.ArmModel` is the arm's forward and inverse
+  kinematics in the URDF's `base_link` frame (the turntable's angle from the target's
+  bearing, the planar inputs by bounded least squares from a searched start); each joint's
+  angle maps to its motor's microsteps through its transmission's exact ratio and its
+  mounting's sense (`control.mapping.Axis`); homing stalls the turntable's driver on its
+  hard stop (the camera's fiducials then set the fine zero: `control.vision`) and takes the
+  planar joints' zeros from an angle gauge on their links (their inputs are the links'
+  angles from horizontal, read with the motors holding), a switch's homing repeating to the
+  step by its driver's recorded phase (`homing.phase_move`);
+  `control.calibrate.fit` fits the link lengths and the zeros to measured poses;
+  `control.klipper` writes a `printer.cfg` with each joint a Klipper manual stepper in joint
+  degrees (its pins left to fill, the motors never disabled when idle); `control.host` plans
+  straight moves as synchronised constant-speed joint segments and posts them to Moonraker.
+- **An arm through every surface** (2026-10-12, phase 7): the spec's `legs.robot` (an
+  arm's whole robot by default) makes the API, the MCP and the store build an arm's turret;
+  `api.export` writes `urdf` (with the arm's MuJoCo model: `urdf.mjcf`, the loops closed by
+  `connect` equalities, the motors as position actuators); the viewer poses an
+  arm by joint sliders (`viewer/src/arm.ts`, from `/api/pose/{mode}`: `spiderpig.pose`,
+  each node's matrix from the clip's first frame at the joints given); the guide's arm
+  steps say what an arm has (its drives, no crank or servo). The gate's designs include the
+  palletizer on its turret.
+- **Spatial joints** (`spiderpig/kinematics/`): what a layout adds out of the side's plane,
+  as data on the mechanism (`meta["tree"]`, a `kinematics.RobotTree`): the turntable `q1`
+  rides the world about the vertical, the wrist `q4` rides `q1` after the end plate's
+  planar motion. The bake composes them with the planar motions; the URDF writes them; the
+  precision budget adds the turntable as an input (`q1`, through the flange's horizontal
+  reach) and its support's tilt over the tool's distance from the bearings.
+
 ## 7. Outputs: stage 6
 
 Every output is written from a fabricated `Mechanism`, never from a separate model of the
@@ -1320,6 +1429,7 @@ holds its outputs, from the same sources and options, does nothing
 | `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
 | `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
 | `ORDER.md` | the shopping list (`hardware/order.py`) | not in the snapshot |
+| `urdf/<name>.urdf`, `urdf/meshes/`, `urdf/<name>.joints.json` | an arm's URDF (`spiderpig/urdf.py`): a link per rigid body, the actuated inputs and the robot's joints, the side's other pins as a spanning tree (a `mimic` where a pin follows one input), the loops' closing pins and every passive joint's map in the sidecar | arms only |
 
 `api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names
 (section 9.2); its `dxf` is the packed sheets only: `ORDER.md` and `laser/parts/` come
@@ -1366,7 +1476,9 @@ ordered one line per thickness (`bom.split_shims`, `hardware/shims.py`), the cla
 `bom.shim_od`; DIN 433 for M4). Purchases are rounded up to whole packs of the preferred
 offer. A sheet a service cuts is no purchase (`bom.cut_by`) but a cutting line per service
 and sheet, the material included (`bom.CutRow`: an area estimate, `bom.cut_estimate`,
-calibrated to SendCutSend's quotes); the total is the purchases and the cutting. It leaves
+fitted to SendCutSend's quotes: per part a fixed charge plus a rate per cm² at one off,
+times its quantity break, `bom.qty_factor`, the quantity a file's, `bom.same_files`); the
+total is the purchases and the cutting. It leaves
 out rows with no price, and the BOM says so;
 for the running example at the snapshot the unpriced rows were 8 M2 self-tapping screws and
 4 M3 × 18 mm screws, and the made parts came to 39 laser-cut parts in 8 shapes, 90 printed
@@ -1396,6 +1508,11 @@ on purpose, because scripts parse them:
 | `5_gltf_nodes_channels` | one node and one animation channel per body | 0.7 s |
 | `6_foot_path_extra`, `6b_drive_extra` | the foot path, and the data the viewer's drive mode needs | under 1 s |
 | `7_serialize` | write the file | under 1 s |
+
+An arm's turret (`construction.robot.Turret`) adds spatial joints: a body a joint carries
+is posed by the joint's sweep (its range's middle plus half its range times `sin(depth t)`
+over the tour) composed with its planar motion (`kinematics.RobotTree.body_transform`),
+its rotation then a general quaternion; every other body keeps the planar path.
 
 At the snapshot the running example's glb was 9.5 MB: 179 bodies, 173 of which carry a part, drawn with 139
 meshes, baked in 28.6 s (36 s on the command line, imports included). Bakes are cached in
@@ -1472,7 +1589,7 @@ below, generated from the default robot's steps (`python -m spiderpig.guide.pros
 checked current by `tests/test_guide.py`):
 
 <!-- assembly-order: generated from the default robot by `python -m spiderpig.guide.prose --write`; don't edit by hand -->
-1. **Left side: leg stack.** Each side's leg stack is built bottom up on its outer frame plate, in the plan's layer order. Lay the outer frame plate down, leg side up. Screw each pillar's standoff column (one piece) to the outer plate: its button head and washer from outside, threadlocker, to 0.8 N·m while the column is bare to hold. The printed rings and spacers drawn, onto their pillars, pins and crankpins. Crank web 2, on the bench: screw the stub standoff to the lowest web (its button head from above) and slide its printed thrust sleeve over it, up to the web. Screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. Each crankpin's printed sleeve over its standoff, before its riders. The stub through the outer plate's journal hole: its thrust sleeve's end then sits just over the plate, the crank body's stop toward it. Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its head under the link and its printed head spacer under that; set the gap with a feeler gauge as it cures. Place the layer's links on their pillars and pins. Each foot link takes its TPU sock, slid on, before it goes on. Each Chicago screw into its barrel from the cap side once the links above are on (threadlocker), its printed top spacer under the head. Crank web 6, on the bench: screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. The capped chain's sleeve is a light press on its hex: push it down onto its lower web, that end's washer drawn up against the web (the hub plate caps this chain: no screw over it). The web onto the standoff of the chain below, that chain's riders and sleeve already on. Each chain's top screw from above, through its wide washer and collar (threadlocker).
+1. **Left side: leg stack.** Each side's leg stack is built bottom up on its outer frame plate, in the plan's layer order. Lay the outer frame plate down, leg side up. Screw each pillar's standoff column (one piece) to the outer plate: its button head and washer from outside, threadlocker, to 0.8 N·m while the column is bare to hold. The other parts drawn, where they sit. Crank web 2, on the bench: screw the stub standoff to the lowest web (its button head from above) and slide its printed thrust sleeve over it, up to the web. Screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. Each crankpin's printed sleeve over its standoff, before its riders. The stub through the outer plate's journal hole: its thrust sleeve's end then sits just over the plate, the crank body's stop toward it. Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its head under the link and its head spacer (shims) under that; set the gap with a feeler gauge as it cures. Place the layer's links on their pillars and pins. Each foot link takes its TPU sock, slid on, before it goes on. Each Chicago screw into its barrel from the cap side once the links above are on (threadlocker), its top spacer (shims) under the head. Crank web 6, on the bench: screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. The capped chain's sleeve is a light press on its hex: push it down onto its lower web, that end's washer drawn up against the web (the hub plate caps this chain: no screw over it). The web onto the standoff of the chain below, that chain's riders and sleeve already on. Each chain's top screw from above, through its wide washer and collar (threadlocker). The printed rings and spacers drawn, onto their pillars, pins and crankpins.
 
 2. **Left side: inner-plate unit.** On the bench, loose (the right side's is put together on the robot). Lay the inner frame plate down, servo side up. Stand the servo on the inner plate, its spline over the horn hole. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn. The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; then the deck's two M3 nuts slid into their hex pockets through the slots in the rail's bay face (captive: the deck's screws thread into them). The frame ties' standoff chains on the inner plate, shims at the plate. Their M3 button heads up through the plate from the leg side (threadlocker).
 

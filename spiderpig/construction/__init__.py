@@ -28,6 +28,8 @@ from spiderpig.construction.crank import BOLT_ROUND, BoltCrank
 from spiderpig.construction.crank import CrankGroup as CrankGroup
 from spiderpig.construction.pivots import PIVOTS
 from spiderpig.construction.plates import FramePlates, LinkPlates
+from spiderpig.construction.transmissions import TRANSMISSIONS as TRANSMISSIONS
+from spiderpig.construction.transmissions import DriveGroup as ArmDrive
 from spiderpig.servos.mount import DriveGroup
 
 AXLES = {c.key: c for c in PIVOTS}
@@ -53,7 +55,25 @@ def crank(key: str) -> BoltCrank:
     return _pick(CRANKS, key, "crank")
 
 
+def transmission(key: str):
+    return _pick(TRANSMISSIONS, key, "transmission")
+
+
 def _drive_groups(ctx: Context, config) -> list[Group]:
+    """The servo on the crank; an arm's inputs each a stepper and a transmission to the
+    link it drives (:mod:`construction.transmissions`; the roles ``actuator`` and
+    ``transmission``, per drive)."""
+    if getattr(config, "linkage", None) and config.lk.kind == "arm":
+        from spiderpig import actuators
+
+        lk = config.lk
+        out: list[Group] = []
+        for name in lk.inputs:
+            link, about = lk.drives[name]
+            out.append(ArmDrive(name, link, about,
+                                transmission(config.role("transmission", name)),
+                                actuators.get(config.role("actuator", name))))
+        return out
     return [DriveGroup(ctx.servo)]
 
 

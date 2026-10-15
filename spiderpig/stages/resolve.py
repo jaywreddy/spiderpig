@@ -10,8 +10,7 @@ from pathlib import Path
 
 from spiderpig import linkage, servos
 from spiderpig import walk as walk_model
-from spiderpig.config import BuildConfig, ParamError
-from spiderpig.construction.base import Params
+from spiderpig.config import BuildConfig, ParamError, default_params, default_robot
 from spiderpig.design import Design, design_id, engine_version
 from spiderpig.hardware.catalog import sheet_size, sheet_thickness
 from spiderpig.materials import link_sheets
@@ -59,7 +58,9 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
         thickness = None if float(thickness) == sheet_thickness(sheet) else float(thickness)
     try:
         config = BuildConfig(
-            linkage=lk.key, module=module, robot=sides == 2, phases=phases,
+            linkage=lk.key, module=module, phases=phases,
+            robot=(sides == 2 if lk.kind != "arm" else spec.legs.robot
+                   if spec.legs.robot is not None else default_robot(lk.key)),
             proportions=tuple(sorted(spec.linkage.params.items())),
             sheet=sheet, thickness=thickness,
             servo=spec.materials.servo or d.servo,
@@ -67,9 +68,11 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
             crank_sheet=spec.materials.crank_sheet or "",     # the linkage's (config)
             link_sheets=(None if spec.materials.link_sheets is None
                          else tuple(sorted(spec.materials.link_sheets.items()))),
-            pillar=spec.constructions.pillar or d.pillar, pin=spec.constructions.pin or d.pin,
+            pillar=spec.constructions.pillar or "", pin=spec.constructions.pin or "",
             crank=spec.constructions.crank or "", heads=spec.constructions.heads or d.heads,
-            params=spec.fit.params(),
+            roles=tuple(sorted((spec.constructions.roles or {}).items())),
+            params=default_params(lk, {k: getattr(spec.fit, k) for k in FIT_FIELDS
+                                       if getattr(spec.fit, k) is not None}),
         )
     except ParamError as e:     # the validator should have said it first
         raise SpecErrors([SpecError("", str(e))]) from None
@@ -86,7 +89,7 @@ def config_warnings(config: BuildConfig, sides: int | None = None) -> list[str]:
     from the sheet's nominal, a servo with no listed speed, one side of a walker): for the
     CLIs, which take the same options."""
     return _warnings(linkage.get(config.linkage), config,
-                     (2 if config.robot else 1) if sides is None else sides)
+                     config.sides if sides is None else sides)
 
 
 def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
@@ -94,7 +97,7 @@ def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
     if lk.kind == "walker" and sides == 1:
         warnings.append("sides = 1 builds one side (no chassis); the walk metrics still "
                         "model the two-sided robot")
-    if len(lk.inputs) > 1:
+    if len(lk.inputs) > 1 and lk.kind != "arm":    # (an arm's inputs are its drives')
         warnings.append(second_input_note(lk))
     if servos.get(config.servo).speed_rpm is None:
         warnings.append(f"servo {config.servo} lists no speed: speed_mm_s assumes "
@@ -153,7 +156,9 @@ def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
     if config.proportions:
         doc["linkage"]["params"] = dict(config.proportions)
     legs: dict = {"module": config.module,
-                  "sides": (2 if config.robot else 1) if sides is None else int(sides)}
+                  "sides": config.sides if sides is None else int(sides)}
+    if lk.kind == "arm":
+        legs["robot"] = config.robot
     if config.phases is not None:
         legs["phases_deg"] = [round(math.degrees(p), 6) for p in config.phases]
     doc["legs"] = legs
@@ -165,8 +170,10 @@ def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
         mats["link_sheets"] = dict(config.link_sheets)
     doc["materials"] = mats
     doc["constructions"] = {"pillar": config.pillar, "pin": config.pin, "crank": config.crank,
-                            "heads": config.heads}
-    default = Params()
+                            "heads": config.heads, **dict(config.roles)}
+    if not config.crank:        # an arm has none ("" in a spec would be a wildcard)
+        del doc["constructions"]["crank"]
+    default = default_params(config.lk)        # the kind's (config.KIND_FIT)
     fit = {k: getattr(config.params, k) for k in FIT_FIELDS
            if getattr(config.params, k) != getattr(default, k)}
     if fit:
@@ -189,14 +196,15 @@ def _resolved(spec: Spec, config: BuildConfig, module: str, sides: int) -> dict:
     return {
         "version": spec.version, "kind": spec.kind,
         "linkage": {"key": config.linkage, "params": design["proportions"]},
-        "legs": {"module": module, "phases_deg": design["phases_deg"], "sides": sides},
+        "legs": {"module": module, "phases_deg": design["phases_deg"], "sides": sides,
+                 **({"robot": config.robot} if config.lk.kind == "arm" else {})},
         "motion": targets["motion"], "size": targets["size"], "budget": targets["budget"],
         "materials": {"sheet": config.sheet, "thickness_mm": config.thickness,
                       "pitch_mm": config.pitch, "servo": config.servo,
                       "frame_sheet": config.frame_sheet, "crank_sheet": config.crank_sheet,
                       "link_sheets": link_sheets(config)},
         "constructions": {"pillar": config.pillar, "pin": config.pin, "crank": config.crank,
-                          "heads": config.heads},
+                          "heads": config.heads, **config.applied_roles()},
         "fit": fit,
         "outputs": list(spec.outputs),
     }

@@ -12,6 +12,7 @@
     spiderpig report --out build/linkages.json             # every linkage
     spiderpig mcp --store .spiderpig                       # MCP server (stdio)
     spiderpig view 1a2b3c4d5e6f7a8b --open                 # the viewer for a stored design
+    spiderpig cad list                                     # bought parts' vendor models
 
 Each command is a module's ``main(argv)``; ``spiderpig <command> --help`` shows its
 options. The design and build options are the same everywhere
@@ -41,6 +42,12 @@ COMMANDS: dict[str, tuple[str, str]] = {      # command -> (module, one line)
     "mcp": ("spiderpig.mcp", "serve the agent-facing API over MCP (stdio; --store PATH)"),
     "view": ("spiderpig.view",
              "serve the viewer for a stored design, no Node needed (prints the URL; --open)"),
+    "precision": ("spiderpig.precision",
+                  "the error budget at a design's output: joint play, levers, tolerances"),
+    "control": ("spiderpig.control.cli",
+                "an arm's kinematics, steps, homing and Klipper config"),
+    "cad": ("spiderpig.tools.cad",
+            "bought parts' vendor models: list, import, fetch (McMaster-Carr)"),
 }
 
 

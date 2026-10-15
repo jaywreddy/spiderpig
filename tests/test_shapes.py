@@ -10,7 +10,17 @@ from types import SimpleNamespace
 import pytest
 
 from spiderpig.construction.contract import bad_solids
-from spiderpig.shapes import Rect, cut_holes, difference, disc, intersection, pill, plate, union
+from spiderpig.shapes import (
+    Rect,
+    cut_holes,
+    difference,
+    disc,
+    hull,
+    intersection,
+    pill,
+    plate,
+    union,
+)
 
 pytestmark = pytest.mark.no_fabricate
 
@@ -59,3 +69,47 @@ def test_the_primitives_booleans_never_split_into_a_list():
     assert len(sock.solids()) == 1
     assert sock.is_valid
     assert len(notches) == 2
+
+
+def _hull_area(circles, n=2000):
+    """The convex hull's area of the circles, sampled finely (Andrew's monotone chain)."""
+    import math
+
+    pts = sorted({(round(x + r * math.cos(2 * math.pi * k / n), 9),
+                   round(y + r * math.sin(2 * math.pi * k / n), 9))
+                  for (x, y), r in circles for k in range(n)})
+
+    def half(ps):
+        out: list = []
+        for p in ps:
+            while len(out) >= 2 and ((out[-1][0] - out[-2][0]) * (p[1] - out[-2][1])
+                                     - (out[-1][1] - out[-2][1]) * (p[0] - out[-2][0])) <= 0:
+                out.pop()
+            out.append(p)
+        return out
+
+    poly = half(pts)[:-1] + half(pts[::-1])[:-1]
+    return 0.5 * abs(sum(poly[i][0] * poly[(i + 1) % len(poly)][1]
+                         - poly[(i + 1) % len(poly)][0] * poly[i][1] for i in range(len(poly))))
+
+
+def test_a_hull_of_circles_is_one_prism_round_them():
+    circles = [((0.0, 0.0), 20.0), ((-30.0, 10.0), 4.0), ((-30.0, -10.0), 4.0)]
+    part = hull(circles, 0.0, 3.0)
+    assert len(part.solids()) == 1
+    assert part.is_valid
+    assert part.volume == pytest.approx(3.0 * _hull_area(circles), rel=1e-4)
+    for xy, r in circles:                   # it holds every circle (a thinner one: OCCT's
+        inner = disc(xy, r - 1e-3, 0.5, 2.5)   # common of coplanar faces drops volume)
+        assert intersection(part, inner).volume == pytest.approx(inner.volume, rel=1e-6)
+    alone = hull([((0.0, 0.0), 20.0), ((5.0, 0.0), 4.0)], 0.0, 3.0)   # inside: a disc
+    assert alone.volume == pytest.approx(disc((0, 0), 20.0, 0.0, 3.0).volume, rel=1e-6)
+
+
+@pytest.mark.parametrize("circles", [
+    [((0.0, 0.0), 20.0), ((-30.0, -10.0), 4.0), ((-30.0, 10.0), 4.0)],     # clockwise
+    [((0.0, 0.0), 5.0), ((30.0, 0.0), 4.0), ((30.0, 0.0), 6.0)],           # nested
+])
+def test_a_hull_refuses_circles_it_cannot_go_round(circles):
+    with pytest.raises(ValueError, match="hull"):
+        hull(circles, 0.0, 3.0)

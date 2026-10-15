@@ -52,9 +52,12 @@ every third-party distribution a loaded module imports (numpy, sympy, build123d,
 **Conservative by design**: whatever can't be told apart statically is included. What it
 still cannot see, and why that is safe here: code reached only through ``eval`` /
 ``exec`` (none in the engine), a module object reached through ``sys.modules``, and
-environment variables (none of the engine's change a plan or a part but the servo CAD
-switches, which the fabrication cache keys itself: :func:`spiderpig.fabcache.servo_state`).
-Data files: the engine reads none (the servo CAD downloads are pinned by hash).
+environment variables (none of the engine's change a plan or a part but the CAD
+switches, ``SPIDERPIG_SERVO_CAD`` and ``SPIDERPIG_PART_CAD``, which the fabrication cache
+keys itself: :func:`spiderpig.fabcache.servo_state`, :func:`spiderpig.fabcache.parts_cad_state`).
+Data files: the engine reads only vendor models from the CAD cache (the servos' pinned by
+hash; a bought part's, unpinned, by the hash of the file there:
+:func:`spiderpig.hardware.cad.state`), keyed by the fabrication cache the same way.
 ``tests/test_keys.py`` checks both directions on real modules.
 
 The answer is kept on disk (``$SPIDERPIG_DIGEST_CACHE``, like
@@ -102,6 +105,19 @@ FAB_ROOTS = (
     "spiderpig.fabricate:fabricate_side",
     "spiderpig.construction.robot:FrameTies",
     "spiderpig.construction.robot:assemble_robot",
+    "spiderpig.construction.robot:robot_groups",
+    "spiderpig.construction.robot:LAYOUTS",
+    "spiderpig.construction.rotary.base_pair:turret_parts",
+    "spiderpig.construction.rotary.turret:turret_plan",
+    "spiderpig.construction.rotary.turret:TurretFoot",
+    "spiderpig.construction.rotary.base_pair:heights",
+    "spiderpig.construction.rotary.base_pair:keep_radius",
+    "spiderpig.construction.rotary.base_pair:table_reach",
+    "spiderpig.construction.rotary:PRESETS",
+    "spiderpig.construction.tools:ToolMount",
+    "spiderpig.construction.tools:tool_plan",
+    "spiderpig.construction.tools:TOOLS",
+    "spiderpig.kinematics.tree:RobotTree",
     "spiderpig.mechanism:Mechanism",
     "spiderpig.fabcache:dump_mechanism",
     "spiderpig.fabcache:load_mechanism",
@@ -980,8 +996,12 @@ class _Walk:
                         self.load(arg.value)
                     else:               # a computed import: what its module names
                         for s in sorted(m.strings):
+                            mod, sep, attr = s.partition(":")
                             if s in self.g.modules:
                                 self.escape(s)
+                            elif sep and mod in self.g.modules and attr.isidentifier():
+                                self.load(mod)      # "pkg.mod:NAME" (spiderpig.roles' paths)
+                                self.resolve(mod, attr)
                 elif callee in ("globals", "vars", "locals") and not n.args:
                     for s in m.symbols:
                         self.reach_symbol(m.name, s)

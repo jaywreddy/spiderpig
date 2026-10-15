@@ -6,6 +6,7 @@ import { latestLoader } from './loads';
 import { bindControls } from './controls';
 import { connectLiveReload } from './live-reload';
 import { createDrive } from './drive';
+import { createArmPanel } from './arm';
 import { chromeInsets } from './layout';
 import type { Mode, View, ViewerHandle } from './types';
 
@@ -27,6 +28,7 @@ let playing = false;
 let currentMode: Mode = 'robot';  // last requested (live reload re-requests it)
 let currentQuery = '';            // its design parameters ('' = default)
 let loadedMode: Mode = '';        // on screen; set only once its GLB has swapped in
+let loadedQuery = '';             // its query
 
 // Render on demand: while playing, while the camera moves, or after a change.
 // A paused viewer then costs nothing (the env-mapped, translucent robot is
@@ -60,6 +62,17 @@ const drive = createDrive({
   status: (text) => ui.setStatus(text),
   seek,
   reframe: () => { if (loaded) frameView(stage, loaded.root, view); invalidate(); },
+});
+
+// An arm's joint sliders (arm.ts): built on each load, hidden for a walker.
+const arm = createArmPanel({
+  container: document.getElementById('arm-joints')!,
+  current: () => (loaded ? {
+    root: loaded.root, mode: loadedMode, query: loadedQuery,
+    pause: () => { playing = false; ui.setPlaying(false); if (loaded) loaded.action.paused = true; },
+  } : null),
+  invalidate,
+  status: (text) => ui.setStatus(text),
 });
 
 // The chrome over the canvas (the top bar, the dock): the camera frames the band between,
@@ -120,6 +133,8 @@ const loadMode = latestLoader<LoadedScene, Mode>({
     ui.setSliderValue(0);
     next.action.time = 0;
     next.mixer.update(0);
+    loadedQuery = query;
+    arm.capture(next.root);       // frame 0, before anything awaits (the mixer may run on)
     if (reframe) frameView(stage, next.root, view);
 
     ui.setStatus(
@@ -128,6 +143,7 @@ const loadMode = latestLoader<LoadedScene, Mode>({
     );
     ui.setReadout(formatTime(0));
     await drive.onLoad(next, query);
+    await arm.onLoad(next.root).catch((err: unknown) => console.error(err));
     invalidate();
   },
   end() { ui.setModeDisabled(false); },

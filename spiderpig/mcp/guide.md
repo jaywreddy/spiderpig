@@ -110,12 +110,12 @@ design: there is no search in v1.
 | field | values | default |
 |---|---|---|
 | `version` | `"1"` | `"1"` |
-| `kind` | `walker` or `mechanism` | required |
+| `kind` | `walker`, `mechanism` or `arm` (inputs over ranges, no crank: the palletizer) | required |
 | `linkage.key` | a registered linkage (below) whose kind matches | required |
 | `linkage.params` | `{name: number}` overrides of that linkage's parameters (`describe` lists them; lengths in mm and > 0, angles in degrees; a coordinate such as a fixed pivot's x or y, marked `signed` on the card, may be zero or negative) | the linkage's defaults |
 | `legs.module` | one of the linkage's modules (legs **per side**, the robot has two; below): `single` (2 legs), `double` (4), `decker` (4), `quad` (8) or its own; there is no three-leg module | the linkage's own default (Strider: `double`), else `quad` (walker), `single` (mechanism) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
-| `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism) |
+| `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism, arm) |
 | `materials.sheet` | a sheet item (sets the layer pitch) | `acrylic_3mm` |
 | `materials.thickness_mm` | a measured sheet thickness | the sheet's nominal |
 | `materials.servo` | a continuous-rotation servo | `sts3215` |

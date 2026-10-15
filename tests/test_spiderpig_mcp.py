@@ -160,7 +160,7 @@ def test_the_guide_says_what_is_not_in_v1(server):
     guide = run(go())
     assert "No `tune` and no `search`" in guide
     assert "| `motion.stride_mm` | walker | mm/rev | soft |" in guide
-    assert "| `size.stack_mm` | walker/mechanism | mm | **hard** |" in guide
+    assert "| `size.stack_mm` | walker/mechanism/arm | mm | **hard** |" in guide
     assert "| `klann` | walker |" in guide
     assert "| servo | `sts3215` |" in guide
     assert str(server.spiderpig.store.root.resolve()) in guide
@@ -213,7 +213,12 @@ def test_cards(server):
     assert sheet["sheet_mm"] == [300.0, 300.0]
     assert sheet["price_usd"] is None        # SendCutSend's upload quotes it (2026-10-08)
     axles = {a["key"]: a for a in cat["constructions"]["axles"]}
-    assert set(axles) == {"chicago", "standoff"}          # (the rest removed on 2026-10-07)
+    # (the rest removed on 2026-10-07; the ball-bearing pivots added on 2026-10-11, the
+    # preloaded pairs on 2026-10-12)
+    assert set(axles) == {"chicago", "standoff", "ball", "ball_pillar", "ball_pair",
+                          "ball_pair_pillar"}
+    assert axles["ball"]["roles"] == ["pin"]
+    assert axles["ball_pillar"]["roles"] == ["pillar"]
     assert axles["standoff"]["roles"] == ["pillar"]
     assert axles["chicago"]["roles"] == ["pin"]          # a head would leave the frame plates
     assert axles["standoff"]["hardware"]["washer_key"]["key"] == "m4_washer"
@@ -381,29 +386,30 @@ def _the_build_job_returns_a_manifest_of_files_in_the_store(server, single, stor
     assert manifest["ok"]
     assert manifest["design"] == single
     assert manifest["t"] == 1.0
-    # the default constructions' 64 (test_spiderpig_api's test_export_writes_what_the_cli_
-    # writes counts the same build's parts; 63 before W8 D2, the cantilever pillar B's gap
+    # the default constructions' 54 (test_spiderpig_api's test_export_writes_what_the_cli_
+    # writes counts the same build's parts; 64 before the stock tubes of 2026-10-14, each
+    # replacing a span's printed rings; 63 before W8 D2, the cantilever pillar B's gap
     # ring); the keyed crank and printed pillars, removed 2026-10-07: 30
-    assert manifest["n_parts"] == len(manifest["parts"]) == 64
+    assert manifest["n_parts"] == len(manifest["parts"]) == 54
     assert manifest["mass_g"] > 0
     assert len(manifest["envelope_mm"]) == 3
     assert manifest["dir"] == str(store.dir(single) / "build")
     files = [p for p in manifest["parts"] if p["path"]]
-    assert manifest["files"] == len(files) == 64                     # one side: no mirrors
+    assert manifest["files"] == len(files) == 54                     # one side: no mirrors
     assert all(Path(p["path"]).is_file() and p["path"].endswith(".step") for p in files)
     b1 = next(p for p in manifest["parts"] if p["name"] == "b1")
     assert (b1["group"], b1["fab"], b1["layers"]) == ("links", "laser", [6])   # the plan's
     _no_solids(manifest)
     assert call(server, "get_job", job=job["job"])["job"]["state"] == "done"
     stored = call(server, "get_design", design=single, stage="build")["report"]
-    assert stored["n_parts"] == 64
+    assert stored["n_parts"] == 54
     assert stored["cut_rules"]["parts"] > 0          # the build's cut-rule review, stored
     assert stored["parts"][0]["path"] == manifest["parts"][0]["path"]
     # the same build again: served from the store's STEP files within the grace period
     again = call(server, "build", design=single, wait_seconds=120)
     assert again["ok"]
     assert again["job"]["state"] == "done"
-    assert again["n_parts"] == 64
+    assert again["n_parts"] == 54
     assert again["cut_rules"] == stored["cut_rules"]   # reloaded from the store: checked again
     assert "result" not in again["job"]
 

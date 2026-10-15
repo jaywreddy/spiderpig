@@ -438,6 +438,15 @@ def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
             shapes = _make_all(claims, layout, memo)
     else:
         raise PlanReject("the clearance gaps and the claims made at their z don't settle")
+    # the role pin_stack: no gap between a pin's neighbours but a column's own land washers'
+    # (a bearing pair's inner-ring lands between face-to-face links: pivots.pair.land_gaps)
+    lands = {p.layer for p in shapes if p.gap and p.height > 0 and p.label.endswith(" washer")}
+    for members, _ in spec.adjacent:
+        ks = sorted(layers[m] for m in members if m in layers)
+        for a, b in itertools.pairwise(ks):
+            if b == a + 1 and gaps.get(a) and a not in lands:
+                raise PlanReject(f"a clearance gap over layer {a} parts the links of the pin "
+                                 f"of {', '.join(members)}")
     placed = settle(shapes, sunk, layout)
     return StackPlan(spec, layers, top, topo, claims, tuple(placed), choices,
                      gaps=dict(gaps), thick=dict(thick), sunk=frozenset(sunk))

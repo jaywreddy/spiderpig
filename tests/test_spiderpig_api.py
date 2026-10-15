@@ -60,7 +60,8 @@ def test_out_of_vocabulary_keys_name_the_allowed_values():
     assert errs["materials.servo"][0].allowed == ("sts3215", "xl330_m288", "xl430_w250")
     assert errs["materials.sheet"][0].nearest == "acrylic_3mm"
     assert errs["constructions.pin"][0].nearest == "chicago"
-    assert errs["outputs[1]"][0].allowed == ("step", "stl", "print", "dxf", "bom", "glb", "mjcf")
+    assert errs["outputs[1]"][0].allowed == ("step", "stl", "print", "dxf", "bom", "glb", "mjcf",
+                                             "urdf")
 
 
 def test_wildcards_are_rejected():
@@ -547,7 +548,7 @@ def test_export_writes_what_the_cli_writes(tmp_path, monkeypatch):
     # 65 with the Chicago screws as bought (1 mm barrel steps: fewer shims)
     # 63: no printed lower spacer thinner than a print (bonded gaps, 2026-10-05)
     # 64: the cantilever pillar B's gap ring over its last link (W8 D2, 2026-10-07)
-    assert len(manifest["parts"]) == 64
+    assert len(manifest["parts"]) == 54     # (64 before the stock tubes, 2026-10-14)
     with pytest.raises(ValueError, match="unknown formats"):
         api.export(d, ["pdf"], tmp_path)
 
@@ -847,8 +848,9 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     # (the PLA and the Loctite are on hand since round 4, bom.ON_HAND: not in the floor)
     # Since 2026-10-08 a sheet SendCutSend cuts is its cutting line, the material included
     # (bom.cut_estimate): the floor counts one part on each, its least charge (acrylic
-    # $1.33, aluminium $2.20); the epoxy $7.99 at J-B Weld
-    cut = 1.33 + 3 * 2.20
+    # $1.33, aluminium $2.20 until 2026-10-12; since, one part at one off: 3 mm acrylic
+    # $2.00, 5052 $3.30, 6061 $3.20); the epoxy $7.99 at J-B Weld
+    cut = 2.00 + 3.30 + 2 * 3.20
     assert total == pytest.approx(servo + 7.99 + cut, abs=0.01)
     assert unpriced == []
     assert priced[0].startswith("Feetech STS3215")
@@ -867,9 +869,9 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
     # (no acrylic cement since the glue-free joinery of 2026-10-04: it was $12.84.) Since
     # 2026-10-08 the floor counts a cut part on each SendCutSend sheet, not a blank's
-    # estimate ($10.99-32 each): 2 servos, the epoxy and 4 sheets' least cut, $70.90, so a
+    # estimate ($10.99-32 each): 2 servos, the epoxy and 4 sheets' least cut, $74.67, so a
     # ceiling of 60 (not 100) is what it refutes
-    assert total == pytest.approx(2 * xl330 + 7.99 + 1.33 + 3 * 2.20, abs=0.01)
+    assert total == pytest.approx(2 * xl330 + 7.99 + cut, abs=0.01)
     assert total > 60
     rep = api.verify(robot, "quick")
     rows = {r.requirement: r for r in rep.rows}
@@ -1182,8 +1184,9 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     # (the PLA and both threadlockers on hand since round 4, bom.ON_HAND: not in the floor)
     # (not the deck's inserts since round 10: a robot whose deck doesn't fit buys none)
     # (2026-10-08: the servos $20.00 at Seeed; a SendCutSend sheet is its cutting line, one
-    # part's least charge in the floor ($2.20 in aluminium), the plywood a $3.10 blank)
-    assert total == pytest.approx(40.0 + 3.10 + 7.99 + 2 * 2.20)
+    # part's least charge in the floor ($2.20 in aluminium; since 2026-10-12 one part at one
+    # off: the 5052 frame $3.30, the 6061 crank $3.20), the plywood a $3.10 blank)
+    assert total == pytest.approx(40.0 + 3.10 + 7.99 + 3.30 + 3.20)
     assert unpriced == []
     assert not any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
     assert sum(line.startswith("Titebond II") for line in priced) == 0
@@ -1196,8 +1199,9 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     # and the Chicago barrels' epoxy $7.99 (PLA, 222 on hand); the keyed crank and printed
     # pillars it was pinned to until 2026-10-07: 72.96, CA for the anchors, no crank blank
     # (2026-10-08: the servo $20.00, the epoxy $7.99, one part's cut on each SendCutSend
-    # sheet: acrylic $1.33, the 5052 frame and the 6061 crank $2.20 each)
-    lift_floor = 20.0 + 7.99 + 1.33 + 2 * 2.20
+    # sheet: acrylic $1.33, the 5052 frame and the 6061 crank $2.20 each; since 2026-10-12
+    # one part at one off: acrylic $2.00, the frame $3.30, the crank $3.20)
+    lift_floor = 20.0 + 7.99 + 2.00 + 3.30 + 3.20
     assert verify_module.cost_floor(lift)[0] == pytest.approx(lift_floor)
     row = next(r for r in api.verify(lift, "quick").rows
                if r.requirement == "budget.cost_floor_usd")
@@ -1221,7 +1225,7 @@ def test_a_bom_exported_without_a_dxf_still_buys_the_sheets(tmp_path):
                                             + bom["cutting_usd"])
     acrylic = next(c for c in bom["cutting"] if c["sheet"] == "acrylic_3mm")
     assert acrylic["service"] == "SendCutSend"
-    assert acrylic["usd"] >= 1.33 * acrylic["parts"]
+    assert acrylic["usd"] >= 2.00 * 0.45 * acrylic["parts"]  # its least at the deepest break
 
 
 @pytest.mark.slow
@@ -1439,7 +1443,7 @@ def test_r5_the_transmission_angle_is_a_target_and_a_row():
     from spiderpig import verify as verify_module
 
     f = TARGET_FIELDS["motion"]["transmission_angle_deg"]                    # entry 2
-    assert f.kinds == ("walker", "mechanism")
+    assert f.kinds == ("walker", "mechanism", "arm")
     assert not f.hard
     assert f.source == "check"
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "rocker_amplifier"},

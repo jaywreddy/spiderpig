@@ -21,6 +21,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_multi_linkage.py": "linkage",
     "test_transforms.py": "linkage",
     "test_mechanisms.py": "linkage",
+    "test_arm.py": "linkage",
     "test_walk.py": "linkage",
     "test_viewer_parity.py": "linkage",
     # server / view (P1)
@@ -28,6 +29,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_server_hardening.py": "server",
     "e2e/test_drive.py": "server",
     "e2e/test_viewer.py": "server",
+    "test_precision.py": "strength",
     # the planner (P2)
     "test_stack.py": "planner",
     "test_route.py": "planner",
@@ -38,7 +40,16 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_clearance.py": "planner",
     # constructions and fabrication (P3)
     "test_axle.py": "construction",
+    "test_platform.py": "construction",
     "test_pivots.py": "construction",
+    "test_pair.py": "construction",
+    "test_stiffness.py": "linkage",
+    "test_band.py": "linkage",
+    "test_repeatability.py": "strength",
+    "test_ball_pivots.py": "construction",
+    "test_transmissions.py": "construction",
+    "test_turret.py": "construction",
+    "test_control.py": "linkage",
     "test_crank.py": "construction",
     "test_bolt_crank.py": "construction",
     "test_standoff.py": "construction",

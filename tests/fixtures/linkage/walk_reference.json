@@ -1,6 +1,6 @@
 {
  "data": {
-  "config": "BuildConfig(linkage='klann', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+  "config": "BuildConfig(linkage='klann', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
   "metrics": {
    "bob_mm": 23.707766403957365,
    "degenerate_fraction": 0.0,
@@ -18,7 +18,7 @@
    ],
    "foot_bob_mm": 15.797668636118388,
    "mean_contacts": 4.022222222222222,
-   "min_margin_mm": 52.81501683867799,
+   "min_margin_mm": 52.81484506366646,
    "pitch_deg": [
     -8.436210048144233,
     8.436210048144032
@@ -82,8 +82,8 @@
   },
   "walk": {
    "com": [
-    -0.48533011092460304,
-    4.822880919073079,
+    -0.4794734937126326,
+    4.764681836085797,
     0.0
    ],
    "feet": [
@@ -11679,11 +11679,11 @@
    "theta_samples": 360
   }
  },
- "engine_version": "0.1.0+b266aedf3f13",
+ "engine_version": "0.1.0+cbc6db16875a",
  "generator": "tests/test_walk.py::test_walk_reference_fixture_is_current",
  "source": {
   "file": "tests/_linkage.py",
   "name": "walk_reference_doc"
  },
- "source_key": "gen-547faf0b98f8d8dd"
+ "source_key": "gen-50462f600833ae37"
 }

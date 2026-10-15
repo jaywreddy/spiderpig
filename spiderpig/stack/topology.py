@@ -173,6 +173,11 @@ class Topology:
     frame_bodies: tuple[str, ...] = ()
     crank_bodies: tuple[str, ...] = ()
     crank_points: dict[str, tuple[float, float]] = field(default_factory=dict)
+    # points a group fixed to a link (an arm's hub bolts): name -> (the point it turns
+    # about, the point that sets its direction, its (along, across) offset there, its
+    # lateral bound)
+    link_points: dict[str, tuple[str, str, tuple[float, float], float]] = field(
+        default_factory=dict)
 
     def axes_of(self, kind: AxisKind) -> list[Axis]:
         return [a for a in self.axes if a.kind == kind]
@@ -187,6 +192,22 @@ class Topology:
         xy = g["O"] + r * np.stack([np.cos(theta), np.sin(theta)], axis=-1)
         self.geometry = self.geometry.extend({name: xy})
         self.crank_points[name] = (r, angle_deg)
+        return name
+
+    def add_link_point(self, name: str, about: str, toward: str,
+                       offset: tuple[float, float], lateral: float = 0.0) -> str:
+        """A point fixed to a link, ``offset`` (along, across) from the point ``about`` in
+        the direction of ``toward``, added to the geometry with its ``lateral`` bound (an
+        arm's tour) and remembered (a re-sampled topology gets it too: ``verify_plan``)."""
+        g = self.geometry.points
+        o = np.asarray(g[about], dtype=float)
+        d = np.asarray(g[toward], dtype=float) - o
+        u = d / np.linalg.norm(d, axis=-1, keepdims=True)
+        v = np.stack([-u[..., 1], u[..., 0]], axis=-1)
+        xy = o + offset[0] * u + offset[1] * v
+        self.geometry = self.geometry.extend({name: xy}, lateral={name: lateral})
+        self.link_points[name] = (about, toward, (float(offset[0]), float(offset[1])),
+                                  float(lateral))
         return name
 
     @property
@@ -250,6 +271,25 @@ _SAMPLED: dict[tuple, Topology] = {}     # a module template's topology, sampled
 SAMPLED_MAX = 16                          # templates kept (the newest)
 
 
+ARM_SAMPLES = 4
+"""An arm's topology is sampled this many times as densely (its tour crosses a box,
+:meth:`linkage.Linkage.tour`, where a crank's cycle is one line)."""
+
+
+def _arm_of(tmpl):
+    """The arm linkage a template is of (its ``meta``), else ``None``."""
+    meta = tmpl.meta if isinstance(getattr(tmpl, "meta", None), dict) else {}
+    if "linkage" not in meta:
+        return None
+    from spiderpig.linkage import get
+
+    try:
+        lk = get(meta["linkage"])
+    except KeyError:
+        return None
+    return lk if lk.kind == "arm" else None
+
+
 def topology_from_template(tmpl, samples: int = 1440) -> Topology:
     """Classify a template's bodies and joints into links and axles.
 
@@ -265,6 +305,8 @@ def topology_from_template(tmpl, samples: int = 1440) -> Topology:
     read-only :class:`Geometry`, whose distance table then serves them all.
     """
     meta = tmpl.meta if isinstance(getattr(tmpl, "meta", None), dict) else {}
+    if _arm_of(tmpl) is not None:
+        samples *= ARM_SAMPLES
     key = None
     if {"linkage", "module", "phases", "proportions"} <= set(meta):
         key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections),
@@ -285,7 +327,7 @@ def _copy_of(base: Topology) -> Topology:
     """A topology of ``base``'s links, axes and points with its own geometry (own points,
     sharing the base's distance table for them) and its own crank points."""
     geo = Geometry(dict(base.geometry.points), shared=base.geometry)
-    return replace(base, geometry=geo, crank_points={})
+    return replace(base, geometry=geo, crank_points={}, link_points={})
 
 
 def _sample_topology(tmpl, samples: int) -> Topology:
@@ -326,9 +368,15 @@ def _sample_topology(tmpl, samples: int) -> Topology:
         b.name: tuple((point_of[(b.name, p)], point_of[(b.name, q)]) for p, q in b.outline)
         for b in tmpl.bodies if is_link(b.name)
     }
+    lateral: dict[str, float] = {}
+    arm = _arm_of(tmpl)
+    if arm is not None:         # each point's move between the tour's rows: its joints' most
+        lk_lat = arm.tour_lateral(tuple(tmpl.meta["proportions"]))
+        for node, name in point_of.items():
+            lateral[name] = max(lateral.get(name, 0.0), lk_lat.get(node[1], 0.0))
     return Topology(
         name=tmpl.name,
-        geometry=Geometry(points),
+        geometry=Geometry(points, lateral=lateral),
         links=links,
         axes=tuple(sorted(axes, key=lambda a: a.name)),
         point_of=point_of,

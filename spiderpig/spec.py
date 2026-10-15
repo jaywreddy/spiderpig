@@ -30,13 +30,16 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, fields
 
 from spiderpig import construction, linkage, servos
+from spiderpig import roles as rolemod
 from spiderpig.config import (
     CRANK_SHEET,
     DEFAULT_CRANKS,
     REMOVED_PARAMS,
+    REMOVED_ROLES,
     BuildConfig,
     removed_construction,
     removed_param,
+    removed_role,
 )
 from spiderpig.config import default_module as config_default_module
 from spiderpig.construction.base import Params
@@ -45,8 +48,8 @@ from spiderpig.hardware.catalog import _load as _load_catalog
 from spiderpig.layout import DEFAULT_KERF
 
 SPEC_VERSION = "1"
-KINDS = ("walker", "mechanism")
-OUTPUTS = ("step", "stl", "print", "dxf", "bom", "glb", "mjcf")
+KINDS = ("walker", "mechanism", "arm")
+OUTPUTS = ("step", "stl", "print", "dxf", "bom", "glb", "mjcf", "urdf")
 DEFAULT_OUTPUTS = ("step", "stl", "print", "dxf", "bom")
 WILDCARDS = frozenset({"any", "*", "?", ""})
 FIT_FIELDS = tuple(f.name for f in fields(Params))
@@ -154,8 +157,8 @@ def _fields(*rows: tuple) -> dict[str, TargetField]:
     return {r[0]: TargetField(*r) for r in rows}
 
 
-BOTH = ("walker", "mechanism")
-WALKER, MECHANISM = ("walker",), ("mechanism",)
+BOTH = ("walker", "mechanism", "arm")       # (every kind)
+WALKER, MECHANISM = ("walker",), ("mechanism", "arm")   # (what has feet; what has an output)
 
 TARGET_FIELDS: dict[str, dict[str, TargetField]] = {
     "motion": _fields(
@@ -265,11 +268,14 @@ class LinkageSpec:
 class LegsSpec:
     """A named leg module of the linkage (``single``, ``double``, ``decker``, ``quad`` or its
     own), the crank phase of each leg in degrees, and how many sides (2: the robot; 1: one
-    side). ``None`` is inferred: a walker's ``quad`` on 2 sides, a mechanism's ``single``."""
+    side). ``None`` is inferred: a walker's ``quad`` on 2 sides, a mechanism's ``single``.
+    ``robot``: an arm's whole robot (its side on the turntable, its tool) or its side
+    alone; ``None``: the robot (an arm's only: a walker's robot is its two sides)."""
 
     module: str | None = None
     phases_deg: tuple[float, ...] | None = None
     sides: int | None = None
+    robot: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -287,12 +293,19 @@ class MaterialsSpec:
 
 @dataclass(frozen=True)
 class ConstructionsSpec:
-    """The pillar, pin and crank constructions (:data:`construction.AXLES`, ``.CRANKS``)."""
+    """The pillar, pin and crank constructions (:data:`construction.AXLES`, ``.CRANKS``),
+    and every later role's (:mod:`spiderpig.roles`: ``roles``, written flat beside them in
+    the spec's ``constructions`` object)."""
 
     pillar: str | None = None
     pin: str | None = None
     crank: str | None = None
     heads: str | None = None     # fasteners' heads: "sink", "gap" or "best" (stack.StackSpec)
+    roles: Mapping[str, str] | None = None   # role -> key, for the roles without a field
+
+
+CONSTRUCTION_FIELDS = ("pillar", "pin", "crank", "heads")
+"""The ``constructions`` keys of their own; every other key there is a role's."""
 
 
 @dataclass(frozen=True)
@@ -360,6 +373,7 @@ class Spec:
         if self.linkage.params:
             out["linkage"]["params"] = dict(self.linkage.params)
         legs = _drop_none({"module": self.legs.module, "sides": self.legs.sides,
+                           "robot": self.legs.robot,
                            "phases_deg": (list(self.legs.phases_deg)
                                           if self.legs.phases_deg is not None else None)})
         if legs:
@@ -373,6 +387,8 @@ class Spec:
         for name in ("materials", "constructions", "fit"):
             sub = _drop_none({f.name: getattr(getattr(self, name), f.name)
                               for f in fields(getattr(self, name))})
+            if name == "constructions":                 # the roles sit flat beside the rest
+                sub.update(sub.pop("roles", None) or {})
             if "sheet_size_mm" in sub:
                 sub["sheet_size_mm"] = list(sub["sheet_size_mm"])
             if sub:
@@ -396,6 +412,13 @@ def _drop_none(d: dict) -> dict:
     return {k: v for k, v in d.items() if v is not None}
 
 
+def _constructions(data: Mapping) -> ConstructionsSpec:
+    """The ``constructions`` object: its own keys, every other key a role's."""
+    own = {k: v for k, v in data.items() if k in CONSTRUCTION_FIELDS}
+    roles = {k: v for k, v in data.items() if k not in CONSTRUCTION_FIELDS}
+    return ConstructionsSpec(**own, roles=roles or None)
+
+
 def _build(data: Mapping) -> Spec:
     """``data`` as a :class:`Spec` (validated already)."""
     lk = data["linkage"]
@@ -410,11 +433,12 @@ def _build(data: Mapping) -> Spec:
         legs=LegsSpec(legs.get("module"),
                       None if legs.get("phases_deg") is None
                       else tuple(float(v) for v in legs["phases_deg"]),
-                      None if legs.get("sides") is None else int(legs["sides"])),
+                      None if legs.get("sides") is None else int(legs["sides"]),
+                      None if legs.get("robot") is None else bool(legs["robot"])),
         motion={k: _target(v) for k, v in (data.get("motion") or {}).items()},
         size={k: _target(v) for k, v in (data.get("size") or {}).items()},
         materials=MaterialsSpec(**(data.get("materials") or {})),
-        constructions=ConstructionsSpec(**(data.get("constructions") or {})),
+        constructions=_constructions(data.get("constructions") or {}),
         fit=FitSpec(**fit),
         budget={k: _target(v) for k, v in (data.get("budget") or {}).items()
                 if k != ALLOWANCE},
@@ -642,7 +666,7 @@ def validate(data: Mapping) -> list[SpecError]:
                          f"{SPEC_VERSION!r}", (SPEC_VERSION,))
     kind = None
     if "kind" not in top:
-        v.err("kind", "required: walker or mechanism", KINDS)
+        v.err("kind", "required: walker, mechanism or arm", KINDS)
     else:
         kind = v.string(top["kind"], "kind", KINDS)
 
@@ -684,14 +708,14 @@ def validate(data: Mapping) -> list[SpecError]:
                         v.number(val, f"linkage.params.{name}", positive=name not in lk.signed)
 
     # legs
-    legs = v.obj(top.get("legs"), "legs", ("module", "phases_deg", "sides"))
+    legs = v.obj(top.get("legs"), "legs", ("module", "phases_deg", "sides", "robot"))
     if legs is not None:
         modules = list(lk.leg_modules) if lk is not None else module_keys()
         mod = legs.get("module")
         if (isinstance(mod, str) and mod not in modules and lk is not None
                 and mod.strip().lower() not in WILDCARDS):
-            if lk.kind == "mechanism":      # one side, no legs: the walker's words don't apply
-                v.err("legs.module", f"unknown value {mod!r}; {lk.key} is a mechanism: its one "
+            if lk.kind != "walker":         # one side, no legs: the walker's words don't apply
+                v.err("legs.module", f"unknown value {mod!r}; {lk.key} is a {lk.kind}: its one "
                                      f"module is {', '.join(modules)} (one side, no legs; the leg "
                                      f"modules double, decker and quad are a walker's)",
                       modules, nearest(mod, modules))
@@ -723,9 +747,15 @@ def validate(data: Mapping) -> list[SpecError]:
         sides = v.number(legs.get("sides"), "legs.sides", integer=True)
         if sides is not None and int(sides) not in (1, 2):
             v.err("legs.sides", f"must be 1 (one side) or 2 (the robot), got {sides:g}", (1, 2))
-        elif sides == 2 and lk is not None and lk.kind == "mechanism":
-            v.err("legs.sides", f"{lk.key} is a mechanism: one side only (it has no feet to "
+        elif sides == 2 and lk is not None and lk.kind != "walker":
+            v.err("legs.sides", f"{lk.key} is a {lk.kind}: one side only (it has no feet to "
                                 "walk on)", (1,))
+        robot = legs.get("robot")
+        if robot is not None and not isinstance(robot, bool):
+            v.err("legs.robot", f"must be true or false, got {_kind(robot)}", (True, False))
+        elif robot is not None and lk is not None and lk.kind != "arm":
+            v.err("legs.robot", f"{lk.key} is a {lk.kind}: legs.robot is an arm's (its "
+                                "turntable); a walker's robot is legs.sides = 2", ())
 
     # targets
     for section in SECTIONS:
@@ -750,8 +780,28 @@ def validate(data: Mapping) -> list[SpecError]:
                   "(the acrylic crank was removed on 2026-10-07)", sheet_keys(True), CRANK_SHEET)
         v.number(m.get("thickness_mm"), "materials.thickness_mm", positive=True)
         v.string(m.get("servo"), "materials.servo", servos.available())
-    c = v.obj(top.get("constructions"), "constructions", ("pillar", "pin", "crank", "heads"))
+    extra = {r.name: r for r in rolemod.extra()}
+    given = top.get("constructions")
+    slots = [q for q in (given if isinstance(given, Mapping) else ())
+             if isinstance(q, str) and "@" in q
+             and getattr(extra.get(rolemod.split(q)[0]), "per", "design") != "design"]
+    c = v.obj(given, "constructions", (*CONSTRUCTION_FIELDS, *extra, *slots, *REMOVED_ROLES))
     if c is not None:
+        for name in REMOVED_ROLES:
+            if name in c and (why := removed_role(name)) is not None:
+                v.err(f"constructions.{name}", why, [*CONSTRUCTION_FIELDS, *extra])
+        for q in [*extra, *slots]:
+            name = rolemod.split(q)[0]
+            if c.get(q) is None:
+                continue
+            if lk is not None and not rolemod.applies(name, lk.kind):
+                v.err(f"constructions.{q}", f"{lk.key} is a {lk.kind}: it has no "
+                      f"{extra[name].title} role ({name!r} is a "
+                      f"{' or '.join(extra[name].kinds)}'s)")
+            elif gone := removed_construction(name, c.get(q)):    # names the replacement
+                v.err(f"constructions.{q}", gone[0], rolemod.choices(name), gone[1])
+            else:
+                v.string(c.get(q), f"constructions.{q}", rolemod.choices(name))
         v.string(c.get("heads"), "constructions.heads", ["best", "gap", "sink"])
         for what in ("pillar", "pin", "crank"):
             reg = sorted(construction.CRANKS if what == "crank" else construction.AXLES)
@@ -879,6 +929,9 @@ def spec_schema() -> dict:
                                                   "module's)"},
                     "sides": {"enum": [1, 2], "description": "2: the robot (default for a "
                                                              "walker); 1: one side"},
+                    "robot": {"type": "boolean", "description": "an arm's whole robot (its "
+                              "side on the turntable, its tool; the default) or its side "
+                              "alone"},
                 },
             },
             "motion": sections["motion"],
@@ -911,12 +964,18 @@ def spec_schema() -> dict:
                     "crank": {"enum": sorted(construction.CRANKS),
                               "default": DEFAULT_CRANKS["walker"],
                               "description": "default: " + ", ".join(
-                                  f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items())},
+                                  f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items() if v)
+                              + "; an arm has none"},
                     "heads": {"enum": ["best", "gap", "sink"], "default": BuildConfig.heads,
                               "description": "fasteners' heads: sunk into a layer, in thin "
                                              "clearance gaps, or best: sunk, and in gaps "
                                              "only when no sunk plan exists (the plan's "
                                              "proof says which was searched)"},
+                    **{r.name: {"enum": rolemod.choices(r.name),
+                                "description": f"{r.title}: {r.help} (a "
+                                               f"{' or '.join(r.kinds)}'s; default: the "
+                                               "design's own)"}
+                       for r in rolemod.extra()},
                 },
             },
             "fit": {"type": "object", "additionalProperties": False, "properties": fit_props},

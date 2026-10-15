@@ -56,6 +56,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from spiderpig import linkage
+from spiderpig import roles as rolemod
 from spiderpig.config import ParamError
 from spiderpig.construction.base import ConstructionError
 from spiderpig.spec import FIT_FIELDS, SpecErrors
@@ -68,6 +69,12 @@ STAGES = ("spec", "program", "output", "drive", "construction", "static", "plan"
 CONFIG_FIELDS = {"thickness_mm": ("materials", "thickness_mm"), "sheet": ("materials", "sheet"),
                  "servo": ("materials", "servo"), "pillar": ("constructions", "pillar"),
                  "pin": ("constructions", "pin"), "crank": ("constructions", "crank")}
+
+
+def config_fields() -> dict[str, tuple[str, str]]:
+    """:data:`CONFIG_FIELDS` and every later role (:mod:`spiderpig.roles`: a key of the
+    spec's constructions), read when asked (a role registered later is in it)."""
+    return {**CONFIG_FIELDS, **{r.name: ("constructions", r.name) for r in rolemod.extra()}}
 
 _BLOCKER = re.compile(r"^\s*(\d+) x (.+?) vs (.+?): (-?[\d.]+) mm apart in one layer, need "
                       r"([\d.]+)\s*$")
@@ -97,18 +104,19 @@ class Recommendation:
         material (``thickness_mm``, ``sheet``, ``servo``) under ``materials``."""
         patch: dict = {}
         notes = []
+        fields_ = config_fields()
         for name, _before, after in rec.changes:
-            if name in CONFIG_FIELDS and isinstance(after, str):
+            if name in fields_ and isinstance(after, str):
                 # a material or construction key (a string): before a linkage parameter of
                 # the same name (the Strider's ``crank`` is its crank radius, a number)
-                section, key = CONFIG_FIELDS[name]
+                section, key = fields_[name]
                 patch.setdefault(section, {})[key] = after
             elif lk is not None and name in lk.params:
                 patch.setdefault("linkage", {}).setdefault("params", {})[name] = after
             elif name in FIT_FIELDS:
                 patch.setdefault("fit", {})[name] = after
-            elif name in CONFIG_FIELDS:
-                section, key = CONFIG_FIELDS[name]
+            elif name in fields_:
+                section, key = fields_[name]
                 patch.setdefault(section, {})[key] = after
             else:
                 notes.append(f"{name} is not a spec field: apply it by hand")

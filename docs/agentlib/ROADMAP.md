@@ -20,7 +20,7 @@ round finds nothing (the loop, below). The scorecard (W0) measures every number 
 | module tiers | 7-33 s each | TESTING.md |
 | full suite, `-n 12` | 580 s / 6150 CPU-s | TESTING.md |
 | first full run after any engine edit (cold test cache) | 689 s | TESTING.md |
-| identity gate, six designs | ~5 min | TESTING.md |
+| identity gate, its designs | ~5 min | TESTING.md |
 | `audit` per module | 75-120 s | CLAUDE.md |
 | largest modules | crank.py 3315, stack.py 2410, api.py 2207 lines | `wc -l` |
 | pyright (basic, no config) | 739 errors | audit |
@@ -65,7 +65,7 @@ PR, not committed. The pyright, ruff and CLAUDE.md rows are as merged (`155c8ab`
 | ruff `RUF` findings | 117 | 0 (with `C4`, `PERF`, `PIE`, `RET`, `BLE`, `PLE`) | W6b: 0 with the extended set, met |
 | CLAUDE.md lines | 679 | 261 | W7: ≤ 300, met |
 | doc check misses | 48 | 0 (`--strict` in CI) | W7: 0, met |
-| identity gate, six designs | ~5 min | 225 s (the `w8-2a130c8` snapshot) | W3: ≤ 2 min, not met |
+| identity gate, its designs | ~5 min | 225 s (the `w8-2a130c8` snapshot) | W3: ≤ 2 min, not met |
 
 The W3 and W4 wall-time targets were set on an idle machine; none was re-measured idle
 (the box was never under load 4, invariant 4), so "not met" above means "not shown".
@@ -116,7 +116,7 @@ The follow-ups after PR #28, each its own branch:
 
 ## Invariants (every workstream, every round)
 
-1. **Identity gate `identical`** on the six designs (`mise run gate -- compare <baseline>`),
+1. **Identity gate `identical`** on the gate's designs (`mise run gate -- compare <baseline>`),
    unless the workstream's criteria name an intended difference; then the diff is listed in
    the PR and accepted by the user, and the baseline is re-snapshotted.
 2. Full suite green (`mise run remote-test`), `mise run lint` clean, `test-viewer` green.

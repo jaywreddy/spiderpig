@@ -79,11 +79,13 @@ from spiderpig.construction.base import (
     Realized,
     hardware,
 )
+from spiderpig.construction.joints import ErrorTerms, plain_hole
 from spiderpig.construction.pivots.common import (
     EPS,
     SLEEVE_COLOR,
     STEEL,
     Column,
+    Stock,
     bored,
     column_air,
     gap_washers,
@@ -107,9 +109,11 @@ class StandoffAxle:
 
     key: str = "standoff"
     label: str = ("6 mm round aluminium standoffs (goBILDA M4) where one stock length fills the "
-                  "column, else one 6 mm steel shaft made to its length (tapped M3), printed "
-                  "rings, button heads through both frame plates")
+                  "column, else one 6 mm steel shaft made to its length (tapped M3), stock "
+                  "tubes cut to length between the links, button heads through both frame "
+                  "plates")
     roles: ClassVar[tuple[str, ...]] = ("pillar",)
+    spacers: ClassVar[Stock | None] = Stock("collar_7x6p1", "shim_din988_6x12", plates=True)
     od: float = 6.0
     id_: float = 3.3                 # the strength check's bore (M4 tap drill)
     yield_mpa: float = 240.0         # 6061-T6
@@ -125,6 +129,7 @@ class StandoffAxle:
     lock_key: str | None = "threadlocker_222"
     lock_per_screw: float = 0.01
     size: str = "M4"                 # "M3": the one-piece shaft's M3 ends (one_piece)
+    ground: bool = False             # the shaft ground (g6): a ball pair's pillar
     stock: str = ""                  # "": goBILDA M4 stock lengths; "shaft": a 6 mm round
     #                                  steel standoff tapped M3 both ends, made to length
     #                                  (MISUMI NETRF6, one_piece)
@@ -141,9 +146,9 @@ class StandoffAxle:
 
     def segment_key(self, length: float) -> str:
         if self.stock == "shaft":
-            from spiderpig.hardware.crank_catalog import pillar_shaft
+            from spiderpig.hardware.crank_catalog import ground_pillar_shaft, pillar_shaft
 
-            return pillar_shaft(length)
+            return ground_pillar_shaft(length) if self.ground else pillar_shaft(length)
         from spiderpig.hardware.crank_catalog import gobilda_1501
 
         return gobilda_1501(length)
@@ -153,8 +158,9 @@ class StandoffAxle:
     def lengths(self) -> tuple[float, ...]:
         from spiderpig.hardware.crank_catalog import GOBILDA_LENGTHS, PILLAR_SHAFT_LENGTHS
 
-        if self.stock == "shaft":
-            return PILLAR_SHAFT_LENGTHS
+        if self.stock == "shaft":     # a ground shaft in whole mm (the end shims the rest)
+            return (tuple(float(L) for L in range(8, 301)) if self.ground
+                    else PILLAR_SHAFT_LENGTHS)
         return GOBILDA_LENGTHS
 
     @property
@@ -203,6 +209,14 @@ class StandoffAxle:
         return key, best[0], float(d["head_d"]), float(d["head_h"])
 
     # -- dimensions and rules ---------------------------------------------------------------
+
+    def error_terms(self, ctx: Context) -> ErrorTerms:
+        """The links on the standoff in plain running holes (``Params.running_fit``); the
+        column's end float as the wobble note assumes it (``set_play``)."""
+        fit = ctx.params.running_fit
+        return plain_hole(fit, self.set_play,
+                          source=f"{self.key}: {self.od:g} mm standoff in "
+                                 f"{self.od + fit:g} mm holes")
 
     def dims(self, ctx: Context, pillar: bool) -> AxleDims:
         p = ctx.params
@@ -343,7 +357,8 @@ class StandoffAxle:
         return any(fits(sp) for n in range(1, 4) for sp in itertools.combinations(cand, n))
 
     def column(self, pillar: bool, links: list[int], top: int,
-               anchored: tuple[bool, bool], pitch: float, layout=None, air=None) -> None:
+               anchored: tuple[bool, bool], pitch: float, layout=None, air=None,
+               **_) -> None:
         """The planner's rule: a standoff must fill the column (at the plan's own z when
         ``layout`` is final)."""
         lo, hi = self.faces(links, top, anchored)
@@ -394,7 +409,7 @@ class StandoffAxle:
         for a, b in itertools.pairwise(faces):
             z0, z1 = build.z(a)[1], build.z(b)[0]
             span = z1 - z0 - column_air(build, group, a + 1, b - 1)
-            length = self.segment(span, b - 1 > a and b - 1 not in col.links)
+            length = self.segment(span, _shim_room(col, a, b))
             over = 0.0 if length is None else length - span
             for k in range(a + 1, b):
                 if over <= EPS:
@@ -432,10 +447,12 @@ class StandoffAxle:
                           f"{self.tighten_nm:g} N·m while the column is bare to hold.",
                           "columns"))
         if inner:
+            lk = getattr(getattr(view.ctx, "config", None), "lk", None)
+            where = ("from outside the inner plate" if lk is not None and lk.kind == "arm"
+                     else "from the servo bay (a ball-end key)")
             ops.append(Op(JOIN, (1,), whole(*inner), "",
-                          "Each pillar's inner screw and washer from the servo bay (a "
-                          f"ball-end key), threadlocker, to {self.tighten_nm:g} N·m.",
-                          "pillar_screws"))
+                          f"Each pillar's inner screw and washer {where}, threadlocker, to "
+                          f"{self.tighten_nm:g} N·m.", "pillar_screws"))
         ops.extend(Op(STACK, (view.slot(view.z[n][0]), 3), whole(n), "",
                       "The take-up shims on their column's top.", "layer")
                    for n in view.named(rf"{stem}_shims\d+"))
@@ -446,7 +463,8 @@ class StandoffAxle:
         top = build.top
         anchored = (0 in col.anchors, top in col.anchors)
         lo_face, hi_face = self.faces(col.links, top, anchored)
-        axle = self.column_axle(set(col.links), hi_face, build.ctx.pitch, lo_face,
+        hubs = {k for k, (role, _) in col.roles.items() if role == "nested"}  # (as the plan)
+        axle = self.column_axle(set(col.links) | hubs, hi_face, build.ctx.pitch, lo_face,
                                 build.plan.layout, lambda a, b: column_air(build, group, a, b))
         if axle is None:
             raise ConstructionError(f"{group.name}: no stock standoff nor a shaft made to "
@@ -480,7 +498,7 @@ class StandoffAxle:
         long = 0.0          # how far the stock standoff (and take-up) is off its gap
         z0, z1 = build.z(a)[1], build.z(b)[0]
         span = z1 - z0 - column_air(build, group, a + 1, b - 1)
-        length = self.segment(span, b - 1 > a and b - 1 not in col.links)
+        length = self.segment(span, _shim_room(col, a, b))
         if length is None:
             raise ConstructionError(f"{group.name}: no stock standoff fits {span:.2f} mm")
         long += max(0.0, length - span - sum(fill.get(k, 0.0) for k in range(a + 1, b)))
@@ -574,3 +592,12 @@ def _column_axle(axle: StandoffAxle, links: frozenset[int], top: int, pitch: flo
                  lo: int, zs: tuple | None = None) -> StandoffAxle | None:
     """:meth:`StandoffAxle.column_axle`, remembered (the planner asks per layout)."""
     return axle._column_axle(links, top, pitch, lo, zs)
+
+
+def _shim_room(col: Column, a: int, b: int) -> bool:
+    """Whether take-up shims may sit under face ``b`` of a column from face ``a``: where the
+    layer under it is a spacer's (not a link's, nor a drive hub's round the column: an
+    arm's pulley, ``nested``: construction.transmissions)."""
+    return (b - 1 > a and b - 1 not in col.links
+            and col.roles.get(b - 1, ("spacer",))[0] != "nested")
+

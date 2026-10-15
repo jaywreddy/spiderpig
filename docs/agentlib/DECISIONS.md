@@ -418,3 +418,692 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** each change's gate diff in [BOM-gate-diffs.md](BOM-gate-diffs.md); the gate
   baseline is `bom2-5989d50` (after the review and the merge; `bom-bbf7001` before). Also fixed: the crank router raised IndexError when no screw
   length fits any crank joint (`route._ranges`); it is now a planner blocker.
+
+### 2026-10-11: the platform registries; ball-bearing pivots back (user; the robot-arm workstream)
+
+- **What:** the engine becomes an extensible robot design system (a desktop palletizer arm
+  is its first new robot). Phase 0 adds the registries: fab methods, construction roles
+  (`BuildConfig.roles`, per design or per drive / joint), vendor CAD for every bought part,
+  joint error terms, material stiffness and expansion. Phase 1 brings ball bearings back as
+  swappable joinery: `--pin ball` (an MR84ZZ bonded into every rider link of the Chicago
+  pin) and `--pillar ball_pillar` (an MR106ZZ in every link on the standoff; `link_radius`
+  6.6 mm). The removed MF63ZZ `bearing` key now names `ball` / `ball_pillar` as its
+  replacement. The defaults stay `chicago` / `standoff` (the walkers are unchanged).
+- **Why:** an arm's precision is its joints' play: a plain hole is 0.2-0.35 mm of diametral
+  clearance, a bearing on the barrel 0.06 (the barrel's fit plus ISO 5753-1 CN). The user
+  asked for bearings as one of the swappable joinery types, with McMaster-Carr's CAD.
+- **McMaster CAD:** McMaster shows its catalog only to a logged-in browser; a scripted
+  session gets a login wall, and getting around it is not done. So the models come through
+  the user's own session (`spiderpig cad login`, then `fetch`), McMaster's Product
+  Information API (an approved customer's certificate: `api-fetch`), or a file downloaded
+  by hand (`cad import`); never committed. The bearings' McMaster offers point at the
+  trade-number listings, unpriced, until such a fetch confirms a part number.
+- **Where:** `spiderpig/roles.py`, `spiderpig/fabmethods.py`, `spiderpig/hardware/cad.py`,
+  `spiderpig/construction/joints.py`, `spiderpig/construction/pivots/ball.py`,
+  `spiderpig/hardware/bearing_catalog.py`, `spiderpig/tools/cad.py`.
+
+### 2026-10-11: arms: ranged inputs and a tour (the robot-arm workstream, phase 2)
+
+- **What:** a third linkage kind, `arm`: no crank, each input turning a link about a frame
+  pivot over a range. Its template's one time is a closed serpentine tour over the
+  inputs' box (64 rows), sampled four times as densely as a crank's cycle; the planner's
+  bound adds each point's move between rows. The palletizer arm is the first.
+- **Why:** every stage samples one cyclic time (the planner's guarantee, `verify_plan`, the
+  contract, the bake); a tour keeps them all as they are, and with the rows' bound the
+  planner's and `verify_plan`'s guarantees cover the whole box (the contract and the bake
+  see the poses they sample), where a second time axis would have meant rewriting each.
+- **Where:** `spiderpig/linkage/engine.py` (`Linkage.tour`, `tour_lateral`, `LegSolution.at`),
+  `spiderpig/stack/geometry.py`, `spiderpig/stack/topology.py`, `spiderpig/linkages/palletizer.py`,
+  `spiderpig/precision.py`.
+
+### 2026-10-11: an arm's drives: belt first, capstan too (user; phase 3)
+
+- **What:** every arm input a NEMA 17 stepper and a transmission, swappable per drive:
+  `belt` (GT2 16:80, 5:1, the default: the user's "start with the belt") and `capstan`
+  (1 mm Dyneema on a 6 mm sleeve over the motor's shaft and a 30 mm laser-cut drum, 8.7:1).
+  The drives on one pivot alternate plates; the motors' shafts are cut to their hubs; a
+  belt's motor stands on a slider plate outside its frame plate, clamped from outside, so
+  the belt is tensioned once the stack is built (the motor's own screws are inside the
+  stack, out of reach); every hub bolts to a pad its driven link grows round the pivot.
+- **Why:** two drives on the palletizer's shoulder each take three or four layers beside
+  their link, and a stock 24 mm shaft reaches only seven layers from its plate: on one
+  plate they can't both fit (one's bolt heads meet the other's pulley). An uncut shaft's
+  tip would claim the layers past its pulley (five more on the palletizer). The capstan's
+  drum is bounded by the levelling pillar 40 mm from the shoulder.
+- **Open (the phase's review, deferred):** `place_motor` sees the pillar heads and the
+  other motors, not the links' sweeps, and has no fallback past its angle list; the joints'
+  thrust friction is not in the torque budget; no coaxial reduction (planetary,
+  strain-wave) yet; the GT2 belt's working tension is not checked against its rating. The
+  belt's span stiffness and the cord's EA are unverified figures (measure on the build).
+- **Where:** `spiderpig/construction/transmissions/`, `spiderpig/actuators/`,
+  `spiderpig/hardware/motion_catalog.py`, the roles `transmission` and `actuator`.
+
+
+### 2026-10-12: an arm's robot: the turret, its tool, spatial joints, the URDF (phase 4)
+
+- **What:** `BuildConfig.robot` means the whole robot of any kind that makes one
+  (`config.ROBOT_LAYOUTS`): a walker's two mirrored sides (`mirrored_pair`, unchanged), an
+  arm's side on a turntable (`turret`); an arm builds its robot by default (`--side-only`
+  for the side). The turntable is a preset of four parts (role `turntable`:
+  `belt_preload` by default, `mt4` the MT4's plain 608 pair, `capstan_preload`); the tool a
+  role (`tool`: `suction_cup`, `suction_wrist`, or `none`). Spatial joints are data on the
+  mechanism (`kinematics.RobotTree`), which the bake, the URDF and the precision budget
+  read. The URDF keeps a spanning tree of the side's pins, a `mimic` where a pin follows
+  one input, a `tool0` at the cup's tip, `base_link` on the base's floor; its sidecar maps
+  the rest. M3 socket heads of 45 to 70 mm joined the screw table (the hub's screws).
+- **Why:** the yaw bears on a fixed 8 mm shaft through two skateboard 608s: stock, cheap,
+  McMaster-modelled; the plain pair's tilt (its clearance over the spacing) is the MT4's
+  weakness the wave-washer preload removes. The belt and capstan reuse the side's
+  transmissions' numbers so a yaw and an elbow are judged alike. The capstan's yaw drum
+  radius is 40 mm (11.6:1), not larger: the wraps walk along a sleeve on the motor's 24 mm
+  shaft, and a 55 mm radius (15.9:1) would turn only 174 deg. The wrist's NEMA 11 doesn't
+  fit beside the end plate inside the stack, so it hangs under the flange (the turntable
+  then stands lower for it passing over).
+- **The phase's review** (integrated): the capstan drum got its cord anchors (past the
+  travel either side of the cord's tangent, notches from the rim); clamping collars (a
+  hardened shaft takes no set screw); the homing flag at the turntable's rim, printed
+  opaque; a GT2 loop needs 6 teeth in mesh on the small pulley (`belt.MIN_MESH`: the
+  side's planar belts too, so the palletizer's motors stand farther out); the yaw motor's
+  shaft is no longer cut; the precision budget gained the yaw's homing (repeatability),
+  its drive's eccentricity and its axis out of plumb (accuracy: estimates, named in
+  `construction.rotary`); the tool's check covers the axles crossing its layers and the
+  drives' belts; the assembly text says to drill the pulley centred, bond the bearings on
+  the shaft and set the preload with a feeler; the URDF's joints carry each motor's
+  effort and a nominal speed.
+- **Open:** the shoulder stands high over the base's floor and the palletizer's input box
+  reaches little below the shoulder, so the work stands on a platform (or the box grows);
+  the frame plates' tipping load on the printed brackets, the base plates' and the
+  turntable's stiffness, and the wave washer's force (30 N) are unverified or unmodelled;
+  an h6 shaft may hold the upper bearing by interference and defeat the preload (try it);
+  the cables loop round the solid shaft (no slip ring, no hollow shaft); the spec and the
+  MCP still build an arm's side only (phase 7); the guide puts the turret in one step.
+- **Where:** `spiderpig/construction/robot.py` (`LAYOUTS`, `Turret`),
+  `spiderpig/construction/rotary/`, `spiderpig/construction/tools.py`,
+  `spiderpig/kinematics/`, `spiderpig/urdf.py`, `spiderpig/hardware/robot_catalog.py`.
+
+### 2026-10-12: milled parts on the user's own mill (phase 5)
+
+- **What:** a fab method `milled` and a robot-level role `mill` (`milling.MILLS`: the
+  Makera Carvera; `none` by default). A milled part is a `milling.MillPart`: its plate
+  stock (`hardware/plate_catalog.py`: 6061-T6 at 1/8, 1/4, 3/8 in, 6 mm acrylic and
+  polycarbonate, bought by the 6 x 6 in piece), its outline and 2.5-D operations from one
+  side; its solid is drawn from them and `milling.check` holds it to the mill's rules. The
+  build writes `mill/` (each part's STEP, `parts.csv`, `SETUP.md`); the BOM buys the plate
+  and notes the machine time; milled parts group by their rigid invariants (a housing fitted
+  upside down is the same part). With a mill the turntable's hub is two milled bearing
+  housings (3/8 in 6061, the seat bored to a slip fit with its shoulder in one piece,
+  retaining compound) in place of the laser-cut seats and shoulders.
+- **Why:** the user mills aluminium on a Carvera (2026-10-11). A bored seat is concentric
+  with its screws and holds a fit a laser-cut stack can't (the phase 4 review's coaxiality
+  concern); the rest of the robot stays laser-cut (a flat plate gains nothing milled). The
+  capstan drum is not milled: its groove is a side cut, not 2.5-D.
+- **The phase's review** (integrated): milled parts group by their specs, not their
+  solids' measurements (a moved hole or a mirror image measures the same); a pocket needs
+  1.4 x its tool to spiral (the 3.4 mm screw holes are spotted on the mill and drilled on a
+  press), a blind pocket a floor, the profile the outline; the seat is drawn at a slip fit's
+  middle (+0.01/+0.04, not the bearing's nominal a 1/8 in end mill cuts under); the setup
+  sheet says how to hold the plate, rough and finish, try the bearing before the profile
+  and deburr; the hub's screws are tightened with both bearings on the shaft (their holes
+  alone leave the seats 0.4 mm apart); a mill's plate is refused as any laser sheet.
+- **Open:** the removal rates and flute lengths are estimates (the machine's own feeds and
+  speeds are the authority); the setup sheet holds no toolpaths (the Carvera's CAM makes
+  them from the STEP); a dowel register between the housings would fix their alignment
+  without the shaft; `spiderpig export` and the MCP write no `mill/` (they build an arm's
+  side only); the walkers never mill (the role is an arm's).
+- **Where:** `spiderpig/milling.py`, `spiderpig/fabmethods.py`,
+  `spiderpig/hardware/plate_catalog.py`, `spiderpig/construction/rotary/turret.py`
+  (`TurretPlan.housing`), `spiderpig/hardware/bom.py` (`milled_stock`).
+
+### 2026-10-12: driving the arm: kinematics, steps, homing, Klipper (phase 6)
+
+- **What:** `spiderpig/control/` and `spiderpig control`: the arm's kinematics in the
+  URDF's frame (`ArmModel`: forward from the linkage and the turret, inverse by the
+  turntable's bearing and bounded least squares on the planar inputs), each joint's steps
+  through its transmission's ratio and its motor's mounting sense (`Axis`), homing (the
+  turntable onto its flag's edge from one side; the planar joints by a digital angle gauge
+  on their links, since the palletizer's inputs are those links' angles from horizontal;
+  then each motor snapped to its nearest full step), a calibration fit of link lengths and
+  zeros to measured poses, a Klipper `printer.cfg` (each joint a manual stepper in
+  joint degrees, TMC2209s, the endstop, the vacuum's pins) and a Moonraker host that
+  streams straight moves as synchronised joint segments.
+- **Why:** Klipper on a 3D-printer board is the cheapest stepper controller with UART
+  drivers and an HTTP API; it has no arm kinematics, so the host does them and each joint
+  moves in its own degrees. The planar joints carry no switch (no hard stop is designed and
+  stall homing would hit the arm's own parallelograms); a gauge on a link reads its input
+  directly, and the calibration refines it.
+- **The phase's review** (integrated): the gauge is read with the motors energised (a
+  rotor jumps up to two full steps to its driver's phase when they come on); homing's
+  repeatability comes from a recorded reference phase (the driver's `MSCNT` at the
+  trigger, as Klipper's `endstop_phase`), not a rounded count; the turntable's search never
+  goes farther than the half of its range home is in, slowly; the config never disables the
+  motors when idle, reads the phase as `DUMP_TMC STEPPER=q1`, holds with spreadCycle; the
+  host's segments run at constant speed (`ACCEL=0`: the joints keep time), its joint state
+  changes only once Moonraker takes a move (JSON); calibration says what it can't fix (a
+  parallelogram's rod off its opposite side) and applies its offsets to the axes; a side
+  alone's frame is the URDF's (right-handed) and its IK refuses a target off its plane.
+- **Open:** a board's pins are placeholders (the user's board decides them); each motor's
+  sense is the design's and a jog checks it (the phase's sign too); the reference phase is
+  recorded by hand; long moves stop and go between segments (Klipper's `GCODE_AXIS`
+  coordinated moves, where installed, would not); a hardware repeatability run (a dial
+  indicator) is the user's test of the precision budget; switches on the planar joints
+  would make homing automatic.
+- **Where:** `spiderpig/control/` (`arm.py`, `mapping.py`, `homing.py`, `calibrate.py`,
+  `klipper.py`, `host.py`, `cli.py`).
+
+### 2026-10-12: an arm through every surface (phase 7)
+
+- **What:** the spec's `legs.robot` (an arm's only; default the robot) makes the API, the
+  MCP, the store and `spiderpig view` build an arm's turret, as `spiderpig build` does;
+  `api.export` writes `urdf` (the URDF, its meshes, the joint map and a MuJoCo model of the
+  same tree: a hinge per joint, the loops closed by `connect` equalities at their pins, a
+  position actuator per motor) and `mill`; the viewer poses an arm by joint sliders
+  (`/api/pose/{mode}`, `spiderpig.pose`); `/api/linkages` gives an arm's inputs and
+  ranges; the guide's arm steps name drives, not a crank or a servo; the gate's designs
+  include `palletizer_turret`, and a new baseline regenerates `DESIGNS.md`.
+- **Why:** the workstream's last phase: every surface that took a walker takes an arm
+  (the user's direction, 2026-10-11).
+- **The phase's review** (integrated): a stored arm loads as the robot it resolved to
+  (`legs.robot`; one stored before it, a side, stays one, `derive` too); the MuJoCo model's
+  joints carry their motors' rotor inertia through the reduction (`armature`) and each
+  position actuator is no stiffer than its inertia holds at the timestep (the wrist's
+  diverged), the loops' `connect`s stiffer; a pose answers in milliseconds (the template
+  and the glb's nodes cached) and a walker is refused before any bake; the sliders start at
+  the clip's first frame (`inputs0`), capture it before anything awaits, and keep one
+  request in flight; `mill` and `mjcf` say why they skip; the gate's `compare` skips the
+  designs its baseline lacks.
+- **Open:** the walkers' MJCF and walk model are a walker's (an arm's MuJoCo model is the
+  URDF's sibling, not `spiderpig sim`'s; the steppers' rotor inertias are typical
+  datasheet figures, unverified); the viewer's precision overlay (the error budget
+  over the workspace) is not drawn yet; the joint sliders were checked by their tests (the
+  server's poses against the bake's own frames, the viewer's composition in vitest), not in
+  a browser here.
+- **Where:** `spiderpig/spec.py` (`LegsSpec.robot`), `spiderpig/stages/resolve.py`,
+  `spiderpig/api/exports.py`, `spiderpig/urdf.py` (`mjcf`), `spiderpig/pose.py`,
+  `spiderpig/server/app.py`, `viewer/src/arm.ts`, `tests/gate/identity_gate.py`.
+
+### 2026-10-12: an arm's pivots default to ball bearings (user)
+
+- **Decision:** an arm's pins and pillars default to `ball` / `ball_pillar` (an MR84ZZ in
+  every rider on the Chicago barrel, an MR106ZZ in every link on the standoff), its links
+  to a 6.6 mm radius (the MR106ZZ seat plus `min_wall`); walkers and mechanisms keep the
+  Chicago screw and the standoff. The defaults are data per kind
+  (`config.DEFAULT_PIVOTS`, `config.KIND_FIT`), read like the crank's
+  (`default_pin`, `default_pillar`, `default_params`); a config, spec or CLI naming a pin,
+  pillar or fit keeps it, and a design moved to another kind gets that kind's.
+- **Why:** the user stepped up to bearings for the palletizer (2026-10-11) and expected
+  them by default; they had been built only as a swappable option, so the arm's budget
+  was quoted on plain holes, whose play the arm's levers (gain ~9 at O and E) make
+  millimetres at the tool.
+- **Open:** the budget carries each joint's radial play only; a joint's tilt (a single
+  3 mm bearing's, ~1.5 deg free; a plain hole's) does not reach the tool
+  (`precision.joint_clearances`). The bore-on-shaft gaps (0.05 / 0.03 mm) are assumed.
+- **Where:** `spiderpig/config.py`, `spiderpig/roles.py`, `spiderpig/stages/resolve.py`.
+
+### 2026-10-12: tilt in the budget; preloaded ball pairs (round 1 of the arm's precision review)
+
+- **Decision:** the error budget counts each link's tilt and end float out of the plane
+  (`precision.out_of_plane`: a linear programme over the bodies' rise and tilts, the loops
+  counted, each column's float shared by its links; added to the in-plane total in
+  quadrature), from the fabricated side's wobble notes. New pivots `ball_pair` /
+  `ball_pair_pillar` (`construction/pivots/pair.py`): each rider's bearing paired with an
+  open one in a hub laser-cut from the link's sheet and bonded to its face, in the spacer
+  layer beside it (the column's ring replaced; every spacer layer claims the hub's radius);
+  the column clamped through the inner rings by a DIN 2093 disc spring, so no end float. A
+  link with no free neighbour layer keeps one preloaded bearing.
+- **Why:** the user asked for iterative fixes against the field, weakest link first. With
+  tilt counted, the ball pivots' links (about 1.4 deg each) put the tool 10.9 mm out of the
+  plane, the largest term by far. Thick (6.35 mm) aluminium links with the pair inside were
+  tried first: the planner padded the stack to 54 layers (a thick link thickens its layer,
+  the drives' shafts stop reaching their hubs, and a rejected leaf teaches the search
+  nothing), so the pair went beside the link instead, as the MT4 puts thickness at the joint.
+- **Result (palletizer, belts):** out of the plane 10.85 -> 0.70 mm; 7 of 10 riders paired
+  (R, U and W single: their neighbour layers are taken); the plan unchanged in size.
+- **Open:** the pair's 0.02 deg tilt and the bore-on-shaft gaps are estimates; the rings'
+  inner-ring land is drawn as the plain ring; the planner can't yet place a link to give it a
+  hub, nor plan thick links well (`plan_z` thickness at search time, nogoods on leaf
+  rejections).
+- **Where:** `spiderpig/precision.py`, `spiderpig/construction/pivots/pair.py`,
+  `spiderpig/hardware/bearing_catalog.py`, `spiderpig/hardware/fastener_catalog.py`.
+
+### 2026-10-12: ground shafts under the ball pairs (round 2 of the arm's precision review)
+
+- **Decision:** `ball_pair` runs on a ground 4 mm g6 pin cut to length (`pair.GroundShaft`,
+  0.5 mm steps, an M2 socket head and a 2.2 x 5 washer at each end, the disc spring under
+  the top one, the host bonded to it as to a Chicago barrel), and `ball_pair_pillar` always
+  on the one-piece 6 mm steel shaft, ordered ground: the bearings' bore-on-shaft gap 12 um
+  at worst (`pair.GROUND_FIT`) where the Chicago barrel's was taken at 50 um and the goBILDA
+  standoff's at 30.
+- **Why:** with the tilt fixed, the in-plane joint play (1.25 mm) was the largest class,
+  every pin's gap multiplied by the elbow-drive parallelogram's gains (9 at O and E, 7 at C
+  and R). No precise arm runs bearings on a screw's barrel: the MT4's pairs ride 6 mm
+  shafts with M4-tapped ends.
+- **Result (palletizer, belts):** in-plane joint play 1.25 -> 0.39 mm; repeatability 2.37
+  -> 1.56 mm. The round-1 docstring's claim that a single bearing is preloaded was wrong
+  (rings on the inner ring only pass the spring's load inner ring to inner ring); its
+  numbers already counted it unloaded.
+- **Open:** the ground pin's M2-tapped ends on a 4 mm shaft and its price are unverified at
+  MISUMI; the disc spring's setting (0.25 mm of travel, set by 0.1 mm shims) is coarse; the
+  pairs' 0.02 deg against the pins' couples from `sim/loads.py` is unchecked.
+- **The hub rule (round 3's first finding):** which riders got a hub was the layering's
+  luck (with capstans, U, V, E and W lost theirs: out of the plane 1.45 mm). The pair
+  pivots now hold the planner to it (`pair.hub_layers` through the axle's `column` hook,
+  which `construction.axle` now passes the column's own links, each layer's room and the
+  spacer radius): every rider needs a free spacer layer beside it with the hub's room, one
+  hub a layer, the lower side first, as `PairSeat.hubs` builds them. Belts: 18 layers,
+  repeatability 1.41 mm; capstans and the preloaded capstan turntable: 22 layers, 0.50 mm.
+
+### 2026-10-12: an inclinometer on each arm link (round 3 of the arm's precision review)
+
+- **Decision:** a role `angle_sensor` (per drive; `actuators.sensors.ANGLE_SENSORS`): `gauge`
+  (the default: a digital angle gauge laid on each link by hand at homing, 0.05 deg) or
+  `scl3300` (a Murata SCL3300-D01 inclinometer bonded to the link, its two in-plane axes'
+  `atan2` averaged half a second at rest, 0.02 deg over a few kelvin of offset drift). The
+  budget now counts each planar input's homing (`InputBudget.homing_mm`: the sensor's
+  angle through the input's lever), which it had left out; the drive buys the sensor; the
+  host reads it over SPI (`control.incline`: the datasheet's frames and CRC, the off-frame
+  protocol), and `control.homing.plan` reads the inclinometers instead of the gauge and
+  skips the phase snap on a capstan turntable (its cord may slip against the motor).
+- **Why:** with the pivots and drives fixed, the review found the largest real term
+  outside the budget: the gauge's zero at every power-up, 0.11-0.26 mm per joint through
+  the 130 / 150 mm levers. The Dobot Magician reads its arms' angles from accelerometers in
+  the links; an AS5048 can't sit on the shoulder's pillar (two coaxial inputs, no shaft
+  end). Read at rest before each final approach, the sensors also take out a capstan's
+  creep and the drives' sag.
+- **Open (the review's):** printed rings in the preload path creep under 35 N (metal lands
+  at E, O, C and R); a g6 shaft can be 4 um tight in a bore (check each bearing slides);
+  Dyneema SK creeps (DM20 or Vectran); the C8 spring's seats; the inclinometer's mounting
+  offset and drift are datasheet figures; no SPI driver in Klipper (the host reads it).
+- **Revised the same day (user):** "we shouldn't need closed-loop control": the arms the
+  design copies home each joint to a switch. The MT4's STEP names an optical sensor plate on
+  the base and a J2 detection flag on the upper arm; Thor, PAROL6, the AR4 and the Mirobot
+  home every joint to an optical, micro or inductive switch (fast seek, back off, slow
+  approach); only the Dobot reads its arms' angles (gravity-referenced sensors). The
+  recommended homing is `angle_sensor` `endstop` (a slotted optical endstop on the frame, a
+  flag on the link 40 mm out: 20 um there, 0.065 / 0.075 mm at the tool through q2's and
+  q3's levers; `control.homing.plan` seeks each joint, backs off and comes in slowly); the
+  inclinometer stays an option. Best configuration: 0.62 mm worst case with endstops
+  (0.58 with inclinometers). Open: the q2 / q3 endstops and flags are in the budget, the
+  BOM and the homing, not yet drawn (their place on the frame plate, the flag's claim on
+  the link).
+
+### 2026-10-12: the links' bending in the budget; aluminium links (round 4 of the arm's precision review)
+
+- **Decision:** the budget gains the links' bending (`linkage.stiffness`: a 3D frame of each
+  link's section at its layer, the pins and pillars steel rods between the layers and the
+  frame plates, the joints free only in their turn; checked against the cantilever's
+  formulas and a two-layer twist by hand: `tests/test_stiffness.py`). The recommended arm
+  cuts its links (and its pairs' hubs) from 0.125 in 6061-T6 (`--sheet al6061_3p2mm`)
+  instead of 3 mm acrylic. Parts sources: VXB bearings, Lesjöfors disc springs (DIN 2093's
+  loads checked: the C12.5 is 151 N, not 115), MISUMI SFJW ground pins (4 mm from 20 mm
+  long), DM20 cord for the capstans; the bearings' free models pinned and fetched by
+  `spiderpig cad download`.
+- **Why:** the round's two reviews. The design review: every reference arm has stiff links
+  (the MT4's 5 x 20 mm bars, about 125 times our 3 x 13 mm acrylic in the plane), none a
+  counterbalance spring. The error-model review: the linear gains check against a
+  nonlinear re-solve (0.2 %); gravity seats every pin one way over the whole box, so the
+  pins' play is mostly accuracy (ISO 9283 RP by Monte Carlo 0.05-0.1 mm within a session,
+  0.10-0.15 across power-ups); the links' compliance and creep was the term the budget
+  lacked. With the layers' offsets a load crossing between layers twists the thin links:
+  acrylic sags the tool 5.5 mm under 50 g (a 5 g slide picked up: 0.55 mm), 39 mm/N across
+  the plane; 6061: 0.22 mm (0.022 mm a slide), 1.6 mm/N; the thermal row 0.21 -> 0.07 mm.
+- **Open:** the total still adds the pins' worst play as repeatability (round 5: the
+  ISO 9283 split); the frame plates and the turntable are rigid in the stiffness model;
+  acrylic's creep is not modelled (moot with aluminium).
+
+### 2026-10-12: ISO 9283 repeatability; vision homing to a reference sheet (round 5 of the arm's precision review)
+
+- **Decision:** the budget reports ISO 9283 pose repeatability by Monte Carlo
+  (`spiderpig.repeatability`: 30 cycles to each of five poses, mean + 3 sigma; gravity
+  seats the pins by a static solve; a preloaded pair's bore gap frozen by its clamp's
+  friction unless its load with the moves' accelerations passes `SLIP_N`; backlash and the
+  friction dead band only where gravity doesn't hold the drive; the pairs' tilt by its
+  hysteresis; across power-ups each cycle re-homed), within a session and across
+  power-ups, beside the worst-case bound. The stiffness model takes each link's outline
+  segments and the pairs' moment stiffness (a Hertz estimate) and reports the sag in and
+  across the plane and the sway's frequency. Homing's fine zero comes from a camera on the
+  tool sighting dots on a reference sheet (`homing_reference` `vision_fiducial`,
+  `control.vision`: a sub-pixel dot centroid, least squares of the zeros over two
+  sightings or more): the switches only coarse (the TCST2103 boards). An Omron EE-SX67
+  homing option (`ee_sx67`, the `capstan_precise` turntable, 1/64 microsteps) stays
+  available.
+- **Why:** the round's reviews: the worst-case sum is no maker's number (ISO RP is), and
+  the remaining across-power-up term was homing (0.23 mm with 20 um switches at 40-62 mm
+  flags). The user: "vision based homing to a fiducial target with a reference sheet, we
+  don't need super accurate switch based homing": a camera's 10 um at the tip beats any
+  switch through a lever, and re-sighting also takes out the links' creep and the frame's
+  heat. Within a session the recommended arm (6061 links) gives 0.097 mm ISO RP.
+- **Open:** the tool can't reach the table (its tip stays 112 mm above it in today's box:
+  round 6); the camera's 10 um is an estimate; the stack order sets the links' stiffness
+  about 2x (not a planner objective yet).
+
+### 2026-10-12: the band and the reaching geometry; the ISO model's audit (round 6 of the arm's precision review)
+
+- **Decision:** a linkage may hold a relative limit, `Linkage.band` (degrees of its first
+  input less its second, as the MT4's elbow stops): `Linkage.inputs_at` maps the box, the
+  tour, its rows' spacing and the ISO poses into it, `in_band` says whether inputs are in
+  it, and the inverse kinematics refuses a pose outside it. A second palletizer,
+  `palletizer_reach`, holds the review's geometry: the elbow crank 90 mm, the inputs' box
+  q2 -10..110 and q3 -110..10 within q2 - q3 30..150, the levelling pivot P 40 mm in front
+  at -40 deg and the wrist corner U at 40 deg: every parallelogram 30 deg or more off its
+  dead point (conditioning 226), the elbow drive's gains 9.1 / 7.3 -> 6.0 / 3.3. The ISO
+  model's audit: a slipped bore gap lands the same way every same-direction cycle (not in
+  RP; a power-off drop re-seats the gaps that never slip); the turntable's backlash and
+  dead band count (no gravity about the vertical); across power-ups the microsteps'
+  nonlinearity unless homing snaps to the driver's phase (with the camera, even a
+  capstan's: a slip is a cycle's jump it sees). The vision reference's camera is the
+  Camera Module 3 Wide (focus from 5 cm), its sheet an FR-4 board of copper dots (paper
+  swells with the air's humidity), and the sightings may fit each joint's gain (a capstan's
+  ratio drifting with its motor's heat).
+- **Why:** the user's goal is slides on a table: the base palletizer's tip never gets
+  under 112 mm over it (the turret puts the turntable under every link point and the
+  q2 / q3 motors hang 74 mm under the shoulder). The MT4 reaches down from a 140 mm
+  shoulder; its URDF's J2 / J3 limits are a rectangle, its relative limit in its stops.
+- **Result (recommended: `ball_pair` pivots, 6061 links, capstans, the preloaded capstan
+  turntable, endstops for the coarse find, `vision_fiducial`):** ISO RP 0.042 mm within a
+  session, 0.048 mm across power-ups (bound 0.44 mm); the links' bending 0.023 mm a slide
+  picked up, 2.3 mm/N across the plane (about 11 Hz).
+- **Open (the next step):** the turret's keep-out: the arm kept out of the base's cylinder
+  instead of the turntable put under it, the q2 / q3 motors behind the shoulder (an arm's
+  motor angles), the base trimmed in front and bolted to one work plate that also holds
+  the reference board: then `palletizer_reach` covers a 168 mm square at table height; the
+  stack's order as a stiffness objective; the turntable's own stiffness; the hose's drag.
+
+### 2026-10-12: belts back, the moves ended one-sidedly (the user's)
+
+- **Decision:** the recommended arm drives its joints by the stock GT2 belts (5:1, the
+  default transmission and `belt_preload` turntable), not the capstans: the host ends a
+  move one-sidedly (`control.host.one_sided`, `ArmHost.move_to(..., approach=True)`: a
+  joint whose last motion was negative goes `APPROACH_DEG` past and comes back), so every
+  stop takes up a drive's backlash the same way, and the ISO model leaves backlash out of
+  RP (`repeatability.iso_rp(one_sided=True)`), reporting it in `Rp.any_direction_mm`.
+- **Why:** the user: "custom capstan drums are just dumb and should have been cut anyway"
+  (16 aluminium discs, $240 of the $500 of cutting). The MT4 runs belts at every joint and
+  quotes 0.1 mm; the turntable's belt backlash (0.45 mm at the tool), which no gravity
+  holds, was the only reason belts scored 0.31 mm; a one-sided approach costs nothing.
+- **Result:** belts: ISO RP 0.042 mm within a session, 0.048 across power-ups (as the
+  capstans'), 0.31 mm from any direction without the one-sided approach; the BOM $639
+  listed (cutting $305) against $835.
+
+### 2026-10-12: stock parts and acrylic plates (the user's simplification, rounds 1-2)
+
+- **Decision:** the user's constraints: only stock parts but the cut plates, the plates
+  mostly acrylic, fewer parts, 0.1 mm kept. No gearboxes on the arm's joints (a cheap
+  planetary's output bearing as the shoulder pivot costs 0.2-0.4 mm: Dobot's 0.2 against
+  the belt-driven MT4's 0.1; on the turntable its 15' is 2.4x the belt's): the stock GT2
+  belts stay. The arm's long links (b1, b4) in 0.125 in 6061, the six short ones in
+  SendCutSend's 5.4 mm cast acrylic (`acrylic_5p4mm`), each seating its bearing pair inside
+  (`PairSeat.in_link`: no hub; the planner's hub rule skips them). The q2 / q3 belt's
+  small pulley's hub stands in the frame plate's window (`BeltDrive.motor_hub`: a layer
+  less in the stack, so the 24 mm shaft reaches past a thick link); the drive's reach is
+  checked at search time against the thick links placed (`nominal`). The pair pivots'
+  printed rings are cut from the default sheet, their spacers stock DIN 988 shim stacks,
+  and an inner-ring land shim (4 x 6 / 6 x 8 x 0.5) each side of every rider
+  (`pair.stock_spacers`). The precision report reads each link's own sheet (its
+  stiffness, weight and expansion).
+- **Result (`palletizer_reach`, mixed links, belts, vision homing):** ISO RP 0.037 mm in a
+  session, 0.061 across power-ups; a slide picked up 0.048 mm; 3.4 mm/N across the plane
+  (~9 Hz); the BOM $684 listed, 68 cut and 7 printed parts (from 41-50 printed).
+- **Open (round 3):** the 20 aluminium frame / base plates ($241), the 7 printed parts,
+  the ~240 bought pieces (the shims), the ground pins' M2 ends.
+- **Round 3:** the column's rings were one default-sheet layer tall wherever they stood
+  (`common.ring_z`), so in a layer a 5.4 mm link thickens they left a 2.4 mm gap and the
+  disc spring's preload stopped at it (pins E, R, U, V, both pillars; on O the drive
+  pulleys' 8 mm bores held nothing). The pair pivots' columns are now stock precision
+  collars cut to length, one per gap between neighbouring links, hubs and (a pillar's)
+  frame plates and end shims (`pair.stock_tubes`: 5.5 x 4.1 on the pins, 7 x 6.1 on the
+  pillars, which passes the pulleys' bores), their OD on the bearings' inner rings, so the
+  land shims go. Not done (the turret: it cuts its plates from the frame sheet): the base's
+  bottom plate in acrylic, the frame plates' feet screwed through T-slot nuts in place of
+  the printed brackets, the turntable's rim as the homing flag, the yaw hub as two flanged
+  F608 bearings in cut plates; shoulder screws in place of the ground pins were rejected
+  (ISO 7379's 3 mm head and its disc spring don't fit a 3 mm end layer; f9 looser than g6).
+
+### 2026-10-12: the turret in the base, the MT4's way (round 7: the turret's simplification)
+
+- **Why:** the user's "go on to the turret next, same style": stock parts but for cut
+  plates, fewer parts, 0.1 mm kept, the tool reaching the table. The classic turret
+  (`deep_groove_pair` / `preloaded_pair`) turns a hub on a fixed shaft and stands the
+  turntable under every link over the inputs' box: on `palletizer_reach` the shoulder
+  stood 329 mm over the floor, on 20 cut 5052 plates and 7 printed parts.
+- **Chosen (of the variants reviewed: C, with the reviewer's corrections):** the support
+  `base_pair`, preset `mt4_base` (`construction/rotary/base_pair.py`): two F608ZZ retained
+  in the base's two 1/8 in 5052 plates, 48 mm apart (the hub's were 25), on four 45 mm hex
+  M4 standoffs; the 8 mm shaft turns in them (the upper inner ring clamped by two collars,
+  the lower floating under a wave washer), the 80-tooth plate pulley on it, a spacer disc
+  and the turntable clamped down by an M4 in the shaft's tapped end (a configured Misumi
+  shaft; a hand-pressed collar clamps too lightly); the side's feet on stock steel angle
+  brackets; an M2 screw hanging from the turntable through a slot endstop just past the
+  yaw's lower end (one-way homing, the MT4's; the camera fixes the zero); the base screwed
+  to the bench on 6 mm spacers. Only the links over the base's keep-out (its 84 mm front,
+  the tail round the motor) must clear the turntable (`turret._lows`' ``keep``), and
+  `palletizer_reach`'s q3 stops at -90 deg (from -110): past it the folded elbow only
+  brought the tool down beside the base. The yaw's range is +-120 deg (the tail).
+- **Reviewer's corrections taken (round 7's second review):** screwed down, not on
+  rubber feet (a base this light rocks under the arm's moment); the tapped-shaft clamp;
+  the spacer out to the small pulley; the flag 1 mm over the slot's floor, the board's
+  holes slotted; retaining compound in place of epoxy, the columns tightened first;
+  `Support.row_share` (the fixed upper row keeps the washer's force less the arm's weight:
+  2.9 N·m held, not 5.8; a 60-80 N spring would double it); the columns' racking a lower
+  bound (`base_pair.racking`, in `turret_budget`'s notes: accuracy, not repeatability).
+- **Not done:** the bottom plate as the work plate in one piece (about 400 mm, past the
+  300 mm blank; the camera re-references the sheet at every power-up); a stronger spring
+  (none verified in stock).
+- **Engine:** a stored plan is re-made for designs differing only in robot roles that
+  don't shape the side (`design.SIDE_FREE_ROLES`, `design.side_hash`,
+  `store.find_plans(side=True)`): a new turntable no longer re-plans the side, which on
+  `palletizer_reach`'s mixed links runs out of the 60000-step budget.
+- **Result (`palletizer_reach`, the round-3 arm on `mt4_base`):** the shoulder 170 mm over
+  the bench (329); the tool gets down to the bench from 161 to 278 mm out, a 117 mm band:
+  the 130 / 150 mm links bound it, not the turret (any q3 stop gives 115-125 mm; round 6's
+  168 mm square was wrong); ISO RP 0.025 mm in a session, 0.034 across power-ups (with the
+  q3 stop, either turret); the turntable's homing 0.082 mm at the tool (0.099); the BOM
+  $628 listed ($659 on the classic turret: the three base plates in 1/8 in 5052, $129, as
+  stiff as 6061 at half the rate), 18 cut parts (30) and 1 printed (7: the tool's holder
+  left), 220 bought pieces (228).
+
+### 2026-10-12: honest prices for the arm (cost-reduction round 1)
+
+- **Decision:** the arm's BOM prices every part from a cheap current source (Amazon search
+  results, Bolt Depot's and 123Bearing's pages, read 2026-10-12), the source first so the
+  BOM prices it: generic 10-packs of the miniature bearings ahead of VXB
+  (`bearing_catalog.AMAZON`); the steppers, pulleys and belt loops (`motion_catalog.AMAZON`);
+  the pump, valve, cup, tube, fitting, endstops, collars, wave washer and spiral wrap
+  (`robot_catalog`); Bolt Depot's singles for the M2 / M3 / M4 screws, M2 nut and washers
+  and the M4 washer (`sources._BOLT_DEPOT`; no 14 or 18 mm M3 socket head there); one shim
+  kit for the 4 x 8 DIN 988 and 8 x 12 shims (the rows share its pack); 123Bearing's disc
+  springs; the tapped 8 mm shaft at an estimated USD 10. Kept: the MISUMI ground pins and
+  precision collars (an h8 rod fails the 0.1 mm budget; stainless capillary tube is listed
+  as an alternative only), the F608ZZ, the Pi Camera 3 Wide (an OV5647 M12 board the
+  alternative). The cutting is refitted (`bom.cut_estimate`): per part a fixed charge plus
+  a rate per cm² at one off, times SendCutSend's quantity break (`bom.qty_factor`), a
+  file's quantity (`bom.same_files`), the rates per sheet (`sheet_catalog.CUT_RATES`,
+  `parts.CUT_ACRYLIC`).
+- **Why:** the old cut model (2026-10-08, fitted on the Strider's small parts at 2-8 off)
+  quoted the arm's 18 parts at USD 229 against SendCutSend's live 163 (its 15-23 cm plates
+  2x high, the small 5.4 mm links 2x low); 29 of the arm's rows were unpriced, so its total
+  left them out. The new fit: the arm 163.86 against 163.01, the Strider's acrylic 48.72
+  against 49.44 and its aluminium 61.69 against 67.70 (its hole-dense plates: the area
+  doesn't see the cut length, single aluminium parts 20-25 % rms).
+- **Result:** the arm (`palletizer_reach` on `mt4_base`) USD 598.29, purchases 434.43 and
+  cutting 163.86 (was 627.65 with 29 rows unpriced: 398.69 + 228.96); unpriced now the M3 x
+  14 and x 18 socket heads and the retaining compound.
+- **Open:** a cut-length term (5052's residuals fall to about 10 % with it); the Amazon
+  listings unverified in a browser; Bolt Depot's and 123Bearing's shipping.
+
+### 2026-10-12: cost-reduction rounds 2-4 (the user's "keep reviewing until it's under $300")
+
+- **Round 2 (taken):** the base_pair turret's bottom plate in 3 mm acrylic
+  (`base_pair.BOTTOM_SHEET`, the bearing epoxied in), its turntable lifted on shim stacks
+  at its four ties and a stack on the shaft (`LIFT_WASHER`, `CENTRE_SHIM`: no cut spacer
+  disc), three more hex columns round the bearings (`CENTRE_R`: the preload's loop closed
+  by the axis); a cheaper homing camera (`vision_fiducial_ov5647`, the OV5647 M12 board,
+  15 um budgeted); the pins' spacers cut from stainless capillary tube.
+- **Round 3 (correctness, from its reviews):** the top plate back in 1/8 in 5052
+  (`TOP_SHEET`: on acrylic the seven columns racked 6-25x more than modelled, the plates
+  being rigid in the precision model), M4 washers under the screws on acrylic,
+  `base_pair.racking` with its real column count and ends; the shim kit's DIN 988 shims
+  (not DIN 125 washers, whose 0.45-0.55 mm tilted the turntable); 18 mm collars (the
+  cheap 25 mm ones clashed); screws only of a stocked length. **The ball pair pillars' shaft
+  was the MISUMI NETRF6 standoff, 6 mm 0 / -0.1, not ground**, though the model took it as
+  g6: with that play across power-ups would reach about 0.14 mm. It is now a ground g6
+  linear shaft tapped M3 both ends in whole mm (`StandoffAxle.ground`,
+  `crank_catalog.ground_pillar_shaft`, the MISUMI SFJW family; part number and price
+  estimates); the pillars' spacers K&S brass tube.
+- **A correction to the turret's round 7:** its 0.025 / 0.034 mm were computed without the
+  side's wobble notes (the pairs' tilt hysteresis, the clamped gaps' re-seating left out);
+  with them the arm repeats to 0.037 mm in a session and 0.061-0.065 across power-ups.
+- **Round 4 (a study, nothing built):** no build option reaches USD 300 at 0.1 mm. Every
+  pivot but `ball_pair` repeats to about 1.3 mm (`ball` / `ball_pillar` on 63 / 43 um of
+  clearance, W's load reversing over the tour); without the camera across power-ups is
+  0.159 mm; the cheapest arm the options make (chicago pins, 3 mm acrylic links and a 2 mm
+  acrylic frame, the `mt4` turntable, switches) is about USD 350 with its cutting priced, at
+  about 1.4 mm. A per-joint pin override (single bearings on the levelling rods) saved USD
+  16 and was dropped. `--pin ball` with mixed sheet thicknesses plans 32 layers (twelve of
+  spacers only): the planner's budget, not the pins (a million steps found none thinner).
+- **Result (`palletizer_reach`, `mt4_base`, `vision_fiducial_ov5647`, mixed links):** the
+  BOM USD 525.32 with every line priced (purchases 389.50, cutting 135.82), from USD 628
+  with 29 lines unpriced (about 820 priced); ISO RP 0.037 / 0.065 mm. Not in it: the
+  controller (an SKR Pico, a Pi Zero 2 W, a 12 V supply, about USD 65-110), shipping from
+  about ten vendors (USD 30-60), the MISUMI prices (estimates). The rest of the way to 300
+  is the user's own work: the plates cut on the Carvera from bought sheet (about USD 70 for
+  136 of cutting) and the pins and pillars cut and tapped from McMaster's -0.005 mm rods
+  (1327K507, 4143N12; about USD 40 off): some USD 420.
+
+### 2026-10-13: "the best part is no part" (the arm's part-count loops 1-2)
+
+- **Why:** the user's: cross-sections of the pivots showed the spacer tubes, hubs and shims
+  only fill layers between a pin's links; "do we even need them?". Then loops of
+  investigators (pivots; turret and plates; drives, tool and homing; electronics) and a
+  reviewer combining them.
+- **The planner:** a role `pin_stack` (`stack.plan.PIN_STACKS`: `free`, `adjacent`, `near`
+  one layer at most; `StackSpec.adjacent`, `_Search.together`, `fabricate.adjacent_pins`, and
+  `plan_z.finalize` refusing a clearance gap between a pin's neighbours but a column's own
+  land washers). On `palletizer_reach` strict adjacency is infeasible (both drives' hubs
+  hug opposite frame plates while the elbow and levelling parallelograms chain b1-b4-b3-b2
+  and cross b5-b8: every pin strict, or all but one, fails in ~340 steps); `near` planned
+  18 layers before the land gaps and none after; `free` now plans 16 (60.5 mm).
+- **Taken:** b1 in 5.4 mm acrylic (its bearing pair inside it: both hubs gone); sensorless
+  homing (`angle_sensor` `stall`, the turntable preset `mt4_base_stall`, sensor
+  `hard_stop`: an M3 under the turntable stalls on a post past the range's end,
+  `base_pair.stop_radius`; the camera sets every zero; the three optical endstops, their
+  flag and posts gone, the base smaller); the suction tool's printed holder as two cut
+  plates that also mount the camera at a fixed offset (no printed part left); a cheaper
+  pump; the Pi Zero's CSI cable; the controller in the BOM (role `controller`,
+  `actuators.controllers`: SKR Pico + Pi Zero 2 W + 12 V brick + cables, about USD 115;
+  `control.klipper` generates its pins and StallGuard homing); MISUMI's whole-mm ground pin
+  lengths (`GROUND_LENGTHS`: SFJW4 from 10 mm in 1 mm steps); b4 in 1/8 in 5052.
+- **Bugs found and fixed:** the pins' top spacer bore on the top bearing's outer ring (no
+  inner-ring preload, a still washer rubbing a turning ring): a 4 x 6 x 0.5 inner-ring land
+  (`ChicagoShaft.land_key`); neighbours meeting face to face got a 0.5 mm land gap
+  (`pair.land_gaps`); M2 ISO 7380 button-head pin ends (`fasteners` family `button`) so
+  the end still sinks into a 3 mm layer; the disc spring's slot was also bought as a rigid
+  0.5 mm washer, so the screw flattened the spring (`pair.spring_slot`).
+- **Rejected or deferred:** T-slot feet (a captive M3 nut needs the plate as thick as its
+  5.5 mm width: the frame plates are 2 mm); one screw per pin (a bond's creep would drop
+  the preload silently); single bearings at O/b1, W/b8, E/b6 (power-up RP toward 0.085 mm;
+  needs a per-joint seat key: deferred); bent-tab feet and a bent tool L (SendCutSend's
+  bend fee may eat the USD 16: a live quote first); smaller motor sliders (USD 2).
+- **Result (`palletizer_reach`, `--pin-stack free`, `mt4_base_stall`, `stall`,
+  `vision_fiducial_ov5647`, b1-b8 but b4 in 5.4 mm acrylic, b4 1/8 in 5052):** BOM USD
+  630.13 with the electronics (about 515 without them, was 524.58), 287 bought pieces, 17
+  cut parts, none printed; 16 layers (60.5 mm); ISO RP 0.047 mm in a session, 0.075
+  across power-ups.
+
+### 2026-10-14: a smaller base, for looks (the user's "make the plate smaller", turns 1-3, then 4-5)
+
+- **Ask:** a more elegant machine, not a cheaper one. The `mt4_base_stall` base was a
+  174 x 144 mm D-shaped plate with a tail for the yaw motor, and the turntable sat
+  inside its outline.
+- **Turns 1-3 (shown, then dropped):** a round base wrapped in a black acrylic tube
+  (Ø142). The user's verdict was that this made the base bigger, not smaller.
+- **Kept from them:** the preset `mt4_compact` (`construction.rotary.PRESETS`):
+  - The yaw through 16 to 60 teeth on a 158 mm loop (`yaw_transmission("belt_60")`):
+    3.75:1, with the motor at 38.4 mm from the axis (64.8 mm on the 80-tooth loop) and at
+    least `YAW_MIN_MESH` teeth in mesh.
+  - The turntable flush with the base's round core.
+  - A symmetric bracket pair.
+- **Turns 4-5 (the user's "a tight circle for the rotating part with the motor extending
+  out the back is fine"):**
+  - The plates are a tight round core plus a lobe round the motor
+    (`base_pair.lobe`, cut as one hull of arcs, `shapes.hull`).
+  - The core's radius comes from the brackets' real far corners (`base_pair.keep_radius`),
+    not the feet's ends, with feet as short as the brackets' pair allows (`BASE_FOOT_L`).
+  - Turn 5 uses 16 mm brackets in place of 20 mm ones (`angle_bracket_16`; its width,
+    thickness and holes UNVERIFIED from a listing).
+  - The tail-swing check is back for the lobe.
+- **Cost:** the 60-tooth pulley and the 158 mm loop are priced as estimates.
+  `palletizer_turret` keeps `belt_preload` (the gate is identical).
+
+### 2026-10-14: the approved arm named and gated (merge hardening, round 1)
+
+- **The arm by name:** `--linkage palletizer_reach` is the user's approved arm.
+  - It gets its pivots from `config.LINKAGE_PIVOTS` (`ball_pair`, `ball_pair_pillar`).
+  - It gets its roles from `config.LINKAGE_ROLES`, read by `roles.default_key`: `mt4_compact`, stall homing and the camera.
+  - It gets its links' sheets from `materials.LINK_SHEETS`.
+  - It was a script's flags before. The identity gate now builds it as `palletizer_reach`.
+- **A clash the builds didn't check:** on `mt4_compact`, a column round the bearings touched the hard stop's post screw (0.115 mm³, found by the robot clash test).
+  - The fix: `base_pair.columns_xy` now turns a column in 5° steps past the motor and the post.
+- **Declared, not inferred:**
+  - A transmission now declares `family`, `reverses` and `slips`. Before, `key == "belt"` / `startswith("belt")` and `"capstan" in source` disagreed, and on a classic hub `belt_60` would have taken the capstan's branch.
+  - The bracket's dimensions are read from its catalog item (`base_pair.stock_bracket`).
+- **Bugs:** `verify.cost_floor` priced a servo and a crank on an arm and raised `ConstructionError`. It now prices the arm's steppers.
+- **Hull checks:** `shapes.hull` refuses clockwise, nested or coincident circles.
+- **Catalog:** the unused `angle_bracket_20` and `rubber_feet_12mm` are gone.
+- **The approved arm's cut rules (the gate's first audit of it):**
+  - `b4` in 1/8 in 5052 kept 2.5 mm round its MR84 seats, under SendCutSend's 1 x thickness. An aluminium link (not acrylic: its rule is a 1.35 mm bridge) now grows a boss round each bearing seat its width can't hold (`plates.seat_bosses`, as `rider_bosses` does round a crank bore): 3.27 mm, a warning only.
+  - The base's top plate cut the yaw motor's boss clearance as a rectangle, leaving 2.6 mm to the screws' slots. It is now a stadium.
+  - The audit is OK, with warnings only.
+
+### 2026-10-14: the walkers learn from the arm (the user's "honest BOM prices" and "fewer printed spacers")
+
+- **Honest prices:**
+  - Every Strider line is priced now; there were 5 unpriced, left out of the total.
+  - The prices came from sellers' pages read on 2026-10-14. No logins and no bot checks: Amazon, DigiKey, Mouser and MISUMI refused, and they stay as they were.
+  - The board's M2.5 nylon hardware is one Adafruit kit (#3299, $16.95, shared pack). Its screws are 6 mm, so `m25_nylon_screw_6` replaces the 5 mm one; the standoff's stud length is unverified.
+  - The protection board is diymore's ($4.99). The resistors and DC pigtail come from one ProtoSupplies cart.
+  - The battery's Amazon price is no longer marked verified (it came from a search page). The strap is named for what is bought.
+- **Fewer printed spacers:**
+  - A pivot construction declares its stock spacers (`spacers`, `construction.pivots.common.Stock`). `AxleGroup.realize` applies them as the arm's pivots did: stock tubes cut to length between the links (`stock_tubes`), DIN 988 shims for thin spacers (`stock_spacers`).
+  - Chicago pins use the 5.5 x 4.1 tube and 4 x 8 shims; standoff pillars use the 7 x 6.1 brass tube and 6 x 12 shims.
+  - The Strider double's printed parts go from 173 to 37: the crank's parts, the foot socks, the deck rail and cradle, and the horn spacer remain.
+  - Cost: about $50 of tube and one shim assortment, and about 44 tube pieces to cut by hand.
+- **Found on the way:**
+  - The pivots placed a link's bearings and tubes from its layer's middle, but links sit on the layer's floor (`pivots.common.link_z`).
+  - On the arm, `b4` (3.2 mm in a 5.4 mm layer) had its bearing standing 1 mm proud, and the hub the plan reserved beside it was silently dropped.
+  - A tube now stands in a link's layer only inside the seat the axle claims there.
+- **Gate:** every walker's parts and BOM change (intended), and `palletizer_reach`'s `b4` gets its planned hub.
+
+### 2026-10-14: the turret pruned to mt4_compact (the user's call)
+
+- **The decision:** "prune all but mt4_compact". The arm's turntable keeps only the
+  approved preset (`base_pair`, `belt_60`, `nema17_17hs4401_x64`, `hard_stop`), now the
+  role's default for every arm, so `--linkage palletizer` gets it too.
+- **What went:**
+  - The presets `belt_preload`, `mt4`, `capstan_preload`, `mt4_base`, `mt4_base_stall` and
+    `capstan_precise`; the supports `deep_groove_pair` and `preloaded_pair`; the sensors
+    `optical_flag` and `ee_sx67`.
+  - The classic hub turret: the boss, the hub's seat plates and spacer, the printed
+    brackets and flag, its endstop. `turret.py` is now the plan and the feet; `base_pair.py`
+    builds the turret (`base_pair.turret_parts`), its optical-endstop branch gone.
+  - The cord capstan: its transmission, the yaw drum, `Transmission.family` / `reverses` /
+    `slips`, the control's reversed sense and phase flag, the host's flag homing, the
+    camera's gain fit, its catalog items (the sleeve, the Dyneema cord).
+  - Milling: `spiderpig/milling.py`, the role `mill`, the fab method `milled`, the `mill`
+    output, the mill's plates and retaining compound (the user owns a Carvera, but chose
+    to prune it).
+  - The catalog's `bearing_608zz` and `shaft_8mm_h6_100`, which only the classic hub used.
+- **A removed key fails with its replacement:** `config.REMOVED_CONSTRUCTIONS` now holds
+  roles' keys too (`turntable` -> `mt4_compact`, `transmission` `capstan` -> `belt`), and
+  `config.REMOVED_ROLES` the role `mill`: in a config, on the command line and in a spec.
+- **Size:** the code commit (`3a72784`) is 49 files, 2,388 lines removed and 518 added
+  (1,870 net): `turret.py` 772 out (96 in), `milling.py` 334, `capstan.py` 182,
+  `base_pair.py` 155 out (65 in), `test_milling.py` 155, `rotary/__init__.py` 112 out
+  (52 in), `plate_catalog.py` 52; the rest in control, precision, the BOM, the exports,
+  the config's removed-key tables and the tests.
+- **The gate** (`platform-3a72784` against `platform-379ad7e`): the six walkers identical;
+  `palletizer_reach` identical to its own snapshot at `65b9e6d` (its differences from
+  `379ad7e` are that commit's seat bosses and stadium cut); `palletizer_turret` different,
+  as intended: `belt_preload` became `mt4_compact` (the side's plan unchanged; 185
+  parts, 187 before; 17 laser parts, 30 before; DXF sheets 4 -> 3, one of them now the
+  base's 1/8 in 5052; BOM 54 lines, $477.75, $558.28 before; audit OK, 3 warnings).
+  DESIGNS.md regenerated from it.

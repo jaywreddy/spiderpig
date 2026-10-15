@@ -52,6 +52,8 @@ class Sheet:
     corner_r: float        # an inside corner comes out this round (mm)
     metal: bool
     sheet_mm: tuple[float, float]
+    modulus_gpa: float     # Young's modulus, GPa (the item's, else the material's)
+    cte_um_per_m_k: float  # linear thermal expansion, um/m/K (the item's, else the material's)
 
     @property
     def min_edge(self) -> float:
@@ -78,7 +80,7 @@ def sheet(key: str) -> Sheet:
     d = it.dims
     t = float(d["thickness"])
     material = d.get("material") or ("plywood" if "plywood" in key else "acrylic")
-    from spiderpig.hardware.mass import DENSITY
+    from spiderpig.hardware.mass import CTE_UM_PER_M_K, DENSITY, MODULUS_GPA
 
     return Sheet(
         key=key, name=it.name, material=material, thickness=t,
@@ -88,7 +90,21 @@ def sheet(key: str) -> Sheet:
         edge_mm=float(d.get("edge_mm", 0.0)),
         min_part=_pair(d.get("min_part", (0.0, 0.0))),
         corner_r=float(d.get("corner_r", 0.0)), metal=bool(d.get("metal", False)),
-        sheet_mm=_pair(d.get("sheet_mm", (300.0, 300.0))))
+        sheet_mm=_pair(d.get("sheet_mm", (300.0, 300.0))),
+        modulus_gpa=_constant(d, "modulus_gpa", MODULUS_GPA, material, key),
+        cte_um_per_m_k=_constant(d, "cte_um_per_m_k", CTE_UM_PER_M_K, material, key))
+
+
+def _constant(dims: dict, name: str, table: dict, material: str, key: str) -> float:
+    """A sheet's material constant: its item's own, else its material's from the table
+    (:mod:`hardware.mass`); a material the table lacks is an error, never acrylic's."""
+    if name in dims:
+        return float(dims[name])
+    try:
+        return float(table[material])
+    except KeyError:
+        raise KeyError(f"sheet {key!r}: no {name} for material {material!r} (add it to "
+                       f"spiderpig.hardware.mass or to the item's dims)") from None
 
 
 LINK_SHEETS: dict[str, dict[str, str]] = {
@@ -97,6 +113,10 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # (0.125 in, the user's allowance); its end grows round the hex crank's 8.8 mm bore to
     # 1 x t of web (plates.rider_bosses), the rest of it keeps Params.link_radius
     "klann_lego": {"b1": FOOT_SHEET},
+    # the user's arm (2026-10-13): every link 5.4 mm acrylic (stiff across the plane, its
+    # bearings' seats inside it) but b4, the elbow's long lever, in 1/8 in 5052
+    "palletizer_reach": {**dict.fromkeys(("b1", "b2", "b3", "b5", "b6", "b7", "b8"),
+                                         "acrylic_5p4mm"), "b4": "al5052_3p2mm"},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links
 (:func:`default_link_sheets`); ``BuildConfig.link_sheets`` overrides the lot."""

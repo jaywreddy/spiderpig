@@ -19,17 +19,18 @@ CLEARANCE = {"2": 2.4, "2p5": 2.9, "3": 3.4}         # ISO 273 medium clearance 
 SHCS_LENGTHS: dict[str, tuple[float, ...]] = {
     "2": (4, 5, 6, 8, 10, 12, 16, 20),
     "2p5": (4, 5, 6, 8, 10, 12, 16, 20),
-    "3": (6, 8, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40),
+    "3": (6, 8, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40, 45, 50, 60, 70),
 }
 BHCS_LENGTHS: dict[str, tuple[float, ...]] = {"3": (6, 8, 10, 12, 16, 20, 25, 30)}
 SELF_TAP_LENGTHS: dict[str, tuple[float, ...]] = {"2": (4, 5, 6, 8, 10, 12)}
+BUTTON_LENGTHS: dict[str, tuple[float, ...]] = {"2": (3, 4, 5, 6)}
 
 
 @dataclass(frozen=True)
 class Screw:
     """A screw family: head size (mm), stock lengths, and its catalog key per length."""
 
-    kind: str                   # "shcs" | "bhcs" | "self_tap"
+    kind: str                   # "shcs" | "bhcs" | "button" | "self_tap"
     size: str                   # "2", "2p5", "3"
     head_d: float
     head_h: float
@@ -54,6 +55,10 @@ SCREWS: dict[tuple[str, str], Screw] = {(s.kind, s.size): s for s in (
       for size, dk, k in (("2", 3.8, 2.0), ("2p5", 4.5, 2.5), ("3", 5.5, 3.0))),
     # ISO 7380-1 button head: fits a 3 mm layer where a socket head doesn't
     Screw("bhcs", "3", 5.7, 1.65, BHCS_LENGTHS["3"]),
+    # ISO 7380-1 M2 button head (Aspen's drawing: dk 3.5-3.8, k 1.16-1.3; the maxima): the
+    # ball pair's ground pin ends only (construction.pivots.pair.GroundShaft), its own kind
+    # so the horn screws' choice ("bhcs" before "shcs", construction.crank.web) is unchanged
+    Screw("button", "2", 3.8, 1.3, BUTTON_LENGTHS["2"]),
     # PA2.0 pan-head self-tapping screws for plastic; head within ISO 7049 ST2.2's maximum
     Screw("self_tap", "2", 4.0, 1.6, SELF_TAP_LENGTHS["2"]),
 )}
@@ -71,7 +76,7 @@ def bhcs(size: str, length: float) -> str:
     return SCREWS["bhcs", size].key(length)
 
 
-_KEY = re.compile(r"^m(\d+(?:p\d+)?)_(shcs|bhcs|self_tap)_(\d+(?:\.\d+)?)$")
+_KEY = re.compile(r"^m(\d+(?:p\d+)?)_(shcs|bhcs|button|self_tap)_(\d+(?:\.\d+)?)$")
 
 
 def parse(key: str | None) -> tuple[Screw, float] | None:

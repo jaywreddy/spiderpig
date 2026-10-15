@@ -295,8 +295,11 @@ def test_the_default_robots_labels(default_robot):
     again = part_types(mech, order[::-1])
     assert {t.label: sorted(t.names) for t in again} == {t.label: sorted(t.names)
                                                           for t in types}
-    names = [n for t in types for n in t.names]
-    assert len(names) == len(set(names))
+    from spiderpig.labels import bought_by_body
+
+    stacks = {n for n, rows in bought_by_body(mech)[0].items() if len({k for k, _, _ in rows}) > 1}
+    names = [n for t in types for n in t.names if n not in stacks]   # (a shim stack is
+    assert len(names) == len(set(names))                           # listed under each shim)
     for t in types:
         if t.kind == "purchased":
             assert t.name not in (t.key, re.sub(r"^[LR]\.", "", t.ref)), t.label
@@ -316,8 +319,10 @@ def test_the_default_robots_labels(default_robot):
     for t in types:
         assert t.name.count("box") <= 1, t.name
         assert not t.detail or t.detail not in t.name, (t.name, t.detail)
-    # a shim stack is listed as the washers it is bought as
-    assert not [t for t in types if t.key and t.key.startswith("shim_din988")]
+    # a shim stack is listed as the shims it is bought as, each thickness its own line (the
+    # walkers' head spacers since 2026-10-14)
+    for t in (t for t in types if t.key and t.key.startswith("shim_din988")):
+        assert re.search(r"x (\d+\.)?\d+ mm$", t.name), t.name
     deck = next(t for t in types if t.ref.endswith("deck_plate"))
     assert re.fullmatch(r"DK1\d\d(\.5)?x[67]\d(\.5)?", deck.label)   # its outline
     w, h = map(float, re.findall(r"([\d.]+) x ([\d.]+) mm", deck.name)[0])

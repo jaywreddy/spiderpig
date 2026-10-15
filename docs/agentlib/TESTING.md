@@ -203,7 +203,7 @@ template and config, the crank angle, the plan itself, the servo model in play) 
 write it there after a cold fabrication (one `flock` per entry, atomic rename). The test
 suite turns it off (`SPIDERPIG_FAB_CACHE=off`, the `_offline` session fixture): tests use
 `tests/cache.py`, and `fresh=True` builds stay fresh. `Store.gc` removes other keys'
-folders. Fidelity (`tests/test_fabcache.py`, slow): on the gate's six designs a loaded
+folders. Fidelity (`tests/test_fabcache.py`, slow): on the gate's designs a loaded
 fabrication equals a fresh one on the gate's part table, the BOM and every DXF entity.
 `spiderpig build` into a folder that already holds that very build does nothing
 (`spiderpig/uptodate.py`; `--force` builds).
@@ -309,12 +309,26 @@ otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
 within 1e-9 relative / 1e-6 mm.
 
-**Baseline** (the integration branch: the STS3215 bus sockets, the BOM decisions and the
-assembly guide, `320384d`, 2026-10-08): `~/.cache/spiderpig/gate/next-320384d/` on the development
-box (`/root/.cache/...`), one `<design>.json` per design, their logs and `snapshot.json`
-(commit, branch, time). Compare against it from any worktree whose `spiderpig/` should
-match its output: `mise run gate -- compare ~/.cache/spiderpig/gate/next-320384d`. It differs
-from W8's baseline `w8-2a130c8` (engine `0.1.0+e91ed4bc0da8`; kept, as are the branches'
+**Baseline** (the merged walkers-and-arm platform, `77c117c`, 2026-10-14: eight designs, the
+user's approved arm `palletizer_reach` among them): `~/.cache/spiderpig/gate/platform-77c117c/`
+on the development box (`/root/.cache/...`), one `<design>.json` per design, their logs and
+`snapshot.json` (commit, branch, time; its walkers snapshotted at `982e67b`, which `77c117c`
+leaves alone). Compare against it from any worktree whose `spiderpig/` should match its
+output: `mise run gate -- compare ~/.cache/spiderpig/gate/platform-77c117c`. It differs from
+`platform-379ad7e` (kept) by every walker's spacers (stock tubes and shims, no printed
+ones) and honest BOM prices, `palletizer_turret` on the `mt4_compact` turret (the pruning),
+and `palletizer_reach`'s cut-rule fixes and `b4`'s hubs (DECISIONS.md 2026-10-14); from
+`platform-867ae7e` (kept) further by `palletizer_reach` gated. That one differs
+from `platform-7112cca` (kept) by the palletizer's tool holder (two cut plates, no print)
+and the controller's rows in its BOM (the part-count loops, 2026-10-13), the walkers
+identical; from `platform-a1d6e49` (kept) by the BOMs' prices and sources alone (the cost loop's
+round 1: the catalog repriced, the cut model refitted; parts, plans and DXFs identical),
+from `platform-68f96d5` (kept) by the palletizer a layer thinner (the belt's small pulley's
+hub in the frame plate's window), from `platform-43363f3` (kept) by the palletizer's bearings priced at VXB, from
+`platform-0b05b24` (kept) by the bearings' prices in the palletizer's BOM and the Klann
+audits' strength fixes (the ground pin listed as a stronger pin), from `platform-ab69ece` by the arm's pivots alone (`ball` / `ball_pillar` on 6.6 mm
+links: 11 bearings, wider links; DECISIONS.md 2026-10-12), from `next-320384d`
+(2026-10-08) by the arm alone, and from W8's baseline `w8-2a130c8` (engine `0.1.0+e91ed4bc0da8`; kept, as are the branches'
 own `bus-39502f7`, `bus2-92d11e4`, `bom-bbf7001`, `bom2-5989d50`, the first
 combined `next-ba41c10` and `next-ba68611` (before the boxed cables and the
 congruent centre plates) and `master-1eba876` /
@@ -375,7 +389,7 @@ Cache entries, loaded vs built (one process, OCCT pool 1):
 
 The whole suite fills ~23 MB per engine version (25 fabrications, the plans).
 
-The identity gate: ~5 min wall for the six designs at once (the Strider quad 290 s, the
+The identity gate: ~5 min wall for the walkers' six designs at once (the Strider quad 290 s, the
 Strider double 150 s, the Klann quads 180-200 s, the mechanisms 45-50 s).
 
 

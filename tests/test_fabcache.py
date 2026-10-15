@@ -209,7 +209,8 @@ def _dxf_docs(mech, sheet: str, out: Path) -> dict:
 
 @pytest.mark.slow
 @pytest.mark.parametrize("name", ["strider_double", "strider_quad", "klann_lego_quad",
-                                  "klann_quad", "hoecken_pantograph", "dwell_rocker"])
+                                  "klann_quad", "hoecken_pantograph", "dwell_rocker",
+                                  "palletizer_turret", "palletizer_reach"])
 def test_a_loaded_fabrication_equals_a_fresh_one(name, tmp_path, monkeypatch):
     from spiderpig import build, fabricate
     from spiderpig.hardware.bom import bom_from_mechanism

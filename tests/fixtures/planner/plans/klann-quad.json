@@ -66,11 +66,11 @@
   },
   "top": 12
  },
- "engine_version": "0.1.0+b266aedf3f13",
+ "engine_version": "0.1.0+cbc6db16875a",
  "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[klann-quad]",
  "source": {
   "file": "tests/test_stack.py",
   "name": null
  },
- "source_key": "gen-0fcdb01c34d0422c"
+ "source_key": "gen-38ced9e211a5fa25"
 }

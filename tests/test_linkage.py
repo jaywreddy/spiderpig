@@ -17,6 +17,7 @@ from tests.tiers import quick
 
 TS = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
 ALL = linkage.available()
+CRANKED = [k for k in ALL if linkage.get(k).kind != "arm"]   # (an arm's one time is a tour)
 WALKERS = linkage.available("walker")
 
 
@@ -54,7 +55,7 @@ def test_program_steps_stay_small(key):
         assert ops < 200, f"{key} step {name} has {ops} ops"
 
 
-@pytest.mark.parametrize("key", ALL)
+@pytest.mark.parametrize("key", CRANKED)
 def test_phase_is_a_time_shift(key):
     lk = linkage.get(key)
     base, shifted = lk.solve(-1, 0.0), lk.solve(-1, 0.9)
@@ -64,7 +65,7 @@ def test_phase_is_a_time_shift(key):
                                    atol=1e-12)
 
 
-@pytest.mark.parametrize("key", ALL)
+@pytest.mark.parametrize("key", CRANKED)
 def test_mirror_is_the_reflection_at_the_mirrored_crank_angle(key):
     lk = linkage.get(key)
     right = lk.solve(+1, 0.0).evaluate(math.pi - (TS + 0.4))

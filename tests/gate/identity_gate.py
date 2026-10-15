@@ -71,6 +71,12 @@ DESIGNS: dict[str, list[str]] = {
     "klann_quad": ["--linkage", "klann", "--module", "quad"],
     "hoecken_pantograph": ["--linkage", "hoecken_pantograph"],
     "dwell_rocker": ["--linkage", "dwell_rocker"],
+    # the robot arm (2026-10-12): the palletizer on its turret, its default parts
+    "palletizer_turret": ["--linkage", "palletizer"],
+    # the user's arm as approved (2026-10-14): ball_pair pivots, the mt4_compact turret,
+    # sensorless homing and the camera, its links' own sheets (config.LINKAGE_PIVOTS,
+    # LINKAGE_ROLES, materials.LINK_SHEETS)
+    "palletizer_reach": ["--linkage", "palletizer_reach"],
 }
 """Each design's ``spiderpig build`` options (the linkage's module and kind defaults
 otherwise, as the command line has them)."""
@@ -789,6 +795,11 @@ def main(argv=None) -> int:
         return snapshot(args.dir, names, args.jobs)
     if args.cmd == "diff":
         return diff_dirs(args.a, args.b, names)
+    if args.designs == ",".join(DESIGNS):   # the default: the designs the baseline holds
+        held = [n for n in names if (args.dir / f"{n}.json").is_file()]
+        for n in sorted(set(names) - set(held)):
+            print(f"  {n}: not in the baseline {args.dir.name}: skipped (--designs to ask)")
+        names = held
     new = args.out or Path(tempfile.mkdtemp(prefix="gate-compare-"))
     if snapshot(new, names, args.jobs):
         print("the snapshot failed: no comparison")

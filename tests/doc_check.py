@@ -70,7 +70,8 @@ PYTEST_FLAGS = {
 """Options of pytest and its plugins the docs may name (not in this repo's code)."""
 GENERATED = ("build/", "dist/", ".spiderpig", "~", "/tmp", "/root", "$", "http://",
              "https://", "<store>", "<out>", "<run>", "store/", "designs/", "bakes/",
-             "laser/", "print/", "pin_loads/", "mech/", "plans/", "stores/", "fab/",
+             "laser/", "print/", "urdf/", "mill/", "pin_loads/", "mech/", "plans/", "stores/",
+             "fab/",
              "out/", "exports/", "cache/", "viewer/node_modules", "viewer/dist",
              "spiderpig/viewer/dist", "node_modules")
 FILE_EXT = re.compile(r"\.(py|md|toml|json|ts|js|yml|yaml|txt|csv|cfg|html|lock|xml|glb|"
@@ -81,7 +82,8 @@ CALL = re.compile(rf"^({IDENT}(?:\.{IDENT})*)\(.*\)$", re.S)
 ENV = re.compile(r"^\$?([A-Z][A-Z0-9]*_[A-Z0-9_]+)(=\S*)?$")
 FLAG = re.compile(r"^(--[a-z][a-z0-9-]*)(?:[ =].*)?$", re.S)
 MISE_RUN = re.compile(r"mise run ([A-Za-z][\w:-]*)(?![\w<…-])")
-OUTPUT_EXT = (".json", ".md", ".csv", ".dxf", ".stl", ".step", ".glb", ".xml", ".log")
+OUTPUT_EXT = (".json", ".md", ".csv", ".dxf", ".stl", ".step", ".glb", ".xml", ".log",
+              ".urdf")
 """What a run writes: a pattern with a placeholder that names one isn't looked for."""
 
 

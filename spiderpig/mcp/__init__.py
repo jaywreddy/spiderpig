@@ -53,6 +53,7 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 
 from spiderpig import api, construction, linkage, servos
+from spiderpig import roles as rolemod
 from spiderpig import walk as walk_model
 from spiderpig.config import ParamError
 from spiderpig.design import Design, engine_version, jsonable
@@ -67,7 +68,7 @@ log = logging.getLogger("spiderpig.mcp")
 
 SERVER_NAME = "spiderpig"
 LEVELS = Literal["quick", "standard", "full"]
-FORMATS = Literal["step", "stl", "print", "dxf", "bom", "glb", "mjcf"]
+FORMATS = Literal["step", "stl", "print", "dxf", "bom", "glb", "mjcf", "urdf"]
 DESIGN_STAGES = ("summary", "spec", "resolved", *STAGES, "log")
 STAGE_TOOL = {"check": "check", "plan": "plan", "walk": "walk", "build": "build",
               "recheck": "recheck (Python API only)", "verify": "verify", "export": "export"}
@@ -207,7 +208,7 @@ def _design_out(design: Design) -> dict:
     cfg = design.config
     return jsonable({
         "ok": True, "failures": [], "design": design.id, "kind": design.kind,
-        "linkage": cfg.linkage, "module": cfg.module, "sides": 2 if cfg.robot else 1,
+        "linkage": cfg.linkage, "module": cfg.module, "sides": cfg.sides,
         "engine_version": design.engine_version, "resolved": design.resolved,
         "warnings": list(design.warnings), "derived_from": design.derived_from,
         "patch": design.patch, "created_at": design.created_at,
@@ -323,7 +324,11 @@ def _sheet_card(key: str) -> dict:
 def _construction_card(c, roles: list[str]) -> dict:
     hw_catalog._load()
     knobs, hardware = {}, {}
-    for f in fields(c):
+    try:
+        own = fields(c)
+    except TypeError:          # (a construction that isn't a dataclass: no knobs listed)
+        own = ()
+    for f in own:
         v = getattr(c, f.name)
         if f.name in ("key", "label"):
             continue
@@ -352,6 +357,10 @@ def catalog_cards(category: str = "all") -> dict:
                       for _, c in sorted(construction.AXLES.items())],
             "cranks": [_construction_card(c, ["crank"])
                        for _, c in sorted(construction.CRANKS.items())],
+            # every later role (spiderpig.roles): its registry's constructions
+            **{r.name: [_construction_card(c, [r.name])
+                        for _, c in sorted(rolemod.registry(r.name).items())]
+               for r in rolemod.extra()},
         }
     return jsonable(out)
 
@@ -526,9 +535,9 @@ def _register_tools(server: MCPServer, state: State) -> None:
         return fn
 
     @tool
-    async def list_linkages(kind: Literal["walker", "mechanism"] | None = None
+    async def list_linkages(kind: Literal["walker", "mechanism", "arm"] | None = None
                             ) -> o.LinkagesOut:
-        """Every registered linkage (``kind`` keeps walkers or mechanisms): key, name,
+        """Every registered linkage (``kind`` keeps walkers, mechanisms or arms): key, name,
         family, kind, its modules with legs per side, its parameters and their defaults,
         feet per leg or the output's motion. ``describe`` gives one linkage's full card."""
         return {"ok": True, "failures": [],

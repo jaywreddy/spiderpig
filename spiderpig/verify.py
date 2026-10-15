@@ -245,7 +245,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
             _push(rows, target_row(design, target_field("motion", "transmission_angle_deg"),
                                    angle, "check", detail=f"the least over the closures is at "
                                    f"{at}, folded about 90°; the ranges are on the card"))
-    if design.kind == "mechanism" and cr.output is not None:
+    if design.kind != "walker" and cr.output is not None:
         rows.append(Row("output.promises", "check", cr.output["broken"] or "hold", None,
                         not cr.output["broken"], "proven"))
         for name in OUTPUT_METRICS:
@@ -502,16 +502,16 @@ def _mass_estimate(design: Design, wr) -> Row | None:
     cfg = design.config
     f = target_field("size", "mass_g")
     try:
-        b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg), robot=cfg.robot)
+        b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg), robot=cfg.mirrored)
     except (ValueError, KeyError):
         if wr.mass_g is None:
             return None
         return target_row(design, f, wr.mass_g, "walk", "estimated",
                           "the walk model's nominal mass" + ESTIMATE_NOTE, estimate=True)
-    n = 2 if cfg.robot else 1
+    n = cfg.sides
     servos_ = f"{n} servo{'s' if n > 1 else ''}"
-    plates = f"frame{' and centre' if cfg.robot else ''} plates"
-    printed = f"printed crank, pillars, pins{' and ties' if cfg.robot else ''}"
+    plates = f"frame{' and centre' if cfg.mirrored else ''} plates"
+    printed = f"printed crank, pillars, pins{' and ties' if cfg.mirrored else ''}"
     detail = (f"estimated before a build: links {b['links']:.0f} g, {servos_} {b['servos']:.0f} g, "
               f"{plates} {b['plates']:.0f} g, {printed} {b['printed']:.0f} g"
               + (f", electronics deck {b['deck']:.0f} g" if b.get("deck") else "")
@@ -633,7 +633,8 @@ FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws and the pivots' hardw
 
 def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     """What the design buys whatever its parts turn out to be, priced from the catalog before
-    any build: the servos (one per side), a spool of filament (the printed parts), one
+    any build: the servos (one per side; an arm's steppers, one per input and the
+    turntable's), a spool of filament (the printed parts), one
     blank of each sheet the parts are cut from that no service cuts, the cutting of at
     least one part on each sheet a service cuts (its least charge, the material included:
     :func:`hardware.bom.cut_estimate`), and what
@@ -643,20 +644,33 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     lines, unpriced names)``: a lower bound on the BOM's total; :data:`FLOOR_LEAVES_OUT`
     says what a build adds."""
     from spiderpig import construction
+    from spiderpig import roles as rolemod
 
     cfg = design.config
-    sides = 2 if cfg.robot else 1
+    sides = cfg.sides
+    kind = cfg.lk.kind
+    cranked = rolemod.applies("crank", kind)        # a servo on a crank, else a motor a drive
     from spiderpig.materials import link_sheets
 
-    sheets = dict.fromkeys([cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values(),
-                            cfg.crank_sheet])
-    lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1)]
+    named: list[str] = [cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values()]
+    sheets = dict.fromkeys(named + ([cfg.crank_sheet] if cranked else []))
+    if cranked:
+        motors = [servos.get(cfg.servo).bom_key] * sides
+    else:                                           # each input's, and the turntable's
+        from spiderpig import actuators
+
+        motors = [actuators.get(cfg.role("actuator", n)).bom_key for n in cfg.lk.inputs]
+        if cfg.robot and rolemod.applies("turntable", kind) and cfg.role("turntable"):
+            from spiderpig.construction.rotary import PRESETS
+
+            motors.append(PRESETS[cfg.role("turntable")].parts[2].bom_key)
+    lines = [(k, motors.count(k)) for k in dict.fromkeys(motors)] + [("pla_filament", 1)]
     lines += [(k, 1) for k in sheets]             # one blank of each sheet at least
     # (not the deck's captive nuts: a robot whose deck doesn't fit buys none, and a
     # floor is what every build of the design buys)
     if cfg.pin in EPOXY_PINS:
         lines.append(("epoxy_2part", 1))
-    locks = {construction.crank(cfg.crank).lock_key}
+    locks = {construction.crank(cfg.crank).lock_key} if cranked else set()
     if cfg.pin in LOCKED_PINS or cfg.pillar in LOCKED_PILLARS:
         locks.add("threadlocker_222")
     lines += [(k, 1) for k in sorted(k for k in locks if k)]
@@ -738,10 +752,10 @@ def _envelope_estimate(design: Design) -> list[Row]:
     x, y = float(np.ptp(xy[:, 0])) + 2 * r, float(np.ptp(xy[:, 1])) + 2 * r
     outside = max(0, -min((p.layer for p in plan.placed), default=0)) * plan.spec.pitch
     z_mid = mid_plane(side) + outside
-    z = 2 * z_mid if cfg.robot else z_mid
+    z = 2 * z_mid if cfg.mirrored else z_mid
     rows = []
     across = (f"the two stacks + the chassis + {outside:g} mm of axle heads outside each "
-              f"outer plate" if cfg.robot else
+              f"outer plate" if cfg.mirrored else
               f"the stack + the servo on the inner plate + {outside:g} mm of axle heads "
               f"outside the outer plate")
     for axis, v in zip("xyz", (x, y, z), strict=True):
