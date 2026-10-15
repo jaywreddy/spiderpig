@@ -270,7 +270,8 @@ stops there:
     ring in the gap between b4 (b5) and the cradle link on each of the four, printed in TPU
     95A with a 7.6 mm bore, grips its pin. A side lying down with its clips out holds its
     pins by them: each pin's head is under its link with nothing under it, and a bare pin
-    drops out. In use it is the gap ring it was.
+    drops out. In use it is the gap ring it was. The guide checks each holds its pin head
+    down, its clip out (one that slides is reprinted 0.2 mm tighter).
   - Rated as a solid 8 mm rod at annealed 304's minimum yield (205 MPa): 1.39 x the M6
     Chicago barrel it replaced. Jammed, X 2.52 and Y 2.21 (as Chicago screws they had
     held 1.72 and 1.49).
