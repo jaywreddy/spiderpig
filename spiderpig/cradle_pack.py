@@ -694,7 +694,8 @@ def gather(mech, lk, t: float = 0.0, config=None) -> dict:
     box, fabrication, catalog key, host, volume, mass (kg) and centre of mass, its
     tessellation (``meshes``: positions, triangles) in the assembled pose, the mechanism's
     ``connections``, the cradle's ``fastened`` pairs, each joint's xy and, for modules,
-    ``slide_off`` (:func:`slide_hits`: the passive side panel off its cradle link's pins)."""
+    ``slide_off`` (:func:`slide_hits`: the passive side panel off its cradle link's pins;
+    ``box``: the cradle box off the drive side's)."""
     from spiderpig.config import BuildConfig
     from spiderpig.cradle_report import part_mass_kg
     from spiderpig.hardware import mass as mass_mod
@@ -950,7 +951,7 @@ def flat_pack(mech, lk, t: float = 0.0, config=None, plan: vp.Plan | None | str 
     its clip fraction ``t / 2 pi``, the bottle's tilt, the handle turns from rest) and, for
     modules, ``reassembly`` (the steps back together) and ``slide_off``: what the passive
     side panel meets coming off its cradle link's pins (:func:`slide_hits`, its clips out:
-    none)."""
+    none), and under ``box`` what the cradle box meets lifting off the drive side's."""
     return pack_input(gather(mech, lk, t, config), plan)
 
 
