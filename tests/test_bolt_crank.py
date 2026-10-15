@@ -108,7 +108,7 @@ def test_single_web_rules_for_the_router():
     joins them, never a journal plate; its screw heads are gap pieces the router keeps clear
     (one per crank point, the horn screws', one at O); a span is buildable whatever the
     riders' faces (no end play to set back), and the first web sits where a stock stub
-    reaches the outer plate."""
+    reaches the outer plate at some plan's z (the gaps under it in a plan's range)."""
     from spiderpig.construction.route import joint_rules
     from spiderpig.fabricate import side_problem, template_for
 
@@ -131,8 +131,12 @@ def test_single_web_rules_for_the_router():
     assert dict(rules.j_spans) == {n: c._web_span_ok(n, 0, ctx.pitch, t) for n in range(64)}
     assert rules.bottom_layers
     assert min(rules.bottom_layers) >= 2
-    for a in rules.bottom_layers:
-        assert c.stub_z(frame + (a - 1) * ctx.pitch, frame, t) is not None, a
+    from spiderpig.stack import GAP_MAX, GAP_STEP
+
+    for a in rules.bottom_layers:       # (at some z of a plan: its gaps under the web)
+        assert any(c.stub_z(frame + (a - 1) * ctx.pitch + i * GAP_STEP, frame, t) is not None
+                   for i in range(round(a * GAP_MAX / GAP_STEP) + 1)), a
+    assert 2 in rules.bottom_layers     # (no gap under it: the pitch alone)
 
 
 def test_the_round_standoffs_capacity_is_its_friction_clamp():

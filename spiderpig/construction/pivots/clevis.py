@@ -140,6 +140,13 @@ class ClevisPinShaft(ChicagoShaft):
             spacer = 0.0
         return Fit(float(usable), round(spacer, 3), 0.0, round(usable - stack - spacer, 3))
 
+    def stock_key(self, stack: float) -> str | None:
+        """The catalog key of the pin a ``stack`` mm stack takes (``None``: none does)."""
+        try:
+            return self.key_of(self.take_up(stack).length)
+        except ConstructionError:
+            return None
+
     def outer(self, stack: float) -> float:
         """How far the head stands out past the lowest link's outer face at most (its
         spacer, the head and the play)."""
@@ -147,14 +154,15 @@ class ClevisPinShaft(ChicagoShaft):
         return f.length - stack + float(self.item()["head_h"])
 
     def column(self, pillar: bool, links, top: int, anchored: tuple[bool, bool],
-               pitch: float, layout=None, air=None) -> None:
+               pitch: float, layout=None, air=None, hi=None) -> None:
         """The planner's rule: a stock pin spans the links (at the plan's z: its head and
-        spacer within the two layers outside them)."""
+        spacer within the two layers outside them). A search's layout is a lower bound of the
+        stack: no pin long enough there is none in any plan."""
         if pillar or not links:
             return
         k0, k1 = min(links), max(links)
         stack = (k1 - k0 + 1) * pitch
-        if layout is not None and layout.final:
+        if layout is not None:
             stack = layout.z(k1)[1] - layout.z(k0)[0]
             if air is not None:
                 stack -= air(k0, k1)
@@ -250,6 +258,12 @@ class ClevisPinAxle(ChicagoAxle):
         out = super().resolve(ctx)
         assert isinstance(out, ClevisPinAxle)
         return out
+
+    def sleeve_skip(self, col) -> tuple[int, ...]:
+        """The clearance gap under the lowest link, where the column crosses one: the pin's
+        take-up spacer fills what the head leaves of it (a ring there as well would stand
+        in the head's way)."""
+        return (col.k0 - 1,)
 
     def ends(self, d, pillar: bool, anchored: tuple[bool, bool], n: int, pitch: float,
              span: float | None = None):

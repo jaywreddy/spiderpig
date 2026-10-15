@@ -25,7 +25,7 @@ mise run test-viewer    # the viewer's tsc + vitest
 mise run test-quick # the quick tier: -m 'not slow and not e2e', xdist -n 4
 mise run test-fixtures  # rewrite the recorded fixtures (after an engine edit: they warn stale)
 mise run test       # pytest, serial (runs viewer-build first; -m e2e for browser tests)
-mise run gate -- compare ~/.cache/spiderpig/gate/next-320384d   # parts/plans/BOM/DXF identity
+mise run gate -- compare ~/.cache/spiderpig/gate/planner-f667d6b   # parts/plans/BOM/DXF identity
 mise run gate -- doc ~/.cache/spiderpig/gate/<baseline>        # regenerate DESIGNS.md
 mise run remote-test               # the full suite on the remote runner (may be down: AGENTS.md)
 mise run remote-audit              # the Strider's modules audited at once there
@@ -79,14 +79,18 @@ robot; a mechanism's `single`, one side).
   `linkage.KLANN_QUAD`. `config.default_crank` / `default_crank_sheet` read them. The
   Chicago barrels a linkage stocks on a crank: `chicago.BARRELS` (the Strider's bolt crank),
   beside `MAX_BARREL`.
-- Heads: `StackSpec.heads` "best" (sunk first); a single-plate crank plans "gap_sink".
+- Heads: `StackSpec.heads` "best": both placements searched, sunk first on a tie
+  (`stack.plan_z.HEADS_ORDER`); a single-plate crank plans "gap_sink".
 - Numbers (layers, height, parts, cost, audit verdict): `docs/agentlib/DESIGNS.md`.
 
 ## Environment
 
 - `SPIDERPIG_STORE`: the project store (default `./.spiderpig`).
-- `SPIDERPIG_PLAN_SECONDS`: the planner's CPU budget (60; outside `engine_version`'s hash).
-- `SPIDERPIG_WORKERS=0`: no worker processes (`spiderpig/workers.py`).
+- `SPIDERPIG_PLAN_SECONDS`: the planner's CPU deadline, a job's, a head placement's jobs
+  1.5 times it together (60; outside `engine_version`'s hash).
+- `SPIDERPIG_WORKERS=0`: no worker processes (`spiderpig/workers.py`; the planner's too).
+- `SPIDERPIG_PLAN_WORKERS`: the planner's forked workers (`stack.drive.workers_for`; unset: up
+  to `stack.drive.MAX_WORKERS`; one under xdist). The plan is the same with any number.
 - `SPIDERPIG_FAB_CACHE=off`: no product fabrication cache (`spiderpig/fabcache.py`,
   `<store>/fab/`, keyed by `spiderpig/keys.py`'s code closure, the plan and the servo model).
 - `SPIDERPIG_OCCT_THREADS`: OCCT's pool per process (`workers.occt_threads`; unset: every
@@ -236,17 +240,24 @@ a **linkage**, a module in `spiderpig/linkages/` (`tests/test_linkage.py` checks
 
 ## The planner
 
-`stack.StackProblem.solve()` finds the thinnest stack and the cheapest crank route in it:
-static facts first (keep-outs, the crank's facts); then a search per stack size, fewest
-layers first (`_Search`: forward checking, the router as a sub-check at every node,
-backjumping, learned nogoods, branch and bound); the exact route of a complete layering
-(`CrankRouter.route`: chains along a point, a stock standoff each, `JointRules`); then
-`verify_plan`. Effort: a short search per size until one plans; if none did, the sizes
-left open get `max_nodes`; then each thinner size gets `max_nodes // 2` to prove it out,
-then a cheaper route. Budgets (`StackSpec.quick_nodes`, `max_nodes`, `max_total_nodes`,
-`max_seconds`) bound effort, never validity: a plan found unproven says so
-(`StackPlan.optimal`, `proof`). Sizes up to `StackSpec.max_top`. `tests/brute.py` is the
-independent brute force. Details: `docs/ARCHITECTURE.md` §5, `spiderpig/stack/search.py`.
+`stack.StackProblem.solve()` finds the best plan under `StackProblem.key`: the lowest stack in
+mm, then the crank route's cost, the stock parts' cost, the parts printed (a walker's
+objective is "layers": fewest layers, then the route, ties to the lower plan found;
+`config.plan_objective`).
+Static facts first (keep-outs, the crank's facts); then jobs (`stack/drive.py`), one stack size
+and one head placement each (both placements, side by side), in forked workers
+(`stack_pool.py`) or here with the same answer: a short job per size until one plans, then the
+proof, a full job for every size the objective needs (on the height, each whose least height,
+`StackProblem.size_lb`, isn't over the best). A job is `_Search`: forward checking, the router
+as a sub-check, backjumping, learned nogoods, branch and bound (`_Search.lb_height`). The
+search's z is a bound of every plan (`stack.bound_layout`): a claim refuses a search's layout
+only on a bound valid for every completion (`Layout.t_hi`, `span_hi`). Then the exact route
+(`CrankRouter.route`, `JointRules`), the plan's z (`finalize`: its gaps as low as it builds,
+not under what a standoff holds it at, `Claim.hold`) and `verify_plan`. Budgets
+(`StackSpec.quick_nodes`, `max_nodes`, `max_total_nodes`, `max_seconds`) bound effort,
+never validity: a plan found unproven says so (`StackPlan.optimal`, `proof`). Sizes up to
+`StackSpec.max_top`. `tests/brute.py` is the independent brute force (`brute.lowest`).
+Details: `docs/ARCHITECTURE.md` §5, `spiderpig/stack/drive.py`, `spiderpig/stack/search.py`.
 
 Physical rules the claims encode: a crank crosses a rider's layer only along its crankpin
 (a built-up crankshaft, webs either side of each rider); layers 0 and `top` hold only the
@@ -262,7 +273,7 @@ both sides.
   a new construction adds one or gets generic steps. The hooks stay out of the fab key.
 - A group builds only inside its own claims; keep `check_side` at `[]`.
 - A change that alters parts: run the identity gate before and after (baseline
-  `next-320384d`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
+  `planner-f667d6b`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
   audit` green, and regenerate `docs/agentlib/DESIGNS.md` with a new baseline.
 - Docs: no layer counts or heights outside DESIGNS.md; a dated decision goes to
   DECISIONS.md, not here; `mise run doc-check -- --strict` must pass.

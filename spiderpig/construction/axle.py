@@ -139,13 +139,28 @@ class AxleGroup(Group):
                 own[L.layers[m]] = max(own.get(L.layers[m], 0.0), link_t[m])
 
             def air(a: int, b: int) -> float:
-                """What the plan's z leaves free in layers ``a``..``b`` around this axle's
-                own parts (its links and its default-sheet rings, in layers an aluminium
-                plate elsewhere made thicker): its stack closes it up."""
-                if not L.final:
-                    return 0.0
+                """What the z leaves free in layers ``a``..``b`` around this axle's own parts
+                (its links and its default-sheet rings, in layers an aluminium plate
+                elsewhere made thicker): its stack closes it up. A search's layout is a lower
+                bound (:class:`stack.Layout`), and so is its span less this: the axle's own
+                stack in every plan of it is at least that."""
                 return sum(max(0.0, L.t(k) - own.get(k, L.t(k) if full else ctx.pitch))
                            for k in range(a, b + 1) if 0 < k < L.top)
+
+            def stack_hi(a: int, b: int, g0: int | None = None, g1: int | None = None
+                         ) -> float:
+                """The most this axle's own stack over layers ``a``..``b`` (its links' sheets,
+                its rings) and the clearance gaps over layers ``g0``..``g1 - 1`` (default
+                ``a``..``b - 1``: the gaps among them) can be in any plan of the layout (the
+                plan's own: their z less :func:`air`)."""
+                g0, g1 = (a, b) if g0 is None or g1 is None else (g0, g1)
+                if L.final:
+                    return (L.span(a, b) - air(a, b)
+                            + sum(L.gap(k) for k in range(g0, g1) if not a <= k < b))
+                rings = sum(own[k] if k in own else L.t_hi(k) if full else ctx.pitch
+                            for k in range(a, b + 1) if 0 < k < L.top)
+                gaps = sum(1 for k in range(g0, g1) if 0 <= k < L.top)
+                return rings + gaps * L.gap_hi
             free: dict[int, float] = {}
             who: dict[int, str] = {}
             for n, r in room.items():
@@ -177,7 +192,8 @@ class AxleGroup(Group):
                                       + " below its links and " + crossing(ku) + " above")
             column = getattr(self.construction, "column", None)
             if column is not None:          # a construction's own rule over the whole column
-                column(self.pillar, ms, L.top, (down, up), L.pitch, layout=L, air=air)
+                column(self.pillar, ms, L.top, (down, up), L.pitch, layout=L, air=air,
+                       hi=stack_hi)
             k0 = 0 if down else lo              # the retained stack: outer anchor or lowest link
             k1 = L.top if up else hi            # ... to inner anchor or highest link
             out = [Placed(k, Disc(ax, seat), g, f"{g} axle", seat=True) for k in ms]
@@ -262,8 +278,49 @@ class AxleGroup(Group):
                     out.append(Placed(k, Disc(ax, d.neck), g, f"{g} neck"))
             return out
 
+        holding = getattr(self.construction, "hold", None) if self.pillar else None
+
+        def hold(L: Layout) -> float:
+            """How far the pillar's stock standoff holds its faces apart beyond ``L``'s z
+            (the construction's ``hold``; ``L`` a plan's: :attr:`stack.Claim.hold`)."""
+            assert holding is not None
+            ms = sorted(L.layers[m] for m in members)
+            mset = set(ms)
+            own: dict[int, float] = {}
+            for m in members:
+                own[L.layers[m]] = max(own.get(L.layers[m], 0.0), link_t[m])
+            free: dict[int, float] = {}
+            for n, r in room.items():
+                free[L.layers[n]] = min(r, free.get(L.layers[n], np.inf))
+
+            def air(a: int, b: int) -> float:       # (make's)
+                return sum(max(0.0, L.t(k) - own.get(k, L.t(k) if full else ctx.pitch))
+                           for k in range(a, b + 1) if 0 < k < L.top)
+
+            def reaches(k0: int, k1: int) -> bool:  # (make's blocker: none)
+                return all(k in mset or free.get(k, np.inf) >= d.neck
+                           for k in range(k0, k1 + 1))
+
+            anchored = (reaches(1, ms[0] - 1), reaches(ms[-1] + 1, L.top - 1))
+            return holding(ms, L.top, anchored, L, air)
+
+        def tally(plan) -> tuple[float, int]:
+            """What the axle buys and prints at a plan's z (the construction's
+            ``stock_keys`` at each one's unit price, its ``prints``): the planner's
+            objective after the height and the route (:meth:`stack.StackProblem.key`)."""
+            from spiderpig.construction.base import Build
+            from spiderpig.construction.pivots.common import Column, unit_usd
+
+            view = Build(ctx, plan, None)  # pyright: ignore[reportArgumentType]
+            col = Column.of(view, self)
+            stock = getattr(self.construction, "stock_keys", None)
+            prints = getattr(self.construction, "prints", None)
+            usd = sum(unit_usd(k) for k in stock(self, view, col)) if stock else 0.0
+            return usd, prints(self, view, col) if prints else 0
+
         return [Claim(g, frozenset(members) | frozenset(room), make, early=early,
-                      early_deps=frozenset(members))]
+                      early_deps=frozenset(members), tally=tally,
+                      hold=hold if holding is not None else None)]
 
     def realize(self, build: Build, done: Realized) -> Realized:
         return self.construction.realize(self, build)

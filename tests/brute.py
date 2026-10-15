@@ -139,14 +139,25 @@ def _crank_washer(p: Placed, group: str) -> bool:
     return p.group == group and p.gap and p.label.endswith(" washer")
 
 
+def lowest(problem: StackProblem, tops) -> list:
+    """Every plan of a problem with no router in each stack size of ``tops`` that builds at
+    its own z and verifies (every layering whose claims clear, each made into its plan),
+    lowest first (:meth:`StackProblem.key`): the planner's objective by brute force."""
+    plans: list = []
+    for top in tops:
+        solve(problem, top, None, lowest=plans)
+    return sorted(plans, key=problem.key)
+
+
 def solve(problem: StackProblem, top: int, ctx,
-          only=None) -> tuple[tuple, dict[str, int], CrankRoute] | None:
+          only=None, lowest: list | None = None) -> tuple[tuple, dict[str, int], CrankRoute] | None:
     """The cheapest layering and route in ``top + 1`` layers (``ctx``: the side's context, for
     the crank's construction and the drive), or ``None``. ``only(layers, h0)``: the routes
     to try instead of every route (e.g. one run per crankpin over the whole stack).
     A problem with no router (a hand-made one, no crank): the first layering, in the order
     links are enumerated, whose plan builds at its own z and verifies, as ``((), layers,
-    None)``; ``ctx`` unused."""
+    None)``; ``ctx`` unused; with ``lowest`` (a list), every such plan appended to it
+    instead, and ``None`` (:func:`lowest`)."""
     geo, m, pitch = problem.topo.geometry, problem.spec.margin, problem.spec.pitch
     router = problem.router
     links = list(problem.links)
@@ -247,6 +258,9 @@ def solve(problem: StackProblem, top: int, ctx,
             except PlanReject:
                 continue
             if not verify_plan(plan):
+                if lowest is not None:
+                    lowest.append(plan)
+                    continue
                 return (), dict(layers), None
         return None
     group = router.group

@@ -248,10 +248,86 @@ def test_searching_one_of_each_mirror_pair_finds_the_serial_plan():
     assert verify_plan(sym) == []
 
 
-def test_the_sizes_searched_in_worker_processes_give_the_serial_answer():
-    """``workers``: every size's search forked into a worker, the coordinator's answer the
-    serial one, its proof included."""
-    plain = _two_legs().solve()
-    pooled = _two_legs(workers=2).solve()
-    assert (pooled.top, pooled.layers, pooled.cost, pooled.optimal, pooled.proof) == (
-        plain.top, plain.layers, plain.cost, plain.optimal, plain.proof)
+def _answer(plan) -> tuple:
+    return (plan.top, plan.layers, plan.heads, round(plan.height, 6), plan.cost, plan.usd,
+            plan.printed, plan.optimal, plan.proof, plan.gaps, plan.thick)
+
+
+def test_the_jobs_in_worker_processes_give_the_answer_they_give_here():
+    """``workers``: the jobs (a stack size and a head placement each, :mod:`stack.drive`)
+    forked into workers, any number of them, give the answer they give in this process
+    (``workers=1``), proof included: a job's answer is its own, ties go by a fixed key."""
+    here = _two_legs(workers=1).solve()
+    for n in (2, 3, 5):
+        assert _answer(_two_legs(workers=n).solve()) == _answer(here)
+
+
+def test_no_workers_with_spiderpig_workers_off(monkeypatch):
+    """``SPIDERPIG_WORKERS=0``: the jobs run in this process, whatever ``workers`` asks;
+    else ``workers``, ``SPIDERPIG_PLAN_WORKERS``, or ``MAX_WORKERS``."""
+    from spiderpig.stack import drive
+
+    monkeypatch.setenv("SPIDERPIG_WORKERS", "0")
+    assert drive.workers_for(StackSpec(workers=4)) == 1
+    monkeypatch.delenv("SPIDERPIG_WORKERS")
+    monkeypatch.setenv(drive.ENV_WORKERS, "3")
+    assert drive.workers_for(StackSpec()) == 3
+    assert drive.workers_for(StackSpec(workers=2)) == 2
+    monkeypatch.delenv(drive.ENV_WORKERS)
+    monkeypatch.setattr(drive.os, "cpu_count", lambda: 20)
+    assert drive.workers_for(StackSpec()) == drive.MAX_WORKERS
+
+
+# -- the search's z: a bound of every plan (links thicker than the pitch) -------------------
+
+
+def _thick_pin(heads: str = "gap", **spec) -> StackProblem:
+    """A decanting cradle's two 0.190 in links (``b2``, ``b4``: 4.826 mm, the pitch 3.175)
+    on its 8 mm pivot pin, made to its stack (10 mm at least between its rings), a third
+    link ``b6`` crossing ``b2`` well clear of the pin: the real axle claim
+    (:class:`construction.axle.AxleGroup`, :data:`construction.pivots.PIVOT8`)."""
+    from spiderpig.config import BuildConfig
+    from spiderpig.construction.axle import AxleGroup
+    from spiderpig.construction.pivots import PIVOT8
+
+    points = {"A": (0.0, 0.0), "P": (80.0, 0.0), "B": (160.0, 40.0),
+              "C": (30.0, -60.0), "D": (30.0, 60.0)}
+    links = {"b2": (("A", "P"),), "b4": (("P", "B"),), "b6": (("C", "D"),)}
+    topo = _ctx.topology(points, links, axles=(("P", "pin", ("b2", "b4")),))
+    ctx = _ctx.context(topo, BuildConfig(linkage="decanter_rcm", robot=False))
+    group = AxleGroup(topo.axes[0], PIVOT8.resolve(ctx))
+    claims = [_ctx.link_claim(n, ctx.params.link_radius, topo) for n in links]
+    claims += group.claims(ctx)
+    link_t = tuple((n, ctx.sheet_t("link", n)) for n in ("b2", "b4"))
+    return StackProblem(topo, claims, StackSpec(pitch=ctx.pitch, margin=ctx.params.margin,
+                                                heads=heads, link_t=link_t,
+                                                max_seconds=float("inf"), **spec))
+
+
+def test_links_thicker_than_the_pitch_plan_as_the_brute_force_finds():
+    """The pin's two links in neighbouring layers stack 9.65 mm, which a 10 mm pin spans.
+    The search's z is a lower bound of every plan's (``StackSpec.link_t``), its pin rules
+    refuse only on bounds valid for every completion, so it doesn't refuse them as on a
+    pitch a layer (6.35 mm: a 10 mm pin's end 3.4 mm too tall for any slot, which proved
+    the cradles' plans "optimal" two layers too thick until 2026-10-14). The brute force
+    (every layering in every size, each made into its plan at its own z) agrees on the
+    lowest plan."""
+    p = _thick_pin()
+    plan = p.solve()
+    best = brute.lowest(p, range(2, 7))[0]
+    assert plan.optimal
+    assert (plan.top, plan.layers, round(plan.height, 6)) == (
+        best.top, best.layers, round(best.height, 6))
+    assert abs(plan.layers["b2"] - plan.layers["b4"]) == 1      # side by side
+    assert verify_plan(plan) == []
+
+
+def test_the_lowest_plan_is_the_brute_forces_with_both_head_placements():
+    """Heads "best" (both placements searched, :mod:`stack.drive`): the plan is the lower of
+    the brute force's lowest in each (``key``: the height first)."""
+    p = _thick_pin("best")
+    plan = p.solve()
+    each = [brute.lowest(_thick_pin(h), range(2, 7))[0] for h in ("sink", "gap")]
+    assert round(plan.height, 6) == min(round(b.height, 6) for b in each)
+    assert plan.optimal
+

@@ -273,3 +273,48 @@ def test_the_shaft_is_its_gaps_length_up_to_a_tenth_over():
 def test_a_standoff_is_a_pillar_only():
     with pytest.raises(ConstructionError, match="a standoff is a pillar only"):
         PILLAR.dims(_ctx.context(), False)
+
+
+# -- the sleeve rule (common.sleeve_runs) ------------------------------------------------------
+
+
+def _slots(*spec):
+    """Touching slots bottom up: ``(radius, least, height)`` each, from z 0."""
+    from spiderpig.construction.pivots.common import Slot
+
+    out, z = [], 0.0
+    for i, (r, least, h) in enumerate(spec):
+        out.append(Slot(f"s{i}", z, z + h, r, least))
+        z += h
+    return out
+
+
+def _radii(pieces):
+    return [[round(r, 3) for _, r in piece] for piece in pieces]
+
+
+def test_touching_rings_print_as_one_sleeve_stepped_where_it_prints():
+    """A run between two retained parts is one sleeve: a ring 6.25, the gap ring over it 7.0
+    and a ring 6.25 (narrow-wide-narrow: the wide middle would overhang) print as one sleeve
+    with the gap ring cut to 6.25; a profile narrowing upward keeps its steps, printed from
+    its wide end; one narrowing downward too, upside down."""
+    from spiderpig.construction.pivots.common import sleeve_count, sleeve_runs
+
+    nwn = _slots((6.25, 4.9, 3.175), (7.0, 4.9, 3.0), (6.25, 4.9, 3.175))
+    assert _radii(sleeve_runs(nwn)) == [[6.25, 6.25, 6.25]]
+    assert sleeve_count(nwn) == 1
+    assert _radii(sleeve_runs(_slots((7.0, 0, 3), (6.0, 0, 3), (5.0, 0, 3)))) == [[7, 6, 5]]
+    assert _radii(sleeve_runs(_slots((5.0, 0, 3), (6.0, 0, 3), (7.0, 0, 3)))) == [[5, 6, 7]]
+
+
+def test_a_sleeve_splits_only_where_a_ring_would_be_cut_under_what_it_keeps():
+    """Wide-narrow-wide whose wide rings must keep 6.5 (a shoulder's overlap of its link's
+    hole): no one piece prints them all, so two pieces, the first stepped down; slots apart
+    (a link between them) are apart; a piece thinner than a print's least is left as play."""
+    from spiderpig.construction.pivots.common import PRINT_MIN, Slot, sleeve_count, sleeve_runs
+
+    wnw = _slots((7.0, 6.5, 3), (5.0, 4.0, 3), (7.0, 6.5, 3))
+    assert _radii(sleeve_runs(wnw)) == [[7.0, 5.0], [7.0]]
+    apart = [Slot("a", 0, 3, 6.0), Slot("b", 6, 9, 6.0)]
+    assert len(sleeve_runs(apart)) == 2
+    assert sleeve_count([Slot("thin", 0, PRINT_MIN / 2, 6.0)]) == 0

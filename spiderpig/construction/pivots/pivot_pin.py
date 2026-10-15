@@ -57,6 +57,7 @@ from spiderpig.construction.pivots.common import (
 from spiderpig.construction.wobble import Section
 from spiderpig.hardware.catalog import get
 from spiderpig.shapes import disc, ring, union
+from spiderpig.stack import Unbuildable
 
 BLACK_OXIDE = "#2b2b2b"
 
@@ -105,6 +106,32 @@ class PivotPinShaft(ChicagoShaft):
         if end > GAP_MAX + EPS:
             raise ConstructionError(f"a pivot pin's {it['screw_head_h']:g} mm end and its play "
                                     f"don't fit a {GAP_MAX:g} mm clearance gap")
+
+    def column(self, pillar: bool, links, top: int, anchored: tuple[bool, bool],
+               pitch: float, layout=None, air=None, hi=None) -> None:
+        """The Chicago screw's rule (no pin longer than the longest), and the pin's own: made
+        to its stack, it takes no shims, so the stack and the least play must reach the
+        shortest length (:meth:`realize` refuses the rest). A minimum: a search's layout
+        refuses only when even its upper bound of the stack falls short (``hi``, the most
+        the axle's stack can be in any plan); the plan's own z decides."""
+        super().column(pillar, links, top, anchored, pitch, layout=layout, air=air, hi=hi)
+        if pillar or not links or layout is None:
+            return
+        a, b = min(links), max(links)
+        if layout.final:
+            stack = layout.span(a, b) - (air(a, b) if air is not None else 0.0)
+        elif hi is not None:
+            stack = hi(a, b)
+        else:
+            return
+        need = stack + self.washer_t + self.min_play
+        length = next((L for L in self.lengths if need - EPS <= L), None)
+        step = min(self.shim_steps)
+        if length is not None and length - need >= step - EPS:
+            raise Unbuildable(f"a pivot pin is made to its stack, and its stack "
+                              f"{'is' if layout.final else 'can reach at most'} {stack:.2f} mm: "
+                              f"{length - need:.2f} mm under the shortest pin ({length:g} mm) "
+                              "with its play")
 
     def section(self) -> Section:
         from spiderpig.hardware.cradle_catalog import PIVOT8_YIELD

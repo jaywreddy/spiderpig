@@ -1,40 +1,41 @@
 {
  "data": {
   "gaps": {
-   "4": 4.0,
-   "5": 2.4,
-   "6": 3.0
+   "0": 4.0,
+   "2": 4.0,
+   "3": 1.7,
+   "4": 3.1
   },
   "heads": "gap",
-  "height": 37.638999999999996,
+  "height": 35.039,
   "layers": {
-   "b1": 6,
-   "b2": 4,
-   "b3": 5,
-   "b4": 5
+   "b1": 4,
+   "b2": 2,
+   "b3": 3,
+   "b4": 1
   },
   "route": {
    "bearing": true,
    "runs": [
     {
      "at": "M",
-     "hi": 6,
-     "lo": 6
+     "hi": 4,
+     "lo": 4
     }
    ]
   },
   "thick": {
    "0": 2.032,
-   "5": 3.175,
-   "9": 2.032
+   "1": 3.175,
+   "7": 2.032
   },
-  "top": 9
+  "top": 7
  },
- "engine_version": "0.1.0+b266aedf3f13",
+ "engine_version": "0.1.0+e5812d70d3bd",
  "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[klann-single]",
  "source": {
   "file": "tests/test_stack.py",
   "name": null
  },
- "source_key": "gen-0fcdb01c34d0422c"
+ "source_key": "gen-c52dc312dfb2d42d"
 }

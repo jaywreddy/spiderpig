@@ -64,6 +64,7 @@ servo bay, each to ``tighten_nm``.
 
 from __future__ import annotations
 
+import bisect
 import functools
 import itertools
 from dataclasses import dataclass, replace
@@ -81,14 +82,14 @@ from spiderpig.construction.base import (
 )
 from spiderpig.construction.pivots.common import (
     EPS,
-    SLEEVE_COLOR,
     STEEL,
     Column,
     bored,
+    build_sleeves,
     column_air,
-    gap_washers,
-    ring_runs,
+    column_slots,
     ring_z,
+    sleeve_count,
     xy_of,
 )
 from spiderpig.construction.wobble import Section, column_wobble
@@ -96,6 +97,15 @@ from spiderpig.hardware.bom import SHIM_STEP, BomLine
 from spiderpig.hardware.catalog import get
 from spiderpig.shapes import Cut, Shape3D, disc, ring, union
 from spiderpig.stack import Unbuildable
+
+
+@functools.cache
+def _stock(axle: StandoffAxle) -> tuple[tuple[float, ...], ...]:
+    """(:meth:`StandoffAxle.admissible`) The stock lengths of ``axle`` and of its one-piece
+    shaft, each sorted, from its shortest segment up."""
+    return tuple(tuple(sorted(L for L in c.lengths() if c.min_segment - EPS <= L))
+                 for c in (axle, axle.one_piece()))
+
 
 ALU = "#c8ccd0"
 COLUMN_TOL = 0.25    # the column within this of its gap (half the step)
@@ -421,16 +431,75 @@ class StandoffAxle:
 
         return any(fits(sp) for n in range(1, 4) for sp in itertools.combinations(cand, n))
 
+    def hold(self, links, top: int, anchored: tuple[bool, bool], layout, air) -> float:
+        """How far the column's stock standoff (at the plan's z, ``layout``) is longer than
+        its stack between its faces, mm (0: it fits, or is shorter, its shims taking the rest
+        up): the plates stand on it that far apart (:attr:`stack.Claim.hold`; the printed
+        rings :meth:`ring_fill` makes taller take some of it up, the plates still apart)."""
+        a, b = self.faces(links, top, anchored)
+        axle = self.column_axle(set(links), b, layout.pitch, a, layout, air)
+        if axle is None:
+            return 0.0
+        span = layout.z(b)[0] - layout.z(a)[1] - air(a + 1, b - 1)
+        length = axle.segment(span, b - 1 > a and b - 1 not in links)
+        return 0.0 if length is None else max(0.0, length - span)
+
+    def admissible(self, lo: float, hi: float) -> bool:
+        """Whether a column whose stack between its faces is ``lo`` to ``hi`` mm in the plans
+        a search's layout can become may be filled: some stock length of this construction or
+        its one-piece shaft lies within what :meth:`segment` takes over that range (its
+        shims under it, its ``max_long`` over). A window, not a bound: the rule itself (a
+        length within the window, the short odd column refused) waits for the plan's z."""
+        short = max(self.max_shims, self.max_short)
+        long = max(self.max_long, 0.1)
+        for lengths in _stock(self):
+            i = bisect.bisect_left(lengths, lo - short - EPS)
+            if i < len(lengths) and lengths[i] <= hi + long + EPS:
+                return True
+        return False
+
     def column(self, pillar: bool, links: list[int], top: int,
-               anchored: tuple[bool, bool], pitch: float, layout=None, air=None) -> None:
+               anchored: tuple[bool, bool], pitch: float, layout=None, air=None,
+               hi=None) -> None:
         """The planner's rule: a standoff must fill the column (at the plan's own z when
-        ``layout`` is final)."""
-        lo, hi = self.faces(links, top, anchored)
+        ``layout`` is final). A search's layout bounds the column's stack between its faces
+        (its span less ``air``, at least; ``hi``, at most, the gaps over and under the faces
+        included): it is refused only where no stock length could fill any stack in between
+        (:meth:`admissible`)."""
+        lo, hi_face = self.faces(links, top, anchored)
+        if (pillar and layout is not None and not layout.final and air is not None
+                and hi is not None):
+            least = layout.z(hi_face)[0] - layout.z(lo)[1] - air(lo + 1, hi_face - 1)
+            most = hi(lo + 1, hi_face - 1, lo, hi_face)   # (the gaps over and under its faces)
+            if not self.admissible(least, most):
+                raise Unbuildable(
+                    f"no stock standoff ({self.min_segment:g}-{self.max_segment:g} mm) nor a "
+                    f"shaft made to length fills its column ({least:.1f}-{most:.1f} mm)")
+            return
         final = layout if layout is not None and layout.final else None
-        if pillar and self.column_axle(links, hi, pitch, lo, final, air) is None:
+        if pillar and self.column_axle(links, hi_face, pitch, lo, final, air) is None:
             raise Unbuildable(
                 f"no stock standoff ({self.min_segment:g}-{self.max_segment:g} mm) nor a "
-                f"shaft made to length fills its {(hi - lo - 1) * pitch:g} mm column")
+                f"shaft made to length fills its {(hi_face - lo - 1) * pitch:g} mm column")
+
+    def prints(self, group: AxleGroup, view: Build, col: Column) -> int:
+        """The sleeves this pillar prints at the plan's z (:func:`common.sleeve_count`; the
+        rings' fill and the end shims' trim, which only move a sleeve's ends, aren't
+        modelled)."""
+        return sleeve_count(column_slots(view, group, col))
+
+    def stock_keys(self, group: AxleGroup, view: Build, col: Column) -> list[str]:
+        """The standoff this pillar buys at the plan's z."""
+        top = view.top
+        anchored = (0 in col.anchors, top in col.anchors)
+        a, b = self.faces(col.links, top, anchored)
+        axle = self.column_axle(set(col.links), b, view.ctx.pitch, a, view.plan.layout,
+                                lambda x, y: column_air(view, group, x, y))
+        if axle is None:
+            return []
+        span = view.z(b)[0] - view.z(a)[1] - column_air(view, group, a + 1, b - 1)
+        length = axle.segment(span, b - 1 > a and b - 1 not in col.links)
+        return [] if length is None else [axle.segment_key(length)]
 
     # -- strength ---------------------------------------------------------------------------
 
@@ -553,12 +622,6 @@ class StandoffAxle:
         for k in col.between:
             if col.roles[k][0] == "neck":
                 raise ConstructionError(f"{group.name}: a standoff can't neck down (layer {k})")
-        ring_of: dict[int, str] = {}        # layer -> the ring (or sleeve) round it
-        for ks, r, z0, z1 in ring_runs(build, col, fill):
-            out.bodies.append(hardware(f"{stem}_ring{ks[0]}",
-                                       ring(xy, 2 * r, self.od + self.ring_fit, z0, z1), host,
-                                       fab="printed", color=SLEEVE_COLOR))
-            ring_of.update(dict.fromkeys(ks, f"{stem}_ring{ks[0]}"))
         shimmed: dict[int, float] = {}      # face -> the shims' thickness under it
         trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
         long = 0.0          # how far the stock standoff (and take-up) is off its gap
@@ -591,22 +654,17 @@ class StandoffAxle:
                 if len(sh) > 1:
                     out.extras.append(BomLine(self.shim_key, len(sh) - 1,
                                               f"{group.name}: {t:.1f} mm under layer {b}"))
-                sleeve = ring_of.get(b - 1, f"{stem}_ring{b - 1}")
-                for i, body in enumerate(out.bodies):
-                    if body.name == sleeve:
-                        bb = body.part.bounding_box()
-                        if zs0 + EPS < bb.max.Z:
-                            r = (bb.max.X - bb.min.X) / 2
-                            out.bodies[i] = hardware(
-                                sleeve, ring(xy, 2 * r, self.od + self.ring_fit, bb.min.Z,
-                                             zs0), host, fab="printed", color=SLEEVE_COLOR)
                 shimmed[b] = t
                 z1 = zs0
+        # the printed sleeves (common.sleeve_runs), stopped under the shims where they reach
+        # down into the spacer layer under the face
+        slots = [replace(sl, z1=min(sl.z1, z1)) for sl in
+                 column_slots(build, group, col, fill=fill, trim=trim) if sl.z0 < z1 - EPS]
+        long += build_sleeves(build, group, slots, out, self.od + self.ring_fit, host, stem)[0]
         bore = max(2.0, self.screw_d / 2)       # (its tapped ends, drawn through)
         seg = disc(xy, self.od / 2 - 0.01, z0, z1) - disc(xy, bore, z0 - 1, z1 + 1)
         out.bodies.append(hardware(f"{stem}_standoff{a}", seg, host, fab="purchased",
                                    bom_key=self.segment_key(length), color=ALU))
-        long += gap_washers(build, group, col, out, self.od, host, stem, trim=trim)
         long += self._running_play(build, group, out, length)
         w_od, w_id, w_t = self.washer()
         ends = [(a, -1.0, anchored[0]), (b, 1.0, anchored[1])]

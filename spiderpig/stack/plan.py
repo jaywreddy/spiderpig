@@ -33,29 +33,33 @@ machine (``tests/test_stage_checks.py`` does that)."""
 class StackSpec:
     """Stack dimensions (mm): ``pitch`` = sheet thickness; ``margin`` = clearance.
 
-    Search effort, in nodes: ``quick_nodes`` per stack size while looking for
-    the first plan, ``max_nodes`` per size left open while none is found and
-    for a cheaper route, ``max_nodes // 2`` per thinner size the proof pass
-    tries to rule out, ``max_total_nodes`` in all; and ``max_seconds`` of
-    wall clock for the whole search, the safety net (a node's cost grows
-    with the stack size). A plan found is always valid; only the proof that
-    it is the thinnest depends on them: when they run out, a plan found is
-    returned unproven (``StackPlan.optimal`` false, ``proof`` naming the
-    sizes left open) and none found raises :class:`PlanError` with the tally.
+    ``objective`` (:meth:`StackProblem.key`): "height", the lowest stack (frame plate to
+    frame plate), then the crank route's cost, what the stock parts cost and the parts
+    printed; "layers", the fewest layers, then the route's cost, the search stopping at
+    the first plan with no route cost (equal ones then rank by the height and the rest; a
+    walker's: ``config.plan_objective``). The search runs as jobs (:mod:`stack.drive`): a
+    stack size and a head placement each, ``workers`` at once in forked processes
+    (:mod:`stack_pool`; ``None``: ``SPIDERPIG_PLAN_WORKERS``, else up to
+    :data:`stack.drive.MAX_WORKERS`; one, or ``SPIDERPIG_WORKERS=0``: in this process), each
+    job's answer its own, so the plan is the same whatever runs where.
+
+    Effort, in nodes per job: ``quick_nodes`` for each size's short job while the first
+    plan is looked for (``max_total_nodes`` of them in all), then the proof: ``max_nodes``
+    for each size the objective needs searched to the end (objective "height": every size
+    whose least height isn't over the best plan's, ``proof_nodes`` when set; "layers": the
+    plan's own size, and ``max_nodes // 2`` each thinner one); and ``max_seconds`` of CPU per
+    job, the safety net. A plan found is always valid; only the proof depends on them: when
+    they run out, the plan is returned unproven (``StackPlan.optimal`` false, ``proof``
+    naming the sizes left open) and none found raises :class:`PlanError` with the tally.
     ``drop_bearing`` lets the crank lose its bottom bearing as the last resort.
-    ``workers`` (a prototype): search the stack sizes in that many forked processes
-    (:mod:`stack_pool`), with the serial search's answer. ``max_seconds`` is CPU time of
-    this process (:class:`Deadline`), so how far a search gets doesn't depend on what else
-    the machine is doing (a 60 s wall-clock budget made the same design plan at load 3 and
-    fail at load 25, measured); a forked pool worker counts its own CPU from zero, so it
-    gets about that much on top. ``prove`` (a prototype, on by
-    default): with it off the search stops at the thinnest stack its quick pass finds a
-    plan in (the plan it would return before the proof), and says what is left unproven.
-    ``quick_first`` (a prototype, off by default): a short search stops at its first plan
-    instead of spending the rest of its budget on a cheaper route in a size the next,
-    thinner one may well beat (the size kept gets the cheaper route's full search).
-    ``symmetry`` (a prototype, off by default): a two-leg module whose leg swap is a
-    symmetry of the problem (:mod:`stack_symmetry`) searches one of each mirror pair.
+    ``max_seconds`` is CPU time of the thread searching a job (:class:`Deadline`), so how
+    far a search gets doesn't depend on what else the machine is doing (a 60 s wall-clock
+    budget made the same design plan at load 3 and fail at load 25, measured). ``prove``
+    (on by default): with it off the search stops at the thinnest stack its short jobs find
+    a plan in, and says no proof was asked. ``quick_first`` (on by default): a short job
+    stops at its first plan. ``symmetry`` (a prototype, off by default): a two-leg module
+    whose leg swap is a symmetry of the problem (:mod:`stack_symmetry`) searches one of each
+    mirror pair.
     """
 
     pitch: float = 3.0
@@ -69,9 +73,11 @@ class StackSpec:
     # a spec is made, so a test can take the clock out and bound a search by its nodes alone
     max_seconds: float = field(default_factory=lambda: MAX_SECONDS)
     drop_bearing: bool = False
-    workers: int = 1
+    workers: int | None = None
+    proof_nodes: int | None = None
+    objective: str = "height"
     prove: bool = True
-    quick_first: bool = False
+    quick_first: bool = True
     symmetry: bool = False
     # z of the plan (:meth:`StackProblem.plan`): the frame plates' thickness (``None``: the
     # pitch), each link's sheet thickness (a link not named: the pitch; a layer is as thick
@@ -82,11 +88,12 @@ class StackSpec:
     gaps: tuple[float, ...] = (1.0, 1.5, 2.0, 2.29, 2.54)
     # Where a fastener's head (a clearance shape that may sink, :attr:`Placed.toward`) goes:
     # "sink" claims the layer beside its link, as a full-layer head (no gap ever); "gap"
-    # puts it in a thin clearance gap unless it fits that layer; "best" plans them sunk, and
-    # in gaps only when that fails; "gap_sink" (a router with its own heads in gaps: the
-    # single-plate crank) in gaps, and only when that fails the pivots' heads sunk with the
-    # router's (and :data:`GAP_GROUPS`') still in their gaps. :attr:`StackPlan.heads` says
-    # which ("sink" or "gap").
+    # puts it in a thin clearance gap unless it fits that layer; "best" searches both, side
+    # by side, and keeps the better plan (equal ones: sunk); "gap_sink" (a router with its
+    # own heads in gaps: the single-plate crank) both too, the pivots' heads sunk with the
+    # router's (and :data:`GAP_GROUPS`') still in their gaps, equal ones in gaps; its gap
+    # search may give up (:data:`GIVE_UP`). :attr:`StackPlan.heads` says which ("sink" or
+    # "gap"). (Until 2026-10-14 the second only ran where the first found no plan.)
     heads: str = "best"
 
 
@@ -129,8 +136,11 @@ class Deadline:
 class StackPlan:
     """A solved stack: every link's layer, the stack size and every claimed shape.
 
-    ``optimal``: no thinner stack exists and no cheaper route for the routed
-    group in this one (``proof`` says how that was established, or why not).
+    ``optimal``: no plan is better under the objective (:meth:`StackProblem.key`: the
+    lowest stack, or for objective "layers" the thinnest and its cheapest crank route),
+    with either head placement searched; ``proof`` says how that was established, or why
+    not. ``usd`` and ``printed``: what its stock parts cost and the parts it prints (the
+    claims' ``tally``: the objective's later terms).
     """
 
     spec: StackSpec
@@ -147,6 +157,11 @@ class StackPlan:
     thick: dict[int, float] = field(default_factory=dict)   # layer -> thickness (not pitch)
     sunk: frozenset = frozenset()       # the heads sunk into a layer (``sunk_key``)
     heads: str = "gap"                  # how the plan placed heads (StackSpec.heads)
+    usd: float = 0.0                    # what its stock parts cost (the claims' ``tally``)
+    printed: int = 0                    # the parts it prints (the claims' ``tally``)
+    hold: float = 0.0                   # how far a stock part still holds the stack apart
+    #                                     beyond its z, mm (a standoff longer than its column
+    #                                     where no gap took it: plan_z._take_up)
 
     @cached_property
     def layout(self) -> Layout:
