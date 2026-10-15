@@ -1690,3 +1690,10 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Export plans first:** `export` plans and builds a design that isn't built, whatever the
   formats (`guide`, `control`, `order` read the planned side); an arm's plan is minutes cold.
   The MCP's `export` was a job already: its description and API.md say so (no new job).
+- **The gate** (against `platform-9aae3e3`): all eight designs identical (no part, plan,
+  BOM or cut file moved; `klann_quad`'s audit fails as known). The verify rows are new
+  output, not parts: on the approved arm, a place task of 100 x 60 mm rising 20 mm reads
+  `task.area_mm` slack 74.2 mm (the bench band 149-288 mm over -120..120 deg) and
+  `task.height_mm` 238 mm, both `estimated`, `verify standard` ok; the Hoecken traces a
+  60 mm path within 0.5 mm as a 66.9 mm stroke 0.064 mm across, `measured`, ok.
+  DESIGNS.md is not regenerated (no part moved).
