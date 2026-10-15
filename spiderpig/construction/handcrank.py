@@ -285,13 +285,17 @@ CRANKPIN_D = 12.0       # the crankpin: a NETRF12 standoff (12 mm steel round, M
 #                         end, made to length: hardware.cradle_catalog); the 6 L's jam bends a
 #                         10 mm one (SF 1.13, cradle_report)
 SOCKET_FIT = 0.3        # the block's holes over it (the standoff is 0/-0.1 mm; a laser's hole
-#                         +-0.13: seven of them must pass it)
+#                         +-0.127, SendCutSend's cut tolerance: seven of them must pass it)
 CRANKPIN_PLAY = 0.3     # the rod's axial play on the crankpin, under its washer, at most (the
 #                         standoff's length rounds down: 0.2-0.3): the washer holds it off the
 #                         rear tie's screw head under the cradle link (0.26 mm nominal where it
-#                         crosses, under the chain's +-0.3: the guide's paper check); seven
-#                         plates' +-0.11 mm lie in that loop: a printed spacer under the rod,
-#                         sanded on the bench, sets it (the rod only goes down)
+#                         crosses, under the chain's +-0.3: the guide's paper check, filing
+#                         the crankpin's top if it drags). The block hangs from its seat plate
+#                         on the shaft's end and the crankpin stands on its lowest plate, so
+#                         the five plates between lie in that loop, each +0.152/-0.127 mm
+#                         (PLATE_UNDER): thin ones lift the rod up to 0.64 mm. A printed
+#                         spacer under the rod, sanded on the bench, keeps its play (the rod
+#                         only goes down)
 TIE_NUT = (10.0, 3.2, "m6_thin_nut")    # the tie's thin nut under the block (DIN 439: across
 #                                         flats, height, catalog key), in the head layer, the
 #                                         bolt's end past it 2 mm or more over the outer plate
@@ -315,9 +319,11 @@ ARM_LAYER = 2
 BLOCK_PLATES = 8                # the crank block's plates: its top where round 1 had it, so the
 #                                 rod rides where it did (the planner's plan unchanged)
 KEYED_PLATES = 3                # the lowest plates, on the key's straight flanks: three crank-
-#                                 sheet plates hold 3 x the walking peak each filed alone and
-#                                 2.3 x the clutch's cap together (cradle_report's keyway rows);
-#                                 the fourth would hold the seat over the end screw's M10 head
+#                                 sheet plates, filed together, hold 4.2 / 4.0 x the walking
+#                                 peak and 2.37 / 2.26 x the clutch's cap (B / A, on the sheet's
+#                                 thinnest: cradle_report's keyway rows); the fourth would hold
+#                                 the seat over the end screw's M10 head. The plates over them
+#                                 up to the seat are slotted clear of the key (KEY_CLEAR)
 KEY_SLOT = -0.25                # the keyed plates' slot under the key's width: cut at 7.75 mm (a
 #                                 laser's +-0.13 stays under the key's 8) and filed together on
 #                                 the key to a slide fit, so every one bears (round 2's m4: a
@@ -325,6 +331,9 @@ KEY_SLOT = -0.25                # the keyed plates' slot under the key's width: 
 #                                 to bear)
 KEY_CLEAR = 0.4                 # the other plates round the shaft: their slot clear of the key's
 #                                 end (only the keyed plates drive)
+PLATE_UNDER = 0.127             # a 0.125 in 6061 plate's thinnest under its nominal: SendCutSend's
+#                                 table, +0.006 / -0.005 in (its spec table, fetched 2026-10-15);
+#                                 the keyway's bearing is rated on it
 ARM_BORE_FIT = 0.25             # the arm plates' bore over the h6 shaft: over a laser's
 #                                 +-0.13 mm (the key drives; the seat plate's end screw and the
 #                                 shaft's end hold the block along the axis)
@@ -1194,6 +1203,7 @@ class HandCrank(Group):
         over = [view.z[p][0] for p in [arm, *plates] if p in view.z
                 and view.z[p][0] >= view.z.get("crank_shaft", (0.0, -1e9))[1] - 1e-6]
         seat = (min(over) if over else 0.0) - inner
+        n_clear = len([p for p in [arm, *plates] if p in view.z]) - len(over) - KEYED_PLATES
         a1 = view.layers[ARM_LAYER][0] + KEYED_PLATES * HAND_CRANK.plate_t - inner
         lo = seat - min(SEAT_LOW, seat - (a1 - 0.2 + box.key_short + k[0] / 2))
         face = view.z[sleeves[0]][0] if sleeves else 0.0
@@ -1242,17 +1252,20 @@ class HandCrank(Group):
                "On the bench, as one block: the lowest plate (keyed, a small hole at its end), "
                "the thick steel standoff (the crankpin) stood on that small hole, an M6 button "
                f"head up through the plate into it (threadlocker 243), {SCREW_NM:g} N·m; the "
-               f"other plates down over the crankpin in their order (the {KEYED_PLATES} keyed "
-               "ones with the narrow slot, the slotted ones, the seat with the "
+               "other plates down over the crankpin in their order (the "
+               f"{KEYED_PLATES - 1} more keyed ones with the narrow slot, the "
+               f"{n_clear} with a wider slot, the seat with the "
                f"{es.d + 0.6:.1f} mm hole, the one with the {es.head_d + 1.5:g} mm hole on "
                "top), the tie's M6 button head down through every plate's middle hole into its "
                "thin nut under the lowest plate (threadlocker 243; a 10 mm wrench on the nut), "
                f"{SCREW_NM:g} N·m. Fit the keyways: the keyed plates' slots are cut "
                f"{-KEY_SLOT:g} mm under the shaft's {k[0]:g} mm key, so each can be filed to "
-               "it; push the key, out of its seat, into the block's slots and file them "
-               "together (a flat file, the block tied) until it slides through all "
-               f"{KEYED_PLATES} with no play: until then the tightest plate carries the crank "
-               "alone. The key back in its seat.", "layer"),
+               "it; push the key, out of its seat, up into the block's slots from under it "
+               "and file the narrow slots together (a flat file, the block tied) until it "
+               f"slides through all {KEYED_PLATES} with no play: until then the "
+               f"tightest plate carries the crank alone. The {n_clear} wider slots "
+               f"over them are cut {KEY_CLEAR:g} mm over the key, clear of it: no file. The "
+               "key back in its seat.", "layer"),
             Op(STACK, (ARM_LAYER, 1), whole("crank_end_screw"), "",
                "The block down over the shaft, its keyways on the key, its seat plate onto the "
                f"shaft's end; the M{es.d:g} button head down through it into the shaft's end "
@@ -1700,13 +1713,17 @@ class HandCrankConstruction:
         return {"arm": round(arm, 2), "arm keyway": round(KEYED_PLATES * self.keyway_one(), 2)}
 
     def keyway_one(self) -> float:
-        """The crank torque (N·m) one keyed plate's keyway holds at its bearing yield: all
-        the block holds until the keyed plates are filed together on the key (a laser's slot
-        is +-0.13 mm in width and place: the tightest bears first; round 1's drive review;
-        cut under the key's width since round 2, so each can be filed to it)."""
+        """The crank torque (N·m) one keyed plate's keyway holds at its bearing yield, on
+        the sheet's thinnest (:data:`PLATE_UNDER` under its nominal): all the block holds
+        until the keyed plates are filed together on the key (a laser's slot is +-0.127 mm in
+        width and place: the tightest bears first; round 1's drive review; cut under the
+        key's width since round 2, so each can be filed to it). Only the
+        :data:`KEYED_PLATES` bear: the plates over them up to the seat are slotted
+        :data:`KEY_CLEAR` wider than the key."""
         box = BOXES[self.gearbox]
         proud = box.key_proud
-        return self.bearing_mpa * proud * self.plate_t * (box.shaft_d / 2 + proud / 2) / 1000.0
+        t = max(self.plate_t - PLATE_UNDER, 0.0)
+        return self.bearing_mpa * proud * t * (box.shaft_d / 2 + proud / 2) / 1000.0
 
 
 HAND_CRANK = HandCrankConstruction()

@@ -178,9 +178,13 @@ stops there:
     - The lowest three are keyed on the 8 mm key's straight flanks (`KEYED_PLATES`; the
       keyseat is end-milled, so the key's ends are round). Their slots are cut 0.25 mm
       under the key (`KEY_SLOT`: a laser's ±0.13 stays under it) and filed together on the
-      key to a slide fit, so each bears (round 2's m4); the plates over them are slotted
-      clear of the key's end. One plate alone holds 51.5 N·m at bearing yield (1.47 x B's
-      walking peak), the three 154 (2.47 x the cap).
+      key to a slide fit, so each bears (round 2's m4). The three over them, up to the
+      seat, are slotted 0.4 mm wider than the key (`KEY_CLEAR`), clear of it: only the
+      keyed three are filed, and only they bear (round 2's laser-cut review, its minor 2:
+      round 1 had cut all seven slotted plates at the key's width and counted four). One
+      plate alone holds 49.4 N·m at bearing yield on the sheet's thinnest, 3.048 mm
+      (`handcrank.PLATE_UNDER`: SendCutSend's 0.125 in 6061, +0.152 / -0.127 mm, its spec
+      table fetched 2026-10-15), 1.41 x B's walking peak; the three 148 (2.37 x the cap).
     - It is built and fitted on the bench as one block, tied by an M6 button head through
       every plate into a thin nut under the lowest (`handcrank.TIE_NUT`).
     - Its seventh plate seats on the shaft's steel end face, an M10 x 16 button head through
@@ -354,7 +358,7 @@ stops there:
   - Frame plates: 0.187 in 5052, 3.4× as stiff across as 0.125 in, and still cut with the
     screws' holes. In 0.250 in, SendCutSend's least hole would be 6.35 mm.
   - The rod: 0.250 in 5052 (`materials.CRADLE_ROD_SHEET`), so it doesn't buckle.
-  - The crank block: 0.125 in 6061 (the keyway's 6.1 mm slot is legal in it).
+  - The crank block: 0.125 in 6061 (the keyways' 7.75 mm slots are legal in it).
   - B's links are 0.187-0.190 in: its arms b2 and b3 and its bar b4 in 7075-T6 (a 6 L's
     jam: 6061 held 0.83; SendCutSend's datasheet, yield 69 ksi), b5 and its cradle link b6
     in 5052 (b6 was 0.125 in until 2026-10-14); its 336 mm rod is 0.250 in 5052, the rod
@@ -492,8 +496,10 @@ adjustable"). What it changed, and why:
   - B's arms b2, b3 and bar b4: 7075-T6 0.190 in (1.72 x 6061's yield).
   - The rods: 0.250 in 5052 on both, and every link 24 mm wide (their buckling; a 0.313 in
     rod failed SendCutSend's web rule round its pin).
-  - The crank block: four keyed plates on the NRV040's 19 mm shaft and 6 mm key (three on
-    the NRV050's 25 mm shaft and 8 mm key since round 2's drive).
+  - The crank block: four keyed plates on the NRV040's 19 mm shaft and 6 mm key, as
+    counted (all seven under the seat were slotted at the key's width); three on the
+    NRV050's 25 mm shaft and 8 mm key since round 2's drive, the three over them slotted
+    clear.
   - The pins: steel ("The pins" above), the user's choice of 2026-10-13: an M6 Chicago
     screw's 8 mm stainless barrel held 0.69 at B's rod pin P.
 - **The stand:** the base board 530 x 626 mm (from 500 x 596): a full 6 L tips past 25° over
@@ -1025,7 +1031,7 @@ mm handle, 69.3 at A's on its 105, and no bound; round 1 made it the clutch's 61
   crank-rocker's forces grow without bound; the clutch's case rates them (below). There
   only clearance protects: the decanter's lip and anything under the cradle.
 - What A holds there (at its 65.7 N·m cap): pin E (steel) 3.09, the crankpin 1.69, the
-  keyed plates 2.35, the rod's buckling 2.17, pillar G 1.71 (on its box: below), its
+  keyed plates 2.26, the rod's buckling 2.17, pillar G 1.71 (on its box: below), its
   cradle link b2 1.70 (in bending, chord by chord; 0.187 in 5052, its E-Tr1 32 mm wide
   against buckling), the columns 2.29 and more, the outer plate's members 2.1, the
   inner's 3.13 (at round 1's 61.3 N·m: 3.31, 1.81, 2.15, 2.32, 1.83, 1.82, 2.44, 2.25,
@@ -1121,9 +1127,9 @@ ratchets on the start), and dry it locks (`handcrank.clutch_drift`, the report's
   input's shoulder on B (292 on A's 230 mm reach), where the catalogue allows Fr1 a / (b +
   x) = 229 N on the NRV050 (p. 43: 490 N, a 129, b 114; 156 on A); the clutch's top is 29.9
   N at B's grip (SF 7.7), 30.2 at A's (5.2).
-- The keyed plates hold 2.47 x the cap filed together on the key (2.35 on A); one plate
-  bearing alone 0.82 (0.78), and 1.47 at B's walking peak (1.39); the guide files them
-  together.
+- The keyed plates hold 2.37 x the cap filed together on the key (2.26 on A), rated on
+  the sheet's thinnest (`handcrank.PLATE_UNDER`); one plate bearing alone 0.79 (0.75), and
+  1.41 at B's walking peak (1.34); the guide files them together.
 - The bars are the tests' (`tests/test_cradle.py`): the clutch's least slip in its check's
   window at least 1.1 x the worst starting turn (1.2 on both: 1.3 x 0.92), every part at
   1.3 or more 30° from the toggles, the output shaft 3 x walking, the gearbox's maximum
@@ -1276,8 +1282,8 @@ structure, mounting and drive rounds of 2026-10-14 and round 2's drive):
 | swing | −50.0° to +30.0°, the mouth still (0 mm), every bottle's mouth on the pivot |
 | transmission | 36.7° at worst (the rod's); the parallelograms 48.5° and 51.5° |
 | gearbox | NRV050: 35.1 N·m peak, SF 2.42 on its 85 N·m maximum, the clutch's cap 1.36 x under it; 21.3 N at the 125 mm grip at the worst start run in, 24.2 new (the bar 22 N, MIL-STD-1472H) |
-| jam (62.5 N·m, the clutch's cap) | pillars O1 and O2 1.38 (on their box), b6 1.4, b4 1.52 (its chord's buckling), pin K 1.54 (clevis), the outer plate's members 1.57, the inner's 1.73, b1 1.87, b3 1.97, pin J2 2.31 (clevis), column D1 2.31, pin Y 2.32 and pin X 2.68 (clevis), the crank's keyway 2.47, pin P 2.81 (steel), b2 3.23, pin J 11.4 (steel) |
-| walking | every joint, link, column and plate 4.11 or more; the crank's keyway 4.4; the output shaft's radial load 8.37 (402 N at the rod's plane, 69.4 mm past the hub, against 3363 N) |
+| jam (62.5 N·m, the clutch's cap) | pillars O1 and O2 1.38 (on their box), b6 1.4, b4 1.52 (its chord's buckling), pin K 1.54 (clevis), the outer plate's members 1.57, the inner's 1.73, b1 1.87, b3 1.97, pin J2 2.31 (clevis), column D1 2.31, pin Y 2.32 and pin X 2.68 (clevis), the crank's keyway 2.37, pin P 2.81 (steel), b2 3.23, pin J 11.4 (steel) |
+| walking | every joint, link, column and plate 4.11 or more; the crank's keyway 4.23; the output shaft's radial load 8.37 (402 N at the rod's plane, 69.4 mm past the hub, against 3363 N) |
 | rod, crankpin | buckling 1.68 × its jam force; the crankpin 2.07 jammed |
 | the clutch's cap over the whole turn | every part 1.34 or more 30° and more from the toggles (pillar O2); pillar O2 1.13 at ±25°, 0.92 at ±20°; the gearbox's output shaft 1.3 outside ±25°, 1 outside ±20°; the rod buckles within ±17° of rest, ±9° of full tilt (rounds 1 and 2's drive reviews) |
 | stand | tips at 25.1° at worst (a full 6 L, over the rear edge); the drive side 28.8°, the passive side 31.6°, the front 42.1°; a push of 46.1 N or more at a bottle's top. The board 40 mm toward the drive side and 684 mm long since round 2's drive (its NRV050 took the 682 mm board to 24.9°) |
@@ -1395,8 +1401,9 @@ Things to know before cutting and on the bench:
   the housing's spigot height, hub protrusion and hub diameter are unpublished, and the
   riser keeps them out of the stack-up.
 - **File the keyed plates' slots together on the key**, the block tied on the bench, to a
-  slide fit: they are cut 0.25 mm under it so each can be, and until they are fitted the
-  tightest plate carries the crank alone.
+  slide fit: the lowest three are cut 0.25 mm under it so each can be, and until they are
+  fitted the tightest plate carries the crank alone; the three over them are cut clear of
+  it (no file).
 - **Measure the start, set the hand crank's clutch** at 1.3 x it with a luggage scale on the
   bench (the guide's hand crank step), greased, and check it at every set-up, after any
   greasing and after a trip in a hot car; once a year re-grease its seats and look for a

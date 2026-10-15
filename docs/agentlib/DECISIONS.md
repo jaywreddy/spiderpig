@@ -1715,8 +1715,13 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **The crank block** (`handcrank.BLOCK_PLATES`, `KEYED_PLATES`, `KEY_SLOT`): eight plates,
   its top where round 1 had it (the rod rides where it did; the planner's plan unchanged).
   The 050's key is 8 x 7, standing 3 mm proud, its straight flanks ending 9 under the
-  shaft's end, so three plates are keyed (one alone 51.5 N·m, 1.47 x B's walking peak; the
-  three 2.47 x the cap); their slots cut at 7.75 and filed together to the key (m4); the
+  shaft's end, so three plates are keyed (one alone 49.4 N·m on the sheet's thinnest, 1.41
+  x B's walking peak; the three 2.37 x the cap); their slots cut at 7.75 and filed together
+  to the key (m4), the three over them slotted 0.4 mm clear of it, so only the three bearing
+  plates are filed (round 2's laser-cut review, minor 2: round 1 had seven slotted at the
+  key's width, counted four, and rated them on a ±0.11 mm sheet; SendCutSend's 0.125 in 6061
+  table, fetched 2026-10-15, is +0.152 / -0.127 mm, and the keyway is rated on its thinnest,
+  `handcrank.PLATE_UNDER`); the
   seventh seats on the shaft's end, an M10 x 16 button head into its tap at 20 N·m (A2-70:
   30 N·m at a friction of 0.1, TR Fastenings, rendered 2026-10-14; m1), the eighth rings
   its head. The shims went with the fixed spacers: the nuts set the shaft's end under the
@@ -1819,7 +1824,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   | jam SF at the cap, 30° from the toggles | pillar O2 1.36 / b2 1.80 | pillar O2 1.34 / the output shaft 1.49 (b2 1.70) |
   | the hand on the grip, least room | B 21 mm / A -11.4 (through b2 and Tr2's screw for 64.5° of crank) | 40.4 / 14.1 mm |
   | the clutch unchecked (greased drift, worn seats) | "±10 %" | its cap 85.1 / 89.5 N·m, its slip down to 0.93 x the start; set new and never re-checked, 71.1 / 74.7 |
-  | keyed plates | one 0.94 / 0.89 walking, the four 2.15 x the cap | one 1.47 / 1.39 walking, the three 2.47 / 2.35 x the cap |
+  | keyed plates | one 0.94 / 0.89 walking, the four 2.15 x the cap | one 1.41 / 1.34 walking, the three 2.37 / 2.26 x the cap (on the sheet's thinnest) |
   | rod and crankpin at the jam | 1.71, 2.11 / 2.32, 1.81 | 1.68, 2.07 / 2.17, 1.69 |
   | stand | 25.1° (682 mm board) / 24.0° | 25.1° (684 mm) / 24.5° (to its drive side; bar 15°) |
   | mass (the drive side's gearbox) | 2.1 kg | 3.45 kg |
