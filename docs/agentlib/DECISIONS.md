@@ -2091,3 +2091,30 @@ a first-time user with the generated guide. What changed:
 - **Where:** `spiderpig/construction/cradle.py`, `spiderpig/cradle_report.py`,
   `spiderpig/hardware/bom.py`, `spiderpig/hardware/cradle_catalog.py`,
   `spiderpig/hardware/fasteners.py`, `tests/test_cradle.py`.
+
+### 2026-10-15: round 2's drive meets the mounting round
+
+- **What:** the mounting round (merged at 507457e: the rear knob stack 10 mm lower, the
+  PETR15-150 post, the bottle's carriers in PETG, the use card's fourth line) merged into
+  round 2's drive; both rounds' parts kept ([DECANTER.md](DECANTER.md): "The drive",
+  "Loads and checks").
+- **Re-rated on the heavier cradle** (0.12 kg more in the saddles; B 14.75 kg, A 13.68):
+  a full 6 L's drawn start 2.68 and 2.817 N·m at the input (`handcrank.DESIGN_START_NM`),
+  the clutch's cap 63.0 and 66.2 N·m (`config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`; 62.5
+  and 65.7 before), 1.35 and 1.28 x under the NRV050's 85 N·m (floor 1.25); the crank's
+  peak 35.4 and 37.2 N·m (SF 2.40, 2.29); the grip 21.4 and 21.7 N run in (bar 22); every
+  part 1.33 (B, pillar O2) and 1.48 (A, the output shaft) or more at the cap 30° from the
+  toggles; the keyed plates 2.35 and 2.24 x the cap. The clutch's margin is not the
+  mounting round's 1.10 on A: set at 1.3 x the user's measured start, its least slip in
+  the check's window is 1.2 x the start on both, whatever the mass.
+- **B's stand:** 25.2° over its rear edge on its 686 mm board (28.8° drive side, 31.2°
+  passive side, 41.9° front; 28.3° at the rear pouring); A 24.5° to its drive side.
+- **The rest poses:** the drive side with the cradle box lying on the blocks tips at 14.3°
+  (16.3 on the NRV040; the box with the mounting round's saddles weighs 70 g more and its
+  knob stack sits lower, which steadies the box on its edges: 44.3°, but lifts nothing
+  here). No place for the blocks on the outer plate does better than 15.0° (every pair of
+  stand nodes and pillars, the O1 block turned every 15°, and moved up off O1 it leaves
+  the plate): its test's bar is 14° with the reason, the steps keep a hand on the box. A
+  wider stance for the lying cradle is the stand's to weigh.
+- **Where:** `spiderpig/construction/handcrank.py`, `spiderpig/config.py`,
+  `spiderpig/hardware/bom.py`, `spiderpig/hardware/fasteners.py`, `tests/test_cradle.py`.
