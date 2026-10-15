@@ -16,7 +16,7 @@ from spiderpig.shapes import disc, union
 
 SIZES = {"M2": "2", "M2.5": "2p5", "M3": "3"}       # thread label -> size in a catalog key
 CLEARANCE = {"2": 2.4, "2p5": 2.9, "3": 3.4,        # ISO 273 medium clearance holes (mm)
-             "5": 5.5, "6": 6.6}
+             "5": 5.5, "6": 6.6, "8": 9.0}
 SHCS_LENGTHS: dict[str, tuple[float, ...]] = {
     "2": (4, 5, 6, 8, 10, 12, 16, 20),
     "2p5": (4, 5, 6, 8, 10, 12, 16, 20),
@@ -28,6 +28,7 @@ BHCS_LENGTHS: dict[str, tuple[float, ...]] = {
     # M6 face, the crank arm's end screw and its 12 mm standoffs' M6 ends
     "5": (8, 10, 12, 16),
     "6": (8, 10, 12, 16, 20, 25, 30, 35, 40, 45),
+    "8": (12,),         # (the rear saddle's 15 mm post's foot)
 }
 SELF_TAP_LENGTHS: dict[str, tuple[float, ...]] = {"2": (4, 5, 6, 8, 10, 12)}
 
@@ -63,6 +64,7 @@ SCREWS: dict[tuple[str, str], Screw] = {(s.kind, s.size): s for s in (
     Screw("bhcs", "3", 5.7, 1.65, BHCS_LENGTHS["3"]),
     Screw("bhcs", "5", 9.5, 2.75, BHCS_LENGTHS["5"]),
     Screw("bhcs", "6", 10.5, 3.3, BHCS_LENGTHS["6"]),
+    Screw("bhcs", "8", 14.0, 4.4, BHCS_LENGTHS["8"]),
     # PA2.0 pan-head self-tapping screws for plastic; head within ISO 7049 ST2.2's maximum
     Screw("self_tap", "2", 4.0, 1.6, SELF_TAP_LENGTHS["2"]),
 )}

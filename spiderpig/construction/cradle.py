@@ -14,14 +14,16 @@ one side at a time like any mechanism. The bottle lies between two sides, the **
   screwed through its cradle link from outside. Two printed saddles ride on them, each a
   carrier on its two rods (an M3 set screw up from its underside onto each) and a V block
   that rides up and down in it on a thumbscrew (:class:`Saddle`): the front one under the
-  neck, in a box guide; the rear one under the body, on a steel post and a coarse lead
-  screw, the base stop's rails continuing its V behind it on their flanges. TPU liners,
-  pegged in, line the Vs. At a 6 L methuselah's setting each V block sits on its tie rods.
+  neck, in a box guide; the rear one under the body, on a steel post beside a coarse lead
+  screw (its knob drops onto teeth that lock it), the base stop's rails continuing its V
+  behind it on their flanges. TPU liners, pegged in, line the Vs. At a 6 L methuselah's
+  setting each V block sits on its tie rods.
 * **The bottles** (:func:`setting`, :func:`seat`): a 750 ml to a 6 L, each with its mouth
-  on the pivot and its axis level, set by their scales with the bottle out: the two knobs
-  and the base stop. The **lip gauge** stands at the mouth, its pad on the rim's top (lifted
-  to uncork, it falls back by itself): it checks where the mouth is and holds the bottle
-  from sliding forward. The **base stop**'s gate rides the rear V block's flats and the
+  on the pivot and its axis level, set by their scales with the bottle out, from its own
+  measures: the two knobs and the base stop. The **lip gauge** is fixed at the mouth, its
+  pad over the rim's top (a bottle is uncorked before it goes in): it checks where the
+  mouth is and holds the bottle from sliding forward. The **base stop**'s gate rides the
+  rear V block's flats and the
   rails behind it, clamped by hand behind the bottle's base: it holds the bottle from
   sliding back.
 * **The light**: an AAA keychain light standing in a clip printed with the front saddle,
@@ -76,7 +78,7 @@ from spiderpig.construction.base import (
 from spiderpig.construction.plates import FramePlates, boss_web
 from spiderpig.construction.robot import prefixed
 from spiderpig.hardware.bom import BomLine
-from spiderpig.hardware.fasteners import Screw, screw
+from spiderpig.hardware.fasteners import CLEARANCE, Screw, screw
 from spiderpig.mechanism import Body, Mechanism
 from spiderpig.shapes import Cut, Shape3D, cut_holes, difference, disc, moved, pill, union
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
@@ -167,8 +169,8 @@ class BottleSize:
         return pts
 
 
-STANDARD = BottleSize("standard", "750 ml Bordeaux", 300.0, 38.3, 15.0, 80.0, 115.0,
-                      1.3, 191.0)
+STANDARD = BottleSize("standard", "750 ml Bordeaux", 300.5, 38.3, 15.0, 80.0, 115.0,
+                      1.3, 192.0)
 MAGNUM = BottleSize("magnum", "1.5 L Bordeaux magnum", 356.0, 49.5, 15.5, 85.0, 150.0,
                     2.6, 230.0)
 JEROBOAM = BottleSize("jeroboam", "3 L Champagne jeroboam", 470.0, 70.5, 19.0, 105.0, 190.0,
@@ -179,9 +181,13 @@ METHUSELAH = BottleSize("methuselah", "6 L Champagne methuselah", 571.0, 87.0, 2
                         231.0, 11.1, 390.0)
 SIZES = (STANDARD, MAGNUM, JEROBOAM, IMPERIAL, METHUSELAH)
 """What the cradle is built for (``docs/agentlib/DECANTER.md``, Requirements): a standard
-750 ml Bordeaux (the Bordelaise moulds run about 295-310 x 74-77 mm; its neck to the
-shoulder about 80 mm, the front V block's back end), a Bordeaux magnum (univerre: 356 x 99
-mm, 1.04 kg empty), a Champagne jeroboam (Saverglass: 470 x 141 mm, 2.9 kg empty), and the
+750 ml Bordeaux (Saverglass Bordelaise Trad. Premium, ref. 4427: 300.5 x 76.6 mm, 550 g;
+its neck to the shoulder about 80 mm, the front V block's back end; the Bordelaise moulds
+run 300.5-315 mm long: Saverglass's 1855, Icon and Maestria), a Bordeaux magnum (univerre:
+356 x 99 mm, 1.04 kg empty), a Champagne jeroboam (Saverglass Jero Vignoble, ref. 7201:
+470.3 x 140.8 mm, 2.9 kg empty; their Standard 300 cl, ref. 0718, is 474.3 x 135.2 mm and
+3.03 kg, univerre's NGJEC03Q 475 x 133: no bottle's length is a size's, so the scales set
+any bottle by its own measures, :func:`setting`), and the
 two 6 L shapes (2026-10-13, the user's "both"): a Bordeaux impériale (Saverglass
 Bordelaise Tradition 600 cl, ref. 0714: 492.8 mm tall, 164.5 mm at the shoulder, 156.5 at
 the base, 3.12 kg empty; univerre's NGBD06QFR 493.1 x 164.4, 2.95 kg) and a Champagne
@@ -199,9 +205,13 @@ glass weighs the bottle's empty mass (2.5 g/cm³: 2.9 mm for the 750 ml to 6.3 m
 methuselah), and the wine (0.995 g/cm³) filled from the base, upright and sealed (the
 headspace in the neck), to its volume. It puts a full bottle's centre 31-36 % of its length
 up from the base: a 750 ml's about 11 cm up its 30 cm, the usual figure. Along the axis from
-the mouth: 191, 230, 325, 319 and 390 mm (the magnum's and the impériale's wine fills the
+the mouth: 192, 230, 325, 319 and 390 mm (the magnum's and the impériale's wine fills the
 whole of their drawn outline: there the wine's centre is the inside's). Weigh a bottle on a
-knife edge to refine one."""
+knife edge to refine one.
+
+Checked against the makers' pages rendered 2026-10-14 (design review round 2, N2): each
+size is its cited bottle to 0.5 mm and 0.05 kg (the 750 ml, 300 mm before, is the 4427's
+300.5)."""
 
 
 @dataclass(frozen=True)
@@ -251,10 +261,15 @@ SADDLES = (
            _apex(DESIGN.r), -55.0, 72.0),
 )
 
-STOP_GAP = 0.5          # the base stop's face behind the bottle's base
+STOP_GAP = 2.5          # the base stop's face behind the bottle's base: at rest the mouth
+#                         lies 2.7 mm behind the lip gauge's pad (1.7-3.7 for a length
+#                         measured to a millimetre) and slides onto the pad past level
+#                         (the stream lands at most 3.7 mm off until it does: review round
+#                         2, N2; it had been 0.5, which left 0.7 mm for a bottle's length;
+#                         a bottle too long can't lie in under the fixed gauge)
 STOP_RANGE = (285.0, 576.0)     # where the base stop's face can go (cradle x): inside the
-#                                 rear V block (the 750 ml's at 300.5) to short of the
-#                                 rails' end (the 6 L's at 571.5)
+#                                 rear V block (the 750 ml's at 303) to short of the
+#                                 rails' end (the 6 L's at 573.5)
 
 
 @dataclass(frozen=True)
@@ -1006,6 +1021,16 @@ def _hex_y(x: float, z: float, af: float, y0: float, y1: float) -> Shape3D:
     return Solid.extrude(Face(Wire.make_polygon(pts, close=True)), (0, y1 - y0, 0))
 
 
+def _star_y(x: float, z: float, n: int, r_out: float, r_in: float, y0: float, y1: float
+            ) -> Shape3D:
+    """A star of ``n`` points up y (a ring of teeth): its points at ``r_out``, its notches
+    at ``r_in``, a point toward +x."""
+    pts = [(x + (r_out if i % 2 == 0 else r_in) * math.cos(math.pi / n * i), y0,
+            z + (r_out if i % 2 == 0 else r_in) * math.sin(math.pi / n * i))
+           for i in range(2 * n)]
+    return Solid.extrude(Face(Wire.make_polygon(pts, close=True)), (0, y1 - y0, 0))
+
+
 def _vee(x0: float, x1: float, apex: float) -> Shape3D:
     """What lies over a 90° V along the axis from ``x0`` to ``x1``, its apex at ``apex``
     (cradle frame)."""
@@ -1096,7 +1121,13 @@ def front_named() -> list[float]:
 
 FRONT_W = (-48.0, 52.0)       # the front carrier's -z and +z faces
 FRONT_HALF = 34.0             # its V block's half-width (the V's top edges at 26.8)
-FRONT_TOP = 6.0               # the carrier's walls' tops
+FRONT_TOP = 6.0               # the carrier's walls' tops (the -z one's: FRONT_GUIDE)
+FRONT_GUIDE = (18.0, 3.0, 3.7)      # the box guide's tall side (review round 2, m5): the -z
+#                                     wall's top, and the V block's cheek up its -z face (its
+#                                     top at the block's lowest, its thickness): the knob's
+#                                     push at +z, 40 mm off the box's middle, cocks the block
+#                                     onto that wall's top and the +z wall's foot, and the
+#                                     taller that pair the less it binds (front_drawer)
 FRONT_FLOOR = -43.0           # its floor's top (the tie rods' tops, at -42, stand proud)
 FRONT_TAB = (56.0, 70.0, -28.0)     # the V block's tab into the +z wall: x span, its top
 FRONT_JACK = (63.0, 40.0)     # the thumbscrew (x, z): an M6 x 60 hex screw, fully threaded
@@ -1108,21 +1139,20 @@ M6_HEX = (10.0, 5.0, 4.0)     # DIN 934 M6 nut and its tap bolt's head: across f
 M5_HEX = (8.0, 3.5, 5.0)      # an M5 tap bolt's head and a nylon-insert nut: flats, head, nut
 FRONT_NUT_KEY, FRONT_JACK_KEY = "m6_nut", "m6_tap_bolt_60"     # (hardware.cradle_catalog)
 KNOB_R = (11.0, 12.0)         # the printed knobs' radii (front, rear)
-GAUGE_PIVOT = (30.0, -41.0)   # the lip gauge's hinge axis along x (cradle y, z)
-GAUGE_POST = (55.8, 74.2, 36.5)     # its post on the carrier's -z wall: x span, top (its down
-#                                     stop); 18.4 mm along the pin (review round 1, M3)
-GAUGE_KNUCKLES = ((49.5, 55.5), (74.5, 80.5))   # its knuckles either side of the post
-GAUGE_PAD = (11.0, 7.0)       # its pad's bottom (over a cork's bore) and half-width
+GAUGE_PIVOT = (30.0, -41.0)   # the lip gauge's bolt along x (cradle y, z)
+GAUGE_POST = (55.8, 74.2, 36.5)     # its post on the carrier's -z wall: x span, its flat top
+#                                     (the gauge's bridge sits on it); 18.4 mm along the bolt
+#                                     (review round 1, M3)
+GAUGE_KNUCKLES = ((49.5, 55.5), (74.5, 80.5))   # its cheeks either side of the post
+GAUGE_PAD = (10.5, 7.0)       # its pad's bottom (over a cork's bore) and half-width: 3.25 mm
+#                               down a 750 ml's rim (Saverglass 4427: its ring 27.5 mm
+#                               across), clear of a methuselah's 20.5 mm bore (round 2, m4)
 GAUGE_FRONT = (-14.0, -0.2)   # its pad and arm along x: the back face in the mouth's plane
 GAUGE_BAR = (20.0, 38.0, -36.0, -27.0)  # its arm in front of the mouth and its bar beside
 #                                         the neck (a 6 L's at |z| 24): y0, y1; the bar's z
-GAUGE_BRIDGE = (36.9, 50.0, -48.0, -30.0)   # over the post, knuckle to knuckle: y0, y1, z
-GAUGE_FLIP = 70.0             # it opens this far, its lug on the wall's top: its centre of
-#                               mass stays inboard of the hinge, so it falls back shut
-GAUGE_LUG = (2.5, -100.0)     # the lug's round end: its radius, and its direction from the
-#                               hinge where it lands (10° short of its arc's lowest: opening
-#                               further drives it into the wall's top)
-GAUGE_PIN = 40.0              # M5 x 40 tap bolt: front knuckle, post, back knuckle, lock nut
+GAUGE_BRIDGE = (36.5, 50.0, -48.0, -30.0)   # over the post, cheek to cheek, flat on the
+#                                             post's top: y0, y1, z
+GAUGE_PIN = 40.0              # M5 x 40 tap bolt: front cheek, post, back cheek, lock nut
 GAUGE_PIN_KEY, GAUGE_NUT_KEY = "m5_tap_bolt_40", "m5_nylon_nut"
 
 
@@ -1130,17 +1160,19 @@ def _front_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
                   ) -> tuple[Shape3D, list[Shape3D]]:
     """The front saddle's carrier (cradle frame): a floor on the two tie rods (an M3 set
     screw up from its underside onto each, in a printed pilot), walls round its V block
-    (the block's guide; the front and back ones notched a millimetre under the lowest
-    liner; two drains through the back one at the floor, its low end at rest), a pocket in
-    the +z wall for the block's tab and the thumbscrew's foot, the lip gauge's post on the
-    -z wall, the scale's grooves on the +z wall's inside (the block's top edge reads them:
-    three named in front of the pocket, :func:`front_named`, a dot each per place from the
-    top; the neck's diameter every 4 mm behind it). (The carrier, its set screws.)"""
+    (the block's guide, the -z one taller for the block's cheek, :data:`FRONT_GUIDE`; the
+    front and back ones notched a millimetre under the lowest liner; two drains through the
+    back one at the floor, its low end at rest), a pocket in the +z wall for the block's tab
+    and the thumbscrew's foot, the lip gauge's post on the -z wall (its top flat: the
+    gauge's bridge sits on it), the scale's grooves on the +z wall's inside (the block's top
+    edge reads them: three named in front of the pocket, :func:`front_named`, a dot each per
+    place from the top; the neck's diameter every 4 mm behind it). (The carrier, its set
+    screws.)"""
     x0, x1 = s.x
     h = FRONT_HALF + CLEAR
     v0, v1 = s.vee[0] - CLEAR, s.vee[1] + CLEAR
     floor = _box(x0, x1, s.y0, FRONT_FLOOR, *FRONT_W)
-    walls = [_box(x0, x1, FRONT_FLOOR - 1.0, FRONT_TOP, FRONT_W[0], -h),
+    walls = [_box(x0, x1, FRONT_FLOOR - 1.0, FRONT_GUIDE[0], FRONT_W[0], -h),
              _box(x0, x1, FRONT_FLOOR - 1.0, FRONT_TOP, h, FRONT_W[1])]
     notch = s.apex + LINER * math.sqrt(2) - 1.0
     zy = [(-h, FRONT_FLOOR - 1.0), (h, FRONT_FLOOR - 1.0), (h, notch + h), (0.0, notch),
@@ -1148,8 +1180,7 @@ def _front_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
     walls += [_prism_x(zy, x0, v0), _prism_x(zy, v1, x1)]
     yp, zp = GAUGE_PIVOT
     px0, px1, ptop = GAUGE_POST
-    post = [_box(px0, px1, FRONT_TOP - 1.0, yp, FRONT_W[0], -h),      # (round over the pin:
-            _rod_x(yp, zp, ptop - yp, px0, px1)]                    # the bridge swings past)
+    post = [_box(px0, px1, FRONT_GUIDE[0] - 1.0, ptop, FRONT_W[0], -h)]
     part = union([floor, *walls, *post])
     xj, zj = FRONT_JACK
     named = [s.top + u for u in front_named()]
@@ -1191,10 +1222,12 @@ FRONT_PEGS = ((63.65, -24.0),)      # the front liner's pegs (x, the V face's y)
 def _front_vee(s: Saddle) -> tuple[Shape3D, Shape3D, Shape3D]:
     """The front V block at its lowest (cradle frame): the neck's V, sitting on the tie
     rods, its tab into the carrier's +z wall holding the thumbscrew's M6 nut (in a hex
-    pocket from below: the block bears down on it), its TPU liner pegged into the V. (The
+    pocket from below: the block bears down on it), a cheek up its -z face along the
+    carrier's taller wall (:data:`FRONT_GUIDE`), its TPU liner pegged into the V. (The
     block, its liner, the nut.)"""
     x0, x1 = s.vee
     xj, zj = FRONT_JACK
+    _, cheek, ct = FRONT_GUIDE
     block = union([_box(x0, x1, s.bottom, s.top, -FRONT_HALF, FRONT_HALF),
                    _box(FRONT_TAB[0], FRONT_TAB[1], s.bottom, FRONT_TAB[2], FRONT_HALF - 0.5,
                         zj + M6_HEX[0] / 2 + 1.0)])
@@ -1202,6 +1235,7 @@ def _front_vee(s: Saddle) -> tuple[Shape3D, Shape3D, Shape3D]:
                                      FRONT_NUT_Y + M6_HEX[1] + 0.2),
                        _rod_y(xj, zj, 3.3, s.bottom - 1.0, FRONT_TAB[2] + 1.0))
     vee, liner = _vee_block(s, block, FRONT_PEGS)
+    vee = union([vee, _box(x0, x1, s.top - 0.01, cheek, -FRONT_HALF, -FRONT_HALF + ct)])
     nut = difference(_hex_y(xj, zj, M6_HEX[0], FRONT_NUT_Y, FRONT_NUT_Y + M6_HEX[1]),
                      _rod_y(xj, zj, 3.0, FRONT_NUT_Y - 1.0, FRONT_NUT_Y + M6_HEX[1] + 1.0))
     return vee, liner, nut
@@ -1222,17 +1256,17 @@ def _jack(xz: tuple[float, float], d: float, length: float, head: tuple[float, f
 
 
 def _gauge() -> tuple[Shape3D, Shape3D, Shape3D]:
-    """The lip gauge, down (cradle frame): two knuckles on a pin along the axis either side
-    of the front carrier's post (an M5 tap bolt through them and the post, a nylon-insert
-    nut behind, snug: it swings under its own weight), a bridge over the post joining them
-    (resting on the post's top: its down stop), a bar forward beside the neck (clear of a
-    6 L's as it's laid in) to an arm across in front of the mouth and its pad, their back
-    face in the pivot's plane: the top of the mouth's rim bears on it, above the cork's
-    bore. A bottle pushing it forward bears its back knuckle on the post's back face; the
-    pin takes the turn of a push off its line. A lug on the back knuckle lands on the
-    carrier's wall when it's flipped up :data:`GAUGE_FLIP` (to uncork), short of where its
-    centre of mass would pass over the hinge: let go, it falls back onto the mouth. (The
-    gauge, its pin, the pin's nut.)"""
+    """The lip gauge (cradle frame), fixed: two cheeks either side of the front carrier's
+    post, an M5 tap bolt through them and the post along the axis, a nylon-insert nut
+    behind, tight; a bridge joining the cheeks over the post, flat on its flat top (the
+    bolt is 6.5 mm under it, so the gauge can't turn about it: one edge would have to sink
+    into the post); a bar forward beside the neck (clear of a 6 L's as it's laid in) to an
+    arm across in front of the mouth and its pad, their back face in the pivot's plane: the
+    top of the mouth's rim bears on it, above the cork's bore. A bottle pushing it forward
+    bears its back cheek on the post's back face; the bolt takes the turn of a push off its
+    line. (Review round 2, N4 and m2: it had hinged up to uncork and fallen back by its
+    own weight, against its hinge's friction by 1.3 x; a bottle is uncorked standing on
+    the table before it goes in.) (The gauge, its bolt, the bolt's nut.)"""
     yp, zp = GAUGE_PIVOT
     (f0, f1), (b0, b1) = GAUGE_KNUCKLES
     y0, y1, bz0, bz1 = GAUGE_BAR
@@ -1240,20 +1274,13 @@ def _gauge() -> tuple[Shape3D, Shape3D, Shape3D]:
     ax0, ax1 = GAUGE_FRONT
     bottom, half = GAUGE_PAD
     r = 6.5
-    lug_end, land = GAUGE_LUG
-    lug_r = (yp - FRONT_TOP - lug_end) / -math.sin(math.radians(land))
-    a = math.radians(land - GAUGE_FLIP)       # the lug's direction from the hinge, down
-    lug = union([_rod_x(yp + lug_r * math.sin(a), zp + lug_r * math.cos(a), lug_end, b0, b1),
-                 _box(b0, b1, -lug_end, lug_end, 0.0, lug_r).rotate(
-                     BAxis.X, -math.degrees(a)).moved(Location((0.0, yp, zp)))])
     gauge = union([_rod_x(yp, zp, r, f0, f1), _rod_x(yp, zp, r, b0, b1),
-                   _box(f0, f1, y0, by1, zp - r, bz1),                   # front knuckle
-                   _box(b0, b1, yp, by1, zp - r, zp + r),                # back knuckle
+                   _box(f0, f1, y0, by1, zp - r, bz1),                   # front cheek
+                   _box(b0, b1, yp, by1, zp - r, zp + r),                # back cheek
                    _box(f0, b1, by0, by1, rz0, rz1),                     # bridge
                    _box(ax0, f0 + 0.01, y0, y1, bz0, bz1),               # bar
                    _box(ax0, ax1, y0, y1, bz0, half),                    # arm
-                   _box(ax0, ax1, bottom, y0 + 0.01, -half, half),       # pad
-                   lug])
+                   _box(ax0, ax1, bottom, y0 + 0.01, -half, half)])      # pad
     gauge = difference(gauge, _rod_x(yp, zp, TIE_HOLE / 2, f0 - 1.0, b1 + 1.0))
     af, head_h, nut_h = M5_HEX
     x = f0 + GAUGE_PIN
@@ -1265,91 +1292,146 @@ def _gauge() -> tuple[Shape3D, Shape3D, Shape3D]:
     return gauge, pin, nut
 
 
-def gauge_return() -> dict:
-    """The lip gauge's balance about its hinge: its centre of mass's angle over the hinge
-    (degrees from the horizontal, inboard positive) down and at its stop
-    (:data:`GAUGE_FLIP`): under 90° at the stop, it falls back shut; and the lug's gap to
-    the wall's top just short of the stop (none at it)."""
-    gauge, _, _ = _gauge()
+def gauge_fixed() -> dict:
+    """The lip gauge held on its post (:func:`_gauge`): its bridge's underside on the post's
+    flat top (``seated``: no gap), the bolt under that top (``bolt_under_top_mm``) and
+    inside its width, so that the gauge can turn about the bolt only by sinking an edge
+    of the bridge into the post (``held``); the post top's width across and each edge's
+    lever from the bolt (mm)."""
     yp, zp = GAUGE_PIVOT
-    c = gauge.center()
-    down = math.degrees(math.atan2(c.Y - yp, c.Z - zp))
-    lug_end, land = GAUGE_LUG
-    lug_r = (yp - FRONT_TOP - lug_end) / -math.sin(math.radians(land))
-    low = yp + lug_r * math.sin(math.radians(land)) - lug_end      # the lug's at the stop
-    return {"com_deg_down": round(down, 1), "com_deg_open": round(down + GAUGE_FLIP, 1),
-            "com_mm": round(math.hypot(c.Y - yp, c.Z - zp), 1),
-            "falls_back": down + GAUGE_FLIP < 85.0,
-            "stop_on_wall_mm": round(low - FRONT_TOP, 2)}
+    _, _, ptop = GAUGE_POST
+    z0, z1 = FRONT_W[0], -(FRONT_HALF + CLEAR)
+    under = ptop - yp
+    levers = (zp - z0, z1 - zp)
+    seated = abs(GAUGE_BRIDGE[0] - ptop) < 1e-9
+    return {"seated": seated, "bolt_under_top_mm": round(under, 2),
+            "top_width_mm": round(z1 - z0, 2), "edge_levers_mm": [round(v, 2) for v in levers],
+            "held": seated and under > 0.0 and min(levers) > 0.0}
 
 
 # --- the rear saddle: a V block on a steel post and a coarse lead screw ------------------
 
-REAR_POST = (317.5, -103.0)   # the post (-z): (x, z)
+REAR_POST = (290.5, 110.0)    # the post (+z, 27 mm in front of the lead screw): (x, z)
 REAR_LEAD = (317.5, 110.0)    # the lead screw (+z): (x, z), its knob outboard of a 6 L (|z|
-#                               87) by 11 mm as it's laid in (review round 1, M2)
-REAR_FOOT_Z = (88.5, 117.5, 126.0)  # the carrier's side blocks across: inner faces, the -z
-#                                     one's outer, the +z one's (the lead screw's collar)
+#                               87) by 10 mm as it's laid in (review round 1, M2)
+"""The rear V block is pushed up at the lead screw and guided by the post: a push off the
+guide cocks the block on it (a drawer), and the post's friction grows with the push. The
+post was at -z, 213 mm across from the screw, and the block jammed raising it whenever the
+boss's friction on the post was over 0.149 (0.095 at a 750 ml's setting), under printed
+plastic's 0.2-0.3 on steel (review round 2, N1); beside the screw it jams only past
+``engagement / 54`` (:func:`cradle_report.drawers`)."""
+REAR_FOOT_Z = (88.5, 103.5, 126.0)  # the carrier's side blocks across: inner faces, the -z
+#                                     one's outer (it only rides the rods since the post
+#                                     left it: 15 mm), the +z one's (the post and the screw)
 REAR_FOOT_TOP = -121.0        # their tops
-REAR_BOSS = (12.0, -120.5, -57.0)   # the V block's boss round the post: radius, bottom, top
-#                                     (at its lowest)
-LEAD_BOSS = (14.0, -120.5, -88.0)   # its boss round the lead screw, low beside the flats: the
-#                                     knob over it stays under the axis's height
-LEAD_WEB = (7.0, 88.0, 96.0, 100.0, -79.0)  # that boss's web to the flats: half-length,
+REAR_SET_Z = 103.0            # the M3 set screws up from the +z block onto the tie rods
+REAR_BOSS = (12.0, -110.0, -57.0)   # the V block's boss round the post: radius, bottom, top
+#                                     (at its lowest: over the carrier's collar)
+LEAD_BOSS = (14.0, -120.5, -98.0)   # its boss round the lead screw, low beside the flats: the
+#                                     knob over it stays under the axis's height, and the
+#                                     knob's hub as low as the old knob's top (the cradle box
+#                                     turned over rests on the base stop's knob, not on it:
+#                                     cradle_pack.rest_poses)
+LEAD_WEB = (7.0, 88.0, 96.0, 100.0, -98.0)  # that boss's web to the flats: half-length,
 #                                             |z| from, to the flats' edge, to the boss, the
 #                                             outer part's top (under the knob at full rise)
+POST_WEB = (7.0, 6.0)         # the post's boss's web to the flats (half-length; |z| from and
+#                               to as the lead screw's), and the two bosses' web between them
+#                               (half-thickness across)
 REAR_FLANGE = (-67.0, -55.0, 96.0)  # its flats along its top: bottom, top, half-width
-VEE_T = 9.0                   # its V shell, square to the V
+VEE_T = 7.5                   # its V shell, square to the V (9 before review round 2: the
+#                               lighter block keeps the stand's rear tip over 25°)
 LEAD = 8.0                    # the lead screw: Tr8 x 8 (2 mm pitch, 4 starts), 8 mm a turn
 LEAD_SCREW = (8.0, 150.0, 5.5, -146.0)   # its diameter, length, root, foot (cradle y)
 LEAD_NUT = (12.0, 16.0)       # its bronze barrel nut in the boss from below: OD, length
 COLLAR = (21.0, 9.0)          # its clamping collar in the carrier's pocket: OD, length
 BRAKE_T = 1.5                 # the TPU brake washer under the collar
 TOWER = (333.0, 351.0, 101.0, 119.0)    # the carrier's tower beside the screw: x, z spans
-ARM = (303.0, -15.0, -7.0)    # its arm over the screw's top, a bushing round it: front x,
+ARM = (307.0, -25.0, -17.0)   # its arm over the screw's top, a bushing round it: front x,
 #                               bottom, top (over the boss at full rise)
-REAR_KNOB = (-6.5, 7.5)       # the knob on the screw's top: bottom, top (cradle y)
+ARM_PAD = 9.8                 # the arm's round pad round the screw (radius), under the teeth
+#                               (clear of the lead screw boss's web at full rise)
+LOCK_TEETH = (12, 10.0, 8.3, 3.0)   # the knob's lock (review round 2, N5): a star of teeth on
+#                                     the arm's pad round the screw (points, outer and inner
+#                                     radius, height); the knob drops over it
+REAR_HUB = (16.0, -13.5, 4.0, (11.0, 2.0))  # the knob's hub on the screw's top (a hex across
+#                                             its flats; bottom, top; its top flange: radius,
+#                                             height), an M3 set screw onto the screw
+REAR_KNOB = (13.0, -17.0, 0.0, 3.6)     # the knob: radius, bottom and top (down, on the arm),
+#                                         its lift off the teeth (to turn it)
 LEAD_KEYS = ("lead_screw_8x8_150", "lead_nut_8x8_barrel", "lead_collar_8x8")
 """(hardware.cradle_catalog: ServoCity 3501, 3500 and 3504 series)"""
-POST = (130.0, -141.0)        # the post: a NETRF12 standoff (12 mm, M6 ends), its length
-#                               and foot (12 mm: it takes the roll of a load hung at the screw)
-POST_D = 12.0
+POST = (150.0, -141.0)        # the post: a 15 mm steel standoff (M8 ends), nickel plated
+#                               (MISUMI PETR15-150: a sliding guide in a wine cradle, bare
+#                               steel rusts; review round 2, m3), its length and foot. It takes
+#                               the roll of a load hung at the screw: 15 mm since round 2 (12
+#                               mm took a hung 6 L and the parts riding the block at 2.99 x
+#                               its yield)
+POST_KEY = "standoff_15_m8_nickel_150"      # (hardware.cradle_catalog: MISUMI PETR15-150)
+POST_D = 15.0
+POST_FLATS = (13.0, 10.0)     # its wrench flats at each end: across, along it (the boss rides
+#                               the round between them)
+POST_COLLAR = (4.0, -111.0)   # the carrier's collar round the post's socket: wall, top (the
+#                               socket 30 mm deep, from the post's foot)
 M6 = screw("bhcs", "6")
-POST_SCREW = 12.0             # M6 x 12 up into it from under the carrier, 6.7 mm in it
+M8 = screw("bhcs", "8")
+POST_SCREW = 12.0             # M8 x 12 up into it from under the carrier, 8.6 mm in it
 SEAT_R, SEAT_DEPTH = TIE_D / 2 + 0.15, 2.0  # the rear V block's seats on the tie rods
-GUSSET = (45.0, -90.0)        # under its flats beside each boss: along x, its bottom
+GUSSET = (45.0, -90.0)        # under its +z flat beside the bosses (from 22.5 in front of
+#                               the post's to 22.5 behind the screw's): along x, its bottom
 GROOVE = (77.0, 83.0, 3.0)    # the base stop's guide grooves along the flats and the rails:
 #                               |z| span, depth
-TSLOT = (293.0, 5.5, 5.0, (16.0, 1.6), 8.4, -74.0, -78.0)
+TSLOT = (293.0, 5.5, 5.5, (16.0, 1.6), 8.4, -74.0, -78.0)
 """The base stop's T-slot under the +z groove (the flats from its first x, then the +z rail):
-its first x, the neck's width and the lips' thickness under the groove, the washer's slot
-(width, height), the nut's width (the M5 nut can't turn in it) down to the floor, the floor,
-the keel's bottom under it (the rails' bars' too)."""
+its first x, the neck's width and the lips' thickness under the groove (5.5 mm: they take
+the lock's preload at a firm hand's 1 N·m, review round 2, N6; they had been 5), the
+washer's slot (width, height), the nut's width (the M5 nut can't turn in it) down to the
+floor, the floor, the keel's bottom under it (the rails' tongues' tops too)."""
 REAR_PEGS = ((280.0, -95.0), (355.0, -95.0))    # the rear liner's pegs (x, the face's y)
-STOP_MARKS = (87.0, 89.5, 92.0)     # the base stop's scale across the +z flat and rail's top:
-#                                     a named groove's inner end, a graded one's, the outer
-STOP_EVERY = 10.0             # its graded grooves, every 10 mm of a bottle's length
+STOP_MARKS = (87.0, 88.0, 92.0)     # the base stop's scale across the +z flat and rail's top:
+#                                     a 10 mm groove's inner end, a 5 mm one's, the outer
+STOP_EVERY = 5.0              # its grooves, every 5 mm of a bottle's length (a long one every
+#                               10); one dot in front of each 50 mm one, three, four and five
+#                               in front of the 300, 400 and 500 mm ones
+VERNIER = (6.0, 4, 2.0)       # the gate's pointer's vernier (review round 2, N2): its lines'
+#                               pitch along the axis (the scale's and a millimetre: the k-th
+#                               line from the gate's face meets a groove at a length k mm
+#                               past one), how many, the pointer's width across
+
+
+def stop_marks() -> list[tuple[float, int, bool]]:
+    """The base stop's scale (:data:`STOP_EVERY`): each groove's x (cradle frame: a
+    bottle's length plus :data:`STOP_GAP`, where the gate's face goes for it), its dots and
+    whether it's a long one (every 10 mm). A plain length scale, the same for any bottle: a
+    size's own length is just one reading of it (review round 2, N2: the grooves named for
+    one maker's bottle of each size didn't fit another's). It starts as far in front of the
+    gate's range as its vernier reaches."""
+    pitch, lines, _ = VERNIER
+    lo = math.floor((STOP_RANGE[0] - pitch * lines - STOP_GAP) / STOP_EVERY)
+    hi = math.floor((STOP_RANGE[1] - STOP_GAP) / STOP_EVERY)
+    out = []
+    for k in range(lo, hi + 1):
+        length = k * STOP_EVERY
+        dots = round(length / 100) if length % 100 == 0 else 1 if length % 50 == 0 else 0
+        out.append((length + STOP_GAP, dots, length % 10 == 0))
+    return out
 
 
 def _stop_scale(x0: float, x1: float, top: float) -> list[Shape3D]:
     """The base stop's scale (cradle frame) on the +z flat or rail's top (``top``, the V
-    block at its lowest) from ``x0`` to ``x1``: a groove across at each listed bottle's
-    setting (:func:`setting`'s ``stop``: the gate's face goes there), a dot each per place
-    from the shortest in front of it, and one each :data:`STOP_EVERY` mm of a bottle's
-    length (another bottle: its length plus :data:`STOP_GAP`)."""
-    zn, zg, zo = STOP_MARKS
-    named = sorted(z.length + STOP_GAP for z in SIZES)
-    k0 = math.ceil((STOP_RANGE[0] - STOP_GAP) / STOP_EVERY)
-    graded = [STOP_EVERY * k + STOP_GAP for k in range(k0, int(STOP_RANGE[1] // STOP_EVERY) + 1)]
-    graded = [x for x in graded if all(abs(x - n) > 2.0 for n in named)]
+    block at its lowest) from ``x0`` to ``x1``: :func:`stop_marks`' grooves across, their
+    dots in front of them between the guide groove and the scale."""
+    zl, zs, zo = STOP_MARKS
     w = 0.3
-    out = [_box(x - w, x + w, top - 0.6, top + 0.01, zn if x in named else zg, zo + 0.01)
-           for x in [*named, *graded] if x0 + 1.0 <= x <= x1 - 1.0]
-    for i, x in enumerate(named):
-        for k in range(i + 1):
+    out = []
+    for x, dots, long in stop_marks():
+        if not x0 + 1.0 <= x <= x1 - 1.0:
+            continue
+        out.append(_box(x - w, x + w, top - 0.6, top + 0.01, zl if long else zs, zo + 0.01))
+        for k in range(dots):
             xd = x - 1.5 - DOT_PITCH * k
             if x0 + 1.0 <= xd <= x1 - 1.0:
-                out.append(_rod_y(xd, (GROOVE[1] + zn) / 2, DOT[0], top - DOT[1], top + 0.01))
+                out.append(_rod_y(xd, (GROOVE[1] + zl) / 2, DOT[0], top - DOT[1], top + 0.01))
     return out
 
 
@@ -1366,41 +1448,72 @@ def _tslot(x0: float, x1: float) -> list[Shape3D]:
             _box(x0, x1, TSLOT[5], y_lip - wh + 0.01, zc - nw / 2, zc + nw / 2)]
 
 
+def _tslot_lead_in(x: float, inward: int) -> list[Shape3D]:
+    """The T-slot's end at the face ``x`` chamfered :data:`SLOT_LEAD_IN` at 45° (cradle
+    frame, the V block at its lowest; ``inward``: the part's side of the face, -1 or +1),
+    each of its three channels widened by that at the face, tapering to its own size."""
+    hi = REAR_FLANGE[1]
+    g0, g1, depth = GROOVE
+    zc = (g0 + g1) / 2
+    _, neck, lip, (ww, wh), nw, floor, _ = TSLOT
+    y_lip = hi - depth - lip
+    c = SLOT_LEAD_IN
+    out = []
+    for y0, y1, w in ((y_lip, hi - depth, neck), (y_lip - wh, y_lip, ww),
+                      (floor, y_lip - wh, nw)):
+        rects = []
+        for dx, grow in ((-inward * 0.01, c + 0.01), (inward * c, 0.0)):
+            rects.append(Wire.make_polygon(
+                [(x + dx, y0 - grow, zc - w / 2 - grow), (x + dx, y1 + grow, zc - w / 2 - grow),
+                 (x + dx, y1 + grow, zc + w / 2 + grow), (x + dx, y0 - grow, zc + w / 2 + grow)],
+                close=True))
+        out.append(Solid.make_loft(rects))
+    return out
+
+
 def _rear_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
                  ) -> tuple[Shape3D, list[Shape3D]]:
     """The rear saddle's carrier (cradle frame): two side blocks on the two tie rods, joined
-    under the V block by a bridge; the -z one holds the steel post (in a socket, an M6
-    button head up into it from below, its head sunk), the +z one the lead screw (a pocket
-    for its clamping collar on a TPU brake washer, open outboard to reach the collar's
-    screw, and a blind bore for its foot), and a tower beside it up to an arm over the
-    screw's top: a bushing round it (a knock at the knob goes into the tower, not the
-    screw) and the scale on the tower's face, read by the lead screw boss's top edge (one
-    groove per bottle, a dot each per place from the top, and the body's diameter every 10
-    mm); an M3 set screw up from the +z block onto each rod. (The carrier, its set screws.)"""
+    under the V block by a bridge; the +z one holds the steel post (in a socket 30 mm deep,
+    a collar round its top, an M8 button head up into it from below, its head sunk) and
+    beside it the lead screw (a
+    pocket for its clamping collar on a TPU brake washer, open outboard to reach the
+    collar's screw, and a blind bore for its foot), and a tower beside the screw up to an
+    arm over its top: a bushing round it (a knock at the knob goes into the tower, not the
+    screw), a star of teeth on the arm round it that the knob drops over (its lock,
+    :func:`_lead_screw`), and the scale on the tower's face, read by the lead screw boss's
+    top edge (one groove per bottle, a dot each per place from the top, and the body's
+    diameter every 10 mm); an M3 set screw up from the +z block onto each rod. (The
+    carrier, its set screws.)"""
     x0, x1 = s.x
     xp, zp = REAR_POST
     xs, zs = REAR_LEAD
     za, zb, zc = REAR_FOOT_Z
     tx0, tx1, tz0, tz1 = TOWER
     ax, ab, at = ARM
+    n_t, r_t, r_i, h_t = LOCK_TEETH
     part = union([_box(x0, x1, s.y0, REAR_FOOT_TOP, za, zc),
                   _box(x0, x1, s.y0, REAR_FOOT_TOP, -zb, -za),
-                  _box(xp - 7.5, xp + 7.5, s.y0, s.y0 + 10.0, -za - 0.5, za + 0.5),
+                  _box(xs - 7.5, xs + 7.5, s.y0, s.y0 + 10.0, -za - 0.5, za + 0.5),
                   _box(tx0, tx1, REAR_FOOT_TOP - 1.0, at, tz0, tz1),
-                  _box(ax, tx1, ab, at, tz0, tz1)])
+                  _box(ax, tx1, ab, at, tz0, tz1),
+                  _rod_y(xs, zs, ARM_PAD, ab, at),
+                  _star_y(xs, zs, n_t, r_t, r_i, at - 0.01, at + h_t),
+                  _rod_y(xp, zp, POST_D / 2 + 0.15 + POST_COLLAR[0], REAR_FOOT_TOP - 0.01,
+                         POST_COLLAR[1])])
     top0 = LEAD_BOSS[2]                       # the reading edge, the block at its lowest
     named = sorted(top0 + (DESIGN.r - z.r) * math.sqrt(2) for z in SIZES)[::-1]
     graded = [top0 + y - s.top for y in _graded(s, DESIGN.r, 10.0, 70.0, 170.0)]
     graded = [y for y in graded if all(abs(y - n) > 1.5 for n in named)]
     floor = REAR_FOOT_TOP - 0.5 - COLLAR[1] - BRAKE_T     # the collar pocket's floor
     gz = tz0 + 10.0                           # the named grooves' end; their dots after
-    cuts = [_rod_y(xp, zp, POST_D / 2 + 0.15, POST[1], REAR_FOOT_TOP + 1.0),
-            _rod_y(xp, zp, M6.head_d / 2 + 0.3, s.y0 - 1.0, s.y0 + M6.head_h + 0.25),
-            _rod_y(xp, zp, 3.3, s.y0, POST[1] + 0.5),
+    cuts = [_rod_y(xp, zp, POST_D / 2 + 0.15, POST[1], POST_COLLAR[1] + 1.0),
+            _rod_y(xp, zp, M8.head_d / 2 + 0.3, s.y0 - 1.0, s.y0 + M8.head_h + 0.25),
+            _rod_y(xp, zp, CLEARANCE["8"] / 2, s.y0, POST[1] + 0.5),
             _rod_y(xs, zs, LEAD_SCREW[0] / 2 + 0.2, LEAD_SCREW[3] - 0.5, floor + 0.01),
             _rod_y(xs, zs, COLLAR[0] / 2 + 0.4, floor, REAR_FOOT_TOP + 1.0),
             _box(xs - 6.0, xs + 6.0, floor, REAR_FOOT_TOP + 1.0, zs, zc + 1.0),
-            _rod_y(xs, zs, LEAD_SCREW[0] / 2 + 0.2, ab - 1.0, at + 1.0),
+            _rod_y(xs, zs, LEAD_SCREW[0] / 2 + 0.2, ab - 1.0, at + h_t + 1.0),
             *[_box(tx0 - 0.01, tx0 + 0.8, y - 0.25, y + 0.25, tz0 - 1.0, gz) for y in named],
             *[_rod_x(y, gz + DOT_PITCH * (k + 0.75), DOT[0], tx0 - 0.01, tx0 + DOT[1])
               for i, y in enumerate(named) for k in range(i + 1)],
@@ -1416,8 +1529,8 @@ def _rear_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
         if under - SET_SCREW - 0.05 < s.y0:
             raise ValueError(f"{s.name}: an M3 x {SET_SCREW:g} set screw doesn't fit under "
                              f"tie {n} ({under - s.y0:.1f} mm)")
-        cuts.append(_rod_y(x, -zp, SET_PILOT / 2, s.y0 - 2.0, under))
-        screws.append(_rod_y(x, -zp, 1.25, under - 0.05 - SET_SCREW, under - 0.05))
+        cuts.append(_rod_y(x, REAR_SET_Z, SET_PILOT / 2, s.y0 - 2.0, under))
+        screws.append(_rod_y(x, REAR_SET_Z, 1.25, under - 0.05 - SET_SCREW, under - 0.05))
     return difference(part, *cuts), screws
 
 
@@ -1425,13 +1538,13 @@ def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
               ) -> tuple[Shape3D, Shape3D, Shape3D, Shape3D]:
     """The rear V block at its lowest (cradle frame): a V shell (:data:`VEE_T`) sitting on
     the tie rods in a seat over each, its flats along the top (the base stop's guide groove
-    along each, its T-slot under the +z one, its scale across the +z one), a boss at the
-    -z end round the post (a sliding fit) and a low one at the +z end round the lead screw
-    (its bronze barrel nut in a bore from below, an M3 set screw holding it from turning:
-    the block bears down on it), a gusset under the flats beside each (they carry the roll
-    of a load at the axis held at the screw), a socket under each flat at its back end for
-    a rail's tongue, its TPU liner pegged into the V. (The block, its liner, the barrel
-    nut, its set screw.)"""
+    along each, its T-slot under the +z one, its scale across the +z one), at the +z end a
+    boss round the post (a sliding fit) and beside it a low one round the lead screw (its
+    bronze barrel nut in a bore from below, an M3 set screw holding it from turning: the
+    block bears down on it), webbed to each other and to the flats, a gusset under the +z
+    flat beside them (they carry the roll of a load at the axis held at the screw), a
+    socket under each flat at its back end for a rail's tongue, its TPU liner pegged into
+    the V. (The block, its liner, the barrel nut, its set screw.)"""
     x0, x1 = s.vee
     xp, zp = REAR_POST
     xs, zs = REAR_LEAD
@@ -1440,22 +1553,23 @@ def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
                  & _vee(x0, x1, s.apex - VEE_T * math.sqrt(2)))
     edge = lo - (s.apex - VEE_T * math.sqrt(2))         # (where the shell meets the flats)
     rp, rs = REAR_BOSS[0], LEAD_BOSS[0]
-    gussets = [_prism_x([(-w, lo + 0.01), (-w, GUSSET[1]), (zp + rp, GUSSET[1]),
-                         (-edge, lo + 0.01)], xp - GUSSET[0] / 2, xp + GUSSET[0] / 2),
-               _prism_x([(w, lo + 0.01), (w, GUSSET[1]), (edge, lo + 0.01)],
-                        xs - GUSSET[0] / 2, xs + GUSSET[0] / 2)]
+    gusset = _prism_x([(w, lo + 0.01), (w, GUSSET[1]), (edge, lo + 0.01)],
+                      xp - GUSSET[0] / 2, xs + GUSSET[0] / 2)
     seats = [_box(ties[n][0] - 12.0, ties[n][0] + 12.0, ties[n][1] + TIE_D / 2 - SEAT_DEPTH,
                   s.bottom + 6.0, -12.0, 12.0) for n in s.ties]
     wx, wz0, wz1, wz2, wtop = LEAD_WEB
+    px, pz = POST_WEB
     keel = TSLOT[6]
     sx0, sz0, sz1, _ = SOCKET
-    sockets = [_box(sx0, x1, _socket_bottom(sign), lo + 0.01, *sorted((sign * sz0, sign * sz1)))
+    sockets = [_box(sx0, x1, SOCKET_BOTTOM, lo + 0.01, *sorted((sign * sz0, sign * sz1)))
                for sign in (-1, 1)]
-    block = union([shell, _box(x0, x1, lo, hi, -w, w), *gussets, *seats,
+    block = union([shell, _box(x0, x1, lo, hi, -w, w), gusset, *seats,
                    _rod_y(xp, zp, rp, REAR_BOSS[1], REAR_BOSS[2]),
                    _rod_y(xs, zs, rs, LEAD_BOSS[1], LEAD_BOSS[2]),
                    _box(xs - wx, xs + wx, LEAD_BOSS[1], lo + 0.01, wz0, wz1),
                    _box(xs - wx, xs + wx, LEAD_BOSS[1], wtop, wz1 - 0.01, wz2),
+                   _box(xp - px, xp + px, REAR_BOSS[1], REAR_BOSS[2], wz0, wz2),
+                   _box(xp, xs, REAR_BOSS[1], LEAD_BOSS[2], zp - pz, zp + pz),
                    _box(x0, x1, keel, lo + 0.01, GROOVE[0] - 5.0, GROOVE[1] + 5.0),
                    *sockets])
     g0, g1, depth = GROOVE
@@ -1469,14 +1583,15 @@ def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
             _box(x0 - 1.0, x1 + 1.0, hi - depth, hi + 1.0, g0, g1),
             _box(x0 - 1.0, x1 + 1.0, hi - depth, hi + 1.0, -g1, -g0),
             *_tslot(TSLOT[0], x1 + 1.0),
+            *_tslot_lead_in(x1, -1),
             *_stop_scale(x0, x1, hi),
-            *[_box(tx0 - CLEAR, x1 + 1.0, _tongue_top(sign) - th - CLEAR,
-                   _tongue_top(sign), *sorted((sign * (tz0 - CLEAR), sign * (tz1 + CLEAR))))
+            *[_box(tx0 - CLEAR, x1 + 1.0, TONGUE_TOP - th, TONGUE_TOP + CLEAR,
+                   *sorted((sign * (tz0 - CLEAR), sign * (tz1 + CLEAR))))
               for sign in (-1, 1)],
-            *[_rod_y(x, sign * (tz0 + tz1) / 2, TIE_HOLE / 2, _socket_bottom(sign) - 1.0,
-                     _tongue_top(sign) - th) for x in RAIL_SCREW_X for sign in (-1, 1)],
+            *[_rod_y(x, sign * (tz0 + tz1) / 2, TIE_HOLE / 2, SOCKET_BOTTOM - 1.0,
+                     TONGUE_TOP - th) for x in RAIL_SCREW_X for sign in (-1, 1)],
             *[_rod_y(x, sign * (tz0 + tz1) / 2, M5.head_d / 2 + 0.5,
-                     _socket_bottom(sign) - 1.0, _socket_bottom(sign) + RAIL_HEAD_SINK)
+                     SOCKET_BOTTOM - 1.0, SOCKET_BOTTOM + RAIL_HEAD_SINK)
               for x in RAIL_SCREW_X for sign in (-1, 1)]]
     vee, liner = _vee_block(s, difference(block, *cuts), REAR_PEGS)
     nut = difference(_rod_y(xs, zs, nd / 2, LEAD_BOSS[1], LEAD_BOSS[1] + nl),
@@ -1487,13 +1602,29 @@ def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
     return vee, liner, nut, set_screw
 
 
-def _lead_screw() -> tuple[Shape3D, Shape3D, Shape3D, Shape3D, Shape3D]:
+@dataclass(frozen=True)
+class LeadScrew:
+    """The rear thumbscrew's parts (:func:`_lead_screw`, cradle frame)."""
+
+    screw: Shape3D
+    collar: Shape3D
+    brake: Shape3D
+    hub: Shape3D
+    knob: Shape3D
+    set_screw: Shape3D
+
+
+def _lead_screw() -> LeadScrew:
     """The rear thumbscrew (cradle frame): the Tr8 x 8 lead screw from its foot in the
-    carrier's bore up through its clamping collar (in the carrier's pocket on the TPU brake
-    washer: the block's load on the collar's face holds the screw from being turned back
-    by it), the V block's barrel nut and the tower's bushing, the printed knob on its top
-    (an M3 set screw onto the screw). (The screw, the collar, the brake washer, the knob,
-    the knob's set screw.)"""
+    carrier's bore up through its clamping collar (in the carrier's pocket on a TPU brake
+    washer: the block's load on the collar's face slows the screw turning back by it), the
+    V block's barrel nut and the tower's bushing; on its top a printed hub (an M3 set screw
+    onto the screw, out through its +z flat) and the knob, which slides up and down the
+    hub's hex: down, its underside's star socket sits over the star of teeth on the
+    tower's arm and the screw can't turn (review round 2, N5: an 8 mm lead turns back
+    under the block's load, and the brake alone held only dry); lifted
+    :data:`REAR_KNOB`'s lift off the teeth, it turns the screw. The set screw's end rides a
+    slot in the knob's wall, which reaches it. (:class:`LeadScrew`.)"""
     xs, zs = REAR_LEAD
     d, length, _, foot = LEAD_SCREW
     od, cl = COLLAR
@@ -1503,56 +1634,88 @@ def _lead_screw() -> tuple[Shape3D, Shape3D, Shape3D, Shape3D, Shape3D]:
                         _rod_y(xs, zs, d / 2, top - cl - 1.0, top + 1.0))
     brake = difference(_rod_y(xs, zs, od / 2, top - cl - BRAKE_T, top - cl),
                        _rod_y(xs, zs, d / 2 + 0.3, top - cl - BRAKE_T - 1.0, top - cl + 1.0))
-    k0, k1 = REAR_KNOB
-    knob = difference(_rod_y(xs, zs, KNOB_R[1], k0, k1),
-                      _rod_y(xs, zs, d / 2 + 0.1, k0 - 1.0, foot + length + 0.3),
-                      _rod_x(k0 + 4.0, zs, SET_PILOT / 2, xs - KNOB_R[1] - 1.0, xs))
-    if foot + length < k0 + 8.0 or foot + length > k1 - 1.5:
-        raise ValueError("the rear lead screw's top isn't inside its knob")
-    set_screw = _rod_x(k0 + 4.0, zs, 1.25, xs - d / 2 - SET_SCREW + 0.05, xs - d / 2 + 0.05)
-    return screw_, collar, brake, knob, set_screw
+    af, h0, h1, (fr, fh) = REAR_HUB
+    kr, k0, k1, lift = REAR_KNOB
+    n_t, r_t, r_i, h_t = LOCK_TEETH
+    screw_top = foot + length
+    y_set = (h0 + screw_top) / 2               # the set screw's height, on the screw
+    hub = difference(union([_hex_y(xs, zs, af, h0, h1), _rod_y(xs, zs, fr, h1 - 0.01,
+                                                                h1 + fh)]),
+                     _rod_y(xs, zs, d / 2 + 0.05, h0 - 1.0, screw_top + 0.3),
+                     _rod_z(xs, y_set, SET_PILOT / 2, zs + d / 2 - 0.5, zs + af / 2 + 1.0))
+    set_screw = _rod_z(xs, y_set, 1.25, zs + d / 2 - 0.05, zs + d / 2 - 0.05 + SET_SCREW)
+    slot_r = 1.6                               # the slot round the set screw's end
+    knob = difference(
+        _rod_y(xs, zs, kr, k0, k1),
+        _star_y(xs, zs, n_t, r_t + CLEAR, r_i + CLEAR, k0 - 0.01, k0 + h_t + CLEAR),
+        _hex_y(xs, zs, af + 2 * CLEAR, k0 + h_t, k1 + 0.01),
+        _box(xs - slot_r, xs + slot_r, y_set - lift - slot_r - 0.2, y_set + slot_r + 0.2,
+             zs, zs + kr + 1.0))
+    if not h0 + 6.0 <= screw_top <= h1 + fh - 1.0:
+        raise ValueError("the rear lead screw's top isn't inside its knob's hub")
+    if k1 + lift > h1 - 0.2:
+        raise ValueError("the rear knob can't lift off its teeth under its hub's flange")
+    if lift < h_t + 0.3:
+        raise ValueError("the rear knob's lift doesn't clear its teeth")
+    if zs + d / 2 - 0.05 + SET_SCREW > zs + kr - 1.0:
+        raise ValueError("the rear knob hub's set screw stands out of the knob")
+    return LeadScrew(screw_, collar, brake, hub, knob, set_screw)
 
 
 def _post_y(xz: tuple[float, float], y0: float, y1: float) -> Shape3D:
-    """A 12 mm steel standoff up y from ``y0`` to ``y1``, its ends tapped M6."""
+    """The rear post up y from ``y0`` to ``y1`` (:data:`POST`): a :data:`POST_D` steel
+    standoff, its ends tapped M8, its wrench flats at each end (:data:`POST_FLATS`, facing
+    ±x)."""
     x, z = xz
-    return difference(_rod_y(x, z, POST_D / 2, y0, y1),
-                      *[_rod_y(x, z, 3.0, a, b) for a, b in ((y0 - 1, y0 + 12.0),
-                                                             (y1 - 12.0, y1 + 1))])
+    across, along = POST_FLATS
+    r = POST_D / 2
+    flats = [_box(min(xa, xb), max(xa, xb), a, b, z - r - 1.0, z + r + 1.0)
+             for xa, xb in ((x - across / 2, x - r - 1.0), (x + across / 2, x + r + 1.0))
+             for a, b in ((y0 - 1.0, y0 + along), (y1 - along, y1 + 1.0))]
+    return difference(_rod_y(x, z, r, y0, y1), *flats,
+                      *[_rod_y(x, z, M8.d * 0.42, a, b) for a, b in ((y0 - 1, y0 + 16.0),
+                                                                    (y1 - 16.0, y1 + 1))])
 
 
 # --- the base stop: a gate on the rear V block's flats and the rails behind it -----------
 
 RAIL_END = 600.0              # the rails' end (cradle x): the 6 L's gate locked short of it
 RAIL_Z = 92.0                 # the rails' outer faces (their inner the V's edge)
-FLANGE = (-85.0, 8.5)         # each rail's 45° flange continuing the V behind the block (the
+FLANGE = (-91.0, 7.0)         # each rail's 45° flange continuing the V behind the block (the
 #                               body of a 3 L or more rests on it: review round 1, B1): its
-#                               bottom (cradle y) and its thickness across
-FLANGE_END = 588.0            # where the flanges and their liners end (cradle x): past a 6 L's
-#                               heel (561), short of the rails' end, so that at rest nothing of
-#                               the base stop comes nearer the base board than a finger's 25 mm
-#                               (ISO 13854: the end of the flange had been 18.8 mm over it)
+#                               bottom (cradle y; the rail's keel's and tongue's too: each
+#                               rail stands on it on the print bed) and its thickness across
+FLANGE_END = 580.0            # where the flanges, their liners and the keels end (cradle x):
+#                               past a 6 L's heel (561), short of the rails' end, so that at
+#                               rest nothing of the base stop comes nearer the base board than
+#                               a finger's 25 mm (ISO 13854: the end of the flange had been
+#                               18.8 mm over it)
+RAIL_KEEL = 4.0               # each rail's outer keel (review round 2, N3): a web down its
+#                               outer face to the flange's bottom, twice the rail's stiffness
+RAIL_ROOT = 12.0              # the channel between flange and keel filled this far behind the
+#                               block: the tongue's root
 KEEL_CHAMFER = 5.0            # the +z keel's bottom end cut back at 45° this far, for the same
 FINGER_GAP = 25.0             # ISO 13854's least gap for a finger
-TONGUE = (352.0, 74.0, 90.0, 12.0)      # each rail's tongue into its socket under the flats:
-#                                         its front x, |z| span, height (its top the flats'
-#                                         underside, the +z one's keel's)
-SOCKET = (340.0, 71.0, 93.0, 10.7)      # the sockets: front x, |z| span, the floor under the
-#                                         tongue's cavity
-
-
-def _tongue_top(sign: int) -> float:
-    """A rail's tongue's top (cradle y, the V block at its lowest): under the flats, or on the
-    +z side (``sign`` > 0) under the keel round the T-slot."""
-    return TSLOT[6] if sign > 0 else REAR_FLANGE[0]
-
-
-def _socket_bottom(sign: int) -> float:
-    """A socket's bottom under its tongue's cavity (:data:`SOCKET`'s floor)."""
-    return _tongue_top(sign) - TONGUE[3] - CLEAR - SOCKET[3]
-RAIL_SCREW_X = (358.0, 374.0)           # the two M5 x 16 up through each socket into its tongue
+TONGUE = (351.0, 73.5, 90.5, 13.0)      # each rail's tongue into its socket under the flats:
+#                                         its front x (the rail 249 mm long: a 250 mm bed),
+#                                         |z| span, height
+TONGUE_TOP = -78.0            # the tongues' tops (the V block at its lowest): under the +z
+#                               flat's keel round the T-slot, the -z one level with it
+RIBS = (3, 1.0, 0.5)          # crush ribs along a tongue's top (review round 2, N3): how many,
+#                               their width and height, over the socket's 0.3 mm clearance
+#                               above it: pressed in, they crush 0.2 mm, so the tongue sits in
+#                               its socket with no play (it had 0.3 mm, 0.6° of rock)
+SOCKET = (340.0, 70.5, 93.5, 10.7)      # the sockets: front x, |z| span, the floor under the
+#                                         tongue (it sits on it: the rail's top is the flats')
+SOCKET_BOTTOM = TONGUE_TOP - TONGUE[3] - SOCKET[3]      # a socket's underside
+RAIL_SCREW_X = (357.0, 372.0)           # the two M5 x 16 up through each socket into its tongue
 RAIL_SCREW = 16.0
 RAIL_HEAD_SINK = 3.5                    # their heads sunk this far into the socket's floor
+RAIL_DRAIN = 1.5                        # the drain's radius from the +z rail's T-slot's back end
+#                                         down through its keel (spilt wine runs down the slot
+#                                         at rest: review round 2, m6)
+SLOT_LEAD_IN = 0.5            # the T-slot's ends at the block-to-rail joint chamfered this
+#                               much, so the washer and nut cross it (review round 2, m8)
 FLANGE_PEGS = ((430.0, -70.0), (540.0, -70.0))  # the flange liners' pegs (x, the face's y)
 GATE_T = 10.0                 # the gate's plate along the axis
 GATE_BOTTOM = -92.0           # its bottom edge (at the lowest): 5 mm under a 6 L's base
@@ -1567,10 +1730,12 @@ LOCK_WASHER = (15.0, 1.2)     # the M5 fender washers (under the bolt's head, on
 def _rails(s: Saddle) -> tuple[list[Shape3D], list[Shape3D], list[Shape3D]]:
     """The base stop's rails (cradle frame, the V block at its lowest): two bars, one each
     side, continuing the rear V block's flats behind it, their guide grooves (the +z one's
-    T-slot and scale too), each with a 45° flange under it continuing the V to
-    :data:`FLANGE`'s bottom (its TPU liner pegged on) and a tongue forward into its socket
-    under the block's flats, two M5 button heads up through the socket's floor into it.
-    (The rails (-z, +z), their liners, their four screws.)"""
+    T-slot and scale too: its slot chamfered where it meets the block's, and drained at its
+    back end), each with a 45° flange under it continuing the V to :data:`FLANGE`'s bottom
+    (its TPU liner pegged on), a keel down its outer face (:data:`RAIL_KEEL`), the channel
+    between them filled at its root, and a tongue forward into its socket under the block's
+    flats (crush ribs along its top: no play), two M5 button heads up through the socket's
+    floor into it. (The rails (-z, +z), their liners, their four screws.)"""
     hi = REAR_FLANGE[1]
     g0, g1, depth = GROOVE
     yb, ft = FLANGE
@@ -1578,42 +1743,52 @@ def _rails(s: Saddle) -> tuple[list[Shape3D], list[Shape3D], list[Shape3D]]:
     lo = REAR_FLANGE[0]
     xr = s.vee[1]
     tx0, tz0, tz1, th = TONGUE
+    n_r, rw, rh = RIBS
 
     def zv(y: float) -> float:                 # the V's face (the liners' backs) at y
         return y - s.apex
 
-    zy = [(zv(hi), hi), (RAIL_Z, hi), (RAIL_Z, lo), (zv(lo) + ft, lo), (zv(yb) + ft, yb),
-          (zv(yb), yb)]
+    bar_zy = [(zv(hi), hi), (RAIL_Z, hi), (RAIL_Z, lo), (zv(lo), lo)]
+    deep_zy = [(zv(lo), lo + 0.01), (RAIL_Z, lo + 0.01), (RAIL_Z, yb), (RAIL_Z - RAIL_KEEL, yb),
+               (RAIL_Z - RAIL_KEEL, lo), (zv(lo) + ft, lo), (zv(yb) + ft, yb), (zv(yb), yb)]
     rails, liners, screws = [], [], []
     for sign in (-1, 1):
-        bar = _prism_x([(sign * z, y) for z, y in zy], xr, RAIL_END)
-        top = _tongue_top(sign)
-        tongue = _box(tx0, xr + 0.5, top - th, top + 0.01, *sorted((sign * tz0, sign * tz1)))
+        sz = sorted((sign * tz0, sign * tz1))
+        parts = [_prism_x([(sign * z, y) for z, y in bar_zy], xr, RAIL_END),
+                 _prism_x([(sign * z, y) for z, y in deep_zy], xr, FLANGE_END),
+                 _box(xr, xr + RAIL_ROOT, yb, lo + 0.01, *sorted((sign * zv(lo),
+                                                                   sign * RAIL_Z))),
+                 _box(tx0, xr + 0.5, TONGUE_TOP - th, TONGUE_TOP + 0.01, *sz)]
+        pitch = (tz1 - tz0 - rw) / (n_r - 1)
+        parts += [_box(tx0, xr + 0.5, TONGUE_TOP, TONGUE_TOP + rh,
+                       *sorted((sign * (tz0 + i * pitch), sign * (tz0 + i * pitch + rw))))
+                  for i in range(n_r)]
         zk = sorted((sign * (GROOVE[0] - 5.0), sign * (GROOVE[1] + 5.0)))
         if sign > 0:                           # the keel round the T-slot
-            tongue = union([tongue, _box(xr, RAIL_END, keel, lo + 0.01, *zk)])
-        sbot = _socket_bottom(sign)
+            parts.append(_box(xr, RAIL_END, keel, lo + 0.01, *zk))
         k = KEEL_CHAMFER
         cuts = [_box(xr - 1.0, RAIL_END + 1.0, hi - depth, hi + 1.0,
-                     *sorted((sign * g0, sign * g1))),
-                _box(FLANGE_END, RAIL_END + 1.0, yb - 1.0, lo, *sorted(        # (the flange's
-                    (0.0, sign * (GROOVE[0] - 5.5))))]                          # end)
+                     *sorted((sign * g0, sign * g1)))]
         if sign > 0:
             chamfer = Solid.extrude(Face(Wire.make_polygon(
                 [(RAIL_END - k, keel - 0.01, zk[0] - 1.0), (RAIL_END + 0.01, keel - 0.01,
                                                              zk[0] - 1.0),
                  (RAIL_END + 0.01, keel + k, zk[0] - 1.0)], close=True)),
                 (0, 0, zk[1] - zk[0] + 2.0))
-            cuts += [*_tslot(xr - 1.0, RAIL_END - 3.0), *_stop_scale(xr, RAIL_END, hi), chamfer]
+            x_end = RAIL_END - 3.0             # the T-slot's closed back end, low at rest
+            cuts += [*_tslot(xr - 1.0, x_end), *_tslot_lead_in(xr, 1),
+                     *_stop_scale(xr, RAIL_END, hi), chamfer,
+                     _rod_y(x_end - RAIL_DRAIN, (g0 + g1) / 2, RAIL_DRAIN, keel - 6.0,
+                            TSLOT[5] + 0.01)]
         zt = sign * (tz0 + tz1) / 2
-        y_head = sbot + RAIL_HEAD_SINK             # the screws' heads' tops, sunk in the floor
-        cuts += [_rod_y(x, zt, M5_PILOT / 2, top - th - 1.0, y_head + RAIL_SCREW + 1.0)
+        y_head = SOCKET_BOTTOM + RAIL_HEAD_SINK    # the screws' heads' tops, sunk in the floor
+        cuts += [_rod_y(x, zt, M5_PILOT / 2, TONGUE_TOP - th - 1.0, y_head + RAIL_SCREW + 1.0)
                  for x in RAIL_SCREW_X]
         band = [(sign * zv(hi), hi), (sign * (zv(hi) - LINER * math.sqrt(2)), hi),
                 (sign * (zv(yb) - LINER * math.sqrt(2)), yb), (sign * zv(yb), yb)]
         liner = _prism_x(band, xr + CLEAR, FLANGE_END - CLEAR)
         keys, holes = _liner_pegs(s.apex, FLANGE_PEGS, (sign,))
-        rails.append(difference(union([bar, tongue]), *cuts, *holes))
+        rails.append(difference(union(parts), *cuts, *holes))
         liners.append(union([liner, *keys]))
         screws.extend(union([_rod_y(x, zt, M5.head_d / 2, y_head - M5.head_h, y_head),
                              _rod_y(x, zt, 2.4, y_head, y_head + RAIL_SCREW)])
@@ -1624,13 +1799,14 @@ def _rails(s: Saddle) -> tuple[list[Shape3D], list[Shape3D], list[Shape3D]]:
 def _gate(s: Saddle, stop: float) -> tuple[Shape3D, list[Shape3D]]:
     """The base stop's gate, its face at ``stop`` (cradle frame, the V block at its lowest):
     a plate across the V behind the bottle's base (a millimetre inside the liners' face,
-    from :data:`GATE_BOTTOM` up), its top on the flats or the rails with a pointer over the
-    scale (its front edge reads it), an ear on each behind it keyed into its groove; the
-    lock through the +z ear: an M5 tap bolt down through a printed knob (its head and a
-    fender washer in the knob), the ear and its key into a fender washer and an M5 nut in
-    the T-slot under the groove. Turned by hand it clamps the gate anywhere along the
-    slot: no tool, no thread in the plastic. (The gate; the lock's bolt, knob, washers (on
-    the ear, under the lips) and nut.)"""
+    from :data:`GATE_BOTTOM` up), its top on the flats or the rails with a pointer forward
+    along the scale's outer half (its back end the face's plane reads the scale; a vernier
+    of :data:`VERNIER` lines across it reads the millimetres), an ear on each behind it
+    keyed into its groove; the lock through the +z ear: an M5 tap bolt down through a
+    printed knob (its head and a fender washer in the knob), the ear and its key into a
+    fender washer and an M5 nut in the T-slot under the groove. Turned by hand it clamps
+    the gate anywhere along the slot: no tool, no thread in the plastic. (The gate; the
+    lock's bolt, knob, washers (on the ear, under the lips) and nut.)"""
     hi = REAR_FLANGE[1]
     g0, g1, depth = GROOVE
     face = s.apex + LINER * math.sqrt(2)
@@ -1639,17 +1815,23 @@ def _gate(s: Saddle, stop: float) -> tuple[Shape3D, list[Shape3D]]:
         return y - face - 1.0
 
     top = hi + 6.0
-    ze = 88.0                                  # the ears' and the top bar's outer edges
+    ze = STOP_MARKS[0]                         # the ears' and the top bar's outer edges
     zy = [(-zf(GATE_BOTTOM), GATE_BOTTOM), (zf(GATE_BOTTOM), GATE_BOTTOM), (zf(hi), hi),
           (ze, hi), (ze, top), (-ze, top), (-ze, hi), (-zf(hi), hi)]
     ears = [_box(stop + GATE_T - 0.01, stop + EAR_END, hi, top, za, zb)
             for za, zb in ((72.0, ze), (-ze, -72.0))]
     keys = [_box(stop, stop + EAR_END, hi - depth + CLEAR, hi + 0.01, za, zb)
             for za, zb in ((g0 + CLEAR, g1 - CLEAR), (-g1 + CLEAR, -g0 - CLEAR))]
-    pointer = _box(stop, stop + 3.0, hi, top, ze - 0.01, RAIL_Z - 0.5)
+    pitch, lines, pw = VERNIER
+    z_out = RAIL_Z - 0.2
+    reach = pitch * lines + 1.5                # its arm forward of the face
+    pointer = union([_box(stop, stop + 3.0, hi, top, ze - 0.01, z_out),
+                     _box(stop - reach, stop + 0.01, hi, top, z_out - pw, z_out)])
+    vernier = [_box(stop - pitch * k - 0.25, stop - pitch * k + 0.25, top - 0.6, top + 0.01,
+                    z_out - pw - 0.01, z_out + 0.01) for k in range(1, lines + 1)]
     xl, zl = stop + LOCK_X, (g0 + g1) / 2
     gate = difference(union([_prism_x(zy, stop, stop + GATE_T), *ears, *keys, pointer]),
-                      _rod_y(xl, zl, TIE_HOLE / 2, hi - depth - 1.0, top + 1.0))
+                      _rod_y(xl, zl, TIE_HOLE / 2, hi - depth - 1.0, top + 1.0), *vernier)
     kr, kh = LOCK_KNOB
     wd, wt = LOCK_WASHER
     af, head_h, _ = M5_HEX
@@ -2367,14 +2549,14 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
         extras.append(hardware(name, _place(part, cf.lip, cf.tilt), host, fab=fab,
                                bom_key=key, color=color))
 
-    lead, collar, brake, lead_knob, lead_set = _lead_screw()
+    lead = _lead_screw()
     rear_vee, rear_liner, rear_nut, rear_nut_set = _rear_vee(rear, cf.ties)
     for s, (carrier, sets), (vee, liner, nut), (jack, knob), du, keys in (
             (front, _front_saddle(front, cf.ties), _front_vee(front),
              _jack(FRONT_JACK, 6.0, FRONT_SCREW, (M6_HEX[0], M6_HEX[2]), FRONT_HEAD_Y,
                    KNOB_R[0]), at.front, (FRONT_NUT_KEY, FRONT_JACK_KEY)),
             (rear, _rear_saddle(rear, cf.ties), (rear_vee, rear_liner, rear_nut),
-             (lead, lead_knob), at.rear, (LEAD_KEYS[1], LEAD_KEYS[0]))):
+             (lead.screw, lead.knob), at.rear, (LEAD_KEYS[1], LEAD_KEYS[0]))):
         if s is front:                  # the light's clip's screws' pilots
             carrier = difference(carrier, *clip_pilots)
         put(s.name, carrier, "printed", SADDLE_COLOR)
@@ -2392,33 +2574,37 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
         fastened += [(f"{s.name}_vee", f"{s.name}_liner"), (f"{s.name}_nut", f"{s.name}_vee"),
                      (f"{s.name}_nut", f"{s.name}_jack"), (f"{s.name}_knob", f"{s.name}_jack"),
                      (f"{s.name}_jack", s.name), ("bottle", f"{s.name}_liner")]
-    # the rear lead screw's collar on its brake washer, the set screws in its knob and on
-    # its barrel nut
+    # the rear lead screw's collar on its brake washer, its knob's hub, the set screws in
+    # the hub and on its barrel nut
     set_key = f"m3_set_screw_{SET_SCREW:g}"
-    put("rear_saddle_lead_clamp", collar, "purchased", TIE_COLOR, LEAD_KEYS[2])
-    put("rear_saddle_brake", brake, "printed", LINER_COLOR)
-    put("rear_saddle_knob_set_screw", lead_set, "purchased", TIE_COLOR, set_key)
+    put("rear_saddle_lead_clamp", lead.collar, "purchased", TIE_COLOR, LEAD_KEYS[2])
+    put("rear_saddle_brake", lead.brake, "printed", LINER_COLOR)
+    put("rear_saddle_hub", lead.hub, "printed", KNOB_COLOR)
+    put("rear_saddle_hub_set_screw", lead.set_screw, "purchased", TIE_COLOR, set_key)
     put("rear_saddle_nut_set_screw", rear_nut_set, "purchased", TIE_COLOR, set_key, dy=at.rear)
     fastened += [("rear_saddle_lead_clamp", "rear_saddle_jack"),
                  ("rear_saddle_lead_clamp", "rear_saddle"), ("rear_saddle_brake", "rear_saddle"),
                  ("rear_saddle_brake", "rear_saddle_jack"),
                  ("rear_saddle_brake", "rear_saddle_lead_clamp"),
-                 ("rear_saddle_knob_set_screw", "rear_saddle_knob"),
-                 ("rear_saddle_knob_set_screw", "rear_saddle_jack"),
+                 ("rear_saddle_hub", "rear_saddle_jack"), ("rear_saddle_hub", "rear_saddle_knob"),
+                 ("rear_saddle_hub_set_screw", "rear_saddle_hub"),
+                 ("rear_saddle_hub_set_screw", "rear_saddle_knob"),
+                 ("rear_saddle_hub_set_screw", "rear_saddle_jack"),
                  ("rear_saddle_nut_set_screw", "rear_saddle_vee"),
                  ("rear_saddle_nut_set_screw", "rear_saddle_nut")]
     # the rear V block's post, screwed up into from under the carrier
     y_head = rear.y0 + 0.25
     put("rear_saddle_post", _post_y((xp, zp), POST[1], POST[1] + POST[0]), "purchased",
-        TIE_COLOR, _standoff12(POST[0]))
+        TIE_COLOR, POST_KEY)
     put("rear_saddle_post_screw",
-        union([_rod_y(xp, zp, M6.head_d / 2, y_head, y_head + M6.head_h),
-               _rod_y(xp, zp, 2.9, y_head + M6.head_h, y_head + M6.head_h + POST_SCREW)]),
-        "purchased", TIE_COLOR, M6.key(POST_SCREW))
+        union([_rod_y(xp, zp, M8.head_d / 2, y_head, y_head + M8.head_h),
+               _rod_y(xp, zp, M8.shank_d / 2, y_head + M8.head_h,
+                      y_head + M8.head_h + POST_SCREW)]),
+        "purchased", TIE_COLOR, M8.key(POST_SCREW))
     fastened += [("rear_saddle_post", "rear_saddle"), ("rear_saddle_post", "rear_saddle_vee"),
                  ("rear_saddle_post_screw", "rear_saddle"),
                  ("rear_saddle_post_screw", "rear_saddle_post")]
-    # the lip gauge, down: its pad at the mouth
+    # the lip gauge, fixed on its post: its pad at the mouth
     gauge, pin, gauge_nut = _gauge()
     put("front_saddle_gauge", gauge, "printed", KNOB_COLOR)
     put("front_saddle_gauge_pin", pin, "purchased", TIE_COLOR, GAUGE_PIN_KEY)
@@ -2537,6 +2723,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                 tie_mm=tie_len, base_tie_mm=foot_len, bay_tie_mm=bay_len, fastened=fastened,
                 bottle=shown.name, cradle_linkage=lk.key, cradle_modules=lk.key in PACK_POSES,
                 keepers=sorted(prefixed(n, s) for n in keepers for s in SIDES_LR),
+                petg=sorted(n for n in PETG_PARTS if any(b.name == n for b in extras)),
                 board_window=[float(cf.lip[0]) + BOARD_WINDOW[0],
                               float(cf.lip[0]) + BOARD_WINDOW[1], -BOARD_WINDOW[2],
                               BOARD_WINDOW[2], BOARD_WINDOW[3]])
@@ -2616,7 +2803,7 @@ def assembly(view) -> list:
     saddles = [n for s in SADDLES for n in (s.name, *(f"{s.name}_{p}" for p in (
         "vee", "liner", "nut", "jack", "knob"))) if n in view.z]
     saddles += [n for n in ("rear_saddle_post", "rear_saddle_post_screw", "rear_saddle_lead_clamp",
-                            "rear_saddle_brake", "rear_saddle_knob_set_screw",
+                            "rear_saddle_brake", "rear_saddle_hub", "rear_saddle_hub_set_screw",
                             "rear_saddle_nut_set_screw", "front_saddle_gauge",
                             "front_saddle_gauge_pin", "front_saddle_gauge_nut") if n in view.z]
     sets = view.named(r"\w+_saddle_set_screw_\w+")
@@ -2624,28 +2811,37 @@ def assembly(view) -> list:
         ops.append(Op(CRADLE, (0,), whole(*saddles, *sets), "Saddles",
                       "On the bench, each saddle's V block into its carrier, its TPU liner "
                       "pressed into its V, its pegs into the V's holes. The front one: its M6 "
-                      "nut up into the hex pocket under its tab, the block down into the "
-                      "carrier's box, the M6 thumbscrew down through the tab's nut into its "
-                      "foot's bore (a dab of grease on its thread: stainless in stainless "
-                      "galls dry), the knob pressed onto its head. The rear one: the steel "
-                      "post into the carrier's socket, an M6 button head up into it from "
-                      "below (threadlocker); the bronze barrel nut up into the block's "
-                      "lead-screw boss, its M3 set screw snug on it; the TPU brake washer and "
-                      "the clamping collar into the carrier's pocket, the collar's pinch screw "
-                      "toward the pocket's open side; the block down over the post; the lead "
-                      "screw (a little grease on its thread) down through the tower's arm, "
-                      "the barrel nut and the collar into its foot's bore, and the collar's "
-                      "pinch screw tight with the collar down on its washer (the block's "
-                      "load on that washer is what holds the coarse screw from turning back); "
-                      "the knob onto the screw's top, its M3 set screw snug. The lip gauge "
-                      "onto the front carrier's post, a knuckle either side: the M5 tap bolt "
-                      "through them and the post from the front, its nylon-insert nut behind, "
-                      "snug: lifted to its stop and let go, it must fall shut. Then the "
-                      "saddles slid onto the tie rods' free ends, the front one (the small V) "
-                      "on the rods nearer the hinge, the knobs to the passive side, centred "
-                      "across the bay; the M3 set screws up from their undersides into the "
-                      "printed pilots, snug on the rods (they cut their own thread: no more "
-                      "than snug). Turn each knob down until its V block sits on the rods.",
+                      "nut up into the hex pocket under its tab, a thin smear of grease on the "
+                      "block's sides and the carrier's walls (a dry box guide binds), the "
+                      "block down into the carrier's box, its tall cheek against the tall "
+                      "wall, the M6 thumbscrew down through the tab's nut into its foot's bore "
+                      "(a dab of grease on its thread: stainless in stainless galls dry), the "
+                      "knob pressed onto its head. The rear one: the plated steel post into "
+                      "the carrier's socket beside the lead screw's pocket, an M8 button head "
+                      "up into it from below (threadlocker); the bronze barrel nut up into the "
+                      "block's lead-screw boss, its M3 set screw snug on it; the TPU brake "
+                      "washer and the clamping collar into the carrier's pocket, the collar's "
+                      "pinch screw toward the pocket's open side; the block's post boss down "
+                      "over the post; the lead screw down through the tower's arm, the barrel "
+                      "nut and the collar into its foot's bore, and the collar's pinch screw "
+                      "tight with the collar down on its washer. The knob's hub up into the "
+                      "knob from below (its flange holds the knob on), the hub onto the "
+                      "screw's top, its M3 set screw snug through the slot in the knob's "
+                      "side. Then grease the "
+                      "lead screw's thread above the collar only (the barrel nut's travel: "
+                      "run the block up and down once to spread it), never the collar, its "
+                      "washer or the knob's teeth. The knob turns the screw only lifted off "
+                      "its teeth; let go, it drops back onto them (press it down until it "
+                      "seats) and the screw can't turn. The lip gauge onto the front "
+                      "carrier's post, a cheek either side, its bridge flat on the post's "
+                      "top: the M5 tap bolt through them and the post from the front, its "
+                      "nylon-insert nut behind, tight (it doesn't move: a bottle is uncorked "
+                      "before it goes in). Then the saddles slid onto the tie rods' free "
+                      "ends, the front one (the small V) on the rods nearer the hinge, the "
+                      "knobs to the passive side, centred across the bay; the M3 set screws "
+                      "up from their undersides into the printed pilots, snug on the rods "
+                      "(they cut their own thread: no more than snug). Turn each knob down "
+                      "until its V block sits on the rods.",
                       "saddles"))
     stop = [n for n in ("base_stop_rail0", "base_stop_rail1", "base_stop_rail0_liner",
                         "base_stop_rail1_liner", "base_stop_screw0", "base_stop_screw1",
@@ -2656,15 +2852,17 @@ def assembly(view) -> list:
         ops.append(Op(CRADLE, (2,), whole(*stop), "Base stop",
                       "The base stop: an M5 nut and a fender washer (the washer on top) into "
                       "the T-slot of the rail with the scale, from its front end; then each "
-                      "rail's tongue into its socket under the rear V block's flats, the "
-                      "rail's top flush with the flats and its flange with the block's V, two "
-                      "M5 button heads up through the socket's floor into the tongue (snug); "
+                      "rail's tongue pressed into its socket under the rear V block's flats "
+                      "(the ribs along its top crush: a few taps of a mallet, until the rail "
+                      "meets the block), the rail's top flush with the flats and its flange "
+                      "with the block's V, two M5 button heads up through the socket's floor "
+                      "into the tongue (snug: the tongue sits down on the floor); "
                       "each TPU liner pressed onto its rail's flange, its pegs into the holes. "
                       "The gate onto the rails from their end, its keys in the grooves, its "
                       "face toward the saddle; the nut slid along under the scale side's ear, "
                       "a fender washer on the ear, the M5 tap bolt down through it, the ear "
                       "and the washer below into the nut, its knob pressed onto its head. It "
-                      "is set for each bottle (the use's first step).", "base_stop"))
+                      "is set for each bottle (the use's setting step).", "base_stop"))
     light = [n for n in ("led_clip", "led_clip_screw0", "led_clip_screw1", "led",
                          "led_set_screw") if n in view.z]
     if light:
@@ -2790,28 +2988,46 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
               marks=(r"foot_bracket_\w+_knob", "base_plate")))]
     if saddles:
         out.append(UseStep("setting", "Setting it for a bottle", (
-            "At rest (neck up), the bottle out, set all three by their scales.",
-            "The base stop: loosen its knob, slide the gate until its pointer's front edge is "
-            "on the bottle's groove across the rail or flat (a dot per place in front of each, "
-            "from the shortest: one a 750 ml, two a magnum, three a 3 L, four a 6 L impériale, "
-            "five a methuselah; another bottle: its length on the grooves every 10 mm, plus "
-            "half a millimetre), and turn the knob tight by hand.",
+            "Measure the bottle first, every one: two bottles of a size differ (750 ml "
+            "Bordeaux run 300 to 315 mm long, 3 L ones 470 to 475), so the listed sizes' "
+            "grooves are only examples. Its length standing on the table, base to lip, to the "
+            "millimetre; its neck's diameter 80 mm down from the lip, where the front V holds "
+            "it (calipers, or a strip of paper round it: the length round over 3.14); its "
+            "body's where it lies in the rear V, 255 mm from the lip and on (a tapered body: "
+            "its widest there).",
+            "Uncork it there, standing on the table: the lip gauge is fixed over the mouth, so "
+            "nothing goes in or out of it in the cradle. A sparkling wine under pressure the "
+            "same, its cork eased out by hand, the mouth pointed away from people.",
+            "Then at rest (neck up), the bottle out, set all three.",
+            "The base stop: loosen its knob and slide the gate until its face reads the "
+            "bottle's length. The grooves across the rail or flat read a length every 5 mm (a "
+            "long one every 10; three, four and five dots in front of the 300, 400 and 500 mm "
+            "ones, one in front of the 50s).",
+            "The pointer reaching forward from the gate's face reads the millimetres: set the "
+            "face just behind the groove of the 5 mm at or under the length, then on until "
+            "the pointer's line counted from the face that is the extra millimetres (the "
+            "first for 1 mm, the fourth for 4) lines up with a groove beside it (none, and the "
+            "face on the groove, for 0).",
+            "Turn its knob tight by hand, then tug the gate toward the saddle: it must not move "
+            "(a gate left loose lets a bottle slide down the rails).",
             "The front V block: turn its knob until the block's top edge is on the bottle's "
-            "groove on the scale inside the carrier's wall, in front of the knob (one dot a "
-            "750 ml or a magnum, two a 3 L, three a 6 L).",
-            "The rear V block: turn its knob until its screw boss is on the bottle's groove on "
-            "the tower's face (one dot a 750 ml to five a methuselah, whose V blocks sit on "
-            "their rods; 9 turns end to end).",
-            "Another bottle: the other rows. Its neck's diameter every 4 mm in front, measured "
-            "50 to 80 mm from its lip where the front V holds it (a Port bottle's bulb or a "
-            "Burgundy or Champagne magnum's tapered neck sets by that, not by the lip); its "
-            "body's every 10 mm at the rear.",
-            "Lay the bottle in, its label up, its base to the gate: it slides back onto it.",
-            "The lip gauge stays down: its pad stands just in front of the mouth, a millimetre "
-            "or less from the rim (more, and the gate or a knob is off).",
-            "To uncork, lift the gauge onto its stop and hold it there, or let it rest on the "
-            "corkscrew; let go and it falls back onto the mouth. It must be down before the "
-            "handle turns: past level it holds the bottle forward, as the gate holds it back."),
+            "neck diameter on the scale inside the carrier's wall (every 4 mm, behind the "
+            "knob), or on a listed size's groove in front of it (one dot a 750 ml or a magnum, "
+            "two a 3 L, three a 6 L).",
+            "The rear V block: its knob turns only lifted off its teeth. Lift it and turn it "
+            "until the screw boss is on the body's diameter on the tower's face (every 10 mm), "
+            "or a listed size's groove (one dot a 750 ml to five a methuselah, whose V blocks "
+            "sit on their rods; 9 turns end to end); let it drop and press it down until it "
+            "seats: it holds the block where it is.",
+            "Lay the bottle in base first, its label up: hold it by the neck and the body, its "
+            "base low, set its heel on the rails (or the rear V) just in front of the gate and "
+            "slide it back against the gate, then lower the neck into the front V, the rim "
+            "passing behind the lip gauge's pad. If the neck won't go down, the bottle is "
+            "longer than the gate is set: move the gate back.",
+            "Look along the neck: the pad's bottom edge covers the top of the rim, 2 to 4 mm "
+            "in front of it (more, and the gate is too far back by the extra; the pad not over "
+            "the rim, and the front V is set too low). Past level the pad holds the bottle "
+            "forward, as the gate holds it back."),
             Scene("rest", show=("*", "bottle"),
                   marks=(r"front_saddle_knob", r"rear_saddle_knob", r"base_stop_(gate|knob)",
                          r"front_saddle_gauge"))))
@@ -2866,7 +3082,8 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
         "more under the light's clip; once set, nothing raised or added under the cradle "
         "box.",
         f"3. Hands out, and nothing under the cradle box or the bottle, {zone}.",
-        "4. The lip gauge down before the bottle passes level.",
+        "4. The bottle uncorked before it goes in; the gate's knob tight (tug the gate) and "
+        "the rear knob down on its teeth whenever a bottle is in.",
         "5. The handle off (its thumb screw) when you leave it: nothing turns without it.",
         "Where it pinches while the handle turns: both side stacks, their bay faces included "
         "(each return to rest the cradle links shear past the inner bars' front ends, at the "
@@ -2879,16 +3096,16 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
         "click means something is in the way (with nothing in the way, a full 6 L started "
         "from a stop near level: turn back a little and on, steadily). In the last two turns "
         "at either end no clutch bounds the force: there only the clearance protects.",
-        "The lip gauge falls back onto the mouth by itself: check nothing holds it up (a "
-        "corkscrew left in the cork included); with it up a wet bottle slides forward at "
-        "full tilt, its mouth off the pivot over the decanter.",
-        "Uncork at rest, the base stop set, holding the neck, a corkscrew's lever lifted "
-        "straight up. Not a sparkling wine under pressure: at rest the mouth points 50° up "
-        "toward the front; ease such a cork out by hand before the bottle goes in, the mouth "
-        "pointed away from people.",
+        "Uncork every bottle standing on the table before it goes in: the lip gauge is fixed "
+        "over the mouth, and nothing goes in or out of it in the cradle. A sparkling wine "
+        "under pressure the same, its cork eased out by hand, the mouth pointed away from "
+        "people (the -50° rest takes an opened full bottle).",
+        "The rear knob lifted, only the brake washer slows the lead screw: lift it only "
+        "with the bottle out, and press it down on its teeth after.",
         "Keep your hands off the decanter and the bottle while the handle turns.",
         "Lift the cradle by its base board, never by the hand crank or the cradle box.",
-        "Hand-wash the printed parts: PLA softens at about 55 °C (a hot car too)."),
+        "Hand-wash the printed parts: PLA softens at about 55 °C, PETG (the parts that carry "
+        "the bottle) at 68 (a hot car too)."),
         Scene("rest", show=("*", "bottle", "decanter"),
               marks=(r"toggle_flag", r"L\.handle\w*") if flag else (r"L\.handle\w*",))))
     return out
@@ -3435,6 +3652,14 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
     return breakdown, reassembly
 
 
+PETG_PARTS = ("front_saddle", "front_saddle_vee", "front_saddle_gauge", "rear_saddle",
+              "rear_saddle_vee", "rear_saddle_hub", "rear_saddle_knob", "base_stop_rail0",
+              "base_stop_rail1", "base_stop_gate")
+"""The printed parts that carry the bottle or hold it where it is (``meta["petg"]``,
+``hardware.bom.part_filament``): printed solid in PETG, which holds its shape to 68 °C (PLA
+to 55) and whose layers bond about as well (Prusament's datasheets: 18 and 17 MPa across
+them); their stresses are rated on solid sections (``cradle_report.saddles``; review round
+2, N6 and m9)."""
 FRONT_MOVES = ("front_saddle_vee", "front_saddle_liner", "front_saddle_nut")
 REAR_MOVES = ("rear_saddle_vee", "rear_saddle_liner", "rear_saddle_nut",
               "rear_saddle_nut_set_screw", "base_stop_rail0", "base_stop_rail1",
@@ -3509,32 +3734,36 @@ def print_poses(names, tilt: float) -> dict[str, list[tuple[str, float]]]:
     """How a cradle's printed parts that don't lie in a layer go on the print bed
     (:func:`build.print_pose`: turns about the global axes, ``tilt`` the cradle's in the
     drawn pose, radians): the carriers, the V blocks (their post's bore and nut's upright;
-    support under the rear one's flats and bosses), the knobs and the brake washer as they
-    stand (the rear carrier's tower: support under its arm), the V blocks' liners on their
-    two edges (their apex up, TPU's 45° faces), the rails' liners flat, the rails on their
-    outer faces, the lip gauge on its pad's face (support under its back knuckle and lug),
-    the base stop's gate on its face, the light's clip on its tube's foot (upright, round),
-    the brackets on their L (its corner in every layer), the base board's thumb knobs on
-    their tops, the feet as they stand, the hand crank's hub standing on its end (its tube up)
-    and its arm, grip and cap on their outer faces (review round 1, m4); the riser's pieces
-    upside down, their bosses on the bed (round 2); the toggle flag flat as drawn."""
+    support under the rear one's flats and bosses), the base stop's rails (on their flat
+    bottoms: the T-slot's lips then bend in their layers; review round 2, N6), the knobs
+    and the brake washer as they stand (the rear carrier's tower: support under its arm),
+    the rear knob's hub on its flange, the V blocks' liners on their two edges (their apex
+    up, TPU's 45° faces), the rails' liners flat, the lip gauge on its side (its bar bends
+    in its layers; support under the bar and the arm), the base stop's gate on its face,
+    the light's clip on its tube's foot (upright, round), the brackets on their L (its
+    corner in every layer), the base board's thumb knobs on their tops, the feet as they
+    stand, the hand crank's hub standing on its end (its tube up) and its arm, grip and cap
+    on their outer faces (review round 1, m4); the riser's pieces upside down, their
+    bosses on the bed (round 2); the toggle flag flat as drawn."""
     t = -math.degrees(tilt)
     out: dict[str, list[tuple[str, float]]] = {}
     carriers = {s.name for s in SADDLES}
     for n in names:
         if n.startswith("foot_bracket_") and n.endswith("_knob"):
             out[n] = [("X", -90.0)]          # on its top: the nut's pocket open upward
-        elif n in carriers or n.endswith(("_knob", "_vee")) or n in ("led_clip",
-                                                                    "rear_saddle_brake"):
+        elif n in carriers or n.endswith(("_knob", "_vee")) or n in (
+                "led_clip", "rear_saddle_brake", "base_stop_rail0", "base_stop_rail1"):
             out[n] = [("Z", t), ("X", 90.0)]
+        elif n == "rear_saddle_hub":
+            out[n] = [("Z", t), ("X", -90.0)]
         elif n in ("base_stop_rail0_liner", "base_stop_rail1_liner"):
             out[n] = [("Z", t), ("X", 45.0 if n == "base_stop_rail0_liner" else -45.0)]
         elif n.endswith("_liner"):
             out[n] = [("Z", t), ("X", -90.0)]
-        elif n in ("base_stop_gate", "front_saddle_gauge"):
+        elif n == "base_stop_gate":
             out[n] = [("Z", t), ("Y", -90.0)]
-        elif n in ("base_stop_rail0", "base_stop_rail1"):
-            out[n] = [("Z", t)] if n == "base_stop_rail0" else [("Z", t), ("X", 180.0)]
+        elif n == "front_saddle_gauge":
+            out[n] = [("Z", t)]
         elif n.startswith("foot_bracket_") and n.count("_") <= 2:   # its L on the bed: the
             out[n] = [("Y", 90.0)]                                   # corner in every layer
         elif n.startswith("foot_boot_"):
