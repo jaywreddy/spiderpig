@@ -43,6 +43,9 @@ export interface CradleMotion {
   /** the V blocks (cradle frame, at the drawn bottle's setting) */
   saddles: { name: string; x: [number, number]; y: [number, number]; moves?: 'front' | 'rear' }[];
   ties: Record<string, XY>;
+  /** how it's used: the guide's use steps, each its title and lines (``cradle.use_steps``;
+   * ``limits``'s first five lines are the card) */
+  use?: { tag: string; title: string; lines: string[] }[];
 }
 
 /** A bottle's setting (``cradle_report._setting_row``, mm): the front V block's rise over its

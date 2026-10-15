@@ -5,6 +5,7 @@ import {
   volumeTo, ML, type Profile,
 } from './liquid';
 import { DEFAULT_VESSEL, VESSELS, brimMl, cavityOf, floorOf, heightOf } from './vessels';
+import riserRaw from '../../../tests/fixtures/cradle/riser_reference.json?raw';
 
 const deg = (d: number): number => (d * Math.PI) / 180;
 const cyl = (r: number, len: number): Profile => [[0, r], [len, r]];
@@ -186,15 +187,52 @@ describe('vessels under the mouth', () => {
 });
 
 describe('the riser under a vessel', () => {
-  it('stands it as high as the room lets it, clear by the margin', async () => {
-    const { bestRiser } = await import('./liquid');
+  it('stands it as high as the rule lets it: its rim 20 mm under the room\'s top', async () => {
+    const { bestRiser, riserFits } = await import('./liquid');
     const cup: [number, number][] = [[0, 30], [100, 30]];
     // 60 mm of radius up to 200 mm over the table, nothing above
     const room: [number, number][] = [[0, 60], [100, 60], [200, 60], [205, 0]];
     const r = bestRiser(cup, room, 160);
     expect(r).not.toBeNull();
-    expect(r!).toBeGreaterThanOrEqual(95);
-    expect(r!).toBeLessThanOrEqual(105);
+    expect(r!).toBeGreaterThanOrEqual(78);         // (the top's band: 200-205, a ramp)
+    expect(r!).toBeLessThanOrEqual(83);
+    expect(riserFits(cup, r! + 1, room)).toBe(false);
     expect(bestRiser([[0, 70], [10, 70]], room, 160)).toBeNull();     // too wide anywhere
+    expect(bestRiser([[0, 55], [10, 55]], room, 160)).toBeNull();     // 5 mm off its side
+  });
+
+  it('opens on a bottle poured into a decanter that holds it, no overflow', async () => {
+    const { DEFAULT_BOTTLE, vesselFor } = await import('./vessels');
+    const name = { standard: '750 ml', magnum: '1.5 L', jeroboam: '3 L' }[DEFAULT_BOTTLE as 'magnum'];
+    const ml = nominalVolume(name ?? '', 750) / ML;
+    const v = vesselFor(ml);
+    expect(v.kind).toBe('decanter');
+    expect(v.capacity_ml).toBeGreaterThanOrEqual(ml);
+    expect(brimMl(v)).toBeGreaterThanOrEqual(ml);
+    expect(vesselFor(750).capacity_ml).toBeGreaterThanOrEqual(750);
+    // a 6 L: no listed decanter holds it; the biggest, poured in turns (the swap)
+    expect(vesselFor(6000).capacity_ml).toBe(Math.max(...VESSELS.filter((x) => x.kind === 'decanter')
+      .map((x) => x.capacity_ml)));
+  });
+
+  it('gives each listed vessel the stack Python gives it (cradle_report.riser_for)', async () => {
+    const { bestRiser, riserStack, stackWords } = await import('./liquid');
+    const ref = JSON.parse(riserRaw) as {
+      room: [number, number][]; rule: { rim_under_mm: number; side_mm: number };
+      stacks: [number, string[]][];
+      vessels: { key: string; profile: [number, number][]; riser_max_mm: number | null;
+        stack: [number, string[]] | null }[];
+    };
+    const rule = { up: ref.rule.rim_under_mm, side: ref.rule.side_mm };
+    expect(ref.vessels.length).toBe(VESSELS.length);
+    for (const v of ref.vessels) {
+      const mine = VESSELS.find((x) => x.key === v.key)!;
+      expect(mine.profile).toEqual(v.profile);             // the same list as the fixture's
+      const r = bestRiser(mine.profile, ref.room, 250, rule);
+      expect([v.key, r]).toEqual([v.key, v.riser_max_mm]);
+      const s = riserStack(r, ref.stacks);
+      expect([v.key, s[0], [...s[1]]]).toEqual([v.key, v.stack![0], v.stack![1]]);
+      expect(stackWords(s)).toContain(`${s[0].toFixed(0)} mm`);
+    }
   });
 });

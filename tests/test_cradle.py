@@ -604,15 +604,24 @@ def test_the_gearbox_stands_on_spacers_and_the_crank_block_on_shims():
         assert gap - t_shim < got <= gap + 1e-9
 
 
+def p_ok(name: str, pieces) -> bool:
+    """A riser piece is one valid solid."""
+    part = dict(pieces)[name]
+    return len(part.solids()) == 1 and part.is_valid
+
+
 @pytest.mark.construction
 @pytest.mark.no_fabricate
-def test_the_base_board_is_rounded_offset_and_locates_its_jack():
+def test_the_base_board_is_rounded_offset_and_locates_its_riser():
     """The base board (round 1's stand review): B's sits 40 mm toward its drive side
     (``cradle.BASE_Z``), its corners and the notch's mouth rounded, each carriage bolt's
     hole a routed square (its neck locks by shape) with a dog-bone in each corner, two bays
-    in the notch; the jack locator's two layers lie in the notch with play, their ears in
-    the bays (it can't slide out forward), a square pocket for a 100 mm jack's base under
-    the mouth; a rail's cleats either side of it with play, between its brackets."""
+    in the notch, a window under the base stop (round 2: ``cradle.BOARD_WINDOW``) with birch
+    all round it; the riser locator's two layers lie in the notch with play, their ears in
+    the bays (it can't slide out forward), a square pocket for the printed riser's 100 mm
+    base under the mouth; the riser's pieces (round 2: no lab jack) stack to the drawn
+    decanter's riser, each boss in the recess over it with play, the bottom ones in the
+    pocket; a rail's cleats either side of it with play, between its brackets."""
     from build123d import Location
 
     from spiderpig.shapes import moved
@@ -650,7 +659,20 @@ def test_the_base_board_is_rounded_offset_and_locates_its_jack():
     for fx, fz in feet:
         for x, z in holes:
             assert math.hypot(fx - x, fz - z) > cr.FOOT_PAD_R + cr.CARRIAGE[2] / 2 + 2.0
-    layers = cr._jack_locator(lip, lip[1] - cr.LIP_HEIGHT)
+    # the window under the base stop: open over it, birch round it (in front and behind
+    # it, either side of it, the board's whole width there)
+    w0, w1, w_half, w_r = cr.BOARD_WINDOW
+    assert not solid_at((w0 + w1) / 2, 0.0)
+    assert not solid_at(w0 + 2.0, w_half - w_r)
+    assert solid_at(w0 - 2.0, 0.0)
+    assert solid_at(w1 + 2.0, 0.0)
+    assert solid_at((w0 + w1) / 2, w_half + 2.0)
+    assert solid_at((w0 + w1) / 2, -w_half - 2.0)
+    assert w0 - cr.NOTCH_R > 100.0
+    assert stand.base[1] - w1 > 100.0
+    assert w_half + 10.0 < 209.7 - 4.775 - cr.CLEAT[1] - cr.CLEAT[0]     # (no cleat cut)
+    table = lip[1] - cr.LIP_HEIGHT
+    layers = cr._riser_locator(lip, table)
     assert len(layers) == 2
     for part in layers:
         inter = part & board
@@ -658,7 +680,30 @@ def test_the_base_board_is_rounded_offset_and_locates_its_jack():
         lb = part.bounding_box()
         yl = (lb.min.Y + lb.max.Y) / 2
         assert not solid_at(0.0, 0.0, part, yl)           # the pocket under the mouth
-        assert solid_at(0.0, cr.JACK_BASE / 2 + cr.JACK_PLAY + 2.0, part, yl)
+        assert solid_at(0.0, cr.RISER_BASE / 2 + cr.RISER_PLAY + 2.0, part, yl)
+    pieces = cr.riser_pieces(0.0, 0.0, table)
+    names = [n for n, _ in pieces]
+    assert names == ["decanter_riser_block0", "decanter_riser_block1",
+                     *(f"decanter_riser_plate{p:g}" for p in cr.RISER_PLATES)]
+    boxes = {n: p.bounding_box() for n, p in pieces}
+    top = max(b.max.Y for b in boxes.values())
+    assert top - table == pytest.approx(cr.DECANTER_RISER, abs=0.02)
+    assert cr.RISER_BLOCK[1] + sum(cr.RISER_PLATES) + cr.RISER_LIP == cr.DECANTER_RISER
+    for n, b in boxes.items():                           # in the locator's pocket's footprint
+        assert -cr.RISER_BASE / 2 - 1e-6 <= b.min.X
+        assert b.max.X <= cr.RISER_BASE / 2 + 1e-6
+        assert -cr.RISER_BASE / 2 - 1e-6 <= b.min.Z
+        assert b.max.Z <= cr.RISER_BASE / 2 + 1e-6
+        assert p_ok(n, pieces)
+    for (a, pa), (b_, pb) in itertools.combinations(pieces, 2):    # nested, not one in another
+        inter = pa & pb
+        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3, (a, b_)
+    blocks = [boxes[n] for n in names[:2]]
+    assert all(pytest.approx(table) == b.min.Y for b in blocks)      # on the table
+    tall = pytest.approx(cr.RISER_BLOCK[1] + cr.RISER_LIP, abs=0.02)
+    assert all(tall == b.max.Y - b.min.Y for b in blocks)
+    lb = layers[-1].bounding_box()
+    assert blocks[0].max.Y > lb.max.Y + 50.0             # it stands out of the locator
     top = layers[-1].bounding_box()
     assert y_top - cr.BASE_T + 8.0 < top.max.Y          # it meets the board's edge
     xe = cr.NOTCH_BAY[0]
@@ -696,19 +741,38 @@ def test_b_packs_at_a_mark_inside_its_clear_range():
            - pts[a][0])
     cos = float(arm @ leg / np.linalg.norm(arm) / np.linalg.norm(leg))
     assert cos > math.cos(math.radians(0.5))
+    assert cr.trip_pins(lk) == ["X", "Y"]
     breakdown, back = cr.module_steps(lk, ["X", "Y"])
-    tags = [tag for _, tag in breakdown]
+    tags = [m.tag for m in breakdown]
     assert tags.index("lay") < tags.index("clips") < tags.index("lift")
     # the cradle box off the drive side after the passive panel (pack turn 1): only the
     # drive side's worm holds the box, and lying so, the drive side's pins are kept
     assert tags.index("lift") < tags.index("box_clips") < tags.index("box")
     assert tags.index("hand_crank") < tags.index("base")
-    assert "keeper" in breakdown[tags.index("box_clips")][0]
-    assert not any("spacer" in s for s, _ in breakdown)      # (the keepers stay on the pins)
-    assert "arm down" in breakdown[0][0]
-    assert "about 5½ turns" in breakdown[0][0]
-    assert any("knobs loose" in s for s in back)
-    assert any("paper check" in s for s in back)
+    assert "keeper" in breakdown[tags.index("box_clips")].words
+    assert not any("spacer" in m.words for m in breakdown)    # (the keepers stay on the pins)
+    assert "arm down" in breakdown[0].text
+    assert "about 5½ turns" in breakdown[0].text
+    # design review round 2: laid on the riser's blocks (O1's and D2's screw heads in their
+    # reliefs), the box set on its links' edges, each piece's weight held until both its
+    # pins are in, the passive side snugged at level, a measure for the empty grip
+    lay = breakdown[tags.index("lay")].words
+    assert "blocks" in lay
+    assert "pillar O1" in lay
+    assert "column D2" in lay
+    assert "long edges" in breakdown[tags.index("box")].words
+    words = " ".join(m.words for m in back)
+    assert words.count("holding its weight until both pins are in their holes") == 2
+    assert words.count("Never let it rest on a pin's tip") == 2
+    assert "to level" in words
+    assert "snug them there" in words
+    assert "at rest" not in words
+    assert "luggage scale" in words
+    assert "kg" in words
+    assert any("paper check" in m.words for m in back)
+    assert all(m.title and m.scene is not None for m in (*breakdown, *back))
+    # the tape holds b3 to its bar, not b5, the one nudged
+    assert "b5 stays free" in back[[m.tag for m in back].index("set")].words
     assert cr.pack_pose(linkage.get("decanter_hinge")) is None
 
 
@@ -803,7 +867,7 @@ def test_the_whole_cradle_is_clash_free_over_the_swing(key):
         mech = fabricate(tmpl, cfg, float(t))
         assert clashes(mech) == [], t
         assert wheel_sweep(mech) == [], t
-        assert cr.finger_gap(mech) >= cr.FINGER_GAP, t
+        assert cr.finger_gap(mech) >= cr.FINGER_GAP + 15.0, t   # (the board's window)
         for size in cr.SIZES:
             assert cr.bottle_hits(mech, size) == [], (t, size.key)
     assert bad_solids(mech) == []
@@ -972,7 +1036,19 @@ def test_b_stands_turns_easily_and_holds():
     assert {cr.keeper_pin(x["keeper"]) for x in k["rows"]} == {f"{s}.pin_{j}_pin" for s in "LR"
                                                                 for j in "XY"}
     assert k["least_ratio"] >= k["bar"] == 10.0
-    assert all(x["push_on_n"] < 60.0 for x in k["rows"])
+    # design review round 2's M3: against the most the way back can put on a pin's tip,
+    # half the 3.2 kg cradle box, the bench push screens each keeper 1.5 x over it; printed
+    # at 7.4 mm, at least 0.4 mm of grip; still on by hand, a tube over the pin
+    assert cr.KEEPER == (7.4, 0.4)
+    assert 2.8 < k["box_kg"] < 3.6
+    assert 13.0 < k["load_n"] < 18.0
+    assert k["load_ratio"] >= k["load_bar"] == 1.5
+    assert all(x["push_on_n"] <= k["push_on_bar_n"] == 120.0 for x in k["rows"])
+    # the stand with the wine leaving as it pours (round 2's m1): the rear's real margin,
+    # over its bound (a full 6 L at every tilt)
+    pour = r["stand"]["pouring"]
+    assert pour["rear"]["tip_deg"] > r["stand"]["edges"]["rear"]["tip_deg"]
+    assert all(e["tip_deg"] >= 25.0 for e in pour.values())
     _the_structure_is_rated(r, ("b2", "b6"), {"pillar:O1", "pillar:O2"},
                             {"column:D1", "column:D2"})
     # the known limits (not designed for): a block near the mouth multiplies the pins' loads
@@ -1006,11 +1082,17 @@ def _the_structure_is_rated(r: dict, links, pillars, columns) -> None:
 @pytest.mark.construction
 @pytest.mark.parametrize("key", CRADLES)
 def test_the_cradle_has_an_assembly_order(key):
-    """The guide's order (``CRADLE_ORDER``) covers every part once: the gearbox under the
-    drive side's outer plate first, the drive side's cradle link with its tie rods on the
-    bench, the passive side's cradle link onto the rods on the cradle (not in its stack),
-    the base plate and the hand crank at the end, the bottle and decanter last."""
-    from spiderpig.construction.assembly import FINISH, UNIT, USE, assembly_steps
+    """The guide's order (``CRADLE_ORDER``; B's ``CRADLE_MODULE_ORDER``) covers every part
+    once: the gearbox under the drive side's outer plate first, the drive side's cradle link
+    with its tie rods on the bench, the passive side's cradle link onto the rods on the
+    cradle (not in its stack), the base board and the hand crank, the board's cleats and
+    finish once both sides stand on it (glued bare, then finished: design review round 2's
+    M6), and the use (its M4): where it stands, setting it for a bottle, the riser and the
+    decanter, decanting, the use limits, in that order, each its own short items and its
+    own picture; B's trip apart and back after them, a step each. B's passive side panel is
+    built whole on the bench and lowered onto its cradle link, the cradle lying on its drive
+    side on the riser's blocks (its M1)."""
+    from spiderpig.construction.assembly import FINISH, JOIN, STACK, UNIT, USE, assembly_steps
     from spiderpig.fabricate import design_side, product, template_for
 
     cfg = BuildConfig(linkage=key, robot=False)
@@ -1018,6 +1100,7 @@ def test_the_cradle_has_an_assembly_order(key):
     design = design_side(tmpl, cfg)
     steps = assembly_steps(product(design, tmpl, 1.0, robot=False), design)
     link = cr.cradle_link(cfg.lk)
+    modules = key in cr.PACK_POSES
     first = steps[0]
     assert first.sub
     assert {"L.gearbox", "L.crank_shaft"} <= set(first.adds)
@@ -1029,48 +1112,103 @@ def test_the_cradle_has_an_assembly_order(key):
     assert passive.side == "R"
     (base,) = [s for s in steps if "base_plate" in s.adds]
     assert base.stage == FINISH
-    # every carriage bolt goes in from under the base plate, the passive side's too
+    # every carriage bolt goes in from under the base board, the passive side's too
     bolts = [a for s in steps for a in s.adds if a.startswith("foot_bracket") and
              a.endswith("_screw1")]
     assert len(bolts) == len(set(bolts)) > 3
     assert set(bolts) <= set(base.adds)
-    # the hand crank right after the base plate (to turn the cradle for the checks), all
+    # the hand crank right after the base board (to turn the cradle for the checks), all
     # of it in its step
     (hand,) = [s for s in steps if "L.handle" in s.adds]
     assert steps.index(hand) == steps.index(base) + 1
     assert {b for s in steps for b in s.adds if b.startswith("L.handle")} <= set(hand.adds)
     assert steps[-1].stage == USE
-    (use,) = [s for s in steps if "bottle" in s.adds]
-    assert use.stage == USE
-    assert set(use.adds) == {"bottle", "decanter", "decanter_riser"}
-    assert all(not s.adds for s in steps[steps.index(use) + 1:])
-    assert steps.index(passive) > steps.index(ties)
-    # the board's cleats with their side's brackets, the jack locator with the board
+    # the board bare until both sides stand on it: the locator with the board, glued bare;
+    # every cleat in one last build step, glued bare, then the finish (Titebond's FAQ)
     adds = {a for s in steps for a in s.adds}
-    assert {"jack_locator_0", "jack_locator_1"} <= set(base.adds)
-    assert {a for a in adds if a.startswith("base_cleat_L")} <= set(base.adds)
-    (base_r,) = [s for s in steps if any(a.startswith("base_cleat_R") for a in s.adds)]
-    assert steps.index(base_r) > steps.index(base)
-    assert "knobs last" in " ".join(base_r.text)
-    titles = [s.title for s in steps]
-    packs = key in cr.PACK_POSES
-    assert ("Taking it apart for the trip" in titles) == packs
-    assert ("Putting it back together" in titles) == packs
-    # the drive side on the base plate before the box; the passive inner plate after the
-    # passive stack has met its cradle link; the tie screws after the link
+    assert {"riser_locator_0", "riser_locator_1"} <= set(base.adds)
+    assert "bare" in " ".join(base.text)
+    assert "oil" not in " ".join(base.text)
+    (board,) = [s for s in steps if any(a.startswith("base_cleat_R") for a in s.adds)]
+    assert {a for a in adds if a.startswith("base_cleat_")} <= set(board.adds)
+    btext = " ".join(board.text)
+    assert btext.index("Glue the cleats") < btext.index("polyurethane every face")
+    assert "titebond.com" in btext
+    assert "lead-in" in btext
+    assert "to level" in btext
+    assert "luggage scale" in btext
+    assert steps.index(board) > max(steps.index(s) for s in steps if s.side == "R")
+    # the use, in order, after the build; its own items, none a wall of text; a picture each
+    use = [s for s in steps if s.stage == USE]
+    assert steps.index(use[0]) == steps.index(board) + 1
+    titles = [s.title for s in use]
+    assert titles[:5] == ["Before you use it", "Setting it for a bottle", "The decanter's riser",
+                          "Decanting", "The use limits"]
+    assert all(s.scene is not None for s in use)
+    assert all(len(t.split()) <= 110 for s in use for t in s.text), \
+        max((len(t.split()), t) for s in use for t in s.text)
+    card = [t for t in use[4].text if t[:2] in ("1.", "2.", "3.", "4.", "5.")]
+    assert len(card) == 5
+    assert "bottle" in use[1].adds
+    assert set(use[2].adds) == {"decanter", *(f"decanter_riser_plate{p:g}"
+                                               for p in cr.RISER_PLATES)}
+    assert all(not s.adds for s in use[3:])
+    text = " ".join(t for s in use for t in s.text)
+    for words in ("lab jack", "jack's height", "finger's width", "take the decanter away "
+                  "before"):
+        assert words not in text.lower(), words
+    assert "20 mm" in text
+    assert "light's printed clip" in text
+    assert "the next one on the same riser" in text            # the decanter's swap
+    trip = titles[5:]
+    assert bool(trip) == modules
+    if modules:
+        n_apart = sum(t.startswith("Taking it apart") for t in trip)
+        assert n_apart == 8
+        assert len(trip) - n_apart == 11
+        assert trip[0].startswith("Taking it apart 1/8")
+        assert trip[-1].startswith( "Back together 11/11")
+    # the riser's blocks: B lays its cradle on them in its first build (and on the trip),
+    # A when its board's finish cures
+    blocks = [s for s in steps if "decanter_riser_block0" in s.adds]
+    assert len(blocks) == 1
+    assert (blocks[0] is board) == (not modules)
     (saddles,) = [s for s in steps if "front_saddle" in s.adds]
     assert steps.index(base) < steps.index(saddles)
     inner = next(s for s in steps if s.side == "R" and any(a.startswith("R.") and
                                                            a.endswith("torso") for a in s.adds))
-    stack = [s for s in steps if s.side == "R" and s.stage == "stack"]
+    stack = [s for s in steps if s.side == "R" and s.stage == STACK]
     assert stack
     assert steps.index(inner) > max(steps.index(s) for s in stack)
     (screws,) = [s for s in steps if any(a.startswith("tie_") and a.endswith("screwR")
                                          for a in s.adds)]
     assert steps.index(screws) >= steps.index(passive)
+    (clips,) = [s for s in steps if "R.pin_X_clip" in s.adds] if modules else [None]
+    if modules:
+        # the passive panel built whole on the bench, its inner plate and brackets on, then
+        # lowered onto its cradle link, the cradle lying on its drive side
+        (lay,) = [s for s in steps if s.title == "Laid on its drive side"]
+        assert steps.index(saddles) < steps.index(lay) < steps.index(passive)
+        assert steps.index(inner) < steps.index(clips)
+        assert clips.stage == JOIN
+        assert clips.scene is not None
+        assert clips.scene.lay == "drive"
+        assert passive.scene is not None
+        assert passive.scene.lay == "drive"
+        brackets = next(s for s in steps if "foot_bracket_FfR" in s.adds)
+        assert steps.index(brackets) < steps.index(clips)
+        ctext = " ".join(clips.text)
+        assert "holding its weight until both pins" in ctext
+        assert "pin's tip" in ctext
+        assert all(s.where == "bench" for s in stack)
+        assert "7-15 mm out" not in " ".join(t for s in steps for t in s.text)
     text = " ".join(t for s in steps for t in s.text)
     if not cr.stand_of(cfg.lk).bay_ties:        # (A has none)
         assert "bay tie" not in text, text
+    # the keepers' bench check: a 30 N push on each pin's tip
+    if modules:
+        assert f"{cr.KEEPER_PUSH_N:g} N" in text
+        assert "kitchen scale" in text
 
 
 @pytest.mark.slow
@@ -1423,12 +1561,23 @@ def test_the_cradle_page_lists_the_cradles_and_serves_their_swing(monkeypatch):
     monkeypatch.delenv("VITE_ALLOWED_HOSTS", raising=False)
     client = TestClient(srv.app, base_url="http://localhost")
     cards = client.get("/api/cradles").json()["cradles"]
-    assert [c["key"] for c in cards] == list(CRADLES)
+    assert [c["key"] for c in cards] == ["decanter_rcm", "decanter_hinge"]   # B, the main
+    assert cards[0]["why"].startswith("The one to build")
+    assert cards[1]["why"].startswith("Also builds")
     assert {c["key"]: c["verdict"] for c in cards} == {"decanter_hinge": "build",
                                                         "decanter_rcm": "build"}
     r = client.get("/api/cradle/decanter_hinge?n=48")
     assert r.status_code == 200
     assert r.json()["n"] == 48
+    # how it's used: the guide's own use steps, the use limits' five-line card first
+    # (design review round 2's M5: the page had none of them)
+    use = r.json()["use"]
+    assert [u["tag"] for u in use] == ["where", "setting", "riser", "decant", "limits"]
+    card = [x for x in use[-1]["lines"] if x[:2] in ("1.", "2.", "3.", "4.", "5.")]
+    assert len(card) == 5
+    assert all(len(x) < 200 for x in card)
+    assert "20 mm" in card[1]
+    assert "riser" in card[1]
     assert client.get("/api/cradle/strider").status_code == 404
 
 
@@ -1740,6 +1889,148 @@ def test_pack_inspect_draws_and_judges_a_layout(tmp_path):
     assert json.loads((tmp_path / "hand.layout.json").read_text()) == layout
 
 
+RISER_REF = "tests/fixtures/cradle/riser_reference.json"
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_riser_rule_gives_each_listed_vessel_its_stack():
+    """The one rule for a vessel's height (``cradle.RISER_CLEAR``, design review round 2's
+    B1): its rim 20 mm under the lowest part over it, 10 mm off the room's side, on the
+    highest printed stack under that (``cradle_report.riser_for``, ``riser_stack``). On B's
+    recorded room (``tests/fixtures/cradle/riser_reference.json``, which the slow test below
+    keeps true to the model) every listed vessel gets the stack recorded there; the page's
+    twin (``liquid.ts``) is held to the same file by ``liquid.test.ts``. The drawn RIEDEL
+    Ultra stands on the whole printed set, under the most the rule allows it."""
+    import json
+    from pathlib import Path
+
+    from spiderpig.cradle_report import fits_room, riser_fits, riser_for, riser_stack, riser_stacks
+
+    ref = json.loads((Path(__file__).resolve().parents[1] / RISER_REF).read_text())
+    rows = ref["room"]
+    assert ref["rule"] == {"rim_under_mm": cr.RISER_CLEAR[0], "side_mm": cr.RISER_CLEAR[1]}
+    assert [[h, list(n)] for h, n in riser_stacks()] == ref["stacks"]
+    for v in ref["vessels"]:
+        best = riser_for(v["profile"], rows)
+        assert best == v["riser_max_mm"], v["key"]
+        st = riser_stack(best)
+        assert st is not None, v["key"]
+        assert [st[0], st[1]] == v["stack"], v["key"]
+        assert riser_fits(v["profile"], st[0], rows)
+    # the drawn decanter: the whole set, its rim 20 mm or more under the lowest part
+    drawn = [list(p) for p in cr.DECANTER_PROFILE]
+    most = riser_for(drawn, rows)
+    assert most is not None
+    assert most >= cr.DECANTER_RISER
+    assert riser_stack(most)[0] == cr.DECANTER_RISER
+    rim = cr.DECANTER_RISER + cr.DECANTER_PROFILE[-1][0]
+    assert ref["lowest"]["part"] == "led_clip"
+    assert ref["lowest"]["mm"] - rim >= cr.RISER_CLEAR[0]
+    # the page's old rule (3 mm off the side, nothing over the rim) stood it 26 mm higher
+    old = max(r for r in range(250) if fits_room(drawn, r, rows)[0] >= 3.0)
+    assert old - most > 15
+
+
+@pytest.mark.slow
+@pytest.mark.construction
+def test_the_room_under_the_mouth_names_its_lowest_part():
+    """``cradle_report.room`` of B as fabricated: the lowest part of the cradle box over the
+    drawn decanter's rim over the whole swing is the light's printed clip, at rest, about
+    380 mm over the table (design review round 2: the guide had named the front saddle, 66
+    mm higher); the drawn decanter's riser by the rule is the whole printed set; the recorded
+    room (``RISER_REF``) is this one (``SPIDERPIG_REGEN=1`` rewrites it)."""
+    import json
+    import os
+    from pathlib import Path
+
+    from spiderpig.cradle_report import room
+    from spiderpig.fabricate import fabricate, template_for
+
+    cfg = BuildConfig(linkage="decanter_rcm", robot=False)
+    got = room(cfg, fabricate(template_for(cfg), cfg, 0.0))
+    low = got["lowest"]
+    assert low["part"] == "led_clip"
+    assert 370.0 < low["mm"] < 390.0
+    assert low["tilt_deg"] == pytest.approx(REST["decanter_rcm"], abs=1.0)
+    assert got["drawn"]["riser_mm"] == cr.DECANTER_RISER
+    assert got["drawn"]["stack"][0] == cr.DECANTER_RISER
+    path = Path(__file__).resolve().parents[1] / RISER_REF
+    ref = json.loads(path.read_text())
+    if os.environ.get("SPIDERPIG_REGEN") == "1":
+        from spiderpig.cradle_report import riser_for, riser_stack
+
+        ref.update(room=got["room"], rule=got["rule"], stacks=got["stacks"], lowest=low)
+        for v in ref["vessels"]:
+            v["riser_max_mm"] = riser_for(v["profile"], got["room"])
+            st = riser_stack(v["riser_max_mm"])
+            v["stack"] = [st[0], st[1]] if st else None
+        path.write_text(json.dumps(ref, indent=1) + "\n")
+    assert np.allclose(np.asarray(ref["room"]), np.asarray(got["room"]), atol=0.5), \
+        "the recorded room is stale: SPIDERPIG_REGEN=1"
+    assert ref["lowest"]["part"] == low["part"]
+
+
+@pytest.mark.slow
+@pytest.mark.construction
+@pytest.mark.parametrize("key", CRADLES)
+def test_every_pose_the_guide_rests_a_piece_in_is_rated(key):
+    """Each pose the guide sets a piece down in (``cradle.REST_POSES``; design review round
+    2's M2), rated on the pieces' real shapes (``cradle_pack.rest_poses``): B's cradle and
+    its drive side lie level on the riser's two blocks and the gearbox (the drive panel
+    alone tipped at 6.8° and 2.5 N on its gearbox and a bracket), its box stands on its
+    links' long edges, its passive panel on its outer plate; A lies on its blocks while its
+    board's finish cures. Each tips only past its bar and takes its push at its top; the
+    blocks stand as far as the gearbox off the outer plate."""
+    from spiderpig import cradle_pack as cp
+
+    inp = cp.cached_input(key)
+    rows = {r["pose"]: r for r in cp.rest_poses(inp, linkage.get(key))}
+    assert set(rows) == {r.key for r in cr.REST_POSES[key]}
+    bars = {"cradle": (15.0, 9.0), "drive_box": (15.0, 7.0), "drive": (30.0, 12.0),
+            "box": (35.0, 12.0), "passive": (45.0, 9.0)}
+    for pose, r in rows.items():
+        tip, push = bars[pose]
+        assert r["tip_deg"] >= tip, r
+        assert r["push_n"] >= push, r
+    for pose in ("cradle", "drive_box", "drive"):
+        if pose in rows:
+            assert rows[pose]["tilt_deg"] < 2.0, rows[pose]      # level on the blocks
+            assert {"riser block 0", "riser block 1", "L.gearbox"} <= set(rows[pose]["on"])
+    # the blocks (and their boss) stand as far as the gearbox off the outer plate
+    lo = inp["parts"]["L.frame_outer"]["lo"][2]
+    standout = lo - inp["parts"]["L.gearbox"]["lo"][2]
+    assert abs(cr.RISER_BLOCK[1] + cr.RISER_LIP - standout) <= 2.0, standout
+
+
+@pytest.mark.linkage
+@pytest.mark.no_fabricate
+def test_bs_toggle_flag_spans_the_last_two_turns_to_rest():
+    """B's toggle flag (``cradle.TOGGLE_FLAG``; design review round 2's M7): its arc spans
+    the crank's arm's direction at rest, two handle turns either way (25° of crank, 12° a
+    turn), past the crankpin's reach, so the arm points into the red over the last two
+    turns; A has none."""
+    from spiderpig.construction.handcrank import NRV040
+
+    lk = linkage.get("decanter_rcm")
+    rest, zone = cr.toggle_zone(lk)
+    assert zone == cr.TOGGLE_ZONE
+    assert zone / (360.0 / NRV040.ratio) == pytest.approx(25.0 / 12.0)
+    pts = lk.solve().evaluate(np.linspace(0, 2 * math.pi, 720, endpoint=False))
+    arm = pts[lk.crank[1]] - pts[lk.crank[0]]
+    reach = float(np.max(np.hypot(arm[:, 0], arm[:, 1])))
+    r0, r1, t = cr.TOGGLE_FLAG["decanter_rcm"]
+    assert r0 > reach + 10.0
+    assert r1 > r0
+    assert t > 0
+    tilt = _tilt("decanter_rcm", np.linspace(0, 2 * math.pi, 720, endpoint=False))
+    k = int(np.argmin(tilt))
+    assert math.degrees(math.atan2(arm[k, 1], arm[k, 0])) == pytest.approx(rest, abs=0.5)
+    assert cr.toggle_zone(linkage.get("decanter_hinge")) is None
+    assert cr.STANDS["decanter_rcm"].flag_screws
+    assert not cr.STANDS["decanter_hinge"].flag_screws
+
+
 PACK_BOX = {"decanter_hinge": (705.0, 200.0, 610.0)}
 """A's flat-pack box, outside (x, height, z; mm): at most (the base board's 684 x 584 mm since
 the stand's 2026-10-14 refit, the walls round it; 185 mm tall since the real-shape packer of
@@ -1763,7 +2054,8 @@ PACK_JOINTS = {"decanter_hinge": ("Pin E ", "pillar G"), "decanter_rcm": ("Pins 
 MODULES = {"decanter_hinge": None,
            "decanter_rcm": {"base", "drive", "passive", "box", "hand_crank"}}
 """The pieces a cradle that packs as modules comes apart into (``cradle.PACK_POSES``),
-besides the spare bottles' adapters and collars; None: it packs flat."""
+besides the spare bottles' adapters and collars and the decanter's riser; None: it packs
+flat."""
 
 
 @pytest.mark.slow
@@ -1841,7 +2133,9 @@ def test_the_cradle_packs_in_one_box(key):
     pins, pillar = PACK_JOINTS[key]
     text = " ".join(p["steps"])
     assert pins in text, p["steps"]
-    assert (pillar in text) if pillar else ("pillar" not in text), p["steps"]
+    # (B's steps name pillar O1's screw head, where a riser block goes, not a pillar its
+    # cradle link rides)
+    assert (pillar in text) if pillar else ("rides pillar" not in text), p["steps"]
     assert p["pose"]["clip_fraction"] == pytest.approx(t / (2 * math.pi), abs=1e-6)
     by = {m["key"]: m for m in p["modules"]}
     if MODULES[key] is None:
@@ -1852,7 +2146,9 @@ def test_the_cradle_packs_in_one_box(key):
     assert p["mode"] == "modules"
     spares = set(by) - MODULES[key]
     assert MODULES[key] <= set(by)
-    assert all(by[k]["label"].startswith(("Adapter", "Collar")) for k in spares), spares
+    assert all(by[k]["label"].startswith(("Adapter", "Collar", "Riser")) for k in spares), spares
+    # the riser travels as one piece (its blocks are the drive panel's lay-flat blocks)
+    assert {n for n in shipped if n.startswith("decanter_riser")} == set(by["risers"]["parts"])
     # the cradle box (both cradle links, the ties, the saddles with their V blocks and lip
     # gauge, the light, the base stop) travels on its own (pack turn 1); the drive side has
     # the rest of L but the hand crank, the passive side the rest of R, each pin with its
@@ -1878,7 +2174,8 @@ def test_the_cradle_packs_in_one_box(key):
     assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_nut1")} <= base
     assert {shipped[n].bom_key for n in base if n.startswith("foot_bracket")} == {
         "m6_carriage_25", "m6_washer_wide", "m6_nut", None}         # (None: the knobs)
-    assert {n for n in shipped if n.startswith(("base_cleat", "jack_locator"))} <= base
+    assert {n for n in shipped if n.startswith(("base_cleat", "riser_locator"))} <= base
+    assert {n for n in shipped if n.startswith("toggle_flag")} <= drive
     assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_knob")} <= base
     assert 5.0 <= p["pose"]["turns_from_rest"] <= 6.5
     assert -44.0 < p["pose"]["tilt_deg"] < -20.0             # b6 clears; the box doesn't grow

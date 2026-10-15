@@ -303,11 +303,52 @@ export function fitsRoom(
   return { fits: margin >= 0, margin, at };
 }
 
-/** The highest riser (whole mm, ``0..max``) that keeps ``vessel`` ``clear`` mm inside the
- * ``room`` at every height; ``null`` when even the table is too high. */
-export function bestRiser(vessel: Profile, room: Room, max: number, clear = 3): number | null {
+/** The one rule for a vessel's height (``construction.cradle.RISER_CLEAR``, the API's
+ * ``room.rule``; ``cradle_report.riser_fits`` is its Python twin): on ``riser`` the vessel
+ * keeps ``side`` mm off the room's side at every height, and raised ``up`` mm more it still
+ * fits, so its rim stands ``up`` mm under the lowest part over it (the light's clip, at
+ * rest). Rest is a toggle dwell: whatever the box comes down on there, it crushes. */
+export interface RiserRule { up: number; side: number }
+
+export const RISER_RULE: RiserRule = { up: 20, side: 10 };
+
+export function riserFits(vessel: Profile, riser: number, room: Room,
+  rule: RiserRule = RISER_RULE): boolean {
+  return fitsRoom(vessel, riser, room).margin >= rule.side
+    && fitsRoom(vessel, riser + rule.up, room).margin >= 0;
+}
+
+/** The highest riser (whole mm, ``0..max``) the rule (:func:`riserFits`) lets ``vessel``
+ * stand on; ``null`` when not even the table does. */
+export function bestRiser(vessel: Profile, room: Room, max: number,
+  rule: RiserRule = RISER_RULE): number | null {
   for (let r = Math.floor(max); r >= 0; r--) {
-    if (fitsRoom(vessel, r, room).margin >= clear) return r;
+    if (riserFits(vessel, r, room, rule)) return r;
   }
   return null;
+}
+
+/** A printed riser stack: its height (mm) and its pieces bottom up (``"blocks"``, a plate's
+ * thickness), as ``cradle_report.riser_stacks`` lists them. */
+export type Stack = readonly [number, readonly string[]];
+
+/** The highest of ``stacks`` no taller than ``mm`` (none: 0 mm, on the table). */
+export function riserStack(mm: number | null, stacks: readonly Stack[]): Stack {
+  let best: Stack = [0, []];
+  if (mm === null) return best;
+  for (const s of stacks) if (s[0] <= mm + 1e-9 && s[0] >= best[0]) best = s;
+  return best;
+}
+
+/** A stack in words: ``the two blocks, 20, 10 and 5 mm plates (122 mm)``. */
+export function stackWords(s: Stack): string {
+  if (!s[1].length) return 'none: on the table, in the locator';
+  const plates = s[1].filter((p) => p !== 'blocks');
+  const parts: string[] = [];
+  if (s[1].includes('blocks')) parts.push('the two blocks');
+  if (plates.length) {
+    const list = plates.length > 1 ? `${plates.slice(0, -1).join(', ')} and ${plates[plates.length - 1]}` : plates[0]!;
+    parts.push(`the ${list} mm plate${plates.length > 1 ? 's' : ''}`);
+  }
+  return `${parts.join(', ')} (${s[0].toFixed(0)} mm)`;
 }

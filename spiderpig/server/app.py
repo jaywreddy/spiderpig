@@ -654,12 +654,18 @@ def list_linkages() -> dict:
 
 
 def _cradle_keys() -> list[str]:
-    return [k for k in linkage.available() if linkage.get(k).product == "cradle"]
+    """The decanting cradles, in :data:`cradle_report.VERDICT`'s order (B, the main one,
+    first), any other after in the registry's."""
+    from spiderpig.cradle_report import VERDICT
+
+    keys = [k for k in linkage.available() if linkage.get(k).product == "cradle"]
+    order = list(VERDICT)
+    return sorted(keys, key=lambda k: order.index(k) if k in order else len(order))
 
 
 @app.get("/api/cradles")
 def list_cradles() -> dict:
-    """The decanting cradles the cradle page offers, in the registry's order: key, name,
+    """The decanting cradles the cradle page offers, B first (``_cradle_keys``): key, name,
     notes, its standing (``build`` or ``study``) and why (:data:`cradle_report.VERDICT`)."""
     from spiderpig.cradle_report import VERDICT
 
@@ -692,11 +698,11 @@ def get_cradle(key: str, n: int = 360) -> Response:
 
 @lru_cache(maxsize=4)
 def _cradle_extras(key: str) -> dict[str, bytes]:
-    """The cradle's flat pack and room (:func:`spiderpig.cradle_pack.payload`: one
+    """The cradle's flat pack and room (:func:`spiderpig.cradle_report.payload`: one
     fabrication, in a worker), each encoded once."""
-    from spiderpig import cradle_pack
+    from spiderpig import cradle_report
 
-    payload = workers.submit(cradle_pack.payload, key, str(store().root)).result()
+    payload = workers.submit(cradle_report.payload, key, str(store().root)).result()
     return {k: json.dumps(v, allow_nan=False, separators=(",", ":")).encode()
             for k, v in payload.items()}
 
