@@ -416,6 +416,56 @@ def test_bs_x_and_y_are_clevis_pins_its_clips_over_the_cradle_link():
 
 @pytest.mark.construction
 @pytest.mark.no_fabricate
+def test_a_quick_release_pins_gap_ring_is_its_keeper():
+    """The ring a quick-release pin's plan puts in the gap over its lowest link is its keeper
+    (``cradle.KEEPER``, pack turn 1): the ring's outline with a bore under the 8 mm pin, so
+    it grips the pin and holds it in its link with the side lying down and the clip out
+    (TPU 95A: ``bom.part_filament`` reads ``meta["keepers"]``). ``keeper_names`` takes every
+    gap ring of each of the cradle link's pins that has a clip (B's X and Y), none of a pin
+    without one, and refuses a clipped pin with no ring to keep it."""
+    from types import SimpleNamespace
+
+    from build123d import Location
+
+    from spiderpig.construction.base import ConstructionError
+    from spiderpig.hardware.bom import TPU_FILAMENT, part_filament
+    from spiderpig.shapes import moved, ring
+
+    gap = ring((10.0, 20.0), 14.0, 8.3, -145.2, -142.2)
+    keep = cr._keeper(gap)
+    bb = keep.bounding_box()
+    assert pytest.approx((14.0, 14.0, 3.0)) == (bb.size.X, bb.size.Y, bb.size.Z)
+    r = (cr.KEEPER[0] / 2 + 4.0) / 2           # between its bore and the pin's surface
+    probe = moved(cr._rod_y(0.0, 0.0, 0.05, -1.0, 1.0), Location((10.0 + r, 20.0, -143.7)))
+    assert cr.KEEPER[0] < 8.0 - cr.KEEPER[1] + 1e-9
+
+    def vol(a) -> float:
+        inter = a & probe
+        return 0.0 if inter is None else sum(p.volume for p in inter.solids())
+
+    assert vol(keep) > 1e-3
+    assert vol(gap) < 1e-6
+    lk = linkage.get("decanter_rcm")
+
+    def side(*names):
+        return SimpleNamespace(bodies=[SimpleNamespace(name=n) for n in names])
+
+    got = cr.keeper_names(side("pin_X_pin", "pin_X_clip", "pin_X_gap14_spacer",
+                               "pin_X_spacer_lo", "pin_Y_pin", "pin_Y_clip", "pin_Y_ring13",
+                               "pin_K_clip", "pin_K_gap11_spacer", "pin_J_gap13_spacer"), lk)
+    assert got == ["pin_X_gap14_spacer", "pin_Y_ring13"]    # (K: not the cradle link's)
+    assert cr.keeper_pin("R.pin_Y_ring13") == "R.pin_Y_pin"
+    assert cr.keeper_pin("pin_X_gap14_spacer") == "pin_X_pin"
+    assert cr.keeper_names(side("pin_X_gap14_spacer", "pin_Y_gap14_spacer"), lk) == []
+    with pytest.raises(ConstructionError, match="keep"):
+        cr.keeper_names(side("pin_X_clip", "pin_Y_clip", "pin_Y_gap14_spacer"), lk)
+    meta = {"keepers": ["L.pin_X_gap14_spacer"]}
+    assert part_filament(SimpleNamespace(name="L.pin_X_gap14_spacer"), meta, "pla") == TPU_FILAMENT
+    assert part_filament(SimpleNamespace(name="L.pin_K_gap11_spacer"), meta, "pla") == "pla"
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
 def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
     """The base board comes off by hand: each bracket's carriage bolt (M6 x 25) through its
     foot's oversize hole (the side settles where the linkage puts it), an 18-8 fender washer
@@ -648,7 +698,12 @@ def test_b_packs_at_a_mark_inside_its_clear_range():
     breakdown, back = cr.module_steps(lk, ["X", "Y"])
     tags = [tag for _, tag in breakdown]
     assert tags.index("lay") < tags.index("clips") < tags.index("lift")
+    # the cradle box off the drive side after the passive panel (pack turn 1): only the
+    # drive side's worm holds the box, and lying so, the drive side's pins are kept
+    assert tags.index("lift") < tags.index("box_clips") < tags.index("box")
     assert tags.index("hand_crank") < tags.index("base")
+    assert "keeper" in breakdown[tags.index("box_clips")][0]
+    assert not any("spacer" in s for s, _ in breakdown)      # (the keepers stay on the pins)
     assert "arm down" in breakdown[0][0]
     assert "about 5½ turns" in breakdown[0][0]
     assert any("knobs loose" in s for s in back)
@@ -910,6 +965,13 @@ def test_b_stands_turns_easily_and_holds():
     pins = {x["joint"]: x["section"] for x in rows if x["kind"] == "pin"}
     assert {j for j, s in pins.items() if "clevis" in s} == {"pin:K", "pin:J2", "pin:X", "pin:Y"}
     assert {j for j, s in pins.items() if "pivot pin" in s} == {"pin:P", "pin:J"}
+    # X's and Y's TPU keepers (pack turn 1): each holds its pin 10 x its weight at the least
+    # interference a print gives and TPU's least published modulus, and goes on by hand
+    k = r["keepers"]
+    assert {cr.keeper_pin(x["keeper"]) for x in k["rows"]} == {f"{s}.pin_{j}_pin" for s in "LR"
+                                                                for j in "XY"}
+    assert k["least_ratio"] >= k["bar"] == 10.0
+    assert all(x["push_on_n"] < 60.0 for x in k["rows"])
     _the_structure_is_rated(r, ("b2", "b6"), {"pillar:O1", "pillar:O2"},
                             {"column:D1", "column:D2"})
     # the known limits (not designed for): a block near the mouth multiplies the pins' loads
@@ -1580,22 +1642,23 @@ PACK_BOX = {"decanter_hinge": (705.0, 200.0, 610.0)}
 the stand's 2026-10-14 refit, the walls round it; 185 mm tall since the real-shape packer of
 2026-10-14: both panels face down on the board, the loose parts in their open triangles,
 about 78 L where the boxes' packer had 124)."""
-MODULE_BOX = (30.0, 500.0, 600.0)
-"""A cradle packed as modules (B): its box, outside, over its base board's length and width
-(x, z: the board lies at the bottom, the other pieces over it) at most 30 mm (its walls and
-clearances take 16), at most 500 mm tall (the drive side with the cradle box lies on its
-drive side, the gearbox down, 441 mm across the bay, over the passive panel on the board),
-and across no more than 30 mm over the larger of the board's width and 600 mm (the drive
-side's height in its plane at the pack pose, 596). B, 2026-10-13: 643 x 478 x 611 mm on its
-626 x 530 board, about 188 L (its flat pack had been 112); 2026-10-14 (round 1: the knobs
-and cleats on the board, the pack pose at the rear leg): 702 x 485 x 606 on its 684 x 584
-board, 206 L; the real-shape packer's plan: 700 x 478 x 604, 202 L; round 1's structure (the
-inner plate's triangle and leg, its columns, the 680 mm board): 696 x 499 x 608, 211 L. Read
-off the board, so a larger board moves the bound with it."""
+MODULE_BOX = (30.0, 340.0, 600.0, 725.0, 150.0)
+"""A cradle packed as modules (B): its box, outside, along the board no more than 30 mm (its
+walls and clearances take 16) over the larger of the board's length and the cradle box's
+(725 mm: levelled, from its cradle links' front pins to its rails' end), at most 340 mm tall
+(the board, the cradle box standing on it, 178 mm, the two side panels nested over it),
+across no more than 30 mm over the larger of the board's width and 600 mm, and at most 150 L.
+B, 2026-10-13: 643 x 478 x 611 mm on its 626 x 530 board, about 188 L (its flat pack had
+been 112); 2026-10-14 (round 1: the knobs and cleats on the board, the pack pose at the rear
+leg): 702 x 485 x 606 on its 684 x 584 board, 206 L; the real-shape packer's plan: 700 x 478
+x 604, 202 L; round 1's structure (the inner plate's triangle and leg, its columns, the 682
+mm board): 699 x 499 x 608, 212 L, the drive side carrying the cradle box, 441 mm across the
+bay; pack turn 1 (the cradle box on its own): 740 x 316 x 600, 141 L. Read off the board, so
+a larger board moves the bound with it."""
 PACK_JOINTS = {"decanter_hinge": ("Pin E ", "pillar G"), "decanter_rcm": ("Pins X and Y ", None)}
 """Where each cradle link comes off its side: its pins and its pillar (the steps name them)."""
 MODULES = {"decanter_hinge": None,
-           "decanter_rcm": {"base", "drive", "passive", "hand_crank"}}
+           "decanter_rcm": {"base", "drive", "passive", "box", "hand_crank"}}
 """The pieces a cradle that packs as modules comes apart into (``cradle.PACK_POSES``),
 besides the spare bottles' adapters and collars; None: it packs flat."""
 
@@ -1612,14 +1675,16 @@ def test_the_cradle_packs_in_one_box(key):
     goes in after it, each rests on what is under it (directly or on foam pads); the box no
     bigger than :data:`PACK_BOX` (modules: :data:`MODULE_BOX`, off the base board's size);
     the steps name where the cradle link comes off its side. A packs flat, from crank angle
-    0. B packs as three modules and its hand crank (:data:`MODULES`, the spare adapters
-    loose), cranked first until the crank's arm lies along its outer plate's rear leg (about
-    5 1/2 turns from rest, 31° neck up): there its passive side panel, its two clips out,
-    comes straight off its cradle link's pins and meets nothing of the drive side or the
-    cradle box (``slide_off``), where at rest the inner bar would meet the cradle link; the
-    cradle is laid on its drive side first and the panel lifted off (standing, the drive
-    module would tip onto its cradle box; on its passive side, the pins would drop out of
-    their links), and the steps say how it goes back together."""
+    0. B packs as its board, its two side panels, its cradle box and its hand crank
+    (:data:`MODULES`; the cradle box on its own since pack turn 1), cranked first until the
+    crank's arm lies along its outer plate's rear leg (about 5 1/2 turns from rest, 31° neck
+    up): there its passive side panel, its two clips out, comes straight off its cradle
+    link's pins and meets nothing of the drive side or the cradle box (``slide_off``), where
+    at rest the inner bar would meet the cradle link; then the cradle box, the drive side's
+    two clips out, comes straight up off the drive side's pins and meets nothing. The cradle
+    is laid on its drive side first (standing, the drive module would tip onto its cradle
+    box), each pin of the side lying down kept in its link by its TPU keeper, and the steps
+    say how it goes back together."""
     from spiderpig import voxpack as vp
     from spiderpig.cradle_pack import PACK_PLANS, flat_pack, pack_t
     from spiderpig.fabricate import fabricate, template_for
@@ -1663,10 +1728,11 @@ def test_the_cradle_packs_in_one_box(key):
         assert all(out <= PACK_BOX[key]), p["box"]
     else:                               # modules: the bound follows the base board
         board = shipped["base_plate"].placed_part().bounding_box()
-        over, tall, plane = MODULE_BOX
-        assert out[0] <= board.size.X + over, (p["box"], board.size)
+        over, tall, plane, length, litres = MODULE_BOX
+        assert out[0] <= max(board.size.X, length) + over, (p["box"], board.size)
         assert out[1] <= tall, p["box"]
         assert out[2] <= max(board.size.Z, plane) + over, (p["box"], board.size)
+        assert p["box"]["volume_l"] <= litres, p["box"]
     assert p["modules"][0]["key"] == "base"
     assert 0.0 < p["fill"] < 0.2
     pins, pillar = PACK_JOINTS[key]
@@ -1685,15 +1751,24 @@ def test_the_cradle_packs_in_one_box(key):
     assert MODULES[key] <= set(by)
     assert all(by[k]["label"].startswith(("Adapter", "Collar")) for k in spares), spares
     # the cradle box (both cradle links, the ties, the saddles with their V blocks and lip
-    # gauge, the light, the base stop) travels on the drive side; the passive side has the
-    # rest of R
+    # gauge, the light, the base stop) travels on its own (pack turn 1); the drive side has
+    # the rest of L but the hand crank, the passive side the rest of R, each pin with its
+    # keeper on it
     link = cr.cradle_link(cfg.lk)
     drive, passive = set(by["drive"]["parts"]), set(by["passive"]["parts"])
-    assert {"L.gearbox", f"L.{link}", f"R.{link}", "tie_Tf1", "front_saddle", "rear_saddle",
-            "led", "base_stop_gate", "front_saddle_gauge"} <= drive
-    assert {a for a, _ in mech.meta["fastened"] if a in shipped} <= drive
+    box = set(by["box"]["parts"])
+    assert {f"L.{link}", f"R.{link}", "tie_Tf1", "front_saddle", "rear_saddle", "led",
+            "base_stop_gate", "front_saddle_gauge"} <= box
+    keepers = set(mech.meta["keepers"])       # (each fastened to its pin, on its side)
+    assert {a for a, _ in mech.meta["fastened"] if a in shipped} - keepers <= box
+    assert {n for n in shipped if n.startswith("L.") and n != f"L.{link}"
+            and not n.startswith("L.handle")} <= drive
+    assert {"L.gearbox", "L.pin_X_pin", "L.pin_X_clip", "L.pin_Y_clip"} <= drive
     assert {n for n in shipped if n.startswith("R.") and n != f"R.{link}"} <= passive
     assert {"R.pin_X_pin", "R.pin_X_clip", "R.pin_Y_clip", "R.frame_outer"} <= passive
+    assert len(keepers) == 4
+    assert keepers <= drive | passive
+    assert all(n.split(".")[0] == ("L" if n in drive else "R") for n in keepers)
     assert set(by["hand_crank"]["parts"]) == {n for n in shipped if n.startswith("L.handle")}
     assert "L.handle_thumb_screw" in by["hand_crank"]["parts"]
     base = set(by["base"]["parts"])
@@ -1704,16 +1779,22 @@ def test_the_cradle_packs_in_one_box(key):
     assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_knob")} <= base
     assert 5.0 <= p["pose"]["turns_from_rest"] <= 6.5
     assert -44.0 < p["pose"]["tilt_deg"] < -20.0             # b6 clears; the box doesn't grow
-    assert p["slide_off"] == {"hits": [], "clips_out": ["R.pin_X_clip", "R.pin_Y_clip"]}
+    # the passive panel off the box and the drive side, then the box off the drive side:
+    # each lifted straight up, its clips out, meets nothing
+    assert p["slide_off"] == {"hits": [], "clips_out": ["R.pin_X_clip", "R.pin_Y_clip"],
+                              "box": {"hits": [],
+                                      "clips_out": ["L.pin_X_clip", "L.pin_Y_clip"]}}
     for words in ("rear leg", "about 5½ turns", "R-clip", "on its drive side",
-                  "lift it straight up", "thumb knobs", "thumb screw", "paint pen"):
+                  "lift it straight up", "thumb knobs", "thumb screw", "paint pen", "keeper",
+                  "Cradle box: lift it straight up"):
         assert words in text, (words, p["steps"])
     assert text.index("on its drive side") < text.index("R-clip") < text.index(
-        "lift it straight up")
+        "lift it straight up") < text.index("Cradle box: lift it straight up")
     back = " ".join(p["reassembly"])
-    for words in ("paint marks", "pin X through its spacer into its hole first",
+    for words in ("paint marks", "pin X into its hole first", "Lower the cradle box onto it",
                   "Both R-clips in", "cleats", "knobs loose", "paper check"):
         assert words in back, (words, p["reassembly"])
+    assert back.index("Lower the cradle box onto it") < back.index("paint marks")
 
 
 @pytest.mark.construction

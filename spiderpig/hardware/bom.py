@@ -934,7 +934,8 @@ takes a press with less creep and cracking than PLA (``construction.printed`` pr
 snap axles in PETG for the same strain); ``None`` here leaves it in the build's filament."""
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
-CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer and the feet"}
+CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer, the feet and (B) "
+                                      "the quick-release pins' keepers"}
 CRADLE_PRINT_NOTE = (
     "Print the saddles, their V blocks, the base stop and the brackets in PLA at 20 % infill "
     "with 4 walls (the rear saddle's carrier stands 142 mm tall and the light's clip on its "
@@ -975,9 +976,10 @@ def pressed_sleeves(meta: dict) -> set[str]:
 
 def part_filament(body, meta: dict, default: str | None) -> str | None:
     """The filament (catalog key) a printed ``body`` is printed in: TPU 95A for a foot's
-    sock (and a decanting cradle's saddle liners and foot boots), :data:`PRESS_FILAMENT` for
-    a sleeve pressed on its crankpin, else ``default``."""
-    if _SOCK.search(body.name):
+    sock (and a decanting cradle's saddle liners and foot boots, and the keepers on its
+    quick-release pins: ``meta["keepers"]``, ``construction.cradle.KEEPER``),
+    :data:`PRESS_FILAMENT` for a sleeve pressed on its crankpin, else ``default``."""
+    if _SOCK.search(body.name) or body.name in (meta or {}).get("keepers", ()):
         return TPU_FILAMENT
     m = _SLEEVE.search(body.name)
     if PRESS_FILAMENT and m and m.group(1) in pressed_sleeves(meta):
