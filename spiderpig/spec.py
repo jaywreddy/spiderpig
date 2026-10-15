@@ -10,6 +10,13 @@ engine can verify today exist; anything else is an error, never ignored:
 values, nearest key) and :meth:`Spec.from_dict` raises them as one
 :class:`SpecErrors`.
 
+A spec may carry the **task** it was written for (``task``: a
+:class:`spiderpig.task.Task` document, what ``candidates`` writes into each candidate's
+spec): the task's numbers that are Spec targets are targets already, and the task's own
+geometry (a place task's area, points and height, a trace task's path) is what
+:mod:`spiderpig.verify` re-checks on the planned design (its ``task.*`` rows). It enters
+the design's id (it changes what verify checks); a spec without one keeps its id.
+
 Hard targets fail :func:`spiderpig.verify`; soft ones lower its score. The
 defaults (:data:`TARGET_FIELDS`): physical limits (size, budget, the stack,
 ground clearance) are hard, gait quality (stride, lift, speed, bob, slip,
@@ -173,6 +180,20 @@ CAPABILITIES = {
 }
 """A target field's ``needs``: the linkage's capability (``lk -> bool``), what it means,
 and what a linkage without it is instead (the refusal's words)."""
+
+
+def urdf_unsupported(lk) -> str:
+    """Why ``lk``'s designs export no URDF (by capability: inputs over ranges on a fixed
+    base, :attr:`linkage.Linkage.ranged`), or ``""`` when they do: ``resolve`` refuses a
+    spec whose ``outputs`` name it with this reason, ``export`` the format
+    (:func:`spiderpig.urdf.unsupported` is this)."""
+    if lk.ranged:
+        return ""
+    why = ("it walks on its feet (no fixed base_link)" if lk.walks else
+           "its joints follow a crank's full turn, which a URDF tree can only table")
+    return (f"{lk.key} has no URDF: the URDF is a ranged linkage's (inputs over ranges on a "
+            f"fixed base, Linkage.ranged) and {why}; its MuJoCo model is the export that "
+            f"holds it (mjcf)")
 
 
 def _fields(*rows: tuple) -> dict[str, TargetField]:
@@ -415,6 +436,7 @@ class Spec:
     allowance_usd: float | None = None      # ``budget.allowance_usd``: for the unpriced items
     precision: dict[str, Target] = field(default_factory=dict)
     payload_g: float | None = None          # ``precision.payload_g``: the load at the output
+    task: Mapping | None = None             # the task's document (:mod:`spiderpig.task`)
 
     @classmethod
     def from_dict(cls, data: Mapping) -> Spec:
@@ -454,6 +476,8 @@ class Spec:
                 out[name] = sub
         if tuple(self.outputs) != DEFAULT_OUTPUTS:
             out["outputs"] = list(self.outputs)
+        if self.task is not None:
+            out["task"] = dict(self.task)
         return out
 
     def targets(self) -> list[tuple[TargetField, Target]]:
@@ -517,7 +541,18 @@ def _build(data: Mapping) -> Spec:
         precision={k: _target(v) for k, v in (data.get("precision") or {}).items()
                    if k != PAYLOAD},
         payload_g=_opt((data.get("precision") or {}).get(PAYLOAD)),
+        task=_task_doc(data.get("task")),
     )
+
+
+def _task_doc(doc: Mapping | None) -> dict | None:
+    """A spec's ``task`` as one document (:meth:`spiderpig.task.Task.to_dict`: a bare
+    number written as the target it means), so one task is one id."""
+    if doc is None:
+        return None
+    from spiderpig.task import Task  # (the task module reads this one's vocabulary)
+
+    return Task.from_dict(doc).to_dict()
 
 
 def _target(d: Mapping) -> Target:
@@ -745,7 +780,7 @@ def validate(data: Mapping) -> list[SpecError]:
         return [SpecError("", f"a spec is an object, got {_kind(data)}")]
     # (obj returns a mapping as it is: top is data, its unknown fields reported)
     v.obj(data, "", ("version", "kind", "linkage", "legs", "motion", "size", "materials",
-                     "constructions", "fit", "budget", "precision", "outputs"))
+                     "constructions", "fit", "budget", "precision", "outputs", "task"))
     top = data
     version = top.get("version", SPEC_VERSION)
     if str(version) != SPEC_VERSION:
@@ -938,7 +973,36 @@ def validate(data: Mapping) -> list[SpecError]:
         else:
             for i, o in enumerate(outs):
                 v.string(o, f"outputs[{i}]", OUTPUTS)
+
+    # task: what the spec was written for, the linkage able to do it
+    if top.get("task") is not None:
+        _validate_task(v, top["task"], lk)
     return v.errors
+
+
+TASK_CAN = {"walk": (lambda lk: lk.walks, "has no feet"),
+            "place": (CAPABILITIES["output"][0], CAPABILITIES["output"][2]),
+            "trace": (CAPABILITIES["output"][0], CAPABILITIES["output"][2])}
+"""What a task's ``do`` asks of the linkage: its test (feet, an output) and what a linkage
+without it is (the refusal's words)."""
+
+
+def _validate_task(v: _Validator, doc, lk: linkage.Linkage | None) -> None:
+    """The spec's ``task`` (:func:`spiderpig.task.validate`, its paths under ``task.``), and
+    a linkage that can do it (a walk needs feet, a place or a trace an output)."""
+    from spiderpig.task import validate as validate_task
+
+    errors = validate_task(doc)
+    for e in errors:
+        v.errors.append(SpecError(f"task.{e.path}" if e.path else "task", e.message,
+                                  e.allowed, e.nearest))
+    if errors or lk is None:
+        return
+    do = doc["do"]
+    can, lacks = TASK_CAN[do]
+    if not can(lk):
+        v.err("task.do", f"{lk.key} {lacks}: it can't {do} (candidates ranks the linkages "
+                         f"that can)", [d for d, (c, _) in TASK_CAN.items() if c(lk)])
 
 
 def default_module(lk: linkage.Linkage) -> str:
@@ -1094,5 +1158,17 @@ def spec_schema() -> dict:
             "precision": sections["precision"],
             "outputs": {"type": "array", "items": {"enum": list(OUTPUTS)}, "uniqueItems": True,
                         "default": list(DEFAULT_OUTPUTS)},
+            "task": _task_schema(),
         },
     }
+
+
+def _task_schema() -> dict:
+    """The ``task`` section's schema: the Task's own (:func:`spiderpig.task.task_schema`)."""
+    from spiderpig.task import task_schema
+
+    doc = {k: v for k, v in task_schema().items() if k not in ("$schema", "$id", "title")}
+    doc["description"] = ("the task this spec was written for (candidates writes it): verify "
+                          "re-checks its geometry on the design (the task.* rows); it enters "
+                          "the design's id")
+    return doc

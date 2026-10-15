@@ -1559,9 +1559,9 @@ def test_r5_a_point_off_the_number_line_fails_the_program_stage_and_names_the_ro
 def test_r5_a_two_input_mechanism_is_told_at_resolve_and_by_advise():
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "five_bar"}}, store=None)
     (w,) = d.warnings                                                          # entry 4
-    assert w.startswith("five_bar has 2 inputs (t, t2) and v1 builds one drive")
+    assert w.startswith("five_bar has 2 inputs (t, t2) and t2 declares no drive")
     assert "second_input_no_drive" in w
-    assert "a limit of v1, not of the spec" in w
+    assert "a limit of the linkage's declaration, not of the spec" in w
     assert "the one-input mechanisms are hoecken, " in w
     assert "five_bar" not in w.split("are ")[1]
     cr = api.check(d)
