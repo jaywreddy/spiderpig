@@ -2,10 +2,10 @@
 
 :func:`build_mjcf` turns a :class:`fabricate.BuildConfig` into one
 self-contained MJCF document (no external files) plus a JSON-able metadata
-dict. The XML runs in Python (``mujoco``); the browser's physics drive
-streams the server's session of a walker's (:mod:`sim.live`, ``/ws/sim``), and the
-metadata tells the viewer how to put the simulated poses on the glb nodes of
-:mod:`viewer.bake_gltf`.
+dict. The XML runs in Python (``mujoco``); the viewer streams the server's live
+session of any design (:mod:`sim.live`, ``/ws/sim``: a walker's physics drive, a
+mechanism's crank, an arm's joint sliders), and the metadata tells the viewer how to put
+the simulated poses on the glb nodes of :mod:`viewer.bake_gltf`.
 
 Every design goes through the same reduction (:func:`robot_model`) and the same emitter:
 the planar side's bodies and pins (the template's), the spatial joints a layout adds

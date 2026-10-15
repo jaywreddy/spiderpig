@@ -101,6 +101,7 @@ MODULE_OF_FILE: dict[str, str] = {
     # sim and bake (P6)
     "test_sim.py": "sim",
     "test_sim_live.py": "sim",
+    "test_sim_live_kinds.py": "sim",
     "test_bake_gltf.py": "sim",
     "test_guide.py": "sim",
 }

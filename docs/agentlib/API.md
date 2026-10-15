@@ -617,6 +617,20 @@ built can be looked at without a spec. What the page does with `?design=<id>`:
   `phases_deg`, `params` (the linkage's proportions), `servo`, and `glb`, the URL of
   its bake. The viewer seeds its mode and the tune panel's state (linkage, module,
   phases, parameter sliders) from it.
+- `GET /api/pose/{mode}?<design>&j.q2=70` poses an arm's bake at joint angles (degrees),
+  each node's matrix from the clip's first frame (`spiderpig.pose.node_poses`).
+- `WS /ws/sim?<design>&mode=` runs the design live in MuJoCo, any kind
+  (`spiderpig.sim.live`; `mode`, the view on screen, picks the robot or one side, else the
+  design's own). It answers `{"status": "building"}` while the model builds, then a
+  `hello` declaring what drives the design and what it streams (`drives`: its cranks;
+  `joints`: its stepped joints, each `lo`, `hi`, `value` in degrees and `effort`;
+  `walks`, `feet`, `sites`; the binary frame's `columns`; a walker's `steering`), then
+  one little-endian float32 frame per tick at 60 Hz (the columns, then 12 numbers per body).
+  In: `{"cmd": [...]}` (one speed per crank, a fraction of its servo's no-load speed: a
+  walker's `[left, right]`, a mechanism's `[speed]`), `{"joints": {"q2": 40}}` (an arm's
+  steppers' targets, degrees) and `{"reset": true}`; a command for a drive the design
+  lacks is answered `{"error": ...}` and the session goes on. The viewer drives a walker
+  from its drive panel's physics toggle and anything else from its live box (`?live=1`).
 - Every `/api/glb/{mode}` and `/api/walk` query the page makes then carries
   `design=<id>` first: the server resolves the design's `BuildConfig` from the store
   (servo, sheet, thickness, constructions and fit included, which no query string

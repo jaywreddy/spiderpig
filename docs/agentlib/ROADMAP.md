@@ -155,8 +155,8 @@ story), now `platform-9aae3e3`, eight designs.
   stiffness, rotor inertias) want a hardware run (a dial indicator) to replace them.
 - **One MuJoCo emitter.** Done (2026-10-14, DECISIONS.md): `spiderpig/sim/mjcf.py` writes
   every kind's model over `kinematics.RobotTree`; `spiderpig sim` holds an arm at its pose.
-  `verify("full")` holds a fixed design there too (`sim.holds`). Left: the live session
-  (`/ws/sim`) is a walker's.
+  `verify("full")` holds a fixed design there too (`sim.holds`); the live session
+  (`/ws/sim`) runs every kind (a walker's two cranks, a mechanism's one, an arm's joints).
 - **Agent and viewer surfaces.** The viewer's precision overlay (the error budget over the
   workspace) isn't drawn; the joint sliders were checked by tests, never in a browser here.
   The precision budget is an API stage and an MCP tool (`api.precision`, a job), and a task

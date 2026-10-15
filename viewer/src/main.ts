@@ -87,15 +87,19 @@ const drive = createDrive({
   reframe: () => { if (loaded) frameView(stage, loaded.root, view); invalidate(); },
 });
 
-// An arm's joint sliders (arm.ts): built on each load, hidden for a walker.
+// A fixed design's panel (arm.ts): an arm's joint sliders and the live sim (MuJoCo) of any
+// design that doesn't walk; built on each load, hidden for a walker (its live sim is drive's).
 const arm = createArmPanel({
   container: document.getElementById('arm-joints')!,
   current: () => (loaded ? {
     root: loaded.root, mode: loadedMode, query: loadedQuery,
     pause: () => { playing = false; ui.setPlaying(false); if (loaded) loaded.action.paused = true; },
   } : null),
+  loaded: () => loaded,
+  restoreClip: () => { if (loaded) { loaded.action.play(); seek(0); } },
   invalidate,
   status: (text) => ui.setStatus(text),
+  autoLive: params.get('live') === '1',
 });
 
 // The chrome over the canvas (the top bar, the dock): the camera frames the band between,
@@ -178,6 +182,9 @@ function tick(): void {
   if (drive.active) {
     drive.frame(dt);   // drive mode renders continuously
     dirty = true;
+  } else if (arm.live) {
+    arm.frame();       // the live sim poses the parts: render continuously too
+    dirty = true;
   } else if (loaded && playing) {
     loaded.mixer.update(dt);
     const t = loaded.action.time % loaded.clipDuration;
@@ -213,6 +220,7 @@ const viewerHandle: ViewerHandle = {
   },
   loadMode,
   drive,
+  live: arm,
   ready: false,
 };
 window.__viewer = viewerHandle;
