@@ -1487,10 +1487,12 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
     keeper holds it, so the box can come off the drive side as it lies, and the passive
     panel's pins lift off with their keepers on: the loose spacer and its two steps go. The
     keepers are the planned gap rings re-made in `assemble_cradle` (the pivots are the
-    planner's to edit); `bom.part_filament` prints them in TPU (`meta["keepers"]`).
-  - **The steps** (`cradle.module_steps`, the guide's): eight to take it apart (two more:
-    the drive side's clips, the box's lift), nine back together (the box onto the drive
-    side's pins first: pin X, then the box turned about it and b5 swung until Y drops in).
+    planner's to edit); `bom.part_filament` prints them in TPU (`meta["keepers"]`), and
+    each is fastened to its pin (`meta["fastened"]`: an interference fit, not a clash).
+  - **The steps** (`cradle.module_steps`, the guide's): eight to take it apart (six before:
+    two more, the drive side's clips and the box's lift), ten back together (nine before:
+    the box onto the drive side's pins first, pin X, then the box turned about it and b5
+    swung until Y drops in, its clips in; the passive panel's spacer handling gone).
     `cradle_pack.slide_hits` sweeps the box off the drive side too (its new `way`): nothing
     meets.
   - **The plan** (`cradle_pack.PACK_PLANS`): the cradle box on the board as it stands, the

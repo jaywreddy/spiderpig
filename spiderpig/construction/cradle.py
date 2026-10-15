@@ -2269,6 +2269,9 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                         color=BOARD_COLOR)
                for k, part in enumerate(_jack_locator(cf.lip, y_top - BASE_T - FOOT_PAD_H))]
     glue = [BomLine(WOOD_GLUE, 1, "the base board's cleats and the jack locator's layers")]
+    # each keeper grips its pin (its bore under the pin's: an interference fit, not a clash)
+    fastened += [(prefixed(n, s), prefixed(n.split("_gap")[0] + "_pin", s))
+                 for n in sorted(keepers) for s in SIDES_LR]
     for i, (x, z) in enumerate(foot_xz):
         extras.append(hardware(f"foot_boot_{i}", _tpu_foot(x, z, y_top), frame_host,
                                fab="printed", color=LINER_COLOR))

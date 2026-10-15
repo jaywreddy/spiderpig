@@ -1751,13 +1751,13 @@ def test_the_cradle_packs_in_one_box(key):
     box = set(by["box"]["parts"])
     assert {f"L.{link}", f"R.{link}", "tie_Tf1", "front_saddle", "rear_saddle", "led",
             "base_stop_gate", "front_saddle_gauge"} <= box
-    assert {a for a, _ in mech.meta["fastened"] if a in shipped} <= box
+    keepers = set(mech.meta["keepers"])       # (each fastened to its pin, on its side)
+    assert {a for a, _ in mech.meta["fastened"] if a in shipped} - keepers <= box
     assert {n for n in shipped if n.startswith("L.") and n != f"L.{link}"
             and not n.startswith("L.handle")} <= drive
     assert {"L.gearbox", "L.pin_X_pin", "L.pin_X_clip", "L.pin_Y_clip"} <= drive
     assert {n for n in shipped if n.startswith("R.") and n != f"R.{link}"} <= passive
     assert {"R.pin_X_pin", "R.pin_X_clip", "R.pin_Y_clip", "R.frame_outer"} <= passive
-    keepers = set(mech.meta["keepers"])
     assert len(keepers) == 4
     assert keepers <= drive | passive
     assert all(n.split(".")[0] == ("L" if n in drive else "R") for n in keepers)
