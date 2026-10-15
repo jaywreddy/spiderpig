@@ -1123,7 +1123,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   harness; the sim carries the kit's 61 g for your own; an audit warning). A stepper board
   on a walker, or the deck's board on an arm, is a `ConstructionError`.
 - **Mechanisms:** none carried electronics (no robot is made of one side), so the role
-  stays the walkers' and the arms' (changed later the same day: fix round 2 gives a
+  stays the walkers' and the arms' (changed later the same day: review fix round 1 (machines) gives a
   mechanism the role too, its controller tied to having motors); `spiderpig control` still sets a mechanism's one servo
   up (your own board).
 - **The ids stay:** a role reaching the walkers would have written `controller` into every
@@ -1218,7 +1218,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   under 1 fails `verify` and the audit; the fix may be a lower run current. A link's hole is
   its pivot's bearing seat where it holds one (`strength.link_hole`; a plain pin's is the
   6.35 mm it was). A cranked mechanism's loads are still what it drives: not rated (said; changed later
-  the same day: fix round 2 rates its jam at the servo's torque limit, `strength.crank_loads`).
+  the same day: review fix round 1 (machines) rates its jam at the servo's torque limit, `strength.crank_loads`).
   Walkers' numbers are unchanged.
 - **Found on the way:** an arm spec with any target validated in about a minute: the
   validator ran the arm's output check (its whole tour) for every section. It now runs only
@@ -1468,6 +1468,11 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 
 ### 2026-10-14: hardening after the merge's reviews (no part, plan or BOM moved)
 
+(The merge's reviews ran in rounds: after waves 1 and 2, review fix round 1 merged four
+branches, surfaces, tasks and spec, machines, and this hardening; after review round 2,
+review fix round 2 merged task verify, torque and live sim. The entries below name their
+round and branch that way.)
+
 - **The viewer's server keys a bake under its lock** (`server.app._ensure_baked`): the key
   was taken before a request waited its turn, and `_bake` keyed again, so a source edit
   meanwhile returned a file never written (a 500, remembered as baked). Now the key is
@@ -1505,7 +1510,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **`spiderpig.spec` and `spiderpig.task`** are under a lint-imports contract: neither
   reaches into the pipeline or a front-end.
 
-### 2026-10-14: one task flow on every surface, from the task to the files that make, wire and buy it (review fix 1)
+### 2026-10-14: one task flow on every surface, from the task to the files that make, wire and buy it (review fix round 1: surfaces)
 
 - **The decision:** a design id carries from `candidates` to every file a maker needs, on
   every surface, toward the user's "a seamless merge of capabilities, not just two forking
@@ -1550,7 +1555,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   feet's strength row (wave 1) and the arm's export no `urdf/*.mjcf.xml` (wave 2's one
   MuJoCo path): none of it this change's, so no new baseline and DESIGNS.md unchanged.
 
-### 2026-10-14: one task and spec vocabulary for every kind; an arm traces a line (fix 3)
+### 2026-10-14: one task and spec vocabulary for every kind; an arm traces a line (review fix round 1: tasks and spec)
 
 - **The decision:** a task and a spec say the same thing the same way whatever the machine,
   toward the user's "a seamless merge of capabilities, not two forking code paths".
@@ -1608,12 +1613,14 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Gate:** no part, plan or BOM moves (a task's targets only); the baseline after the
   round is `platform-9aae3e3`.
 
-### 2026-10-14: one engine for every machine: controllers, strength, sim and exports by capability (fix round 2)
+### 2026-10-14: one engine for every machine: controllers, strength, sim and exports by capability (review fix round 1: machines)
 
 - **The decision:** what a design gets follows what it declares (its inputs, `Linkage.ranged`
   / `walks`, its robot layout), never its kind's name, toward the user's "one seamless repo
   ... for a given task".
-- **Every design with motors has a controller.** The role `controller` applies to mechanisms
+- **Every design with motors has a controller.** (A mechanism's default changed in review
+  fix round 2 (torque): unnamed, it is `none`, so stored designs keep their BOMs; a task's
+  candidate names its board.) The role `controller` applies to mechanisms
   too (and `pin` / `pillar` to arms, whose `ball_pair` pivots the guide's cover now names).
   A mechanism's default is its servo's protocol's (`controllers.BUS_DEFAULTS`: the ESP32 board
   for the STS3215, `u2d2_dynamixel` for an XL); its side is the whole machine (no robot is
@@ -1667,7 +1674,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `urdf/*.mjcf.xml` predate this round (the baseline is older than the merged waves).
   DESIGNS.md is not regenerated (no part moved).
 
-### 2026-10-14: a design carries its task, and verify confirms a place or a trace task (fix round 5)
+### 2026-10-14: a design carries its task, and verify confirms a place or a trace task (review fix round 2: task verify)
 
 - **The decision:** the flow task -> candidates -> spec -> plan -> build -> verify -> export
   holds for walk, place and trace alike. A walk task's numbers were already spec targets;
@@ -1711,7 +1718,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   60 mm path within 0.5 mm as a 66.9 mm stroke 0.064 mm across, `measured`, ok.
   DESIGNS.md is not regenerated (no part moved).
 
-### 2026-10-14: a crank servo's torque limit everywhere it matters; a mechanism's controller unnamed stays none (fix round 3)
+### 2026-10-14: a crank servo's torque limit everywhere it matters; a mechanism's controller unnamed stays none (review fix round 2: torque)
 
 - **The torque limit reaches every servo design's BOM.** `config.torque_limit_note` is
   keyed on the design's motor role (`roles.motor_role`: a crank's `servo`), not on a
@@ -1768,7 +1775,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   servo-firmware note (0.21 and 0.11 N·m); their audits OK. `klann_quad` fails its audit as
   known. DESIGNS.md is not regenerated (no part moved).
 
-### 2026-10-14: one live sim for every kind (fix round 2, the review's `/ws/sim` finding)
+### 2026-10-14: one live sim for every kind (review fix round 2: live sim)
 
 - **The finding:** `/ws/sim` was a walker's protocol (crank L/R in, feet on the floor out)
   and forced `robot=True`, which raises for a mechanism; an arm could only be posed

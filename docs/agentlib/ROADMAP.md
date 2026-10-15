@@ -167,10 +167,15 @@ story), now `platform-9aae3e3`, eight designs.
   crank: `servo`; ranged inputs: `actuator`), so a DYNAMIXEL-servo arm or a stepper-driven
   crank can't be expressed. It needs the drive groups, the MJCF's actuator choice,
   strength's jam lever and the control files to take the role as declared (DECISIONS.md
-  2026-10-14, fix round 3).
+  2026-10-14, review fix round 2: torque).
 - **A second driven input on a cranked linkage.** `five_bar` declares no drive for `t2`;
   a variant that does gets past resolve but stops at check (the crank's horn on a toured
   geometry with no lateral bound): the crank's construction has to take a toured input.
+- **A stored DYNAMIXEL walker from before the U2D2 default.** One resolved before the
+  controller followed the servo's protocol reads back with the U2D2 (its spec named no
+  controller, and the default moved): its id is the same, its BOM not. A read-side rule in
+  `stages.resolve` (an unnamed controller in a stored spec is the default of its day) would
+  fix it (DECISIONS.md 2026-10-14, review fix round 2: torque).
 - **The walkers' out-of-plane metric.** The arm's budget solves its links' out-of-plane
   bending through the loops (`precision.out_of_plane`); a walker's legs have no such number
   (wobble is the strength check's), so a thinner or acrylic link can't be judged on it.
