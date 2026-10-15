@@ -792,10 +792,12 @@ def test_a_recorded_export_runs_as_is(name):
 @pytest.mark.parametrize("name", sorted(set(_sim.RECORDED) - set(_sim.WALKERS)))
 def test_a_recorded_fixed_design_holds_its_pose(name):
     """The same emitter's model of a design that doesn't walk (the approved arm on its
-    turret): fixed to the world, no floor, its steppers' position actuators on its inputs
-    and turntable; ``spiderpig sim`` holds it at its pose under gravity
-    (:func:`spiderpig.sim.run.hold`): the tool's tip sags under a millimetre, its loops
-    stay closed, no stepper at its holding torque. A walker's model is refused there."""
+    turret, a mechanism's one side): fixed to the world, no floor; its motors by what its
+    inputs declare (an arm's ranged inputs and turntable: steppers' position actuators; a
+    mechanism's crank: its servo's velocity actuator); ``spiderpig sim`` holds it at its
+    pose under gravity (:func:`spiderpig.sim.run.hold`): its sites (the tool's tip, the
+    output) sag under a millimetre, its loops stay closed, no motor at its limit. A
+    walker's model is refused there."""
     from spiderpig.sim.run import hold
 
     key, module = _sim.RECORDED[name]
@@ -803,15 +805,21 @@ def test_a_recorded_fixed_design_holds_its_pose(name):
     xml, meta = _sim.recorded_mjcf(name)
     assert meta["freejoint"] is None
     assert not meta["feet"]
-    assert set(cfg.lk.inputs) <= set(meta["actuators"])
-    assert {a["type"] for a in meta["actuators"].values()} == {"position"}
+    kinds = {a["type"] for a in meta["actuators"].values()}
+    if cfg.lk.ranged:
+        assert set(cfg.lk.inputs) <= set(meta["actuators"])
+        assert kinds == {"position"}
+    else:
+        assert kinds == {"velocity"}
+    assert meta["sites"]
     model = mujoco.MjModel.from_xml_string(xml)
     assert model.njnt == model.nv              # hinges only: no free base
     assert "floor" not in {model.geom(i).name for i in range(model.ngeom)}
     assert model.neq == len(meta["loops"]) > 0
     m = hold(cfg, 1.0, model_xml=xml, model_meta=meta)
     assert m["holds"], m
-    assert m["sag"]["tool0"] < 1.0
+    assert set(m["sag"]) == set(meta["sites"])
+    assert m["sag_max"] < 1.0
     assert m["loop_error"] < 0.1
     assert max(m["torque_fraction"].values()) < 1.0
     with pytest.raises(ValueError, match="walking"):

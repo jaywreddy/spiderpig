@@ -157,6 +157,7 @@ def test_hello_runs_the_steering_check_for_a_model_without_one():
     model, meta = _sim.seed(KLANN_QUAD)
     sim = LiveSim(KLANN_QUAD, model=model,
                   meta={k: v for k, v in meta.items() if k != "steering"})
+    assert sim.lock is not None                     # two cranks: the sides' phase lock
     assert math.isinf(sim.lock.max_offset)
     steer = sim.hello()["steering"]
     assert _json(steer) == _sim.steering_of(KLANN_QUAD)

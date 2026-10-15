@@ -1871,9 +1871,11 @@ risk.
 
 `spiderpig/server/app.py` is a FastAPI web server. `/api/glb/{mode}` bakes on demand and
 caches per design; `/api/walk` answers the walking model for a design without building
-parts; `/api/linkages` lists the linkage catalog; `/api/design/{id}` describes a stored
-design; `/ws` pushes live reloads during development. The viewer (`viewer/src/`, three.js,
-built with Vite) plays and scrubs the animation and has two panels:
+parts; `/api/linkages` lists the linkage catalog (with what each declares: `walks`,
+`ranged`); `/api/design/{id}` describes a stored design; `/api/pose/{mode}` poses an arm's
+bake at joint angles; `/ws/sim` runs any design live in MuJoCo; `/ws` pushes live reloads
+during development. The viewer (`viewer/src/`, three.js,
+built with Vite) plays and scrubs the animation and has three panels:
 
 - **Drive** steers the robot with keyboard or gamepad by per-side crank speed, and shows
   contacts, slip and stability live, on the quasi-static model (8.1). Its **physics**
@@ -1908,6 +1910,27 @@ built with Vite) plays and scrubs the animation and has two panels:
   stale one, keeps a client's command or reset sent during the build, compiles the
   model off the event loop, steps at most three frames of physics per tick (slow motion
   under load, not bursts) and caps the live sessions at ten (`{"error": "busy"}`).
+- **Live (MuJoCo)** runs a design that doesn't walk on the same session (2026-10-14):
+  `/ws/sim` serves every kind through the one emitter's model (`sim.mjcf.model_config`: a
+  walker's whole robot, anything else as configured; the query's `mode`, the view on
+  screen, picks an arm's robot or its side, else the design's own `BuildConfig.robot`),
+  and what it takes and streams follows what the model declares, never the kind's name.
+  The hello names the frame's `columns` and what drives the design: `drives`, its cranks
+  (velocity actuators: `{"cmd": [...]}`, one speed per crank, a walker's two sides
+  through the phase lock, a mechanism's lone crank as its servo in position mode tracking
+  its commanded travel, so a zero speed holds it instead of letting it creep) and
+  `joints`, its stepped joints (position actuators: `{"joints": {"q2": 40}}`, degrees as
+  `/api/pose`'s, clipped to each range; a reset keeps the targets). The frame carries the
+  base and every body as before, each crank's travel and torque, each joint's angle and
+  torque, and each site (the output point, the tool's tip, world mm); the feet, the floor,
+  the side phase and the base's acceleration only where the design has them (a walker's
+  17 columns are unchanged). A fixed base's root stays where the glb stands it. The
+  steering check is a walker's alone. In the viewer, the panel of a design that doesn't
+  walk (`viewer/src/arm.ts`, `?live=1`) has a **live** box: the arm's joint sliders then
+  set its steppers' targets instead of asking `/api/pose`, and a mechanism gets a
+  crank-speed slider once the hello declares its crank; the readout shows the sites and
+  the torques. Both go through the walker's client (`drive/physics.ts`, `PhysicsLink`),
+  which reads every frame by its columns.
 - **Tune** has a slider per parameter and redraws a stick figure from `/api/walk` at once.
   It rebuilds the parts only on request, with a full bake that takes tens of seconds.
 

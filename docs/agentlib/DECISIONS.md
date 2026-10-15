@@ -1653,3 +1653,31 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   BOM diffs (`cut_cm`, cutting USD), the walkers' `feet` and the arms' dropped
   `urdf/*.mjcf.xml` predate this round (the baseline is older than the merged waves).
   DESIGNS.md is not regenerated (no part moved).
+
+### 2026-10-14: one live sim for every kind (fix round 2, the review's `/ws/sim` finding)
+
+- **The finding:** `/ws/sim` was a walker's protocol (crank L/R in, feet on the floor out)
+  and forced `robot=True`, which raises for a mechanism; an arm could only be posed
+  (`/api/pose`). Two code paths where the user asked for "one seamless repo".
+- **The decision:** one session over the one emitter's model, its commands and state by
+  what the model declares (`sim.live.LiveSim`): velocity actuators are cranks (`cmd`, one
+  speed per crank), position actuators stepped joints (`joints`, degrees, as `/api/pose`'s
+  `j.`), a free base walks (feet, floor, `az`), sites stream (the output, the tool's tip).
+  The hello lists the frame's `columns`; a walker's 17 are what they were (its viewer and
+  tests unchanged). The design's robot flag is its own (`BuildConfig.robot`'s default, the
+  query's `mode` for the view on screen); a walker's model is still its whole robot
+  (`sim.mjcf.model_config`). The steering check runs for a model that walks only.
+- **A lone crank is a servo in position mode** tracking its commanded travel (`HOLD_GAIN`,
+  as `sim.run.hold`, the lag bounded where the loop saturates): a zero speed holds the
+  crank, where a zero velocity command crept under gravity. Two cranks keep the walker's
+  phase lock. A reset keeps the commands (a walker walks on, an arm returns to its targets).
+- **The viewer** goes through the same client (`drive/physics.ts`, read by columns; a fixed
+  base's root is left where the glb stands it): the fixed design's panel (`arm.ts`) has a
+  live box, the arm's sliders then drive its steppers and a mechanism gets a crank-speed
+  slider from the hello. `/api/linkages` declares `walks` and `ranged`, which pick the
+  panel and the sliders (the `kind === 'arm'` test is gone).
+- **Tests:** the Hoecken pantograph's MJCF is recorded beside the arm's
+  (`tests/fixtures/sim/mjcf_hoecken_pantograph.json`), so the arm and the mechanism step live
+  through the websocket in the quick tier, in-process and on a real server on a free port
+  (`tests/test_sim_live_kinds.py`); the recorded fixed designs' hold test is by capability.
+- No part, plan or BOM moves (the emitter and the fabrication are untouched).

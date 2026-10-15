@@ -239,9 +239,10 @@ def mjcf_from_doc(doc: dict) -> tuple[str, dict]:
 
 
 RECORDED = {"klann_single": ("klann", "single"), "strider_single": ("strider", "single"),
-            "palletizer_reach": ("palletizer_reach", "")}
+            "palletizer_reach": ("palletizer_reach", ""),
+            "hoecken_pantograph": ("hoecken_pantograph", "")}
 """The recorded MJCFs: fixture name -> (linkage, module), each the default build (an
-arm's: its robot on its turret, the module its default)."""
+arm's: its robot on its turret, the module its default; a mechanism's: its one side)."""
 
 WALKERS = ("klann_single", "strider_single")
 """The recorded walkers (the rest are fixed designs: :func:`spiderpig.sim.run.hold`)."""

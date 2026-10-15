@@ -48,9 +48,10 @@ Design parameters (the walking model's contract, see ``walk.py``):
 ``GET /api/design/{id}``
     The design's card: linkage, module, sides and ``mode`` (``robot`` or ``side``),
     phases, proportions, materials, constructions, and its glb's URL.
-``WS /ws/sim?linkage=...&module=...``
-    The robot of that design driven live in MuJoCo (:mod:`spiderpig.sim.live`): see
-    :func:`ws_sim`.
+``WS /ws/sim?linkage=...&module=...&mode=...``
+    That design driven live in MuJoCo (:mod:`spiderpig.sim.live`), whatever its kind: a
+    walker's robot on the floor by its cranks' speeds, a mechanism's crank turned, an
+    arm's steppers told their joints' angles: see :func:`ws_sim`.
 
 Layer plans go through the store (``api.plan_config``): a design that planned once
 is reused, never searched for again; one whose planner budget ran out answers 422
@@ -77,7 +78,7 @@ import math
 import os
 import threading
 from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -747,6 +748,9 @@ def linkage_info(lk: linkage.Linkage) -> dict:
         "output": asdict(lk.output) if lk.output else None,
         "inputs": list(lk.inputs),
         "ranges": {k: list(v) for k, v in lk.ranges.items()},     # an arm's (degrees)
+        # what it declares (what the viewer offers by, never the kind's name): feet on a
+        # floor (driven by its sides' cranks), ranged inputs (joint sliders, no crank)
+        "walks": lk.walks, "ranged": lk.ranged,
     }
 
 
@@ -944,16 +948,18 @@ _SIM_GENERATION = 0
 
 
 def _build_mjcf_job(config: BuildConfig) -> tuple[str, dict]:
-    """The MJCF and metadata of ``config`` (:func:`spiderpig.sim.mjcf.build_mjcf`) with the
-    steering check (:func:`spiderpig.sim.run.steering_check`, ``meta["steering"]``: what
-    the hello tells the viewer it may send): what a worker process runs, so one client's
-    model build (OCCT holds the GIL for seconds; the check's recording loop too) doesn't
-    stall every other live session's ticks."""
+    """The MJCF and metadata of ``config`` (:func:`spiderpig.sim.mjcf.build_mjcf`) with, for
+    a model that walks (a free base), the steering check
+    (:func:`spiderpig.sim.run.steering_check`, ``meta["steering"]``: what the hello tells
+    the viewer it may send): what a worker process runs, so one client's model build (OCCT
+    holds the GIL for seconds; the check's recording loop too) doesn't stall every other
+    live session's ticks."""
     from spiderpig.sim.mjcf import build_mjcf
     from spiderpig.sim.run import steering_check
 
     xml, meta = build_mjcf(config)
-    meta["steering"] = steering_check(config, xml=xml, meta=meta)
+    if meta.get("freejoint"):
+        meta["steering"] = steering_check(config, xml=xml, meta=meta)
     return xml, meta
 
 
@@ -965,16 +971,18 @@ def _build_mjcf_in_process(config: BuildConfig) -> tuple[str, dict]:
 
 
 async def _live_model(config: BuildConfig):
-    """``(MjModel, meta)`` for ``config``, compiled (in a thread: the compile of a 120 KB
-    MJCF takes 25-50 ms, a frame-plus hitch for every other session on the loop) from an
-    MJCF built in a worker process (:mod:`spiderpig.workers`; in a thread when workers are
-    off). Concurrent requests for one design share the build. A build the watcher
-    outdated while it ran (the generation moved: the sources changed) is dropped and the
-    design built again, so a stale model is never adopted or served to the next client."""
+    """``(MjModel, meta)`` for ``config``'s model (:func:`spiderpig.sim.mjcf.model_config`: a
+    walker's whole robot, anything else as it is configured), compiled (in a thread: the
+    compile of a 120 KB MJCF takes 25-50 ms, a frame-plus hitch for every other session on
+    the loop) from an MJCF built in a worker process (:mod:`spiderpig.workers`; in a
+    thread when workers are off). Concurrent requests for one design share the build. A
+    build the watcher outdated while it ran (the generation moved: the sources changed) is
+    dropped and the design built again, so a stale model is never adopted or served to the
+    next client."""
     from spiderpig import workers
     from spiderpig.sim import mjcf, run
 
-    key = replace(config, robot=True)
+    key = mjcf.model_config(config)
     while True:
         have = mjcf.cached_model(key)
         if have is not None:
@@ -998,7 +1006,10 @@ async def _live_model(config: BuildConfig):
             log.info("sim: the sources changed while %s built: building it again", key.key)
             continue
         model, meta = await asyncio.to_thread(mjcf.adopt_mjcf, key, mjcf.SimParams(), xml, meta)
-        if "steering" not in meta:                  # a model this process built for something else
+        if not meta.get("freejoint"):               # fixed: nothing walks, nothing to steer
+            log.info("sim: %s: fixed; drives %s", key.key, list(meta["actuators"]))
+            return model, meta
+        if "steering" not in meta:                 # a model this process built for something else
             meta["steering"] = await asyncio.to_thread(
                 run.steering_check, key, mjcf.SimParams(), xml=xml, meta=meta)
         steer = meta["steering"]
@@ -1009,31 +1020,57 @@ async def _live_model(config: BuildConfig):
         return model, meta
 
 
-def _valid_cmd(msg) -> tuple[float, float]:
-    """``[left, right]`` out of a client's message: two finite numbers, else a
-    ``ValueError`` with the reason (a NaN or a string would stall the solver)."""
+def _valid_cmd(msg) -> tuple[float, ...]:
+    """The crank speeds out of a client's message: a list of finite numbers (one per crank:
+    the session checks how many), else a ``ValueError`` with the reason (a NaN or a string
+    would stall the solver)."""
     cmd = msg.get("cmd")
-    if not isinstance(cmd, (list, tuple)) or len(cmd) != 2 \
-            or not all(isinstance(v, (int, float)) and math.isfinite(v) for v in cmd):
-        raise ValueError(f"cmd must be [left, right], two finite numbers; got {cmd!r}")
-    return float(cmd[0]), float(cmd[1])
+    if not isinstance(cmd, (list, tuple)) or not cmd or not all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+            for v in cmd):
+        raise ValueError(f"cmd must be a list of finite numbers, one per crank ([left, right] "
+                         f"for a walker); got {cmd!r}")
+    return tuple(float(v) for v in cmd)
+
+
+def _sim_config(query) -> BuildConfig:
+    """The design a ``/ws/sim`` query asks for: as ``/api/glb``'s (``mode``, the view on
+    screen, :data:`MODES`: the robot or one side), else the design's own robot or side
+    (``BuildConfig.robot``'s default, the linkage's). A walker's model is its whole robot
+    whatever is asked (:func:`spiderpig.sim.mjcf.model_config`)."""
+    mode_id = query.get("mode")
+    fixed: dict = {}
+    if mode_id is not None:
+        if mode_id not in MODES:
+            raise ValueError(f"unknown mode {mode_id!r}; one of {sorted(MODES)}")
+        mode = MODES[mode_id]
+        fixed["robot"] = mode.robot
+        if mode.module:
+            fixed["module"] = mode.module
+    return _config_from_query(query, **fixed)
 
 
 @app.websocket("/ws/sim")
 async def ws_sim(websocket: WebSocket) -> None:
-    """Drive the robot in MuJoCo live (:mod:`spiderpig.sim.live`): the design comes from
-    the query (as ``/api/glb/robot``'s). The server answers with ``{"status":
-    "building", "elapsed": s}`` while the model builds (in a worker process; every
-    second), then a JSON ``hello`` (the bodies, the glb node -> body map, the ``design``
-    it simulates, the steering check's verdict with its straight-run ``forward``) or
+    """Drive a design in MuJoCo live (:mod:`spiderpig.sim.live`), whatever its kind: the
+    design comes from the query (as ``/api/glb``'s; ``mode``, the view on screen, picks the
+    robot or one side, else the design's own: :func:`_sim_config`). The server answers
+    with ``{"status": "building", "elapsed": s}`` while the model builds (in a worker
+    process; every second), then a JSON ``hello`` (the bodies, the glb node -> body map,
+    the ``design`` it simulates, the frame's ``columns``; what drives it: ``drives``, its
+    cranks, and ``joints``, its stepped joints with their ranges; what it has: ``walks``,
+    ``feet``, ``sites``; a walker's steering check with its straight-run ``forward``) or
     ``{"error": ...}`` and a close, then one binary frame per tick at
     :data:`SIM_FPS` in real time (deadline-ticked; the physics steps in a thread). The
-    client sends ``{"cmd": [left, right]}`` (fractions of the servo's speed) and
-    ``{"reset": true}``, from the first message on (one sent while the model builds is
-    applied before the hello); a malformed message gets ``{"error": ...}`` back and the
-    session goes on. When the sources change the session says ``{"status": "stale"}`` and
-    closes (the viewer reconnects to the rebuilt model); a failure inside the physics
-    says ``{"error": ...}`` and closes 1011 (this session only). With
+    client sends ``{"cmd": [...]}`` (each crank's speed, a fraction of its servo's: a
+    walker's ``[left, right]``, a mechanism's ``[speed]``), ``{"joints": {"q2": 40}}``
+    (stepped joints' angles in degrees, as ``/api/pose``'s ``j.``) and ``{"reset":
+    true}``, from the first message on (one sent while the model builds is applied before
+    the hello); a malformed message (a command for a drive the design lacks too) gets
+    ``{"error": ...}`` back and the session goes on. When the sources change the session
+    says ``{"status": "stale"}`` and closes (the viewer reconnects to the rebuilt model); a
+    failure inside the physics says ``{"error": ...}`` and closes 1011 (this session
+    only). With
     :data:`SIM_MAX_SESSIONS` sessions already streaming, ``{"error": "busy: ..."}`` and
     close 1013."""
     global _SIM_SESSIONS
@@ -1050,7 +1087,7 @@ async def ws_sim(websocket: WebSocket) -> None:
     _SIM_SESSIONS += 1
     try:
         try:
-            config = _config_from_query(websocket.query_params, robot=True)
+            config = _sim_config(websocket.query_params)
             sim, early_errors = await _build_for(websocket, config, LiveSim)
         except (ValueError, HTTPException) as e:
             log.info("sim: no model: %s", e)
@@ -1085,13 +1122,15 @@ async def ws_sim(websocket: WebSocket) -> None:
 
 def _apply(sim, msg: dict) -> None:
     """One client message onto ``sim`` (a reset is asked for, a command validated and
-    stored); ``ValueError`` for a malformed one."""
+    stored: crank speeds, joint angles); ``ValueError`` for a malformed one."""
     if not isinstance(msg, dict):
         raise ValueError("a message is a JSON object")
     if msg.get("reset"):
         sim.request_reset()
     if "cmd" in msg:
         sim.set_command(*_valid_cmd(msg))
+    if "joints" in msg:
+        sim.set_joints(msg["joints"])
 
 
 async def _build_for(websocket: WebSocket, config: BuildConfig, make):
