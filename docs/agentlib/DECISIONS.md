@@ -1762,9 +1762,14 @@ their numbers.
       The floating inner plate can't turn their ends back, so the box sways and pillar O2
       bends as a near cantilever: 47.9 N·m against 26.7.
     - The gearbox turns the outer plate at O while the pillars carry the force 54 mm up.
-  - The fix is a box toward the rear: columns along the rail and an inner-plate chord to them.
-    Modelled, it takes B's posts to 1.43-2.55, with the inner plate's leg and the last column
-    still short.
+  - **Open item: the side frames at the cap** (`cradle_report.OPEN_AT_CAP`). The fix is a box
+    toward the rear, modelled on B and not built:
+    - 12 mm columns stand along the rail at 60, 180 and 290 mm behind the mouth;
+    - the inner plate runs a bottom chord from D2 to them.
+
+    That takes B's pillars O1 and O2 and column D2 to 1.43, 1.58 and 2.55. Three parts stay
+    under 1.3 and want one more iteration: the inner plate's leg D1-D2 in its plane (0.86),
+    the outer plate's O2-Fr (1.08) and the last rail column (1.17).
   - **It is not built**, for three reasons. It redesigns the stand round the gearbox's mount,
     which the round's drive is changing (NRV050). The pack and the guide change with it. And
     it is a cost the user should see first.
@@ -1841,12 +1846,34 @@ their numbers.
 - **The BOM's laser size** is the flat blank for a product (minor 8).
 - **The links' shapes (parts M3, M4, minor 1, minor 4).**
   - The rods b1 are 26 mm wide (`config.PRODUCT_CHORD_R`): SendCutSend's free deburr.
-  - Each product link's outline is closed and its sharp corners filleted, the closing claimed
-    through points fixed to the link (`stack.Topology.add_link_points`). b6's window is gone
-    and its elbows rounded; b2's window corners are rounded.
-  - Bosses (`config.PRODUCT_BOSS_R`): b1 at M, B's b2 at O2 and b3 at O1, A's b2 at G.
+  - **Fillets.** Each product link's chords and bosses are closed: grown by a radius and
+    shrunk back (`plates.product_outline`). So every inside corner, elbow, boss cusp and
+    window corner is rounded to that radius, and a window narrower than twice it is filled.
+    - The radius is R15 (`plates.PRODUCT_FILLET_R`). B's cradle link b6 and A's b2 are R18
+      (`plates.PRODUCT_FILLETS`).
+    - b6's sliver window is gone and its elbows are rounded (the review's priced shape). A's
+      b2 loses both its windows. B's b2 keeps its window, its three corners rounded R15.
+    - What the closing adds is claimed as pills on points fixed to the link
+      (`stack.Topology.add_link_points`, `plates.Outline`), standing at most 1 mm off the
+      outline into the air (3 mm into a window the link keeps). `Build.xy` places those
+      points, and `verify_plan` re-samples them. So the planner checks the fillets against
+      everything over the turn, as it checks a chord.
+  - **Bosses** (`config.PRODUCT_BOSS_R`), each a disc claimed as one. They bring the cut
+    rules' hole-to-edge warnings up to SendCutSend's 2 t for 7075:
+    - b1 at M, r 15.8 (9.6 mm of web, 1.5 t of 0.250 in);
+    - B's b2 at O2 and b3 at O1, and A's b2 at G, r 17 (10.8 mm, 2.2 t).
+  - **Checked on the design, 7,200 samples of the turn**, each link's cut outline against
+    every other claim in its layer:
+    - Nothing comes within the planner's 1 mm margin.
+    - A's b2 passes a stand column at 5.3 mm.
+    - B's b2 P end passes b3 at 1.93 mm, the same as before the change (minor 5).
+    - B's b6 passes 2.8 mm outside pillar O1's head claim, in plan (minor 3). O1 ends at b3:
+      its 18 mm printed ring is two layers under b6, and its M6 head and washer stop 3.5 mm
+      under b6, 5.0 mm away at rest as fabricated. The review's 0.73 mm was in plan, to the
+      ring.
+    - Each link lies inside its claims (`construction.contract`).
   - The board's notch points, the locator's ears and the cleats' ends are rounded.
-  - For products only: the walkers' identity gate was identical (the helper's run).
+  - Products only. The walkers' identity gate against `planner-f667d6b` is identical.
 - **Where:** `spiderpig/cradle_structure.py`, `spiderpig/cradle_report.py`,
   `spiderpig/cradle_drive.py`, `spiderpig/strength.py`, `spiderpig/construction/cradle.py`,
   `spiderpig/construction/pivots/standoff.py`, `spiderpig/construction/plates.py`,

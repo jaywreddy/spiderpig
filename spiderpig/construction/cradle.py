@@ -1826,7 +1826,7 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     l_side = _m5_length(wall + t_frame + M5_NUT[1])
     inner = face - sign * t_frame
     nut_z = sorted((inner, inner - sign * M5_NUT[1]))
-    side_screw = _screw((fx, fy), face + sign * wall, sign, l_side)
+    side_screw = _screw((fx, fy), face + sign * wall, sign, l_side, M5)
     side_nut = _nut((fx, fy), *nut_z)
     # a carriage bolt up from under the base board (its square neck in the board's square
     # hole: it can't turn), through the foot, its washer and knob on the foot from above
@@ -1943,7 +1943,7 @@ def _toggle_flag(o_xy, screws: list[tuple[float, float]], face: float, sign: int
     length = _m5_length(t + t_frame + M5_NUT[1])
     hw = []
     for i, p in enumerate(screws):
-        hw.append((_screw(p, face + sign * t, sign, length), M5.key(length), f"screw{i}"))
+        hw.append((_screw(p, face + sign * t, sign, length, M5), M5.key(length), f"screw{i}"))
         inner = face - sign * t_frame
         hw.append((_nut(p, *sorted((inner, inner - sign * M5_NUT[1]))), "m5_nut", f"nut{i}"))
     return flag, hw
