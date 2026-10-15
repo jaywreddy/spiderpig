@@ -12,8 +12,11 @@ The numbers are the Spec's targets where the Spec has them (:data:`TASK_FIELDS`'
 into the Spec's own vocabulary. A bare number is the bound the task means (a stride's
 least, a repeatability's most: :attr:`TaskField.bound`); a target object
 ``{min, max, value, tol, hard}`` says it exactly. The task's own geometry (``area_mm``,
-``height_mm``, ``points_mm``, ``path_mm``, ``obstacle_mm``) has no Spec field: the
-candidates' checks read it. Like a Spec, a task is validated whole: unknown fields, a
+``height_mm``, ``points_mm``, ``path_mm``, ``obstacle_mm``) has no target field: the
+candidates' checks read it, and each candidate's spec carries the task whole (the Spec's
+``task`` section, in the design's id), so ``verify`` re-checks it on the planned and built
+design (its ``task.*`` rows: :func:`spiderpig.verify.task_rows`). Like a Spec, a task is
+validated whole: unknown fields, a
 field of another task and wildcards are errors with the nearest allowed key
 (:func:`validate`, :class:`spiderpig.spec.SpecErrors`).
 """

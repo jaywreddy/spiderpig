@@ -49,6 +49,7 @@ from spiderpig import linkage
 from spiderpig.config import BuildConfig
 from spiderpig.kinematics import RobotTree, rigid_about
 from spiderpig.mechanism import Mechanism
+from spiderpig.spec import urdf_unsupported
 
 ROOT = "base_link"
 FRAME = "robot_frame"
@@ -114,14 +115,9 @@ def _fit(rel: np.ndarray, x: np.ndarray, names: tuple[str, ...]) -> tuple[dict[s
 
 def unsupported(lk: linkage.Linkage) -> str:
     """Why ``lk``'s designs export no URDF (module docstring: by capability, its inputs'
-    ranges), or ``""`` when they do."""
-    if lk.ranged:
-        return ""
-    why = ("it walks on its feet (no fixed base_link)" if lk.walks else
-           "its joints follow a crank's full turn, which a URDF tree can only table")
-    return (f"{lk.key} has no URDF: the URDF is a ranged linkage's (inputs over ranges on a "
-            f"fixed base, Linkage.ranged) and {why}; its MuJoCo model is the export that "
-            f"holds it (mjcf)")
+    ranges), or ``""`` when they do: :func:`spiderpig.spec.urdf_unsupported`, which
+    ``resolve`` (a spec's ``outputs``) and ``export`` (the format) read too."""
+    return urdf_unsupported(lk)
 
 
 def model(mech: Mechanism, config: BuildConfig, t: float) -> UrdfModel:

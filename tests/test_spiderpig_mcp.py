@@ -763,7 +763,7 @@ def test_r5_view_refuses_a_design_that_cannot_be_built_and_resolve_warns_of_a_se
     r = call(server, "resolve", spec={"kind": "mechanism", "linkage": {"key": "five_bar"}})
     assert r["ok"]
     (w,) = r["warnings"]                                                       # entry 4
-    assert w.startswith("five_bar has 2 inputs (t, t2) and v1 builds one drive")
+    assert w.startswith("five_bar has 2 inputs (t, t2) and t2 declares no drive")
     rec = call(server, "recommend", design=r["design"])
     assert rec["stage"] == "drive"
     assert rec["notes"][-1].startswith("no fix: five_bar")

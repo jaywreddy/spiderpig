@@ -29,6 +29,7 @@ from spiderpig.materials import link_sheets
 from spiderpig.spec import (
     ALLOWANCE,
     FIT_FIELDS,
+    OUTPUTS,
     PAYLOAD,
     SECTIONS,
     Spec,
@@ -37,6 +38,7 @@ from spiderpig.spec import (
     default_module,
     effective_hard,
     legs_robot,
+    urdf_unsupported,
     validate,
 )
 from spiderpig.store import PROJECT, Store
@@ -48,6 +50,11 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
     its :class:`config.BuildConfig` and return the :class:`Design` handle. The inferred
     values are in ``design.resolved`` (the complete spec the id is computed from);
     :class:`SpecErrors` lists everything wrong with an invalid spec.
+
+    A spec whose ``outputs`` name a format its linkage can't have is refused with the
+    reason (``urdf``: :func:`spiderpig.spec.urdf_unsupported`); a spec's ``task`` is
+    written into ``design.resolved`` as given (it enters the id; a spec without one keeps
+    the id it had).
 
     ``store``: where the design and every stage's result are kept: the project store
     by default (``$SPIDERPIG_STORE``, else ``./.spiderpig``, created now), a path, a
@@ -61,6 +68,9 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
         if errors:
             raise SpecErrors(errors)
     lk = linkage.get(spec.linkage.key)
+    if "urdf" in spec.outputs and (why := urdf_unsupported(lk)):
+        raise SpecErrors([SpecError(f"outputs[{spec.outputs.index('urdf')}]", why,
+                                    tuple(o for o in OUTPUTS if o != "urdf"))])
     module = spec.legs.module or default_module(lk)
     robot = legs_robot(lk, {"robot": spec.legs.robot, "sides": spec.legs.sides})
     robot = default_robot(lk.key) if robot is None else robot
@@ -112,7 +122,7 @@ def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
     if lk.walks and sides == 1:
         warnings.append("legs.robot false builds one side (no chassis); the walk metrics "
                         "still model the two-sided robot")
-    if len(lk.inputs) > 1 and not lk.ranged:      # (an arm's inputs are its drives')
+    if undriven_inputs(lk):         # (an arm's inputs are its drives'; a declared one's too)
         warnings.append(second_input_note(lk))
     if servos.get(config.servo).speed_rpm is None:
         warnings.append(f"servo {config.servo} lists no speed: speed_mm_s assumes "
@@ -134,16 +144,32 @@ def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
 THICKNESS_TOLERANCE = 0.12     # a measured thickness this far from the sheet's nominal warns
 
 
+def undriven_inputs(lk) -> tuple[str, ...]:
+    """A cranked linkage's inputs past its crank that declare no drive
+    (:attr:`linkage.Linkage.drives`): the crank's servo turns the first, a declared one gets
+    a stepper's ``JointDrive`` beside it (``construction._joint_drives``), and the drive
+    stage stops at any other (``second_input_no_drive``). An arm's inputs are all its
+    drives': none."""
+    if lk.ranged:
+        return ()
+    return tuple(k for k in lk.inputs[1:] if k not in lk.drives)
+
+
 def second_input_note(lk) -> str:
-    """What a two-input mechanism gets told, at ``resolve`` and at the ``drive`` stage: v1
-    builds one drive, so it can be resolved, checked for its program and its output, and
-    drawn, but not planned or built; which one-input mechanisms can."""
+    """What a cranked linkage with an input that declares no drive (:func:`undriven_inputs`:
+    the five-bar's ``t2``) gets told, at ``resolve`` and at the ``drive`` stage: it can be
+    resolved, checked for its program and its output, and drawn, but not planned or built
+    until the linkage declares that input's drive; which one-input mechanisms can."""
     others = [k for k in linkage.available("mechanism")
               if len(linkage.get(k).inputs) == 1]
-    return (f"{lk.key} has {len(lk.inputs)} inputs ({', '.join(lk.inputs)}) and v1 builds one "
-            f"drive: check reads its program and its output, but plan, build, verify and "
-            f"export stop at the drive stage (second_input_no_drive), a limit of v1, not of "
-            f"the spec; the one-input mechanisms are {', '.join(others)}")
+    free = undriven_inputs(lk)
+    return (f"{lk.key} has {len(lk.inputs)} inputs ({', '.join(lk.inputs)}) and "
+            f"{', '.join(free)} declare{'s' if len(free) == 1 else ''} no drive (the crank's "
+            f"servo turns {lk.inputs[0]}; an input past it is driven where the linkage "
+            f"declares its link and frame joint, Linkage.drives, a stepper's JointDrive): "
+            f"check reads its program and its output, but plan, build, verify and export "
+            f"stop at the drive stage (second_input_no_drive), a limit of the linkage's "
+            f"declaration, not of the spec; the one-input mechanisms are {', '.join(others)}")
 
 
 def _attach_store(design: Design, store: Store | None) -> None:
@@ -228,6 +254,8 @@ def _resolved(spec: Spec, config: BuildConfig, module: str, sides: int) -> dict:
         "outputs": list(spec.outputs),
         # (only when the spec asks: a design without precision targets keeps its id)
         **({"precision": targets["precision"]} if targets["precision"] else {}),
+        # (likewise: the task it was written for, what verify's task.* rows re-check)
+        **({"task": dict(spec.task)} if spec.task is not None else {}),
     }
 
 

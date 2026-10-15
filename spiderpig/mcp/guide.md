@@ -127,7 +127,16 @@ ISO 9283 RP, `precision.rp_mm`, what a maker quotes, where the design has one (a
 positioner), else the worst-case `precision.repeatability_mm`, which stays beside RP as
 `numbers.bound_mm`); the task's own geometry (`area_mm`, `points_mm`, `height_mm`,
 `path_mm` (`[x, y]` in the output's plane), `obstacle_mm` (raises a `lift_mm`'s min, the
-rest of it kept)) is read by the checks.
+rest of it kept)) is read by the checks. Each candidate's spec carries the task whole (its
+`task` section, in the design's id), so `verify` re-checks the task on the design itself,
+hard rows beside its targets: `task.area_mm` (or `task.points_mm`) and `task.height_mm`
+against where the planned robot's tool gets down to the bench and how high it lifts over
+the area (the turret's plan, `estimated`); `task.path_mm` (else an arm's `task.stroke_mm`)
+traced by an arm's inverse kinematics at the design's proportions (`measured`) or against a
+crank's output check; an arm's `task.straightness_mm`, the traced band plus the budget's
+lost motion (`estimated` at `standard`; at `quick`, without the lost motion, a `bound`).
+A bound refutes but never confirms: a met one stays in `unverified`. So candidates ->
+resolve -> verify `standard` can confirm a place or a trace task, not only a walk.
 
 <<TASKS>>
 

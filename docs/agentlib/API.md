@@ -31,17 +31,19 @@ candidate's spec targets; the task's own geometry (`area_mm`, `points_mm` (their
 `height_mm`, `path_mm` (`[x, y]` in the output's plane: its principal-axis length a
 stroke, a straight one a straightness within `tol_mm`), `obstacle_mm` (a lift and a ground
 clearance: a `lift_mm` the task gives keeps its max, tol, weight and hardness, its min
-raised to the obstacle)) is read by the checks.
+raised to the obstacle)) is read by the checks, and each candidate's spec carries the task
+whole (the Spec's `task` section): `verify` re-checks its geometry on the planned and built
+design (the `task.*` rows, "VerifyReport" below).
 
 | field | task | bare number | spec target |
 |---|---|---|---|
 | `stride_mm`, `speed_mm_s`, `lift_mm` | walk | min | `motion.*` |
 | `obstacle_mm` | walk | (plain) | `motion.lift_mm`, `motion.ground_clearance_mm` min |
-| `area_mm` `[w, d]`, `points_mm`, `height_mm` | place | (geometry) | - |
+| `area_mm` `[w, d]`, `points_mm`, `height_mm` | place | (geometry) | none: the spec's `task`, verify's `task.area_mm` / `task.points_mm` and `task.height_mm` |
 | `payload_g` | place | (plain) | `precision.payload_g` (ranged inputs) |
 | `repeatability_mm`, `accuracy_mm` | place, trace | max | `precision.rp_mm` (ISO 9283 RP) where the design has one, a positioner; else `precision.repeatability_mm` (the worst-case bound); `precision.accuracy_mm` |
-| `motion`, `path_mm`, `tol_mm` | trace | (geometry) | - |
-| `stroke_mm`, `on_line_fraction`, `swing_deg`, `dwell_deg` / `straightness_mm`, `rotation_deg` | trace | min / max | `motion.*` (a cranked output's; an arm's stroke and straightness are its controller's, checked, no target) |
+| `motion`, `path_mm`, `tol_mm` | trace | (geometry) | none: the spec's `task`, verify's `task.motion` and `task.path_mm` |
+| `stroke_mm`, `on_line_fraction`, `swing_deg`, `dwell_deg` / `straightness_mm`, `rotation_deg` | trace | min / max | `motion.*` (a cranked output's; an arm's stroke and straightness are its controller's, no target: verify's `task.stroke_mm`, `task.straightness_mm`) |
 | `cost_usd`, `mass_g` | every task | max | `budget.cost_usd`, `size.mass_g` |
 
 `api.candidates(task, store=PROJECT, *, measure=0, limit=None)` returns a
@@ -100,7 +102,8 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | `constructions.<role>` | a later role of `spiderpig.roles` that applies to the kind (`--<role>` on the command line), e.g. `controller`: a walker's `esp32_bus_servo` (the electronics deck's board, battery and harness) or `none` (your own: the deck bare); a mechanism's the same board, bought as lines and wired in its last step (no deck); a DYNAMIXEL servo's `u2d2_dynamixel`; an arm's `skr_pico_pi_zero` or `none`; a board that can't drive the design's motors fails at `construction` | the role's default for the design (a walker's `controller` is its `implicit` key: not written into `design.resolved`, so the walkers' ids stayed) |
 | `fit.*` | every `construction.base.Params` field (`margin`, `link_radius`, `frame_radius`, `min_wall`, `running_fit`, `glue_fit`, `print_fit`, `axle_d`, `spacer_d`, `neck_d`, `head_d`, `crankpin_d`, `web_radius`, `journal_d`, `stub_d`, `hub_thickness`, `servo_screw_web_t`), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults; kerf each sheet's service's (0 SendCutSend, 0.2 Ponoko); the sheet stock's size |
 | `precision.payload_g` | an arm's load at the tool in grams (a plain number beside the precision targets, not a target; refused for a linkage without ranged inputs) | 50 (`repeatability.PAYLOAD_G`): the payload sag, the ISO RP's gravity seating and the strength check's static loads assume it |
-| `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf` (the MuJoCo model and its `.json` metadata, every kind's: `sim.mjcf`), `urdf` (a ranged linkage's URDF for ROS, its meshes and joint map; a crank's design has none: `urdf.unsupported` says why) | `[step, stl, print, dxf, bom]` |
+| `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf` (the MuJoCo model and its `.json` metadata, every kind's: `sim.mjcf`), `urdf` (a ranged linkage's URDF for ROS, its meshes and joint map; a crank's design has none: `resolve` refuses it in `outputs` with `urdf.unsupported`'s reason, an `invalid_spec` at `outputs[i]`) | `[step, stl, print, dxf, bom]` |
+| `task` | the task the spec was written for (a Task document, `task_schema()`; `candidates` writes it): validated whole (paths under `task.`), the linkage able to do it (a walk needs feet, a place or a trace an output); `verify` re-checks its geometry (the `task.*` rows) | none; when given it enters the design's id (a spec without one keeps its id), not the side's plan (`design.side_hash`) |
 
 Every metric under `motion`, `size`, `budget` and `precision` is a **Target**
 `{min?, max?, value?, tol?, weight: 1, hard?}` (a bare number is rejected). `value` is
@@ -169,7 +172,7 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 | `attach_build(design, mech, t)` | `BuildReport` | adopt a fabricated mechanism (a store, a test fixture) | 2 s |
 | `recheck(design, all_parts=False)` | `RecheckReport`: `edited`, `checked`, `contract`, `clashes`, `bad_solids`, `notes` (an edited part whose volume is still the build's: the cut missed it) | `contract.bad_solids`, `clashes`, edited parts inside their claims | 1-5 s |
 | `verify(design, level)` | `VerifyReport` (below) | quick: check + plan + walk + the output's precision without fabricating (a stored `precision` report when there is one); standard: + build, the whole precision budget, the joints' strength (every kind), contract at t = 0 and 3.2, clash and solids at the build's t, `verify_plan`, DXF pack, BOM; full: the audit's four contract angles, clashes at 1 and 4.38, and MuJoCo when it imports (its own rows: `sim.speed_mm_s` and `sim.stride_mm` measured over 4 s at the drives' full speed, beside the walk model's `motion.*` rows, `sim.stays_up`, `sim.torque`; any other design: `sim.holds`, held at its pose under gravity with its payload, an arm's `PAYLOAD_G` unless its spec says, and a cranked one's `sim.torque`, its crank turned once at full speed, the peak against the stall; a purchased model the mesher can't triangulate everywhere, the XL330's, meshes face by face as the bake does) | 1 s / 30-45 s / 85 s |
-| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest`, `warnings` (what the bake and the constructions warned about: a purchased model's faces the mesher skipped) | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf` as the packed sheets, `bom`) plus `glb` (the viewer bake), `mjcf` and an arm's `urdf`, and what a maker reads (`api.MAKE_FORMATS`, export formats only, never a spec's `outputs`): `guide` (`ASSEMBLY.pdf` and `ASSEMBLY.md`, `guide.make.build_guide`, cached beside the fabrication), `control` (`control/`: one dispatch on what drives the design, `control.files.write`: a crank's bus servos' `servos.json`, an arm's steppers' Klipper `printer.cfg`, and either's `HOMING.md`) and `order` (`ORDER.md` with the per-part DXFs of `laser/parts/` it uploads and the `print/` STLs it lists); always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where; a recorded export of these formats or more into the same folder, its files all still there, is returned as is | 5-60 s (the BOM's grouping dominates); `guide` a minute cold, seconds cached |
+| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest`, `warnings` (what the bake and the constructions warned about: a purchased model's faces the mesher skipped) | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf` as the packed sheets, `bom`) plus `glb` (the viewer bake), `mjcf` and an arm's `urdf`, and what a maker reads (`api.MAKE_FORMATS`, export formats only, never a spec's `outputs`): `guide` (`ASSEMBLY.pdf` and `ASSEMBLY.md`, `guide.make.build_guide`, cached beside the fabrication), `control` (`control/`: one dispatch on what drives the design, `control.files.write`: a crank's bus servos' `servos.json`, an arm's steppers' Klipper `printer.cfg`, and either's `HOMING.md`) and `order` (`ORDER.md` with the per-part DXFs of `laser/parts/` it uploads and the `print/` STLs it lists); always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where; a recorded export of these formats or more into the same folder, its files all still there, is returned as is; it plans and builds first when nothing is built, whatever the formats (`guide`, `control` and `order` read the planned side too); `urdf` asked of a crank's design raises `ValueError` with `urdf.unsupported`'s reason (a spec stored with it before `resolve` refused it only skips it, with that reason as a warning) | 5-60 s (the BOM's grouping dominates); `guide` a minute cold, seconds cached; a design never planned adds its plan first: an arm's is minutes cold (the MCP's `export` is a job for it) |
 | `load(id, store=PROJECT)` | `Design` | the recorded design (the id must hash to its record); reports load as the operations ask | ms |
 | `derive(design, patch)` | `Design` | `resolve(apply_patch(spec, patch))` with `derived_from` and the patch recorded | ms |
 | `compare(a, b)` | dict | the merge patch between two specs (and resolved specs), whether one derives from the other, every differing value per stage report | ms |
@@ -308,9 +311,32 @@ skipping timings, tables and texts. `Store(root)` itself exposes the files
 
 ```
 VerifyReport {level, ok, score, rows: [Row], failures: [Failure], unverified: [str], seconds}
-Row {requirement, source, value, target, pass, tier: proven|measured|estimated, hard,
+Row {requirement, source, value, target, pass, tier: proven|measured|estimated|bound, hard,
      detail, score?, weight, unit}
 ```
+
+**The task's rows.** A spec that carries its task (`task`, what `candidates` writes)
+gets it re-checked on the design beside its targets (`verify.task_rows`, hard, at
+`quick` once the plan exists and at `standard`; `verify.task_requirements` lists what
+the task asks, and a level that doesn't reach a row leaves it `unverified`):
+
+| row | task | value | tier |
+|---|---|---|---|
+| `task.area_mm` (`task.points_mm` when the points give the area) | place | the slack (mm) of the area in the band where the planned robot's tool gets down to the bench, over its turntable's yaw (`tasks.bench_reach`: the turret plan's band, `base_pair.table_reach`; `tasks.sector_place`) | `estimated` (the plan's band, its inputs' box sampled); its side alone (no turret, no yaw) a `bound` that refutes: it sweeps a plane |
+| `task.height_mm` | place, rising | how high the tool's tip lifts over the bench everywhere the area spans (`tasks.rise_over`: the least, over radial bins, of the highest pose) | `estimated` |
+| `task.path_mm` | trace, a path | an arm's: the path solved by its inverse kinematics at the design's proportions, a waypoint every `tasks.SEG_MM` (`tasks.trace_path`); a crank's: its output's stroke against the path's length, its band against `tol_mm` for a straight path | `measured`; a crank's curved path is checked by its length only, a `bound` |
+| `task.stroke_mm` | trace, an arm, a stroke and no path | a line of the stroke traced as above | `measured` |
+| `task.straightness_mm` | trace, an arm, a straight path or a stroke | the tip's band across the line plus twice the worst-case lost motion of a complete precision budget (`precision.repeatability_mm`) | `estimated`; without a complete budget (`quick`) the band alone, a `bound` |
+| `task.motion` | trace, a motion | the output's motion (an arm's drives coordinated: a line, a path, an xy) | `proven` |
+
+A **bound** is a necessary condition: a miss refutes (the row fails, hard), a met bound
+confirms nothing (the row is informational, soft, and its requirement stays in
+`unverified`). A walk task's numbers are the spec's targets (no rows), as is a cranked
+trace task's stroke or straightness without a path (`motion.*`, soft by default: give the
+task a target object with `hard: true` to make a miss fail). So `candidates ->
+resolve(candidate.spec) -> verify(design, "standard")` confirms a place task on the
+approved arm (the area and its rise `estimated`, `ok`) and a trace task on a mechanism (its
+path `measured`).
 
 `ok` is false when any hard row fails or any stage failed; `score` is the weighted mean
 over the soft targets of `max(0, 1 - miss / |bound|)`. Rows without a target are
@@ -450,7 +476,7 @@ A design argument is the id `resolve` returned.
 | `precision(design, wait_seconds?)` | the `PrecisionReport` (`metrics`, `rows`, `budget`, `text`, `complete`); **a job** (an arm's side is fabricated for its links' tilt) |
 | `build(design, t?, wait_seconds?)` | the manifest: every part with `path` (its STEP in the store's `build/parts/`), `dir`, masses, envelope; **a job** |
 | `verify(design, level?, wait_seconds?)` | the `VerifyReport` (rows with `pass`, `tier`, `hard`); `quick` inline, `standard` / `full` **jobs** |
-| `export(design, formats?, out_dir?, wait_seconds?)` | `files` (paths) and `manifest`; **a job** |
+| `export(design, formats?, out_dir?, wait_seconds?)` | `files` (paths) and `manifest`; **a job** (it plans and builds a design first, whatever the formats: an arm never planned is minutes cold) |
 | `get_job(job)`, `wait_job(job, seconds?)` | the same shape as the long tool itself: while it runs, `job` alone (`{job, op, design, args, state, started_at, finished_at, seconds}`; its `job` field is the id these take); once done, the tool's own result flat beside `job`; failed, `ok: false` with the failure |
 | `compare(a, b)`, `derive(design, patch)` | as the Python API |
 | `get_design(design, stage?)` | `{ok, failures, design, stage, report}`: the stage's document under `report`, for `stage` one of `summary`, `spec`, `resolved`, `check`, `plan`, `walk`, `precision`,

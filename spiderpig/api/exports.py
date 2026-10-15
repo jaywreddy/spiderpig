@@ -27,6 +27,7 @@ from spiderpig.hardware.bom import bom_from_mechanism, group_made
 from spiderpig.hardware.catalog import sheet_name
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import save_sheets, sheet_lines
+from spiderpig.spec import urdf_unsupported
 from spiderpig.stages.planning import plan
 from spiderpig.stages.records import (
     WARNING_LOGGERS,
@@ -70,15 +71,19 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     part + ``parts.csv``), ``dxf`` (kerf-compensated sheets + ``parts.csv``), ``bom``
     (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (the MuJoCo model +
     its metadata, every kind's: :mod:`spiderpig.sim.mjcf`), ``urdf`` (an arm's URDF for
-    ROS, its meshes and joint map: :mod:`spiderpig.urdf`), ``guide`` (the assembly guide,
+    ROS, its meshes and joint map: :mod:`spiderpig.urdf`; asked of a crank's design it is
+    refused, a ``ValueError`` with :func:`spiderpig.spec.urdf_unsupported`'s reason, as
+    ``resolve`` refuses it in a spec's outputs), ``guide`` (the assembly guide,
     ``ASSEMBLY.pdf`` and ``ASSEMBLY.md``: :mod:`spiderpig.guide.make`), ``control`` (the
     controller's files in ``control/``, by what drives the design: a crank's bus servos'
     ``servos.json``, an arm's steppers' Klipper ``printer.cfg``, and either's ``HOMING.md``:
     :mod:`spiderpig.control.files`), ``order`` (``ORDER.md``, a cart per vendor, an upload
     per cutting service and the prints, with the files it names: ``laser/parts/`` and
     ``print/``: :mod:`spiderpig.hardware.order`);
-    and always ``manifest.json``. Builds first if nothing is built; a
-    sheet-packing failure is ``layout``, a catalog miss ``bom``. What the bake and the
+    and always ``manifest.json``. Plans and builds first if nothing is built (every
+    format, ``guide``, ``control`` and ``order`` included, reads the planned side: an arm's
+    plan is minutes cold, seconds once the store keeps it; the MCP's ``export`` is a job
+    for it); a sheet-packing failure is ``layout``, a catalog miss ``bom``. What the bake and the
     constructions warned about while writing (a purchased model's faces the mesher
     skipped) is on the report (``warnings``) and in the manifest. An export the store
     records for the same formats and folder, whose files are all still there, is
@@ -89,11 +94,16 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
 
 def _export(design: Design, formats, out_dir, force: bool) -> ExportReport:
     t0 = time.time()
+    asked = bool(formats)
     formats = list(formats or design.spec.outputs)
     have = formats_all()
     bad = [f for f in formats if f not in have]
     if bad:
         raise ValueError(f"unknown formats {bad}; have {list(have)}")
+    # a format the linkage can't have: refused when asked for, as resolve refuses it in a
+    # spec's outputs (a spec stored before that only skips it, with the same reason)
+    if "urdf" in formats and (why := urdf_unsupported(design.lk)) and asked:
+        raise ValueError(why)
     if out_dir is None:
         out_dir = design.store.exports_dir(design.id) if design.store else Path("build")
         if design.edited:       # not over the store's own exports (the unedited design's)
@@ -288,10 +298,8 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         files += _order_files(design, out, groups, bom, print_rows, labelled, title, kerf,
                               rep)
     if "urdf" in formats:
-        if not design.lk.ranged:
-            logging.getLogger("spiderpig.export").warning(
-                "urdf: %s is a %s: the URDF is an arm's (its inputs drive links over "
-                "ranges), so the format is skipped", cfg.linkage, design.kind)
+        if why := urdf_unsupported(design.lk):      # (a spec's own outputs: _export said)
+            logging.getLogger("spiderpig.export").warning("urdf skipped: %s", why)
         else:
             from spiderpig import urdf
 

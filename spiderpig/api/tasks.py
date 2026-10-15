@@ -27,10 +27,12 @@ evidence first, nothing fabricated:
    ``precision(design)``, a job); an arm's bench reach is then its turret's
    (:func:`construction.rotary.base_pair.table_reach`).
 
-Each candidate carries a ``spec``: the task's numbers as the Spec's targets (``resolve``
-takes it as is), and, where the linkage misses a length the task asks for, the ``scale``
-of its proportions that would meet it (unchecked: ``recommend`` re-plans a scale before
-it offers one).
+Each candidate carries a ``spec``: the task's numbers as the Spec's targets and the task
+itself (its ``task`` section: ``resolve`` takes it as is, and ``verify`` re-checks the
+task's geometry on the design, :func:`spiderpig.verify.task_rows` over
+:func:`bench_reach`, :func:`trace_path` and the output check), and, where the linkage
+misses a length the task asks for, the ``scale`` of its proportions that would meet it
+(unchecked: ``recommend`` re-plans a scale before it offers one).
 """
 
 from __future__ import annotations
@@ -61,6 +63,7 @@ from spiderpig.spec import (
     output_metrics,
     validate,
 )
+from spiderpig.stages.resolve import undriven_inputs
 from spiderpig.store import PROJECT, Store
 from spiderpig.task import TASK_FIELDS, Task
 
@@ -247,10 +250,13 @@ def _dof(lk: linkage.Linkage) -> tuple[int, str]:
 
 
 def _drivable(lk: linkage.Linkage) -> str:
-    """Why v1 can't build its drives, or ``""``: a cranked linkage turns one crank."""
-    if not lk.ranged and len(lk.inputs) > 1:
-        return (f"{len(lk.inputs)} cranked inputs: v1 drives one crank (plan stops at drive / "
-                "second_input_no_drive)")
+    """Why its drives can't be built, or ``""``: a cranked linkage's servo turns its crank,
+    and each input past it is driven only where the linkage declares that input's drive
+    (:attr:`linkage.Linkage.drives`, a stepper's ``JointDrive``:
+    :func:`spiderpig.stages.resolve.undriven_inputs`)."""
+    if free := undriven_inputs(lk):
+        return (f"{len(lk.inputs)} inputs, {', '.join(free)} declaring no drive "
+                "(Linkage.drives): the drive stage stops it (second_input_no_drive)")
     return ""
 
 
@@ -287,11 +293,21 @@ def sector_fit(w: float, d: float, lo: float, hi: float, span_deg: float | None
     of ``span_deg`` (``None``: no yaw, a band in the plane: depth only): the slack in mm (a
     negative one misses by that much) and how it is placed, the better of the two ways
     round."""
-    best = (-math.inf, "")
+    slack, how, _ = sector_place(w, d, lo, hi, span_deg)
+    return slack, how
+
+
+def sector_place(w: float, d: float, lo: float, hi: float, span_deg: float | None
+                 ) -> tuple[float, str, tuple[float, float]]:
+    """:func:`sector_fit` and where the rectangle then lies: ``(slack, how, (r_in,
+    r_out))``, the radii out from the axis its nearest and farthest points are at (what a
+    rise over the area is read over: :func:`rise_over`)."""
+    best: tuple[float, str, tuple[float, float]] = (-math.inf, "", (lo, hi))
     for across, deep in ((w, d), (d, w)):
         half = across / 2
         if span_deg is None:            # a line out from the axis: its depth only
             slack, how = (hi - lo) - deep, f"{deep:g} mm deep in a {hi - lo:.0f} mm band"
+            span = (lo, min(hi, lo + deep))
             if across > 0:
                 slack, how = -across, "no yaw: the output sweeps a plane, not an area"
         else:
@@ -299,10 +315,11 @@ def sector_fit(w: float, d: float, lo: float, hi: float, span_deg: float | None
             near = max(lo, half / math.tan(t)) if t < math.pi / 2 else lo
             far = math.sqrt(max(hi ** 2 - half ** 2, 0.0)) - deep
             slack = far - near
+            span = (near, min(hi, math.hypot(near + deep, half)))
             how = (f"{across:g} mm across, {deep:g} mm deep from {near:.0f} mm out "
                    f"(the far corners at {math.hypot(near + deep, half):.0f} of {hi:.0f} mm)")
         if slack > best[0]:
-            best = (slack, how)
+            best = (slack, how, span)
     return best
 
 
@@ -340,6 +357,65 @@ def _place_reach(c: Candidate, task: Task, band, yaw, tier: str, source: str) ->
                             None if yaw is None else yaw[1] - yaw[0])
     c.numbers["reach_band_mm"] = [round(lo, 1), round(hi, 1)]
     _need(c, "area_mm", slack, tier, source, how)
+
+
+BENCH_GRID = 81
+"""Poses a side of an arm's inputs' box :func:`bench_reach` reads (a finer grid than the
+turret plan's 41: the rise over an area is read per radius)."""
+RISE_BIN_MM = 4.0
+"""The radial bins :func:`rise_over` reads the tool's highest point in."""
+
+
+def bench_reach(design, n: int = BENCH_GRID) -> dict | None:
+    """Where a planned arm's robot gets its tool down to the bench its turret stands on,
+    and how high it lifts it there (the turret's plan, ``plans(side, config)``:
+    :func:`spiderpig.construction.rotary.base_pair.table_reach`): ``lo`` / ``hi`` the band
+    out from the yaw axis (``nan``: it never gets down), ``yaw_deg`` its turntable's range,
+    ``note`` the plan's words, and over the inputs' box (``n`` a side, the design's own
+    proportions) each pose's ``r_mm`` out from the axis and ``h_mm``, the tool's tip over
+    the bench. ``None`` when no turret stands under it (its side alone, a linkage whose
+    robot has no turret plan), no tool rides it, or it isn't planned."""
+    from spiderpig.construction.robot import LAYOUTS
+    from spiderpig.linkage.constraints import layout
+
+    lk, cfg = design.lk, design.config
+    key = robot_layout(lk)
+    if not key or not cfg.robot or design.side is None:
+        return None
+    plans = getattr(LAYOUTS[key], "plans", None)
+    if plans is None:
+        return None
+    tp, tool = plans(design.side, cfg)
+    if tool is None:
+        return None
+    pts = linkage.LegSolution(1, 0.0, cfg.values, lk.key).at(*lk.box(n))
+    f = np.asarray(pts[layout(lk).output_point], dtype=float).reshape(-1, 2)
+    tip = (f[:, 1] - design.side.ctx.topo.geometry.lateral.get(tool.point, 0.0)
+           - tool.tool.drop())
+    return {"lo": float(tp.h.get("reach_lo", math.nan)),
+            "hi": float(tp.h.get("reach_hi", math.nan)),
+            "yaw_deg": tuple(tp.range_deg), "keep_r": float(tp.keep_r),
+            "note": next((x for x in tp.notes if "bench" in x), ""),
+            "r_mm": f[:, 0] - tp.x_a, "h_mm": tip - tp.y_ground}
+
+
+def rise_over(r: np.ndarray, h: np.ndarray, r_in: float, r_out: float,
+              bin_mm: float = RISE_BIN_MM) -> tuple[float, float] | None:
+    """How high a tool lifts everywhere between ``r_in`` and ``r_out`` out from its axis:
+    over radial bins of ``bin_mm``, the highest ``h`` of the poses in each, the least of
+    them, and the radius of that bin; ``None`` when no pose lies in the span. (At a radius
+    an arm's reach in height is one interval; the band says it gets down to the bench
+    there, so this is the rise it can make over every point of the area.)"""
+    edges = np.arange(r_in, max(r_out, r_in + 1e-9) + bin_mm, bin_mm)
+    worst: tuple[float, float] | None = None
+    for a, b in itertools.pairwise(edges):
+        inside = (r >= a) & (r < b)
+        if not inside.any():
+            continue
+        top = float(h[inside].max())
+        if worst is None or top < worst[0]:
+            worst = (top, float((a + b) / 2))
+    return worst
 
 
 def _trace(lk: linkage.Linkage, task: Task, st: Store | None) -> list[Candidate] | str:
@@ -391,12 +467,14 @@ LINE_DEG = (0.0, 90.0, 45.0, -45.0)
 task gives no path."""
 
 
-def arm_model(lk: linkage.Linkage) -> ArmModel:
-    """An arm's side alone at its defaults (:class:`spiderpig.control.arm.ArmModel`, no
-    design: no turntable, no tool), its output point in its plane."""
+def arm_model(lk: linkage.Linkage, values: tuple[float, ...] | None = None) -> ArmModel:
+    """An arm's side alone (:class:`spiderpig.control.arm.ArmModel`, no design: no
+    turntable, no tool), its output point in its plane, at ``values`` (a design's
+    proportions, :attr:`config.BuildConfig.values`; default the linkage's own)."""
     assert lk.output is not None
     ranges = {q: (math.radians(lo), math.radians(hi)) for q, (lo, hi) in lk.ranges.items()}
-    return ArmModel(lk.key, lk.values(), lk.output.point, tuple(lk.inputs), ranges)
+    return ArmModel(lk.key, values if values is not None else lk.values(), lk.output.point,
+                    tuple(lk.inputs), ranges)
 
 
 def _densify(path: np.ndarray, seg: float) -> np.ndarray:
@@ -408,7 +486,8 @@ def _densify(path: np.ndarray, seg: float) -> np.ndarray:
     return np.concatenate(out)
 
 
-def trace_path(lk: linkage.Linkage, path, n: int = 41, tries: int = 8) -> dict:
+def trace_path(lk: linkage.Linkage, path, n: int = 41, tries: int = 8,
+               values: tuple[float, ...] | None = None) -> dict:
     """Where an arm traces ``path`` (``[x, y]`` points in its plane, y up), as the
     controller drives a line (:func:`spiderpig.control.host.line`): a waypoint every
     :data:`SEG_MM` along each leg of the path, each solved by :meth:`ArmModel.ik` (its
@@ -417,10 +496,11 @@ def trace_path(lk: linkage.Linkage, path, n: int = 41, tries: int = 8) -> dict:
     deepest inside the inputs' box (its ``n`` x ``n`` grid) are tried first, ``tries`` of
     them. ``ok``; the ``offset_mm`` added to the path's points; ``band_mm``, the tip's band
     across the path's principal line (the path's own band and the sag between waypoints);
-    ``chord_mm``, the sag alone; ``why`` a miss."""
+    ``chord_mm``, the sag alone; ``why`` a miss. ``values``: a design's proportions
+    (default the linkage's own)."""
     from scipy.spatial import KDTree
 
-    model = arm_model(lk)
+    model = arm_model(lk, values)
     p = np.asarray(path, dtype=float)[:, :2]
     pts = _densify(p, SEG_MM)
     axes = [np.linspace(*model.ranges[q], n) for q in model.inputs]
@@ -557,6 +637,7 @@ def _spec(c: Candidate, task: Task) -> dict:
         section, _, metric = e.path.partition(".")
         if section in SECTIONS and metric in doc.get(section, {}):
             del doc[section][metric]
+    doc["task"] = task.to_dict()     # (what verify's task.* rows re-check on the design)
     return doc
 
 
@@ -566,9 +647,10 @@ def _spec(c: Candidate, task: Task) -> dict:
 
 
 def _body(resolved: dict) -> str:
-    """A resolved spec without its targets and outputs: what its stages' numbers share."""
+    """A resolved spec without its targets, outputs and task: what its stages' numbers
+    share."""
     out = {k: v for k, v in resolved.items() if k not in ("motion", "size", "budget",
-                                                          "outputs")}
+                                                          "outputs", "task")}
     payload = {k: v for k, v in (out.pop("precision", None) or {}).items() if k == "payload_g"}
     if payload:             # (the load the budget assumed: it shapes the precision numbers)
         out["precision"] = payload
@@ -696,23 +778,16 @@ def _measure(c: Candidate, task: Task, st: Store | None) -> None:
         if p.ok and p.metrics.get("accuracy_mm") is not None:
             _need(c, "accuracy_mm", p.metrics["accuracy_mm"], "estimated",
                   f"precision of {d.id} (planar)")
-        if robot_layout(lk) and d.side is not None and task.do == "place":
-            from spiderpig.construction.robot import LAYOUTS
-
-            layout = LAYOUTS[robot_layout(lk)]
-            plans = getattr(layout, "plans", None)
-            if plans is not None:
-                tp, _ = plans(d.side, d.config)
-                lo, hi = tp.h.get("reach_lo", math.nan), tp.h.get("reach_hi", math.nan)
-                src = f"plan of {d.id}: where the tool's tip gets down to the bench"
-                c.numbers["yaw_deg"] = list(tp.range_deg)
-                if math.isfinite(lo) and math.isfinite(hi):
-                    _place_reach(c, task, (lo, hi), tp.range_deg, "estimated",
-                                 src + ", past the base")
-                elif task.area() is not None:        # it never gets down to the bench
-                    c.numbers.pop("reach_band_mm", None)
-                    _need(c, "area_mm", None, "estimated", src,
-                          next((n for n in tp.notes if "bench" in n), "it never does"))
+        if task.do == "place" and (bench := bench_reach(d)) is not None:
+            lo, hi = bench["lo"], bench["hi"]
+            src = f"plan of {d.id}: where the tool's tip gets down to the bench"
+            c.numbers["yaw_deg"] = list(bench["yaw_deg"])
+            if math.isfinite(lo) and math.isfinite(hi):
+                _place_reach(c, task, (lo, hi), bench["yaw_deg"], "estimated",
+                             src + ", past the base")
+            elif task.area() is not None:        # it never gets down to the bench
+                c.numbers.pop("reach_band_mm", None)
+                _need(c, "area_mm", None, "estimated", src, bench["note"] or "it never does")
 
 
 # ---------------------------------------------------------------------------

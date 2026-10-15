@@ -767,9 +767,13 @@ def _register_tools(server: MCPServer, state: State) -> None:
         servos.json, an arm's steppers' Klipper printer.cfg, and HOMING.md), ``order``
         (ORDER.md: a cart per vendor, an upload per cutting service with ``laser/parts/``,
         the prints); always
-        ``manifest.json``. Builds first if nothing is built. Returns the files' paths and
-        the manifest. A long operation (a job when it outlasts ``wait_seconds``). An
-        unknown format is refused by the input schema before the tool runs."""
+        ``manifest.json``. Plans and builds first if nothing is built, whatever the
+        formats (``guide``, ``control`` and ``order`` too: each reads the planned side), so
+        a design never planned takes the planner's time first: an arm's plan is minutes
+        cold, seconds once the store keeps it. Returns the files' paths and the manifest. A
+        long operation (a job when it outlasts ``wait_seconds``: follow it with
+        ``wait_job``). An unknown format is refused by the input schema before the tool
+        runs; ``urdf`` of a crank's design (a walker, a mechanism) fails with the reason."""
         args = {"formats": list(formats) if formats else None, "out_dir": out_dir}
         return _shaped(await _long(state, "export", design, args, wait_seconds), o.ExportOut)
 

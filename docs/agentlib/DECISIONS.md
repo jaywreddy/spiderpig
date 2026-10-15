@@ -1665,3 +1665,47 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   BOM diffs (`cut_cm`, cutting USD), the walkers' `feet` and the arms' dropped
   `urdf/*.mjcf.xml` predate this round (the baseline is older than the merged waves).
   DESIGNS.md is not regenerated (no part moved).
+
+### 2026-10-14: a design carries its task, and verify confirms a place or a trace task (fix round 5)
+
+- **The decision:** the flow task -> candidates -> spec -> plan -> build -> verify -> export
+  holds for walk, place and trace alike. A walk task's numbers were already spec targets;
+  a place task's area, points and height and a trace task's path never reached the spec, so
+  verify could not confirm either. The Spec gains a `task` section (the Task document,
+  validated whole under `task.`, the linkage able to do it: a walk needs feet, a place or a
+  trace an output); `candidates` writes it into every candidate's spec.
+- **It enters the id** (it changes what verify checks), only when given: a spec without one
+  resolves to the resolved spec it had (the eight gate designs' resolved-spec hashes
+  checked unchanged), and `design.side_hash` leaves it out, so a candidate's design shares
+  the side plan of the same design without its task; the candidates' store lookup
+  (`tasks._body`) leaves it out too.
+- **The `task.*` rows** (`verify.task_rows`, hard, at `quick` once planned and at
+  `standard`): a place task's area or points and its height against the planned robot's
+  bench reach (`tasks.bench_reach`: the turret plan's band, the tool's tip over the bench
+  per radius, `tasks.rise_over`), `estimated`; a trace task's path by an arm's inverse
+  kinematics at the design's proportions (`measured`) and its straightness as the traced
+  band plus twice the complete budget's worst-case lost motion (`estimated`; a `bound`
+  without it), or a crank's output check against the path (`measured`; a curved path's
+  length only, a `bound`). A met bound confirms nothing: the row is soft and its
+  requirement stays `unverified`; a missed bound refutes.
+- **The five-bar:** `construction._joint_drives` builds a drive for a cranked linkage's
+  second input that declares one (`Linkage.drives`). The registered `five_bar` declares none,
+  so it still stops at `drive` / `second_input_no_drive`; the screen (`tasks._drivable`) and
+  resolve (`stages.resolve.undriven_inputs`, `second_input_note`) now say that (an input
+  declaring no drive), not "v1 drives one crank". Tried: a five-bar declaring `t2`'s drive
+  on `b3` about `O2` stops at check instead (`crank.horn0` moves on a toured geometry with no
+  lateral bound): the crank's construction, another package's, is the next step.
+- **The URDF:** `resolve` refuses `outputs: [urdf]` for a crank's design with
+  `urdf.unsupported`'s reason (now `spec.urdf_unsupported`, which the stages can read);
+  `export(design, ["urdf"])` raises it; a spec stored with it before only skips it, warning
+  the same words.
+- **Export plans first:** `export` plans and builds a design that isn't built, whatever the
+  formats (`guide`, `control`, `order` read the planned side); an arm's plan is minutes cold.
+  The MCP's `export` was a job already: its description and API.md say so (no new job).
+- **The gate** (against `platform-9aae3e3`): all eight designs identical (no part, plan,
+  BOM or cut file moved; `klann_quad`'s audit fails as known). The verify rows are new
+  output, not parts: on the approved arm, a place task of 100 x 60 mm rising 20 mm reads
+  `task.area_mm` slack 74.2 mm (the bench band 149-288 mm over -120..120 deg) and
+  `task.height_mm` 238 mm, both `estimated`, `verify standard` ok; the Hoecken traces a
+  60 mm path within 0.5 mm as a 66.9 mm stroke 0.064 mm across, `measured`, ok.
+  DESIGNS.md is not regenerated (no part moved).
