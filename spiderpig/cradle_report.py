@@ -487,7 +487,8 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
              **dict.fromkeys(cr.STOP_MOVES, "stop")}
     moved_m: dict[str, float] = dict.fromkeys(("front", "rear", "stop"), 0.0)  # (it moves)
     for b in mech.bodies:
-        if b.part is None or b.fab == "display":
+        # (the decanter's riser stands on the table in its locator, not on the board)
+        if b.part is None or b.fab == "display" or b.name.startswith("decanter_riser"):
             continue
         m = part_mass_kg(config, b)
         c = np.asarray(mass_mod.part_props(b.placed_part()).com, float)
@@ -508,6 +509,7 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
     z_drive, z_passive = z_mid - (cr.BASE_HALF - inset), z_mid + (cr.BASE_HALF - inset)
     rows = []
     edges: dict[str, dict] = {}
+    pouring_edges: dict[str, dict] = {}
     for size in cr.SIZES:
         # the box's centre with its V blocks and base stop at this bottle's setting
         d = cr.offsets(size)
@@ -522,12 +524,16 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
         top_cf = np.array([x0 + size.length * math.cos(slope),
                            y0 + size.length * math.sin(slope) + size.r])
         wine = WINE_KG[size.key]
-        for state, mb in (("full", size.mass_full_kg), ("empty", size.mass_full_kg - wine)):
+        full, empty = size.mass_full_kg, size.mass_full_kg - wine
+        for state in ("full", "empty", "pouring"):
             least: dict[str, tuple] = {}       # tip, push, margin: each its worst (and edge)
+            mb = full if state == "full" else empty
             for k in range(len(ts)):
                 lip = pts[o][k]
                 d = pts[ax][k] - pts[o][k]
                 tl = math.atan2(d[1], d[0])
+                if state == "pouring":          # full while neck up; past level it has
+                    mb = full if tl <= 0.0 else empty   # poured (what it keeps sits forward)
                 c, s_ = math.cos(tl - t0), math.sin(tl - t0)
                 box = lip + np.array([c * box_rel[0] - s_ * box_rel[1],
                                       s_ * box_rel[0] + c * box_rel[1]])
@@ -549,10 +555,17 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
                     for key, v in got.items():
                         if key not in least or v < least[key][0]:
                             least[key] = (v, edge)
-                    e = edges.setdefault(edge, {})
-                    for key, v in (("tip_deg", got["tip"]), ("push_at_top_n", got["push"])):
-                        if key not in e or v < e[key][0]:
-                            e[key] = (v, f"{size.name}, {state}")
+                    for into, which in ((edges, ("full", "empty")),
+                                        (pouring_edges, ("empty", "pouring"))):
+                        if state not in which:
+                            continue
+                        e = into.setdefault(edge, {})
+                        for key, v in (("tip_deg", got["tip"]),
+                                       ("push_at_top_n", got["push"])):
+                            if key not in e or v < e[key][0]:
+                                e[key] = (v, f"{size.name}, {state}")
+            if state == "pouring":
+                continue                        # (its own edges: ``pouring``)
             rows.append({"bottle": size.name, "state": state, "kg": round(mb, 2),
                          "margin_mm": round(least["margin"][0], 1), "edge": least["tip"][1],
                          "tip_deg": round(least["tip"][0], 1),
@@ -566,7 +579,15 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
             "worst_tip_deg": min(r["tip_deg"] for r in rows),
             "edges": {e: {"tip_deg": round(v["tip_deg"][0], 1), "tip_by": v["tip_deg"][1],
                           "push_at_top_n": round(v["push_at_top_n"][0], 1),
-                          "push_by": v["push_at_top_n"][1]} for e, v in edges.items()}}
+                          "push_by": v["push_at_top_n"][1]} for e, v in edges.items()},
+            # the wine leaving as it pours (design review round 2's m1): each bottle full
+            # while neck up, emptied past level (what it keeps there sits forward, in the
+            # shoulder: it only steadies the rear); "edges" counts a full bottle at every
+            # tilt, a bound no pour reaches
+            "pouring": {e: {"tip_deg": round(v["tip_deg"][0], 1), "tip_by": v["tip_deg"][1],
+                            "push_at_top_n": round(v["push_at_top_n"][0], 1),
+                            "push_by": v["push_at_top_n"][1]}
+                        for e, v in pouring_edges.items()}}
 
 
 def stand(linkage: str = "decanter_rcm", store=None) -> dict:
@@ -602,6 +623,10 @@ TPU_NU = 0.45           # its Poisson's ratio (an elastomer: under 0.5)
 TPU_STEEL_FRICTION = 0.3    # a keeper's grip on a stainless pin: under the 0.5 of TPU on
 #                             aluminium and PLA dry (TPU_FRICTION), for an oiled pin
 KEEPER_LEAST_RATIO = 10.0   # the keepers' bar: the least grip over the pin's own weight
+KEEPER_LOAD_RATIO = 1.5     # and the bench push (cradle.KEEPER_PUSH_N) over the most the steps
+#                             can put on a pin's tip: half the cradle box's weight
+KEEPER_PUSH_MAX_N = 120.0   # its push on, at the bore's nominal interference: by hand, a tube
+#                             over the pin (round 2: 80-105 N dry at the 7.4 mm bore)
 
 
 def keepers(config: BuildConfig, mech) -> dict:
@@ -610,9 +635,14 @@ def keepers(config: BuildConfig, mech) -> dict:
     its bore under the pin. Its grip is the friction of the pressure an interference fit
     makes (Lamé, a ring on a rigid shaft: ``p = delta E / (d ((D^2 + d^2) / (D^2 - d^2) +
     nu))``) over the bore's area, at the least interference a print may come out with and
-    the least published modulus (:data:`TPU_E`); against the pin's own weight, which is all
-    it holds (its side lying down, the clip out: the head is under the link). Its push on
-    by hand: the same at the bore's nominal interference. Empty for a cradle with none (A)."""
+    the least published modulus (:data:`TPU_E`). Against the pin's own weight (its side
+    lying down, the clip out: the head is under the link) and against the most the
+    reassembly can put on a pin's tip (``load_n``: half the cradle box's weight, if a link
+    is let rest on one while the other is found: design review round 2), which the guide's
+    bench push (``construction.cradle.KEEPER_PUSH_N``) screens every keeper for and the steps
+    keep off (they hold a piece's weight until both pins are in). Its push on: the same at
+    the bore's nominal interference, TPU's highest modulus and dry friction. Empty for a
+    cradle with none (A)."""
     from spiderpig.construction.pivots.clevis import CLEVIS8
 
     names = list(mech.meta.get("keepers") or [])
@@ -620,6 +650,11 @@ def keepers(config: BuildConfig, mech) -> dict:
         return {}
     by = {b.name: b for b in mech.bodies}
     d = CLEVIS8.shaft.d
+    link = cr.cradle_link(config.lk)
+    box_kg = sum(part_mass_kg(config, b) for b in mech.bodies
+                 if b.part is not None and b.fab != "display"
+                 and body_class(_host(b, by)) == link)
+    load = box_kg * G / 2.0
 
     def normal(delta: float, e: float, od: float, h: float) -> float:
         """The bore's normal force (N) at interference ``delta`` (mm, on the diameter)."""
@@ -640,7 +675,12 @@ def keepers(config: BuildConfig, mech) -> dict:
                      "ratio": round(least / max(w, 1e-9), 1)})
     return {"bore_mm": cr.KEEPER[0], "pin_d_mm": d, "least_interference_mm": cr.KEEPER[1],
             "tpu_e_mpa": TPU_E, "friction": TPU_STEEL_FRICTION, "rows": rows,
-            "least_ratio": min(r["ratio"] for r in rows), "bar": KEEPER_LEAST_RATIO}
+            "least_ratio": min(r["ratio"] for r in rows), "bar": KEEPER_LEAST_RATIO,
+            "box_kg": round(box_kg, 2), "load_n": round(load, 1),
+            "bench_push_n": cr.KEEPER_PUSH_N,
+            "load_ratio": round(cr.KEEPER_PUSH_N / load, 2), "load_bar": KEEPER_LOAD_RATIO,
+            "least_over_load": round(min(r["grip_least_n"] for r in rows) / load, 2),
+            "push_on_bar_n": KEEPER_PUSH_MAX_N}
 
 
 def balance(rest_deg: float = -50.0, full_deg: float = 30.0) -> dict:
@@ -1513,32 +1553,32 @@ def blocked(config: BuildConfig, mech, *, ts=None, crank_nm: float | None = None
 # -- the cradle page's swing (``/api/cradle/{key}``, ``viewer/decant.html``) ------------
 
 VERDICT = {
+    "decanter_rcm": ("build", "The main design: an eight-bar double parallelogram turns the "
+                     "cradle about a point with nothing there, so nothing stands at the "
+                     "mouth; its pivots hang under the mouth, its crank behind. It comes apart "
+                     "by hand for the trip. With a full 6 L: a slip clutch in the hand crank, "
+                     "set on the bench and checked at each set-up, caps the crank's torque "
+                     "however hard the push, every joint holds that cap at SF 1.3 or more away "
+                     "from the ends of the swing (in the first and last two and a half handle "
+                     "turns it doesn't: the gearbox's marks, the use limits), the gearbox "
+                     "carries the bottle and the cap within its maximum, its light-load crank "
+                     "turns under 22 N once the gearbox is run in, the stand tips past 25°."),
     "decanter_hinge": ("build", "Builds too (B is the main design): a four-bar crank-rocker "
                        "whose rocker is the cradle, hinged at the bottle's mouth. From 50° "
                        "neck up (an opened full bottle goes in) to 30° neck down, a 750 ml to "
                        "a 6 L. With a full 6 L: a slip clutch in the hand crank, set on the "
                        "bench and checked at each set-up, caps the crank's torque however hard "
                        "the push, every joint holds that cap at SF 1.3 or more away from the "
-                       "ends of the swing (in the last two and a half handle turns at either "
-                       "end it doesn't: the use limits), the gearbox carries the bottle and "
-                       "the cap "
-                       "within its maximum, its 130 mm crank turns under 22 N once the "
-                       "gearbox is run in, the stand tips past 15°."),
-    "decanter_rcm": ("build", "The main design: an eight-bar double parallelogram turns the "
-                     "cradle about a point with nothing there, so nothing stands at the "
-                     "mouth; its pivots hang under the mouth, its crank behind. With a full "
-                     "6 L: a slip clutch in the hand crank, set on the bench and checked at "
-                     "each set-up, caps the crank's torque however hard the push, every joint "
-                     "holds that cap at SF 1.3 or more away from the ends of the swing (in "
-                     "the last two and a half handle turns at either end it doesn't: the use "
-                     "limits), "
-                     "the gearbox carries the bottle and the cap within its maximum, its "
-                     "light-load crank turns under 22 N once the gearbox is run in, the stand "
-                     "tips past 25°."),
+                       "ends of the swing (in the first and last two and a half handle turns "
+                       "it doesn't: the gearbox's marks, the use limits), the gearbox carries "
+                       "the bottle and the cap within its maximum, its 130 mm crank turns "
+                       "under 22 N once the gearbox is run in, the stand tips past 15° (its "
+                       "bar)."),
 }
 """Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why: the
 bars ``tests/test_cradle.py`` holds, not a copied number; :func:`report`'s ``verdict`` adds its
-own numbers (:func:`cradle_drive.verdict`)."""
+own numbers (:func:`cradle_drive.verdict`). In the cradle page's order: B, the user's main
+design, first (design review round 2's M5: the page had opened on A, "the one to build")."""
 
 
 def motion(config: BuildConfig, n: int = 360) -> dict:
@@ -1600,6 +1640,10 @@ def motion(config: BuildConfig, n: int = 360) -> dict:
                      "moves": key} for sd, key in zip(cr.SADDLES, ("front", "rear"),
                                                     strict=True)],
         "ties": {k: list(v) for k, v in _ties_of().items()},
+        # how it's used (the guide's own lines, ``construction.cradle.use_steps``): the page's
+        # "Using it" (design review round 2's M5: the page had none of the use limits)
+        "use": [{"tag": u.tag, "title": u.title, "lines": list(u.lines)}
+                for u in cr.use_steps(lk.key)],
     }
 
 
@@ -1632,18 +1676,120 @@ def _surface_points(part, step: float = 5.0) -> np.ndarray:
     return np.concatenate(out)
 
 
+def _radius_at(p, s: float) -> float:
+    """``liquid.ts``'s ``radiusAt``: the radius at ``s`` of a profile ``[[s, r], ...]``
+    (linear between its points; 0 outside it)."""
+    n = len(p)
+    if n == 0 or s < p[0][0] or s > p[-1][0]:
+        return 0.0
+    for i in range(1, n):
+        if p[i][0] >= s:
+            (s0, r0), (s1, r1) = p[i - 1], p[i]
+            return r0 + (r1 - r0) * (s - s0) / (s1 - s0) if s1 > s0 else max(r0, r1)
+    return float(p[-1][1])
+
+
+def fits_room(vessel, riser: float, rows) -> tuple[float, float]:
+    """``liquid.ts``'s ``fitsRoom``: a vessel (``[[height, radius], ...]``, base to rim) on a
+    riser of ``riser`` mm against a room (:func:`room`'s ``room``): its worst point's margin
+    (mm: the room's radius less the vessel's at each height, between the profile's points
+    and at the room's corners; over the room's top, the height left) and where (mm over the
+    table)."""
+    rows = sorted((float(h), float(r)) for h, r in rows)
+    top = rows[-1][0]
+
+    def room_at(h: float) -> float:
+        if h > top + 1e-6:
+            return -math.inf
+        if h <= rows[0][0]:
+            return rows[0][1]
+        return _radius_at(rows, h)
+
+    margin, at = math.inf, 0.0
+
+    def probe(h: float, r: float) -> None:
+        nonlocal margin, at
+        got = room_at(h + riser)
+        m = top - (h + riser) if got == -math.inf else got - r
+        if m < margin:
+            margin, at = m, h + riser
+
+    for i, (h, r) in enumerate(vessel):
+        probe(h, r)
+        if i + 1 < len(vessel):
+            hn, rn = vessel[i + 1]
+            for k in range(1, 4):
+                probe(h + (hn - h) * k / 4, r + (rn - r) * k / 4)
+    for h, _ in rows:
+        hv = h - riser
+        if vessel[0][0] <= hv <= vessel[-1][0]:
+            probe(hv, _radius_at(vessel, hv))
+    return margin, at
+
+
+def riser_fits(vessel, riser: float, rows, clear=cr.RISER_CLEAR) -> bool:
+    """The one rule (``construction.cradle.RISER_CLEAR``; ``liquid.ts``'s ``riserFits``): the
+    vessel on ``riser`` keeps ``clear[1]`` mm off the room's side at every height, and raised
+    ``clear[0]`` mm more it still fits: its rim that far under the lowest part over it."""
+    up, side = clear
+    return (fits_room(vessel, riser, rows)[0] >= side
+            and fits_room(vessel, riser + up, rows)[0] >= 0.0)
+
+
+def riser_for(vessel, rows, high: float = 250.0, clear=cr.RISER_CLEAR) -> int | None:
+    """The highest riser (whole mm, up to ``high``) the rule (:func:`riser_fits`) lets
+    ``vessel`` stand on; None if not even the table."""
+    for r in range(int(high), -1, -1):
+        if riser_fits(vessel, r, rows, clear):
+            return r
+    return None
+
+
+def riser_stacks() -> list[tuple[float, list[str]]]:
+    """Every height the printed riser's pieces make (``construction.cradle.riser_pieces``),
+    each with its pieces bottom up (``"lifts"`` the two lifts side by side, ``"blocks"`` the
+    two blocks, a plate by its thickness), the highest last: any of the lifts, the blocks and
+    the plates, in that order, the top piece's boss on top
+    (:data:`construction.cradle.RISER_LIP`); none (on the table, in the locator) is 0."""
+    lift, hb, lip = cr.RISER_LIFT, cr.RISER_BLOCK[1], cr.RISER_LIP
+    plates = sorted(cr.RISER_PLATES, reverse=True)
+    out: dict[float, list[str]] = {0.0: []}
+    for lifts, blocks in itertools.product((False, True), repeat=2):
+        for k in range(len(plates) + 1):
+            for chosen in itertools.combinations(plates, k):
+                if not (lifts or blocks or chosen):
+                    continue
+                h = round((lift if lifts else 0.0) + (hb if blocks else 0.0) + sum(chosen)
+                          + lip, 2)
+                names = ((["lifts"] if lifts else []) + (["blocks"] if blocks else [])
+                         + [f"{p:g}" for p in chosen])
+                if h not in out or len(names) < len(out[h]):
+                    out[h] = names
+    return sorted(out.items())
+
+
+def riser_stack(mm: float | None) -> tuple[float, list[str]] | None:
+    """The highest stack (:func:`riser_stacks`) no taller than ``mm``; None for None."""
+    if mm is None:
+        return None
+    return max((s for s in riser_stacks() if s[0] <= mm + 1e-9), key=lambda s: s[0])
+
+
 def room(config: BuildConfig, mech, n: int = 72) -> dict:
     """The room a vessel has under the mouth (``/api/cradle/{key}/room``, the cradle page's
     fit check): at each height over the table (every :data:`ROOM_BAND` mm up to the mouth),
     the radius round the decanter's axis that no part of the cradle box or the bottle drawn
     (a 6 L methuselah, the V blocks at their lowest) enters over the whole swing (``room``),
     and from the pour on (the cradle past -20°, where an opened full bottle starts to pour:
-    ``room_pouring``, reported only: since round 1 the guide and the cradle page give one jack
-    height for the whole swing, never raised mid-pour). ``mech``: the cradle fabricated at
-    crank angle 0. The side stacks
-    stand outside the bay (``construction.cradle.BAY``), so only the bay's parts count. A
-    thinner bottle's V blocks ride higher, away from the decanter at every tilt: the
-    drawn setting bounds them."""
+    ``room_pouring``, reported only: the guide and the cradle page give one riser for the
+    whole swing). ``mech``: the cradle fabricated at crank angle 0. The side stacks stand
+    outside the bay (``construction.cradle.BAY``), so only the bay's parts count. A thinner
+    bottle's V blocks ride higher, away from the decanter at every tilt: the drawn setting
+    bounds them. Also ``lowest``: the cradle box's part that comes lowest over the drawn
+    decanter's rim (within its rim's radius of the axis) over the swing, how high (mm over
+    the table) and at what tilt (design review round 2: the light's printed clip, at rest);
+    ``rule``: :data:`construction.cradle.RISER_CLEAR`; ``stacks``: :func:`riser_stacks`;
+    ``drawn``: the drawn decanter's riser by the rule and its stack."""
     lip = np.asarray(mech.meta["cradle_lip"], float)
     axis_x = float(lip[0]) + cr.DECANTER_X
     table = float(lip[1]) - cr.LIP_HEIGHT
@@ -1652,16 +1798,24 @@ def room(config: BuildConfig, mech, n: int = 72) -> dict:
     o, ax = cr.mouth_frame(config.lk)
     d = pts[ax] - pts[o]
     tilt = np.unwrap(np.arctan2(d[:, 1], d[:, 0]))
-    moving, fixed = [], []
+    moving, fixed, owner = [], [], []
     for b in mech.bodies:
         if b.part is None or b.name.startswith(("L.", "R.")) or b.name.startswith("decanter"):
             continue
         p = _surface_points(b.placed_part())
-        (moving if b.name.startswith(_MOVING) else fixed).append(p)
+        if b.name.startswith(_MOVING):
+            moving.append(p)
+            owner += [b.name] * len(p)
+        else:
+            fixed.append(p)
     mv = np.concatenate(moving)
+    who = np.asarray(owner)
+    over = who != "bottle"                  # the cradle box's own parts
+    rim = float(cr.DECANTER_PROFILE[-1][1])
     t0 = tilt[0]
     fx = np.concatenate(fixed) if fixed else np.zeros((0, 3))
     bands = np.arange(0.0, cr.LIP_HEIGHT + 1e-6, ROOM_BAND)
+    lowest = (math.inf, "", 0.0)
 
     def radii(points: np.ndarray) -> np.ndarray:
         h = points[:, 1] - table
@@ -1684,14 +1838,48 @@ def room(config: BuildConfig, mech, n: int = 72) -> dict:
         whole = np.minimum(whole, rr)
         if math.degrees(t) >= -20.0:
             pouring = np.minimum(pouring, rr)
+        near = over & (np.hypot(p[:, 0] - axis_x, p[:, 2]) <= rim)
+        if near.any():
+            k = int(np.argmin(np.where(near, p[:, 1], np.inf)))
+            if p[k, 1] - table < lowest[0]:
+                lowest = (float(p[k, 1] - table), str(who[k]), math.degrees(t))
     cap = float(cr.BAY / 2)                 # past the bay: the side stacks
+    rows = [[float(h), round(float(min(r, cap)), 1)] for h, r in zip(bands, whole, strict=True)]
+    drawn = [(float(h), float(r)) for h, r in cr.DECANTER_PROFILE]
+    best = riser_for(drawn, rows)
     return {
-        "room": [[float(h), round(float(min(r, cap)), 1)]
-                 for h, r in zip(bands, whole, strict=True)],
+        "room": rows,
         "room_pouring": [[float(h), round(float(min(r, cap)), 1)]
                          for h, r in zip(bands, pouring, strict=True)],
         "axis_x": axis_x, "mouth_over_table": cr.LIP_HEIGHT,
+        "lowest": {"part": lowest[1], "mm": round(lowest[0], 1),
+                   "tilt_deg": round(lowest[2], 1), "within_mm": rim},
+        "rule": {"rim_under_mm": cr.RISER_CLEAR[0], "side_mm": cr.RISER_CLEAR[1]},
+        "stacks": [[h, names] for h, names in riser_stacks()],
+        "drawn": {"riser_max_mm": best, "stack": riser_stack(best),
+                  "riser_mm": cr.DECANTER_RISER},
     }
+
+
+def payload(linkage: str, store: str | None = None) -> dict:
+    """``/api/cradle/{key}/pack``'s and ``/room``'s bodies: ``cradle_pack.flat_pack`` of the
+    cradle fabricated at its pack pose (``cradle_pack.pack_t``) and :func:`room` of it at
+    crank angle 0 (the baked clip's first frame; the fabrication cache in ``store`` keeps
+    both), a package function for :func:`spiderpig.workers.submit`. (In ``cradle_pack`` until
+    2026-10-14: the guide reads the pack's pieces, and must not reach the strength check.)"""
+    from spiderpig.cradle_pack import cached_input, gather, pack_input, pack_t
+    from spiderpig.store import Store
+
+    cfg = BuildConfig(linkage=linkage, robot=False)
+    tmpl = template_for(cfg)
+    at = Store.of(store) if store else None
+    mech = fabricate(tmpl, cfg, 0.0, store=at)
+    inp = cached_input(linkage, at, reuse_plan=False) if at is not None else None
+    if inp is None:
+        t = pack_t(cfg)
+        packed = mech if t == 0.0 else fabricate(tmpl, cfg, t, store=at)
+        inp = gather(packed, cfg.lk, t, cfg)
+    return {"pack": pack_input(inp), "room": room(cfg, mech)}
 
 
 if __name__ == "__main__":       # python -m spiderpig.cradle_report stand [linkage]

@@ -414,12 +414,17 @@ def _clipped(pos: np.ndarray, tri: np.ndarray, z: tuple[float, float] | None):
 
 
 def items_of(mesh, rows: list) -> list[Item]:
-    """Items from rows ``(piece id, fill, offset, mark, clip)`` over ``mesh`` (body name ->
-    ``(pos, tri)``)."""
+    """Items from rows ``(piece id, fill, offset, mark, clip[, matrix])`` over ``mesh`` (body
+    name -> ``(pos, tri)``); a ``matrix`` (4 x 4, nested lists) poses the body first (a
+    scene's: ``guide.scenes``)."""
     out = []
-    for pid, fill, off, mark, clip in rows:
+    for row in rows:
+        pid, fill, off, mark, clip = row[:5]
         pos, tri = mesh[pid.split("#", 1)[0]]
         pos, tri = _clipped(pos, tri, None if clip is None else tuple(clip))
+        if len(row) > 5 and row[5] is not None:
+            m = np.asarray(row[5], float)
+            pos = pos @ m[:3, :3].T + m[:3, 3]
         out.append(Item(pid, pos, tri, fill=tuple(fill), offset=tuple(off), mark=mark))
     return out
 

@@ -1662,6 +1662,76 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/cradle_report.py`, `spiderpig/hardware/bom.py`, `tests/test_cradle.py`,
   `viewer/src/decant/pack.ts` (its comment).
 
+### 2026-10-15: the cradles' stand, use and guide (design review round 2, stand and use)
+
+The round's review (`/root/scratch/decant/review5/r2/stand_use.md`, with the pack's review 1's
+M2 and the linkage and drive reviews' blocked cradle and toggle zones) walked the procedure as
+a first-time user with the generated guide. What changed:
+
+- **The decanter's height, one rule (B1).** The guide's rule had named the front saddle, 66 mm
+  over the real lowest part over the rim (the light's printed clip, 380 mm at rest: `room`'s
+  `lowest` now names it); the page kept 3 mm off the room's side and nothing over the rim,
+  standing a RIEDEL Ultra's rim 7 mm under the clip in the toggle dwell; four heights were given
+  for one decanter. Now `cradle.RISER_CLEAR`: the rim 20 mm under the lowest part, 10 mm off the
+  room's side, in Python (`cradle_report.riser_fits`, `riser_for`) and its twin on the page
+  (`liquid.ts`), both held to `tests/fixtures/cradle/riser_reference.json`.
+- **A printed riser, not a lab jack (B1, M7.2, m3).** Fixed heights stacked in the riser
+  locator (the jack locator renamed): two 85 mm blocks and 20, 10 and 5 mm plates, bosses into
+  recesses, 122 mm in all, the drawn decanter's; 7-37 and 87-122 mm every 5. It can't be raised
+  mid-pour without lifting the decanter off it. The blocks are also the drive panel's lay-flat
+  blocks (M2), so no part more. $0 (PLA on hand); the jack was unbought ($17-250 by the review's
+  fetches).
+- **B's first build lays the cradle down for its passive side (M1)**,
+  `construction.assembly.CRADLE_MODULE_ORDER`: the passive panel built whole on the bench (its
+  stack, keepers, inner plate, brackets) and lowered onto its cradle link as the trip's way
+  back does. Gone: the passive stack pushed sideways onto two hidden pins, its inner plate
+  screwed in inside the bay, and "lift the side off" to glue cleats on a side pinned to the box.
+- **Rated rest poses (M2)**, `cradle.REST_POSES`, `cradle_pack.rest_poses`: the cradle and the
+  drive side lie level on the gearbox and the riser's blocks (`cradle.LAY_BLOCKS`: under O1's
+  and D2's screw heads, in the blocks' reliefs): the drive panel alone 35.2° and 14.4 N, from
+  6.8° and 2.5 N; the box on its links' long edges, its saddles' tops down, 41.5° and 15.5 N,
+  from 10.0° and 2.8 N on two screw heads (its "41 mm" had been to an outline it never sat on).
+- **The keepers (M3).** Rated against the real load, up to half the 3.2 kg box on a pin's tip
+  (15.5 N), not the pin's 0.11 N: the bore 7.6 -> 7.4 mm (at least 0.4 mm of grip, 12.2 N), a
+  30 N bench push per keeper on a kitchen scale (`cradle.KEEPER_PUSH_N`, 1.94 x the load), and
+  the way back holds each piece's weight until both its pins are in. No lanyards: a clip's
+  lanyard has no anchor that doesn't turn about its pin; the clips go back into their pins and
+  the pack of five leaves a spare.
+- **The guide's use (M4).** Explicit order (`construction.assembly.USE_TAGS`: the use had sorted
+  alphabetically, the trip apart before the setting); each use step and each trip step its own
+  step with its own picture (`construction.assembly.Scene`, `spiderpig.guide.scenes`: the
+  cradle posed at rest, full tilt, level or the pack pose, laid on its side, its pieces lifted
+  off; `Op.lines` items, not paragraphs); the 626-word use limits a five-line card and a
+  reference (`cradle.use_steps`, also the page's). The decanter now stays on its riser until
+  the bottle is back at rest, and "nothing under the box" reads "once set, nothing raised or
+  added under the box".
+- **The page (M5).** B first and "the one to build", A "also builds" (`cradle_report.VERDICT`'s
+  order, `server.app._cradle_keys`); it opens on a magnum poured into a decanter that holds it
+  (`vessels.vesselFor`: no overflow; a 6 L says when to swap); "Using it" shows the use steps
+  and the card; no riser until the room arrives.
+- **Glue, then finish (M6).** The board stays bare until the cleats and the locator are glued;
+  then polyurethane on every face and edge (Titebond's FAQ: its glues bond bare wood). Not oil.
+- **Guards for the return to rest (M7).** B's red toggle flag behind the gearbox
+  (`cradle.TOGGLE_FLAG`: the crank's arm points into it over the last two turns to rest; on the
+  frame side, apart from the drive's own cue); the fixed riser; a window in the board under the
+  base stop (`cradle.BOARD_WINDOW`: 26 -> 43 mm). Its birch and the flag took B's rear tipping
+  edge to 24.997°: the board grew 2 mm at the rear (684 mm, 25.2°). The optional bay-face skirt
+  is not drawn (the front tie rods pass 8 mm from the bar's end).
+- **Minors.** The stand's honest margin (`stability`'s `pouring`: the rear 28.5°, the bound
+  25.2°); the cleats' 2 mm lead-ins; the jack out of the docs; the docs' numbers; the tape on b3
+  only (b5 is nudged); the passive side snugged at level (8½ turns from rest); the decanter swap
+  written; stainless tie rods not priced (MISUMI refuses a script, HTTP 403 on 2026-10-15; the
+  front saddle, rods and light wiped after each pour instead); the 5 N check by the luggage
+  scale (0.5 kg); a tools list on the guide's cover (`cradle.TOOLS`); witness notches not cut
+  (each would sit round a jam-rated pin's hole; the paint pen's lines are made in the first
+  build and renewed).
+- **Where:** `spiderpig/construction/cradle.py`, `spiderpig/construction/assembly.py`,
+  `spiderpig/cradle_report.py` (and `payload`, moved from `cradle_pack`: the guide reads the
+  pack's pieces and must not reach the strength check), `spiderpig/cradle_pack.py`,
+  `spiderpig/guide/` (`scenes.py`, the renderer's posed rows, the cover's tools),
+  `spiderpig/server/app.py`, `viewer/src/decant/`, `tests/test_cradle.py`,
+  `tests/fixtures/cradle/riser_reference.json`.
+
 ### 2026-10-15: the cradles' drive, round 2 (design review round 2; the user's gearbox call of 2026-10-14)
 
 - **What:** the fixes to round 2's drive review (`/root/scratch/decant/review5/r2/drive.md`),
@@ -1856,3 +1926,50 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/cradle_report.py`, `spiderpig/config.py`, `spiderpig/construction/cradle.py`,
   `spiderpig/hardware/cradle_catalog.py`, `spiderpig/hardware/fasteners.py`,
   `spiderpig/hardware/bom.py`, `spiderpig/hardware/order.py`, `tests/test_cradle.py`.
+
+### 2026-10-15: round 2's drive meets the stand round (the user's calls of 2026-10-15)
+
+- **What:** the stand, use and guide round (merged at 5b0e32e) merged into round 2's drive,
+  with the user's four calls on what the two rounds disagreed about
+  ([DECANTER.md](DECANTER.md): "The base board", "The drive", "Flat pack").
+- **One toggle cue, the gearbox's paint marks:** they mark both toggles on both cradles for
+  nothing. The stand round's red toggle flag on B (`toggle_flag`, its two M5 screws and
+  nuts, the stand nodes `S1` and `S2`, their holes in the outer plate and their claims;
+  `TOGGLE_FLAG`, `TOGGLE_ZONE`, `toggle_zone`) is gone; the use limits' third line, the
+  guide and the cradle page name the marks. A render of B's crank area at rest
+  (`/root/.cache/spiderpig/tmp/r2-fix-drive/out/render/`) shows the gearbox's far face and
+  its output hub in the open from the drive side's rear corner, from above and from
+  outboard: the hand crank turns beside the gearbox, not over its far face.
+- **The riser's lifts** (`cradle.RISER_LIFT`): the drive panel's lay-flat blocks must stand
+  as far as the gearbox does off the outer plate, 114.7 mm on the NRV050 (87.5 on the
+  NRV040). The user's call was taller blocks and fewer plates, the whole riser still the
+  drawn decanter's. Built so (blocks of 112.2 mm, plates of 5 and 3), the stacks without
+  the blocks stopped at 10 mm, under the locator's walls: three listed vessels (the RIEDEL
+  Cabernet Magnum, Le Château, the Zalto Burgundy) had no stack the rule allows. So the
+  blocks stay 85 mm and stand on two 27.2 mm lifts, half plates under them in the riser
+  and under each block when the panel lies down: 114.2 with the boss. The plates are 5 and
+  4 mm, the whole set 123.2 mm (122 before), the drawn decanter's rim 31.8 mm under the
+  light's clip. Every listed vessel's stack is within 7 mm of the stand round's.
+- **A's 130 mm crank** (`handcrank.HANDLE_OVER_RADIUS`), 5 mm over MIL-STD-1472H Figure
+  13's 125 mm light-load maximum: accepted as a documented deviation, the grip under its
+  22 N bar (21.5 N run in).
+- **The use text** (`cradle.use_steps`): its clutch figures come from
+  `handcrank.drawn_clutch` and `handle_r` (the setting 1.3 x the measured start, about 28 N
+  at either grip for a full 6 L), its toggle zones from `handcrank.TOGGLE_TURNS`; the drill
+  and hub bypasses and the PETG hand crank are in its reference lines. One tools list,
+  `cradle.TOOLS` (the guide's cover): the drive's torque wrench to 20 N·m, its 13 mm and
+  3/4 in wrenches and 14 mm bit joined it; `bom.CRADLE_TOOLS_NOTE` went.
+- **B's board is 686 mm** (`Stand.base`, 2 mm more at the rear): the window under the base
+  stop and the NRV050 together took the 684 mm board's rear edge to 25.0° to the tenth; 686
+  holds 25.2° (28.4° pouring). A: 24.3° to its drive side (bar 15°).
+- **The rest poses on the NRV050** (`cradle_pack.rest_poses`): B's cradle lying on its
+  blocks tips at 15.7° (16.9 on the NRV040; bar 15°), the drive side with the box at
+  15.0°, at its bar (16.3), the drive panel alone at 32.2° (35.2); A's lying cradle 19.3°.
+  The heavier, further-out gearbox lifts the lying cradle's centre of mass; the steps keep a
+  hand on the box. Wider lay-flat points (`cradle.LAY_BLOCKS`) are the stand's to weigh.
+- **The packs:** B 740 x 316 x 601 mm, 140.7 L; A 700 x 212 x 601 mm, 89.3 L (unchanged by
+  the merge).
+- **Where:** `spiderpig/construction/cradle.py`, `spiderpig/construction/handcrank.py`,
+  `spiderpig/construction/assembly.py`, `spiderpig/cradle_pack.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/guide/scenes.py`, `spiderpig/hardware/bom.py`, `viewer/src/decant/liquid.ts`,
+  `viewer/src/decant/pour.ts`, `tests/test_cradle.py`, `tests/fixtures/cradle/riser_reference.json`.

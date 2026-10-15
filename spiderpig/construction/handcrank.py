@@ -417,12 +417,14 @@ HUB_SPLIT = (110.0, 22.0, 15.0) # the hub piece's length to the joint, the spigo
 
 def handle_spec(config) -> HandleSpec:
     """The hand crank's arm for ``config`` (its linkage's :data:`HANDLES` entry, else the
-    default; a config-less context: the default)."""
-    return HANDLES.get(getattr(config, "linkage", ""), HANDLES[""])
+    default; a config-less context: the default; a linkage's key: its own)."""
+    key = config if isinstance(config, str) else getattr(config, "linkage", "")
+    return HANDLES.get(key, HANDLES[""])
 
 
 def handle_r(config) -> float:
-    """The hand crank's throw for ``config`` (:func:`handle_spec`)."""
+    """The hand crank's throw for ``config`` (a config or a linkage's key:
+    :func:`handle_spec`)."""
     return handle_spec(config).throw
 
 

@@ -85,6 +85,16 @@ body:not(.side-open) #side { display: none; }
 .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; vertical-align: -1px; }
 #about .links { margin-top: 14px; }
 #about a { color: #8cbcff; }
+/* how it's used (the guide's own lines: cradle.use_steps): the five-line card first */
+#use h3 { font-size: 13px; color: #8a96a3; margin: 14px 0 6px 0; font-weight: 600; }
+#use .card { margin: 0; padding: 8px 10px 8px 26px; border-radius: 6px;
+  background: rgba(200, 40, 50, 0.12); border: 1px solid rgba(200, 40, 50, 0.35);
+  display: flex; flex-direction: column; gap: 4px; }
+#use .card li { line-height: 1.35; color: #eef2f6; }
+#use details { margin: 6px 0 0 0; }
+#use summary { cursor: pointer; color: #c7cfd8; }
+#use details ul { padding-left: 18px; margin: 6px 0 0 0; display: flex; flex-direction: column; gap: 5px; }
+#use details li { line-height: 1.35; color: #b8c2cc; }
 
 /* the right column: the readouts over the mechanism diagram */
 #diagram-panel {

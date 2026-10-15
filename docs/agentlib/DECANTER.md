@@ -8,12 +8,15 @@ Champagne methuselah); the methuselah is the design bottle since ("Sized for a 6
 
 Two linkages are built, both from the same parts: the drive, the cradle box, the stand
 and the light.
-- `decanter_hinge` (A), **the one to build**: the cradle swings on a real hinge at the
-  bottle's mouth, from −50° (nearly upright: an opened full bottle goes in) to +30° (both
-  bottles drain). The redesign of 2026-10-10 (the user's −50° rest) is under "A, redone".
-- `decanter_rcm` (B), **to build too**: the hinge is virtual, a double parallelogram (a
-  remote centre of motion), so no pin sits at the mouth. It swings from −50° (rest, an
-  opened full bottle stands in it) to +30°. Its design is under "B, the virtual hinge".
+- `decanter_rcm` (B), **the one to build**, the user's main design: the hinge is virtual,
+  a double parallelogram (a remote centre of motion), so no pin sits at the mouth. It swings
+  from −50° (rest, an opened full bottle stands in it) to +30°, and comes apart by hand for
+  the trip. Its design is under "B, the virtual hinge".
+- `decanter_hinge` (A), **also builds**: the cradle swings on a real hinge at the bottle's
+  mouth, from −50° (nearly upright: an opened full bottle goes in) to +30° (both bottles
+  drain). The redesign of 2026-10-10 (the user's −50° rest) is under "A, redone". (Until
+  design review round 2 of 2026-10-14 the docs and the cradle page called A "the one to
+  build" and opened on it.)
 
 The adversarial reviews of 2026-10-10 (mechanical, fabrication, code) shaped what follows.
 Each finding and its fix is in [DECISIONS.md](DECISIONS.md).
@@ -62,7 +65,7 @@ stops there:
 | tilt | −50° (rest, neck up) to +30° (neck down) | the user, 2026-10-10: start nearly upright. At +20° both bottles' shoulders lie over the mouth's lowest lip, so they drain; one crank turn is one decant and back |
 | the mouth's height | 550 mm over the table | at −50° the base stop's rails hang about 514 mm under it |
 | the bay | 260 mm between the inner plates | a 174 mm bottle between the rear saddle's post and knob; a standard decanter (up to 240 mm across) stands wholly between the side stacks |
-| vessel | a standard decanter or glass on a lab jack (100 x 100 mm) in the base board's jack locator, one height for the whole swing | the vessel study (204–300 mm tall decanters, 155–240 across); the room under the mouth, below; round 1 of 2026-10-14 (no raising it mid-pour) |
+| vessel | a standard decanter or glass on the printed riser in the base board's riser locator, one fixed height per decanter, its rim 20 mm or more under the lowest part over it | the vessel study (204–300 mm tall decanters, 155–240 across); the room under the mouth, below; round 1 of 2026-10-14 (no raising it mid-pour); round 2 (no lab jack: a fixed riser) |
 | drive | hand crank, self-locking | holds any angle when let go |
 | light | an LED under the shoulder, riding the cradle | the candle's job |
 | material | aluminium first; the base board wood | the user (2026-10-13: "the bottom board in wood"); the look is decided from the viewer |
@@ -116,7 +119,7 @@ stops there:
     - It rides the rear V block, so it rises with it. At rest, set for a 6 L, it comes
       down to 26 mm over the base board, a finger's 25 mm (ISO 13854): the flanges end at
       588 mm, past a 6 L's heel, and the +z rail's keel is chamfered at its end
-      (`cradle.FLANGE_END`, `cradle.finger_gap`).
+      (`cradle.FLANGE_END`, `cradle.finger_gap`). Since round 2 the board has a window under it (`cradle.BOARD_WINDOW`): what lies there lies on the table, 43 mm under it.
 - **The bottles** (`cradle.setting`, `cradle.seat`): every one lies with the mouth on the
   pivot and the axis level, so the mouth stays put for each. Its setting is the two V
   blocks' rise and the base stop's place, read off the scales with the bottle out (see
@@ -276,7 +279,7 @@ stops there:
     sits on its riser; the crank turns about 2 rpm behind the outer plate's truss. On B
     its top-rear arc and the rod's end turn in the open, above and behind the gearbox,
     right in front of the hand crank (round 1): the use limits name them with the other
-    pinch points (`cradle.USE_LIMITS`), and taking the handle off locks it.
+    pinch points (`cradle.use_steps`' use limits), and taking the handle off locks it.
   - **The handle comes off by hand** (its thumb screw): nothing turns without it, so it is
     the child lock, and the use limits say to take it off when the cradle is left. Only its
     arm may turn the cradle: a drill on the input once built, or a hand twisting the hub or
@@ -326,10 +329,19 @@ stops there:
     together check all four are in.
   - **The keepers** (`cradle.KEEPER`, since the pack's turn 1 of 2026-10-14): the printed
     ring in the gap between b4 (b5) and the cradle link on each of the four, printed in TPU
-    95A with a 7.6 mm bore, grips its pin. A side lying down with its clips out holds its
-    pins by them: each pin's head is under its link with nothing under it, and a bare pin
-    drops out. In use it is the gap ring it was. The guide checks each holds its pin head
-    down, its clip out (one that slides is reprinted 0.2 mm tighter).
+    95A with a 7.4 mm bore (7.6 until round 2), grips its pin. A side lying down with its
+    clips out holds its pins by them: each pin's head is under its link with nothing under
+    it, and a bare pin drops out. In use it is the gap ring it was. The guide pushes each
+    pin's tip with 30 N on a kitchen scale (`cradle.KEEPER_PUSH_N`: one that slides is
+    reprinted 0.2 mm tighter) and holds each piece's weight on the way back until both its
+    pins are in ("Flat pack").
+  - **No lanyards** (round 1 had proposed one per R-clip; round 2 asked why not): a clip's
+    lanyard needs an anchor that doesn't turn about the clip's pin, and there is none. The
+    clip sits at the pin's tip on the bay side of the cradle link; b4 (b5), the inner plate
+    and the cradle link each turn about the pin through the swing (b6 turns 80° about X
+    relative to b4), so a cord from the clip to any of them winds round the joint, beside
+    the decanter and the bay faces' shear. Each clip goes straight back into its own pin's
+    hole instead (the steps), and the BOM's pack of five R-clips leaves one spare.
   - Rated as a solid 8 mm rod at annealed 304's minimum yield (205 MPa): 1.39 x the M6
     Chicago barrel it replaced. Jammed, X 2.52 and Y 2.21 (as Chicago screws they had
     held 1.72 and 1.49).
@@ -386,23 +398,42 @@ stops there:
   - Nothing crosses the bay over the mouth.
 - **The base board** (`cradle._base_plate`, the part `base_plate`): 9 mm Baltic birch
   plywood, routed by SendCutSend (`birch_9mm`, the user's of 2026-10-13), 584 mm across
-  the bay (`cradle.BASE_HALF`), 682 mm long on both (`Stand.base`: a full 6 L
-  tips past 25° over every edge of B's; A's rear edge 24.0° since the corrected centre of
-  mass, its bar 15°). B's sits 40 mm toward its drive side (`cradle.BASE_Z`,
-  round 1 of 2026-10-14: the gearbox and the hand crank put the cradle's centre of mass 68
-  mm that way). Its corners are rounded 35 mm and the notch's mouth 8 mm
-  (`cradle.BASE_CORNER_R`, `NOTCH_MOUTH_R`): a square plywood corner chips and catches a
-  shin. SendCutSend publishes no plywood price: its cutting is quoted at upload. Seal its
-  edges with a clear finish (the notch's end grain would wick wine) and oil its faces; it
-  isn't weather-proof.
+  the bay (`cradle.BASE_HALF`), 684 mm long on B and 682 on A (`Stand.base`: a full 6 L
+  tips past 25° over every edge of B's; A's rear edge 23.9°, its bar 15°). B's sits 40 mm
+  toward its drive side (`cradle.BASE_Z`, round 1 of 2026-10-14: the gearbox and the hand
+  crank put the cradle's centre of mass 68 mm that way). Its corners are rounded 35 mm and
+  the notch's mouth 8 mm (`cradle.BASE_CORNER_R`, `NOTCH_MOUTH_R`): a square plywood corner
+  chips and catches a shin. SendCutSend publishes no plywood price: its cutting is quoted at
+  upload.
+  - **Glued, then finished** (design review round 2's M6, 2026-10-14). Wood glue bonds bare
+    wood: "Most of our glues are designed to bond bare wood. Painting or staining a wood
+    blocks the pores", and over a finish a bond "will only be as strong as the bond
+    between the" finish and the wood (Titebond's FAQ,
+    <https://www.titebond.com/resources/use/all/faqs>, fetched 2026-10-14 by the review). So
+    the board stays bare through the build: the riser locator's layers are glued at once,
+    the cleats once both sides stand on it; then every face and edge of the board, the
+    cleats and the locator takes polyurethane (the guide's last build step). Until round 2
+    the guide sealed the edges and oiled the faces first, then glued the cleats onto the
+    oil, and an oiled face is no barrier to red wine under the pour.
+  - **A window under the base stop** (`cradle.BOARD_WINDOW`, round 2's M7): 105 x 210 mm
+    with 20 mm corners, 285 to 390 mm behind the mouth across the bay's middle. At rest,
+    set for a 6 L, the base stop comes down to 26 mm over the board, a finger's 25 mm (ISO
+    13854), and less than the 24 mm cork just pulled and laid there; over the window
+    whatever lies there lies on the table, 43 mm under it (`cradle.finger_gap`, the clash
+    test's bar 40). It cuts no cleat, bolt or foot; 159 mm of birch stand between it and the
+    notch and 134 mm behind it (A: 92). Its 135 g of birch, with round 2's NRV050, took
+    B's 684 mm board's rear edge to 25.0° to the tenth: the board grew 2 mm at the rear, to
+    686 mm (25.2°).
   - **The cleats** (`cradle._cleats`, the parts `base_cleat_*`; round 1): two 26 mm strips
     of the same birch glued to the board either side of each outer plate's rail, between
     its brackets, 0.15 mm off each face (`cradle.CLEAT`). They hold each side upright on the
     board, where its two printed brackets alone let it sway several millimetres under a
     20 N push at the mouth, and they drop the rails into place when the cradle goes back
     on. They're glued to the cradle as built: the guide pencils each round its rail with a
-    sheet of paper for the play, then glues it on the marks (Titebond II, the `wood_glue`
-    line).
+    sheet of paper for the play, lifts the cradle off, then glues them on the marks
+    (Titebond II, the `wood_glue` line) and sands a 2 mm lead-in at 45° on each one's top
+    edge by the rail (`cradle.CLEAT_LEAD`, round 2: the way back lowers 9.5 kg so both rails
+    drop into their slots at once, mostly blind).
   - **The brackets** (`cradle._bracket`): both outer plates' rails bolt onto the board with
     printed L-brackets: an M5 screw and nut through the upright and the outer plate, an
     M6 x 25 carriage bolt up through the board and the foot (Bolt Depot 18221).
@@ -413,7 +444,8 @@ stops there:
     - The foot's hole is 8.5 mm (`cradle.BRACKET_HOLE`): 1.25 mm of play round the bolt, so
       a side settles where the linkage puts it. B's two remote centres must agree to within
       the joints' play (round 1's linkage review), so the guide snugs the passive side's
-      knobs last, after a whole pour.
+      knobs last, with the bottle level (round 2's m6: the forced misfit is 0.68 of the
+      joints' play snugged at level, 1.29 at rest).
     - On the bolt go an 18-8 fender washer (6.4 x 18, Bolt Depot 7315) and a printed thumb
       knob (`cradle.KNOB`, 24 mm across, fluted) with an 18-8 M6 nut (Bolt Depot 4776)
       pressed into its hex pocket. The washer spreads the clamp over 200 mm² of the printed
@@ -426,29 +458,65 @@ stops there:
       upright.
     - Check the knobs are snug before each use. One that keeps working loose has let its
       bracket's foot creep under the washer: snug it, and reprint that bracket in PETG.
-    - All the bolts go in with the board. The passive side is set down 7-15 mm out from its
-      place, inside its bolts, and pushed home.
-  - **The jack locator** (`cradle._jack_locator`, the parts `jack_locator_0` and
-    `jack_locator_1`; round 1): two layers of the board's birch glued face to face. At 18 mm it meets the board's
-    whole edge (the board stands 8 mm up on its feet). Its outline is the notch's, 1 mm in,
-    from 70 mm in front of the mouth to the notch's round end, with an ear into each of
-    the notch's two side bays (`cradle.NOTCH_BAY`), so it can't slide out forward. Its
-    101 mm square pocket, dog-boned, takes a 100 x 100 mm lab jack's base under the mouth
-    (`cradle.JACK_BASE`): in the bare notch the jack had floated 76 mm either way, and the
-    stream lands within 16 mm of the axis. It lifts out to stand a vessel on the table.
+    - All the bolts go in with the board. On A the passive side is set down 7-15 mm out from
+      its place, inside its bolts, and pushed home; on B the whole cradle is set on the
+      board, its passive panel built and lowered lying down ("Building one").
+  - **The riser locator** (`cradle._riser_locator`, the parts `riser_locator_0` and
+    `riser_locator_1`; round 1's jack locator): two layers of the board's birch glued face to
+    face. At 18 mm it meets the board's whole edge (the board stands 8 mm up on its feet).
+    Its outline is the notch's, 1 mm in, from 70 mm in front of the mouth to the notch's
+    round end, with an ear into each of the notch's two side bays (`cradle.NOTCH_BAY`), so it
+    can't slide out forward. Its 101 mm square pocket, dog-boned, takes the printed riser's
+    100 mm base under the mouth (`cradle.RISER_BASE`): in the bare notch a lab jack had
+    floated 76 mm either way, and the stream lands within 16 mm of the axis. It lifts out to
+    stand a vessel on the table.
+  - **The riser** (`cradle.riser_pieces`, the parts `decanter_riser_*`; round 2's B1 and M7,
+    in place of the lab jack round 1 had left unbought, unspecified and unpriced): printed,
+    fixed heights, stacked in the locator's pocket. Bottom up: two lifts side by side
+    (`cradle.RISER_LIFT`, 100 x 49.8 x 27.2 mm), two blocks on them (`cradle.RISER_BLOCK`,
+    100 x 49.8 x 85 mm), both cups open underneath, then plates of 5 and 4 mm
+    (`cradle.RISER_PLATES`; 20, 10 and 5 before the lifts); each piece's 2 mm 45° boss
+    (`cradle.RISER_LIP`) rides up into the piece over it with 0.5 mm of play, so the stack
+    can't slide apart, and each prints upside down with no support. The whole set is 123.2
+    mm (`cradle.DECANTER_RISER`, the drawn RIEDEL Ultra's). It can't be raised mid-pour
+    without lifting the decanter off it: that closes round 2's linkage review's
+    raised-decanter case physically.
+    - The blocks, each on its lift, are also the drive panel's lay-flat blocks on the trip
+      apart and back (`cradle.LAY_BLOCKS`, "Flat pack"): 114.2 mm with their boss, as far as
+      round 2's NRV050 stands off its outer plate (114.7), and a 12 mm relief in each boss's
+      middle takes the screw head it sits under. Two jobs, no part more to store or lose.
+      (The stand round's blocks stood 87 under the NRV040's 87.5. Blocks 27 mm taller
+      instead, the user's first call of 2026-10-15, would have left the riser over the
+      drawn decanter's rule with the old plates, or with plates thin enough for it, three
+      listed vessels with no stack clear of the locator: the plates alone stop at 11 mm.)
+    - The stacks it makes (`cradle_report.riser_stacks`): any of the lifts, the blocks and
+      the plates in that order, 6 to 38.2 mm without the blocks and 87 to 123.2 on them.
+      Every listed vessel's stack is within 7 mm of the stand round's (the RIEDEL Ultra
+      Magnum and Zalto Axium 114.2 against 117, Le Château 96 against 102, the drawn RIEDEL
+      Ultra 123.2 against 122) and within 7 of the rule's most but for the Zalto Burgundy
+      (38.2 against 78; lower is safe).
+    - About 353 cm³ of PLA in all (the lifts 43 cm³ each, the blocks 92, the plates 46 and
+      36; 350 before the lifts).
   - Four printed TPU feet snap into its corner holes (a cone and a bore up the stem). On a
     counter that isn't flat they take up about 1 mm; past that it rocks, and a thicker foot
     goes under the corner that lifts.
+- **No toggle flag** (the user's call of 2026-10-15): the stand round's red flag on B's
+  outer plate (its arc 108-128 mm round O over the rest's toggle zone, two M5 screws through
+  the rear leg) went, with its holes and their claims, for one cue on both cradles at both
+  toggles: the paint marks across the gearbox's output hub and housing ("The drive": the
+  toggle zones' marks; `handcrank.TOGGLE_TURNS`).
 - **The light:** a 14 x 60.5 mm AAA keychain light (Olight i3E EOS) stands in a printed
   clip under the front saddle's back end (its flange on the carrier's underside, two M5s),
   so the clip prints upright and round. Its head sits under the
   shoulder; an M3 set screw holds it while you twist the head to switch it on.
   - A longer light's tail reaches a decanter's shoulder at rest.
+  - Its printed clip is the lowest part of the cradle box over the decanter's rim: 380 mm
+    over the table, at rest ("The vessel under the mouth").
 - **Display only** (`fab="display"`: drawn, never bought, cut or printed): the bottle (a
   6 L methuselah, `cradle.SHOWN`: the V blocks drawn at their lowest; the cradle page sets
-  them for the bottle picked), a RIEDEL Ultra decanter (225 mm, `cradle.DECANTER_PROFILE`) and
-  its riser (`cradle.DECANTER_RISER`, 135 mm: the highest that clears the whole swing), in
-  the jack locator's pocket.
+  them for the bottle picked) and a RIEDEL Ultra decanter (225 mm, `cradle.DECANTER_PROFILE`)
+  on the printed riser, the whole set (`cradle.DECANTER_RISER`, 123.2 mm), in the riser
+  locator's pocket.
 
 ## A, redone (2026-10-10)
 
@@ -717,7 +785,7 @@ A (36.0: SF 1.22, was 1.25; 26.0 N); the stand tips over its rear edge at 25.0°
 the tests ask: the drive's to settle (2026-10-14). Round 1's drive set both bars on cited
 sources ("The drive"): the gearbox rated at a hand's speed, 1.65 on B and 1.57 on A; the
 grip under MIL-STD-1472H's 22 N, 20.8 N on B's 125 mm crank. A's 85 mm crank (the longest
-its cradle clears) takes 32.2 N: open. B's board is 682 mm (25.1°).
+its cradle clears) takes 32.2 N: open. B's board is 682 mm (25.1°; 686 since round 2's window and NRV050, 25.2°).
 
 **Review round 1** (the same day; `/root/scratch/decant/review5/r1/mounting.md` on the
 development box). What it found, and what changed:
@@ -746,24 +814,46 @@ development box). What it found, and what changed:
 ## The vessel under the mouth
 
 At rest, 50° neck up, the cradle box hangs straight under the mouth: the front tie rods, the
-front saddle and the light cross the decanter's axis from 385 mm over the table up.
-`cradle_report.room` measures the room a vessel has round its axis at every height, over
-the whole swing and from the pour on (the cradle past −20°), with the drawn 6 L methuselah
-in the saddles (the V blocks at their lowest: a thinner bottle's ride higher, off the
-decanter); the cradle page (`/api/cradle/{key}/room`) stands each vessel on the highest
-riser that clears it (`viewer/src/decant/liquid.ts`, `bestRiser`).
-- For the whole swing: 250 mm across up to 165 mm over the table, 125 mm across above
-  that, its rim no higher than 380 mm. A RIEDEL Ultra stands on a 135 mm riser, its rim
-  about 190 mm under the mouth.
+front saddle and the light cross the decanter's axis. `cradle_report.room` measures the room
+a vessel has round its axis at every height, over the whole swing and from the pour on (the
+cradle past −20°), with the drawn 6 L methuselah in the saddles (the V blocks at their
+lowest: a thinner bottle's ride higher, off the decanter), and names the cradle box's part
+that comes lowest over the drawn decanter's rim (within its 37 mm of the axis) over the
+swing (`room`'s `lowest`): **the light's printed clip, 380 mm over the table, at rest**. The
+front saddle the guide had named is 66 mm higher (447 mm).
+- **The one rule** (`cradle.RISER_CLEAR`, design review round 2's B1, 2026-10-14): a
+  vessel's rim at least 20 mm under that lowest part, and every point of it 10 mm off the
+  room's side (the box beside it, the bay's faces), on the highest printed stack under
+  that (`cradle_report.riser_fits`, `riser_for`, `riser_stack`). Rest is a toggle dwell: the
+  bottle moves under 2° over the last 1½ turns while the rod's force grows past any part's
+  rating (10.7 kN at 5°), so whatever the box comes down on there it crushes; the 20 mm
+  takes a handmade decanter's tolerance, a profile traced from a photo, the joints' 0.98 mm
+  of play and the box's 0.58 mm sag under a 6 L.
+- One number per decanter, everywhere: the guide, the cradle page and this record give the
+  same stack by the same rule. The page (`viewer/src/decant/liquid.ts`, `riserFits`,
+  `bestRiser`, `riserStack`) is the Python's twin, held to it by
+  `tests/fixtures/cradle/riser_reference.json` (every listed vessel's stack on B's room),
+  which `liquid.test.ts` and `tests/test_cradle.py` both read; the room's rule and stacks
+  come from the API (`/api/cradle/{key}/room`).
+- The drawn RIEDEL Ultra (225 mm): the rule allows it 129 mm; it stands on the whole printed
+  set, 123.2 mm (`cradle.DECANTER_RISER`), its rim at 348.2 mm, 32 mm under the clip. A
+  RIEDEL Cabernet Magnum carafe (269 mm): the blocks alone, 87 mm; a RIEDEL Ultra Magnum
+  (240 mm): the lifts and the blocks, 114.2. Before round 2 four heights were given for the RIEDEL Ultra: the guide's size rule
+  124 mm, the model 135, the guide's finger rule (aimed at the front saddle) about 137 or,
+  read literally, 205 (into the clip), and the page 148, whose rim stood 7 mm under the clip:
+  its `bestRiser` kept 3 mm off the room's side and nothing over the rim.
 - **One height for the whole swing** (round 1, 2026-10-14). From the pour on the room is
   larger: the rim up to about 515 mm over the table (55 mm across above 475), 35 mm under
-  the mouth (`cradle_report.room`'s `room_pouring`). Using it meant raising the jack once
+  the mouth (`cradle_report.room`'s `room_pouring`). Using it meant raising the vessel once
   the cradle was past −20° and lowering it before cranking back to rest. Forgotten, the
   worm drives the cradle box down onto the glass while the handle only feels a little
-  stiff: near −30° each newton at the grip puts 20-25 N on the rim. And −20° can't be seen
-  on the cradle; a RIEDEL Ultra gained 12 mm. The guide, the use limits and the cradle page
-  (`viewer/src/decant/pour.ts`) give one height, set at rest, and say never to raise it
-  mid-pour.
+  stiff: near −30° each newton at the grip puts 20-25 N on the rim. The printed riser can't
+  be raised mid-pour without lifting the decanter off it; the guide, the use limits and the
+  cradle page give one stack, set at rest, and say never to raise the decanter mid-pour.
+- **A bigger bottle than its decanter** (a 6 L fills the largest listed decanter four times
+  over): the guide's Decanting step and the page's "full at N turns" say to turn back a turn
+  until the stream stops, slide the decanter out under the raised box and set the next on
+  the same riser.
 
 ## Flat pack
 
@@ -771,19 +861,23 @@ riser that clears it (`viewer/src/decant/liquid.ts`, `bestRiser`).
 in one box. The cradle page's Flat pack button flies each piece into the box, in the order
 they go in (`/api/cradle/{key}/pack`). B packs as modules, A flat.
 
-**B: four pieces and the hand crank** (`cradle_pack.module_pieces`, the user's of
-2026-10-13; the steps rewritten in round 1 of 2026-10-14: `cradle.module_steps`, also the
-guide's last two steps; the cradle box on its own since the pack's turn 1, the same day).
-The base board, the passive side panel, the cradle box, the drive side panel and the hand
-crank. No tool, no small part left loose: 740 x 316 x 600 mm outside, about 141 L (the
-real-shape packer's plan, on the planner's 16-layer stack of 2026-10-14; 740 x 316 x 601,
-140.7 L, with round 2's NRV050), where the drive
-side carrying the cradle box had packed in 699 x 498 x 608, 212 L (its flat pack had been
-112).
+**B: four pieces, the riser and the hand crank** (`cradle_pack.module_pieces`, the user's
+of 2026-10-13; the steps rewritten in round 1 of 2026-10-14 and again in round 2:
+`cradle.module_steps`, each a `cradle.ModuleStep` with its title, text and picture, the
+guide's last 19 steps and the cradle page's; the cradle box on its own since the pack's
+turn 1, the same day). The base board, the passive side panel, the cradle box, the drive
+side panel, the riser and the hand crank. No tool, no small part left loose: 740 x 316 x
+601 mm outside, 140.7 L (the real-shape packer's plan, on the planner's 16-layer stack of
+2026-10-14, with round 2's NRV050 and the riser's lifts: the riser fits its free room),
+where the drive side carrying the cradle box had packed in 699 x 498 x 608, 212 L (its
+flat pack had been 112).
+
 1. Crank it to the pack pose: from rest, turn the handle the way that swings the crank's arm
    down, until the arm lies along the drive side's outer plate's rear leg, straight down
    from the gearbox (`cradle.PACK_POSES`, `pack_pose`; `cradle_pack.pack_t`). Seen from
    outside the leg hides it. It is about 5½ turns from rest and the bottle is 31° neck up.
+   The decanter away, the riser comes out of its locator: its plates, then its two blocks,
+   each on its lift.
    - At rest the passive side's cradle link b6 overlaps that side's inner bar O1-O2 (its
      front ties' boss over the bar's O1 end, by about 2 mm) until 46° neck up. Past that it
      clears it: about 4 mm at 44°, 15 mm at 35°, 20 mm at 30°.
@@ -792,8 +886,13 @@ side carrying the cradle box had packed in 699 x 498 x 608, 212 L (its flat pack
      for a rest called early, where b6's boss jams on the bar (round 1's stand review).
    - From 44° to 20° neck up the box doesn't grow: the board sets its length. At full tilt
      the cradle box stands up out of the side (a 259 L box).
-   - The first time, mark the pose for the way back with a paint pen: a line across the arm
-     b3 and the inner bar at its O1 end, and one across b5 and b3 by J2.
+   - The paint pen's lines that mark the pose for the way back are made in the first build
+     (the guide's step laying it down): a line across the arm b3 and the inner bar at its
+     O1 end, and one across b5 and b3 by J2, on each side. Paint on bare 7075 wears; the
+     step says to mark them again if they have. (Laser-cut witness notches instead, round
+     2's m11, were weighed and not cut: each would sit in the ring of metal round a
+     jam-rated pin's hole, b3's at O1 or b5's at J2, which the net-section and tear-out
+     rules rate without a notch.)
 2. Hand crank: loosen its thumb screw and pull it off. Nothing turns without it. (Its
    thumb screws stay in their brass inserts and the input key is glued in: nothing small
    comes loose. A stow clip on the drive side's outer face was tried in round 1's drive
@@ -802,41 +901,56 @@ side carrying the cradle box had packed in 699 x 498 x 608, 212 L (its flat pack
 3. Undo the four thumb knobs on the base board's bolts by hand and lift the cradle off the
    board by its two outer plates' top members (never by the cradle box: only the worm holds
    it). The bolts stay in the board, the washers and knobs back on them.
-4. Lay it on its drive side on a folded towel, the gearbox down: it rests a little tilted
-   on the gearbox and that side's brackets, the passive side up. Gravity now runs along the
-   pins, so no link can swing.
+4. Stand the riser's two blocks, each on its lift, on a folded towel and lay the cradle on
+   its drive side on them and the gearbox (`cradle.LAY_BLOCKS`): one under pillar O1's screw head (the head in
+   its boss's relief), one under column D2's on the front leg. It lies level, the passive
+   side up; gravity now runs along the pins, so no link can swing. A hand on the cradle box
+   while the other works: lying, the cradle tips past 15.7° and 12 N at its top.
 5. Pull the two R-clips of pins X and Y on the passive side, reaching into the bay, from
    under the passive cradle link ("The quick-release pins"). Each pin stays in its link,
    standing on its head, its TPU keeper on it.
 6. Lift the passive side panel straight up off the pins by its outer plate, level, its pins
-   and their keepers with it, and push each clip back through its pin's hole. The drive side
-   with the cradle box stays lying as it is, the worm holding it.
+   and their keepers with it, push each clip back through its pin's hole, and set the panel
+   down on its outer plate. The drive side with the cradle box stays lying as it is, the
+   worm holding it.
 7. Pull the two R-clips of pins X and Y on the drive side, reaching in from the side between
-   the drive side's cradle link and its inner plate (the cradle box is open at its sides).
-   Each pin stays in its link: its head is under the link, and its keeper holds it.
+   the drive side's cradle link and its inner plate (the cradle box is open at its sides),
+   a hand on the box. Each pin stays in its link: its head is under the link, and its keeper
+   holds it.
 8. Lift the cradle box straight up off the drive side's pins, level, by its top cradle link
-   and a tie rod (3.2 kg), and set it down as it was, on its other cradle link (it stands
-   there with its centre of mass 41 mm inside its tie rods' heads). Push each clip back
-   through its pin's hole. The drive side stays lying as it is, as it goes in the box; its
-   link b5, on its one pin J2 now, turns flat.
+   and a tie rod (3.2 kg), turn it a quarter about its tie rods and set it down on its two
+   cradle links' long edges, its saddles' open tops down (the base stop's knob the third
+   point; the tie rods level, so no load on the saddles' set screws). Push each clip back
+   through its pin's hole. The drive side stays on its blocks; its link b5, on its one pin
+   J2 now, turns flat.
    - Standing, as the steps had it before round 1, the 6.8 kg drive module tipped over once
      the pins cleared b6 (its centre of mass 66 mm past the one rail it stood on), dropping
      its cradle box onto the table, and the panel fell the other way. Standing on the board
      neither side can slide off the pins (each rail is between its cleats, over its bolts),
      and only the drive side holds the box (the worm): the passive side's links are free,
      so the passive panel comes off first and the box last.
-   - **The keepers** (`cradle.KEEPER`, pack turn 1): each pin's head lies on its link's
-     outer face (`construction.pivots.clevis`), 50 mm and more over that side's outer plate
-     with nothing under it in plan, so with that side down and its clip out a bare pin drops
-     out of its link. The printed ring each pin's plan puts in the gap between b4 (b5) and
-     the cradle link is printed in TPU 95A with a 7.6 mm bore on the 8 mm pin: it grips the
-     pin and holds it, its side down, the clip out. That is what lets the cradle box come off
-     the drive side as it lies, and it takes the loose spacer out of the passive panel's
-     steps. Its grip (`cradle_report.keepers`): at the least interference a print gives
-     (0.2 mm on the diameter) and TPU 95A's least published modulus (26 MPa, UltiMaker's TDS
-     v5.00; its v2.01 of 2025-09-15 gives 56-67), on an oiled pin (friction 0.3), 6.1 N, 55
-     x the pin's 0.11 N (the bar 10); at its nominal 0.4 mm and 67 MPa it goes on with a
-     push of about 52 N. In use it is the gap ring it was: unclamped, the pins level.
+   - **The keepers** (`cradle.KEEPER`, pack turn 1; round 2's M3): each pin's head lies on
+     its link's outer face (`construction.pivots.clevis`), 50 mm and more over that side's
+     outer plate with nothing under it in plan, so with that side down and its clip out a
+     bare pin drops out of its link. The printed ring each pin's plan puts in the gap
+     between b4 (b5) and the cradle link is printed in TPU 95A with a 7.4 mm bore on the
+     8 mm pin: it grips the pin and holds it, its side down, the clip out. That is what lets
+     the cradle box come off the drive side as it lies, and it takes the loose spacer out of
+     the passive panel's steps. Its grip (`cradle_report.keepers`): at the least
+     interference a print gives (0.4 mm on the diameter: the pin 7.95-7.99, the bore printed
+     to within 0.15) and TPU 95A's least published modulus (26 MPa, UltiMaker's TDS v5.00;
+     its v2.01 of 2025-09-15 gives 56-67), on an oiled pin (friction 0.3), 12.2 N, 109 x the
+     pin's 0.11 N (the bar 10); at its nominal 0.6 mm, 67 MPa and dry friction it goes on
+     with a push of about 78 N, a short tube over the pin (the bar 120).
+   - **The keepers' real load** (round 2's M3 and the pack's review 1's M2): the pin's own
+     weight is not what they meet. Lowering the box (3.16 kg) on pin X and turning it until
+     Y lines up rests up to half its weight, 15.5 N, on a pin's tip, which pushes the pin
+     head-first out of its link through a keeper at its least grip (12.2 N; 6.1 N at the old
+     7.6 mm bore). Two answers: the way back now holds each piece's weight until both its
+     pins are in their holes, never on a pin's tip (and says how to push a slid pin home);
+     and the guide's bench check pushes each pin's tip with 30 N (`cradle.KEEPER_PUSH_N`,
+     1.94 x the 15.5 N: `keepers`' `load_ratio`, the bar 1.5), so a keeper that would let go
+     is reprinted before it ever does.
    - Turning the drive module over onto its cradle box instead (the box under, the drive
      side up, its pins' heads up) was weighed and dropped: on its box the module stands with
      its centre of mass 18 mm inside the tie rods' heads, 274 mm up (it tips at 3.8°; 26 mm
@@ -846,30 +960,62 @@ side carrying the cradle box had packed in 699 x 498 x 608, 212 L (its flat pack
      drive side and the cradle box, then the cradle box's against the drive side: nothing
      meets (the payload's `slide_off`, with the box's `box`).
 
-**Back together** (the payload's `reassembly`, the guide's "Putting it back together"):
-1. The drive side on its drive side on a folded towel, the gearbox down, its pins X and Y
-   standing in their links on their keepers, the clips out.
-2. The cradle box lowered onto it, level, its knobs' side up: pin X into its hole first,
-   then the box turned about it and b5 swung until Y drops into its. Both clips in from the
-   side.
+**How each piece rests** (`cradle.REST_POSES`, rated by `cradle_pack.rest_poses` on the
+pieces' real shapes, each its hull's stable face nearest the way it's set down; the bars in
+`tests/test_cradle.py`; round 2's M2):
+
+| pose (B) | kg | rests on | tilt | tips at | push at its top |
+|---|---|---|---|---|---|
+| the cradle lying on its drive side on the riser's blocks | 11.12 | the gearbox and the two blocks on their lifts | 0.1° | 15.7° | 12.3 N |
+| the drive side and the box, lying, the passive panel off | 9.25 | the same | 0.1° | 15.0° | 8.8 N |
+| the drive side panel alone on its blocks (the way back starts here) | 6.09 | the same | 0.1° | 32.2° | 16.2 N |
+| the cradle box on its links' long edges, its saddles' tops down | 3.16 | both cradle links' edges and the base stop's knob | 10.9° | 41.5° | 15.5 N |
+| the passive side panel on its outer plate | 1.87 | pillar O1's screw head and its two brackets | 3.6° | 55.8° | 10.8 N |
+| A, off its board while the finish cures, on its drive side on the blocks | 9.95 | the gearbox and the two blocks on their lifts | 0.2° | 19.3° | 13.1 N |
+
+On round 2's NRV050 (1.35 kg more, 27 mm further out) the lying poses tip sooner: the
+cradle 15.7° (16.9 on the NRV040), the drive side with the box 15.0°, at its bar (16.3), the
+drive panel alone 32.2° (35.2). The steps keep a hand on the box.
+
+Round 1's poses had been perches: the cradle and the drive side lay 14° tilted on the
+gearbox, the O1 pillar's screw head and the front bracket (the whole tipped at 15.4°, 9.1 N;
+the drive panel alone, where the way back starts, at 6.8° and 2.5 N), and the box "set down
+as it was, on its other cradle link" stood on L.b6's edge and two of the four tie screws'
+2.75 mm heads, its centre of mass 22 mm outside their quadrilateral: it tipped at 10.0° and
+2.8 N. (The "41 mm" quoted for it was to L.b6's outline, which it never sat flat on.) The
+stacked poses gain little from the blocks (the box at the pack pose overhangs the line O1-O):
+the steps keep a hand on the box.
+
+**Back together** (the payload's `reassembly`, the guide's "Back together" steps):
+1. The riser's two blocks, each on its lift, on a folded towel, the drive side panel laid
+   on them and its gearbox, outer plate down; its pins X and Y standing in their links on
+   their keepers, the clips out, each pushed fully home by its head.
+2. The cradle box lowered onto it, level, its knobs' side up, its weight held until both
+   pins are in their holes: pin X into its hole first, then the box turned about it and b5
+   swung until Y lines up. Never on a pin's tip. Both clips in from the side.
 3. The passive panel on its outer plate, its pins held by their clips; its links set to the
-   pack pose by the paint marks, a strip of masking tape across each pair while it turns
-   over.
+   pack pose by the paint marks, a strip of masking tape across b3 and its inner bar (not
+   b5: it is the one nudged into place, round 2's m5).
 4. Turned over and held level: each clip out; each pin hangs by its head, its keeper on it.
-5. Lowered level onto the cradle link: pin X into its hole first, then b5 nudged until Y
-   drops into its. The tape off.
+5. Lowered level onto the cradle link, its weight held until both pins are in: pin X into
+   its hole first, then b5 nudged until Y lines up. The tape off.
 6. Both clips in from under the cradle link: a pin without its clip is held by its keeper's
    grip alone.
-7. Stood up and set on the board: each rail between its cleats, the brackets' feet over
-   their bolts; the washers and knobs on, the passive side's only started.
-8. The hand crank on; a whole pour and back with the passive knobs loose, then snug them at
-   rest: B's two remote centres settle together.
-9. The first build's checks again, the bottle out: both cradle links swing freely, the
-   handle turns evenly with a fingertip (under 5 N at the grip: `cradle.EMPTY_GRIP_N`; the
-   report's `empty_handle_force_n` is 3.6), and the rod's paper check. All four clips in.
+7. Stood up and set on the board: each rail between its cleats (their lead-ins guide it),
+   the brackets' feet over their bolts; the washers and knobs on, the passive side's only
+   started.
+8. The riser back in its locator.
+9. The hand crank on.
+10. Turned to level (about 8½ turns from rest) with the passive knobs loose, then snugged
+    there: B's two remote centres agree best at level (round 2's m6).
+11. The first build's checks again, the bottle out: both cradle links swing freely, the
+    handle turns evenly with a fingertip (under 5 N at the grip, the luggage scale hooked on
+    it under 0.5 kg: `cradle.EMPTY_GRIP_N`; the report's `empty_handle_force_n` is 3.6), and
+    the rod's paper check. All four clips in.
 
-The pieces: the base board (its feet, cleats and jack locator, its bolts, washers and
-knobs), the passive side panel (every part of that side but its cradle link, its
+The pieces: the base board (its feet, cleats and riser locator, its bolts, washers and
+knobs), the riser (its lifts, blocks and plates, one piece: `cradle_pack.RISER`), the passive side
+panel (every part of that side but its cradle link, its
 brackets), the cradle box (both cradle links, the ties, the saddles with their V blocks,
 knobs, post and lip gauge, the light, the base stop), the drive side panel (the gearbox and
 every part of that side but its cradle link and the hand crank: the worm holds its links as
@@ -1039,9 +1185,11 @@ mm handle, 69.3 at A's on its 105, and no bound; round 1 made it the clutch's 61
 - Turning it: 36.9 N·m at A's crank at worst, a sealed full 6 L on the mounting round's
   saddles: the NRV050 SF 2.30 on its 85 N·m (round 1's NRV040: 1.22 on its 45). 21.5 N at
   A's 130 mm grip run in, 24.5 new (the bar 22 N: "The drive"; round 1's 85 mm crank had
-  32.2). It tips at 24.5° to its drive side (its test's bar is 15°; 25.6° before the
-  NRV050), 25.4° over its rear edge, 33.5° to the other side and 39.6° forward, and takes
-  a 36.2 N push at a bottle's top, the worst over the swing.
+  32.2). It tips at 24.3° to its drive side (its test's bar is 15°), 25.3° over its rear
+  edge (28.5° with the wine leaving as it pours), 33.4° to the other side and 39.4°
+  forward, and takes a 35.7 N push at a bottle's top (toward the drive side), the worst
+  over the swing (round 2's window under the base stop, on the NRV040: 23.9°, 25.5°, 30.5°,
+  38.4° and 35.6 N; before the window 24.0°, 25.6°, 30.6°, 38.6° and 36.1 N).
 - The rating is the plan's: a wider stack between the rod and the cradle link puts pin E
   lower. A product is never served a plan from another engine version
   (`stages.planning._reuse_plan`): it re-plans, proven thinnest.
@@ -1085,9 +1233,12 @@ mouth its lever is short. The same cap, 62.5 N·m on B and 65.7 on A, against a 
 | the rear saddle's underside, 351 mm out | 0.72 kN | 1.5 / 2.0 / 1.0 / 1.9 kN | the outer plate 0.77, pillar O2 0.91, O1 1.06 | the outer plate 0.88 |
 
 Not designed for: nothing that holds a block 72 mm from the mouth at the cap fits the
-cradle, and no clutch a hand can turn brings those to 1. In practice the glass decanter
-breaks first. The use limits keep the decanter out of the cradle box's path (raise its
-jack only past −20°, lower it before cranking back). (At the 40 N push, before round 1's
+cradle, and no clutch a hand can turn brings those to 1. "In practice the glass decanter
+breaks first" was unverified (round 2's linkage review found no rim-strength figure): the
+frame starts to give at about 10 N over the normal turn at B's grip, about 1 kN at the front
+tie (the outer plate O1-O buckles at +6.5 N, the pillar O1 and the plate round its foot
+yield at +10 N). Since round 2 the decanter stands on a printed riser that can't be raised
+mid-pour, its rim 20 mm under the lowest part over it ("The vessel under the mouth"). (At the 40 N push, before round 1's
 drive: B's outer plate 0.17, pillars 0.30 and 0.34; A's plate 0.21.)
 
 **The clutch's cap** (rounds 1 and 2's drive reviews, 2026-10-14: `config.PRODUCT_CLUTCH_NM`,
@@ -1286,7 +1437,7 @@ structure, mounting and drive rounds of 2026-10-14 and round 2's drive):
 | walking | every joint, link, column and plate 4.11 or more; the crank's keyway 4.23; the output shaft's radial load 8.37 (402 N at the rod's plane, 69.4 mm past the hub, against 3363 N) |
 | rod, crankpin | buckling 1.68 × its jam force; the crankpin 2.07 jammed |
 | the clutch's cap over the whole turn | every part 1.34 or more 30° and more from the toggles (pillar O2); pillar O2 1.13 at ±25°, 0.92 at ±20°; the gearbox's output shaft 1.3 outside ±25°, 1 outside ±20°; the rod buckles within ±17° of rest, ±9° of full tilt (rounds 1 and 2's drive reviews) |
-| stand | tips at 25.1° at worst (a full 6 L, over the rear edge); the drive side 28.8°, the passive side 31.6°, the front 42.1°; a push of 46.1 N or more at a bottle's top. The board 40 mm toward the drive side and 684 mm long since round 2's drive (its NRV050 took the 682 mm board to 24.9°) |
+| stand | tips at 25.2° at worst (a full 6 L at every tilt, over the rear edge: a bound; with the wine leaving as it pours, 28.4°); the drive side 28.6°, the passive side 31.5°, the front 41.9°; a push of 45.6 N or more at a bottle's top (an empty 750 ml, toward the drive side). The board 40 mm toward the drive side and 686 mm long (round 2: its window under the base stop and the NRV050 took the 684 mm board's rear to 25.0°) |
 | stack | 84.05 mm a side, 16 layers (the planner of 2026-10-14; 84.23 in 17 before it, 79.68 before the clevis pin at K and b6 in 0.187 in) |
 
 Before the review's round (2026-10-13, the old rules and a 331 mm centre of mass): pillar
@@ -1312,17 +1463,24 @@ b2 held 0.80, b6 0.32 and pillar O2 about 0.4.
 - **The base board** runs from 160 mm in front of the mouth to 524 mm behind it: 684 by
   584 mm (a full 6 L tips past 25° over its sides and its rear edge; it was 596 by 500 for
   a 3 L, 626 by 530 until the stand's check of 2026-10-14, 684 until the corrected centre
-  of mass and the structure round the same day, 680 until round 1's drive, 682 until
-  round 2's NRV050). The first refit's had run 827
+  of mass and the structure round the same day, 680 until round 1's drive, 684 until round
+  2's window under the base stop and its NRV050). The first refit's had run 827
   mm, to 640 mm behind the mouth, with the crank 480 mm back. Its middle is 40 mm toward
   the drive side (`cradle.BASE_Z`, round 1). Its front keeps its 160 mm: the reviewer's
   35 mm trim (the front tips at 39.5°) would put the passive front foot's pad on that
   side's carriage bolt's head, now the board's passive edge is 40 mm nearer the bolts.
-  - The rear edge binds, at 25.1° (bar 25°): with the centre of mass corrected (390 mm
-    from the mouth), round 1's structure, the mounting round's saddles and round 2's
-    NRV050, 684 mm is the least board that holds it (682: 24.9°). Each
-    10 mm of board at the rear is about 0.5°; `python -m spiderpig.cradle_report stand`
-    re-runs the stand alone.
+  - The rear edge binds, at 25.2° (bar 25°): with the centre of mass corrected (390 mm
+    from the mouth), round 1's structure, the mounting round's saddles, round 2's window
+    under the base stop and its NRV050, 686 mm is the least board that holds it (684:
+    25.0° to the tenth). Each 10 mm of board at the rear is about 0.5°; `python -m
+    spiderpig.cradle_report stand` re-runs the stand alone.
+  - **That is a bound, not the use case** (round 2's m1): `stability` counts each bottle
+    full at every tilt, and the rear's worst is a full 6 L at 27.6° neck down, which would
+    have poured most of its wine by then. With the wine leaving as it pours (full while neck
+    up, poured past level: what it keeps then sits forward, in the shoulder, and only
+    steadies the rear; `stability`'s `pouring`) the rear holds 28.4°, the drive side 31.5°,
+    the passive side 37.8°: about 3.4° of real margin over the bar, worth some 30 mm of
+    board at the rear. (A: 28.5° at the rear.)
 - **Planned on its own, the passive side would be about 35 mm thick** (the review's
   estimate, not built): its layers 1–8 hold only the pillars' sleeves under the drive's
   crank block. How: plan the passive side as its own design (the side's linkage with no
@@ -1352,38 +1510,64 @@ reported; [DECISIONS.md](DECISIONS.md) has the entry):
 ## Building one
 
 ```bash
-spiderpig build --linkage decanter_hinge --out build/cradle_a   # STEP, STL, DXF, BOM, ORDER.md
-spiderpig guide --linkage decanter_hinge --out build/cradle_a   # ASSEMBLY.pdf and .md
-spiderpig bake --linkage decanter_hinge                          # the viewer's .glb (8 s loop)
+spiderpig build --linkage decanter_rcm --out build/cradle_b     # STEP, STL, DXF, BOM, ORDER.md
+spiderpig guide --linkage decanter_rcm --out build/cradle_b     # ASSEMBLY.pdf and .md
+spiderpig bake --linkage decanter_rcm                            # the viewer's .glb (8 s loop)
 ```
 
-The assembly guide's order is `construction.assembly.CRADLE_ORDER`:
+The assembly guide's order is `construction.assembly.CRADLE_MODULE_ORDER` on B and
+`CRADLE_ORDER` on A (B's guide: 55 steps, 66 pages; A's: 28 steps, 38 pages):
 1. **The drive side**, bottom up on its outer plate:
    - the gearbox under the plate first;
    - the crank block from its lowest plate, the two standoffs screwed to it on the bench;
+   - on B, X's and Y's TPU keepers onto their pins over b4 and b5 (each pushed with 30 N on
+     a kitchen scale);
    - its cradle link goes on with the four tie rods already screwed to it;
    - its inner plate.
-2. **The base board:** sealed, its feet, bolts and jack locator in; the drive side bolts onto
-   it (it can't stand alone), its rail's two cleats pencilled round the rail with a sheet
-   of paper for the play, glued on the marks with the side lifted off, the side set back
-   between them.
-3. **The cradle box:** the saddles slide onto the tie rods, each V block in its carrier
+2. **The base board, bare:** its riser locator's layers glued, its feet, bolts in; the drive
+   side bolts onto it (it can't stand alone). No cleats and no finish yet: they go on once
+   both sides stand on it (step 6).
+3. **The hand crank**, its clutch set, and the toggle zones' paint marks on the gearbox.
+4. **The cradle box:** the saddles slide onto the tie rods, each V block in its carrier
    on its thumbscrew (the lip gauge on the front one), then the light and the base stop go
    on.
-4. **The passive side:**
-   - its cradle link onto the tie rods' free ends;
-   - its stack, from outside: the pillar goes up through the cradle link;
-   - what goes over the link, then its inner plate, then its brackets and cleats (as the
-     drive side's), its knobs snugged last, after a whole pour.
-5. **The hand crank**, then **the bottle:** set the cradle for it (the two knobs, the lip
-   gauge, the base stop), then decanting; on B, taking it apart for the trip and putting
-   it back together ("Flat pack").
+5. **The passive side.**
+   - B (design review round 2's M1, as the trip's way back): cranked to the pack pose and
+     marked with the paint pen, the hand crank off, the drive side and its box lifted off the
+     board and laid on its drive side on the riser's two blocks; the passive cradle link
+     onto the tie rods' tops; the passive side panel built whole on the bench, lying on its
+     outer plate as the drive side was (its stack, keepers, inner plate and screws, its
+     brackets); set to the drive side's pose, turned over and lowered level onto the cradle
+     link, its weight held until both pins are in; its two clips in. (Until round 2 it went
+     on standing: set down 7-15 mm out on the board and pushed sideways onto two pins hidden
+     behind its own plates, its inner plate threaded into the bay and screwed on inside it,
+     and "lift the side off" to glue its cleats, which can't be done: it is pinned to the
+     box.)
+   - A: its cradle link onto the tie rods' free ends; its stack, from outside: the pillar
+     goes up through the cradle link; what goes over the link, its inner plate, its
+     brackets, its knobs only started.
+6. **The cleats and the finish** (round 2's M6): both sides on the board, each rail's cleats
+   pencilled round it with a sheet of paper for the play; the cradle lifted off and laid on
+   its drive side on the riser's blocks; the cleats glued to the bare board, their lead-ins
+   sanded; then every face and edge of the board, the cleats and the locator finished with
+   polyurethane; the cradle back on, the passive side's knobs snugged at level, the checks.
+7. **Using it** (round 2's M4, each its own step with its own picture, in this order, the
+   order `construction.assembly.USE_TAGS` gives: untagged they had sorted alphabetically,
+   the trip apart before the setting): before you use it, setting it for a bottle, the
+   decanter's riser, decanting, the use limits (a five-line card and the rest for
+   reference: `cradle.use_steps`, which the cradle page shows too); on B then the trip apart
+   (8 steps) and back together (11), each a step with its picture
+   (`construction.assembly.Scene`, drawn by `spiderpig.guide.scenes`: the cradle at its pose,
+   laid on its side, its pieces lifted off).
+
+The guide's cover lists the tools the steps name (`cradle.TOOLS`, round 2's m10: about 24,
+named only inside the steps until then).
 
 Things to know before cutting and on the bench:
 - **Get a live SendCutSend quote** (upload the DXFs). The BOM's cutting figure is a fit to
   the live quotes of 2026-10-10 for A's files (`hardware.bom.CRADLE_CUT_FITS`: USD 367.50
   then); the walkers' per-area rates had priced the old aluminium base plate alone at USD
-  488. The plywood (the board, its cleats and the jack locator) and the 7075 have no fitted
+  488. The plywood (the board, its cleats and the riser locator) and the 7075 have no fitted
   price. The BOM's and ORDER.md's totals say so (`bom.unpriced_cut_note`): "The total
   excludes 2 unpriced cut lines". For the 7075 they give an estimate, marked as one, with
   its basis: the 0.187 in 5052 fit's price for the same parts, x1 to x2
@@ -1411,13 +1595,18 @@ Things to know before cutting and on the bench:
 - **Mark the toggle zones** on the gearbox's far face (the guide: paint-pen lines across the
   output hub and the housing at rest, 2.5 handle turns from rest, 2.5 before full tilt and
   at full tilt).
-- **Tools** (`bom.CRADLE_TOOLS_NOTE`, the BOM's notes): a torque wrench to 20 N·m, hex keys,
-  13 mm, 10 mm and 3/4 in wrenches, a caliper with a depth rod, a luggage scale, a 14 mm
-  drill, a soldering iron, a flat file, a vise, a paint pen.
+- **Tools** (`cradle.TOOLS`, the guide's cover and `ASSEMBLY.md`; one list since the stand
+  merge): a torque wrench to 20 N·m, hex keys, 8, 10, two 13 mm and a 3/4 in wrench, a
+  caliper with a depth rod, a luggage scale, a 14 mm drill bit and a drill (the run-in),
+  a soldering iron, a flat file, a vise, a paint pen.
 - **Glue the input shaft's key** into its keyseat (threadlocker or super glue): it falls out
   when the crank comes off otherwise.
 - **Oil the steel standoffs:** they are bare 1018. Wipe each with light oil, grease the
-  crankpin where the rod turns on it, and keep the cradle dry.
+  crankpin where the rod turns on it, and keep the cradle dry; the decanting step wipes the
+  front saddle, the tie rods and the light after each pour. (Stainless tie rods, round 2's
+  m8, are not priced: MISUMI's SETRF10 page refuses a script, HTTP 403 when fetched on
+  2026-10-15, and the review's figure, USD 18.52 each at five against NETRF10's 11.08 (+37.20
+  for five), came from MISUMI's price API with the grade unconfirmed.)
 - **The worm's hold, on the bench:** with a full bottle at level, tap the table and watch a
   pencil line across the crank and the plate for 10 minutes (the guide's hand crank step).
   The clone's mesh isn't Motovario's: a 16 % drop in its friction loses self-locking. One
@@ -1426,28 +1615,44 @@ Things to know before cutting and on the bench:
 - **Dry-fit the hinge:** the cradle link must swing under its own weight once the
   pillar's screws are tight.
 - **Break the laser-cut edges** where hands go: the bay and the frame tops.
-- **Seal the base board's edges** (the notch's end grain wicks wine) and the jack
-  locator's: a clear finish such as polyurethane; oil the faces.
-- **The room it needs** (`cradle.USE_LIMITS`, the guide's "Decanting" step):
-  - 950 mm of headroom: a 6 L's base at full tilt reaches about 910 mm over the table.
-  - 100 mm behind the base board: the base stop's rails reach past its rear edge at full
-    tilt (A 74 mm, B 32), and B's hand crank's 60 mm grip turns up to 89 mm past it (and
-    65 mm past the board's drive-side edge, its 125 mm crank; A's 46 mm).
-  - The vessel: as "The vessel under the mouth" above, one height for the whole swing. It
-    stands under the mouth's centre (`cradle.DECANTER_X`) on a 100 x 100 mm lab jack in
-    the jack locator's pocket.
-- **Where it pinches** (the use limits, round 1): both side stacks, their bay faces too
-  (each return to rest the cradle links shear past the inner bars' front ends); on B the
-  crank and the rod's end, turning in the open above and behind the gearbox. (At rest the
-  base stop comes down to 26 mm over the base board behind the decanter: a finger's 25 mm,
-  ISO 13854.) A trapped finger: turn the handle back
-  the way it came (the worm holds what it has caught). Take the handle off when the
-  cradle is left: nothing turns without it.
+- **Glue, then finish the base board** (round 2's M6): the cleats and the riser locator's
+  layers glued to bare birch, then polyurethane on every face and edge of the board, the
+  cleats and the locator (the notch's end grain above all; the locator stands on the table,
+  in any spill). Not oil: an oiled face is no barrier to red wine, and glue doesn't hold to
+  it.
+- **The use limits** (`cradle.use_steps`, the guide's "The use limits" and the cradle
+  page's "Using it": round 2's M4 cut the 626-word paragraph into a card and a reference).
+  The card:
+  1. Room: 950 mm of headroom (a 6 L's base at full tilt reaches about 910 mm over the
+     table) and 100 mm free behind the board (the base stop's rails reach past its rear
+     edge at full tilt, A 74 mm, B 32; B's hand crank's grip turns past it too).
+  2. The decanter on its riser, set once at rest, its rim 20 mm or more under the light's
+     clip; once set, nothing raised or added under the cradle box (round 2: "nothing under
+     the cradle box at rest" had contradicted the decanter that stands there by design).
+  3. Hands out, and nothing under the cradle box or the bottle, while the gearbox hub's
+     paint line is between a pair of its marks (the first and last 2.5 handle turns).
+  4. The lip gauge down before the bottle passes level.
+  5. The handle off (its thumb screw) when you leave it: nothing turns without it.
+- **Where it pinches** (the use limits' reference, round 1): both side stacks, their bay
+  faces too (each return to rest the cradle links shear past the inner bars' front ends);
+  on B the crank and the rod's end, turning in the open above and behind the gearbox. (At
+  rest the base stop comes down to 26 mm over the base board behind the decanter, 43 mm
+  over the table through the board's window under it.) A trapped finger: turn the handle
+  back the way it came (the worm holds what it has caught). An optional printed skirt over
+  each inner bar's O1 end on the bay face (round 2's M7.4, for homes with children) is not
+  drawn: it would stand where the front tie rods pass, 85 mm from the mouth against the
+  bar's end at 93, and needs a clash study of its own.
 - **Never force the crank.** If it stiffens, something is in the way. The clutch clicks
   round past its bench setting (1.3 x the measured start), so a push can't break the drive
   away from the ends of the swing; within the first and last 2.5 handle turns (the
   gearbox's marks) the cradle's force grows without bound however the clutch is set:
   nothing under the cradle box or the bottle, or touching either, there.
+- **Decanting** (the guide's step): the decanter on its riser stays where it is while the
+  bottle comes back to rest (its rim keeps its 20 mm under the clip); at rest it is taken
+  away and the neck, the front saddle, the tie rods and the light wiped. (Round 1's guide
+  had said both "take the decanter away before cranking back" and "leave it until the
+  bottle is back at rest".) A bigger bottle than its decanter: turn back a turn, slide the
+  full one out, the next onto the same riser.
 - **Letting go stops the bottle, not the stream:** to stop it, turn back about a turn.
 - **The lip gauge down before the bottle passes level:** it falls back by itself, so
   check nothing holds it up (a corkscrew left in the cork); with it up a wet bottle slides

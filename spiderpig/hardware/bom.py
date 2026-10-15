@@ -957,17 +957,6 @@ CRADLE_GREASE_NOTE = (
     "washer, whose grip holds the coarse screw from turning back. The same grease on the hand "
     "crank's clutch: its seat ring's face and six holes and its thrust washer (the clutch is "
     "set greased; dry, it can lock), and again at its yearly check.")
-CRADLE_TOOLS_NOTE = (
-    "Tools (the shop's, not bought): a torque wrench to 20 N·m (the output shaft's M10 end "
-    "screw 20, the riser's thin nuts 10, the drive's M6 screws 5); hex keys 2.5 to 6 mm and "
-    "one for the clutch plungers' backs; two 13 mm wrenches (the riser's nuts), a 10 mm (the "
-    "crank block's tie nut) and a 3/4 in (the plungers' jam nuts); a caliper with a depth rod "
-    "(the go/no-go); a luggage scale reading 0.1 kg (the clutch's start and setting); a 14 "
-    "mm drill to ream the hand crank's hub and a drill to run the gearbox in (before it goes "
-    "on the cradle, never after); a soldering iron (the heat-set inserts); a flat file (the "
-    "keyways); a vise; a paint pen (the pack marks and the toggle-zone marks); threadlocker "
-    "243 throughout the drive.")
-"""A decanting cradle's (:mod:`construction.cradle`; review round 1, m9)."""
 # a foot's sock; a decanting cradle's liners, its collar, its lead screw's brake washer, its
 # base plate's feet
 _SOCK = re.compile(r"_sock$|_liner$|_collar$|_brake$|foot_boot_")
@@ -1372,7 +1361,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
         notes.append(f"Printed parts need about {total:.0f} g of filament at 100 % infill "
                      f"({each}); less with sparse infill.")
         if (mech.meta or {}).get("cradle"):
-            notes += [CRADLE_PRINT_NOTE, CRADLE_GREASE_NOTE, CRADLE_TOOLS_NOTE]
+            notes += [CRADLE_PRINT_NOTE, CRADLE_GREASE_NOTE]
     lines.extend(mech.bom_extras)
     lines, shim_notes = split_shims(lines, by_name, (mech.meta or {}).get("shim_stacks"))
     notes += shim_notes
