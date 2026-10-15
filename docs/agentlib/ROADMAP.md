@@ -163,6 +163,14 @@ story), now `platform-9aae3e3`, eight designs.
   finds its candidates there (`api.candidates`, `spiderpig candidates`); the control files
   (a servo design's `servos.json`, an arm's Klipper `printer.cfg`, either's homing), the
   assembly guide and ORDER.md are export formats (`api.export`, the MCP's `export`).
+- **The motor role a design choice.** `roles.motor_role` is a function of the inputs (a
+  crank: `servo`; ranged inputs: `actuator`), so a DYNAMIXEL-servo arm or a stepper-driven
+  crank can't be expressed. It needs the drive groups, the MJCF's actuator choice,
+  strength's jam lever and the control files to take the role as declared (DECISIONS.md
+  2026-10-14, fix round 3).
+- **A second driven input on a cranked linkage.** `five_bar` declares no drive for `t2`;
+  a variant that does gets past resolve but stops at check (the crank's horn on a toured
+  geometry with no lateral bound): the crank's construction has to take a toured input.
 - **The walkers' out-of-plane metric.** The arm's budget solves its links' out-of-plane
   bending through the loops (`precision.out_of_plane`); a walker's legs have no such number
   (wobble is the strength check's), so a thinner or acrylic link can't be judged on it.
