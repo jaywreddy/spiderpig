@@ -122,7 +122,7 @@ def _lows(design, keep: tuple[float, float, float]) -> tuple[float, float, list]
     keep-out round the axis (``front`` before it, ``back`` behind) count; the rest may pass
     lower, past the turntable (the tool reaches the table)."""
     from spiderpig import construction
-    from spiderpig.construction.transmissions import DriveGroup
+    from spiderpig.construction.transmissions import JointDrive
 
     ctx: Context = design.ctx
     pts = ctx.topo.geometry.points
@@ -150,7 +150,7 @@ def _lows(design, keep: tuple[float, float, float]) -> tuple[float, float, list]
         outside = min(outside, float(xy[1]) - pillar_head)
         prints += [(plate, "circle", (xy, pillar_head)) for plate in ("outer", "inner")]
     for g in design.groups:
-        if isinstance(g, DriveGroup):
+        if isinstance(g, JointDrive):
             i, o = g.lowest(ctx)
             inside, outside = min(inside, i), min(outside, o)
             down, corners, slider = g.footprint(ctx)

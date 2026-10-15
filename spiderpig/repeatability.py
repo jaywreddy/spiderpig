@@ -99,7 +99,7 @@ def gravity_loads(lk: linkage.Linkage, values, *, link_g_per_mm: float | dict[st
     n = next(iter(pts.values())).reshape(-1, 2).shape[0]
     force = {i: np.zeros(n) for i in lay.interfaces}
     torque = {b: np.zeros(n) for b in lay.driven}
-    drums = {lk.drives[k][0] for k in lk.inputs} if lk.kind == "arm" else set()
+    drums = {lk.drives[k][0] for k in lk.inputs} if lk.ranged else set()
     for s in range(n):
         a, row_of = _matrix(lay, pts, s, scale)
         f = np.zeros(a.shape[1])
@@ -180,7 +180,7 @@ def iso_rp(lk: linkage.Linkage, values, clearances: dict, loads: GravityLoads,
             jac[name] = ((linkage.LegSolution(1, 0.0, values, lk.key).at(*up)[out_pt]
                           - linkage.LegSolution(1, 0.0, values, lk.key).at(*dn)[out_pt])
                          / (2 * h)).reshape(-1, 2)
-    driven = {lk.drives[k][0]: k for k in lk.inputs} if lk.kind == "arm" else {}
+    driven = {lk.drives[k][0]: k for k in lk.inputs} if lk.ranged else {}
     unseated: set[str] = set()
     session, powerup, anywhere = 0.0, 0.0, 0.0
     shape = (TRIALS, CYCLES)

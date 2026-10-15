@@ -95,7 +95,7 @@ def design_loads(config: BuildConfig, store=None, *, override: tuple[float, floa
     if override is not None:
         out = uniform_loads(*override, "override", f"--pin-load {override[0]:g},{override[1]:g} "
                             "N on every joint")
-    elif lk.get(config.linkage).kind != "walker":
+    elif not lk.get(config.linkage).walks:
         out = uniform_loads(0.0, 0.0, "none", "a mechanism: its pin loads come from what it "
                             "drives (--pin-load WALK,JAM sets them)")
     else:

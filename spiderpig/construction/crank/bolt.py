@@ -189,7 +189,7 @@ class BoltCrank(HexFitMixin, WebFitMixin, CapacityMixin):
                 f"the bolt crank's hub plate needs the horn's face on a layer boundary; it is "
                 f"{drive.horn_face_depth:g} mm under the inner plate's top face in "
                 f"{ctx.pitch:g} mm layers (the drive's horn spacer sizes for it: "
-                "DriveGroup.spacer)")
+                "ServoDrive.spacer)")
         if self.horn_joint_web(ctx, t, drive.spacer_t) is None:
             raise ConstructionError(f"no screw fits between the bolt crank's hub plate and the "
                                     f"{ctx.servo.key} horn")
@@ -296,7 +296,7 @@ class BoltCrank(HexFitMixin, WebFitMixin, CapacityMixin):
         """How thick the printed horn spacer must be for a crankpin\'s screw head over the hub
         plate (it stands in a pocket of the spacer, under the horn): a round standoff\'s
         crankpin within a head\'s reach of the horn\'s rim (a hex one is capped by the hub
-        plate, :meth:`hub_capped`); 0 when none is (:meth:`servos.mount.DriveGroup.spacer`
+        plate, :meth:`hub_capped`); 0 when none is (:meth:`servos.mount.ServoDrive.spacer`
         adds a layer for it)."""
         if self.hex:
             return 0.0              # capped by the hub plate: no head over it
@@ -378,7 +378,7 @@ class BoltCrank(HexFitMixin, WebFitMixin, CapacityMixin):
             R = float(np.linalg.norm(g[at][0] - g["O"][0]))
             if hi + 1 == hub and drive.horn_radius + hr + ctx.params.margin > R:
                 # its head over the hub plate stands in a pocket of the printed horn spacer
-                # (servos.mount.DriveGroup.realize cuts it), which must be that thick
+                # (servos.mount.ServoDrive.realize cuts it), which must be that thick
                 spacer = (self.horn_spacer(L, drive, hub) if L.final else drive.spacer_t)
                 if spacer < h_hi - 1e-6:
                     raise Unbuildable(f"the screw head of crankpin {at} over the hub plate "

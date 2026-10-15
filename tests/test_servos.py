@@ -385,3 +385,18 @@ def test_the_strip_uses_the_recorded_indices(monkeypatch, tmp_path):
     assert model.cad_servo(spec).volume == pytest.approx(1027)
     assert cadlib.read_prepared(path)["solids"] == 3
     clear_model_caches()
+
+
+@pytest.mark.no_fabricate
+@pytest.mark.parametrize("module", ["spiderpig.servos.mount", "spiderpig.construction.crank.base",
+                                    "spiderpig.construction"])
+def test_each_drive_module_imports_first(module):
+    """Imported first in a fresh interpreter (2026-10-14: ``servos.mount`` -> the
+    constructions -> the crank -> ``servos.mount`` was a cycle a test file importing the
+    mount first tripped on)."""
+    import subprocess
+    import sys
+
+    r = subprocess.run([sys.executable, "-c", f"import {module}"], capture_output=True,
+                       text=True, timeout=120)
+    assert r.returncode == 0, r.stderr[-800:]

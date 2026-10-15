@@ -1,6 +1,6 @@
 """Transmissions: what turns an arm's input (a link about a frame pivot) from a motor.
 
-Each of an arm's inputs (:attr:`linkage.Linkage.drives`) gets a :class:`DriveGroup` (named
+Each of an arm's inputs (:attr:`linkage.Linkage.drives`) gets a :class:`JointDrive` (named
 ``drive:<input>``): a stepper (:mod:`spiderpig.actuators`, the role ``actuator``) on a
 frame plate, and a transmission (the role ``transmission``, one per drive:
 ``transmission@q2``) from its shaft to the driven link's hub at the frame pivot:
@@ -27,7 +27,7 @@ on its plate (:func:`place_motor`): a fixed point of the side's geometry. A tran
 checks its own parts against each other (:meth:`Transmission.check`): the planner never
 compares a group's shapes with each other.
 
-**Its error terms** (:meth:`DriveGroup.error_terms`): the transmission's own (a belt's
+**Its error terms** (:meth:`JointDrive.error_terms`): the transmission's own (a belt's
 spans' stretch and its teeth's backlash) in series with the motor's seen
 through the reduction (its microstep, its microstep's systematic error, its holding
 stiffness times the ratio squared).
@@ -36,8 +36,8 @@ stiffness times the ratio squared).
 from __future__ import annotations
 
 from spiderpig.construction.transmissions.base import (
-    DriveGroup,
     DriveHub,
+    JointDrive,
     Transmission,
     place_motor,
 )
@@ -45,5 +45,11 @@ from spiderpig.construction.transmissions.belt import BeltDrive
 
 TRANSMISSIONS: dict[str, Transmission] = {c.key: c for c in (BeltDrive(),)}
 
-__all__ = ["TRANSMISSIONS", "BeltDrive", "DriveGroup", "DriveHub", "Transmission",
-           "place_motor"]
+__all__ = [
+    "TRANSMISSIONS",
+    "BeltDrive",
+    "DriveHub",
+    "JointDrive",
+    "Transmission",
+    "place_motor",
+]

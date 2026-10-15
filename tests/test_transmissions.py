@@ -13,7 +13,7 @@ import pytest
 from spiderpig import actuators, construction
 from spiderpig import roles as rolemod
 from spiderpig.config import BuildConfig
-from spiderpig.construction.transmissions import TRANSMISSIONS, DriveGroup, DriveHub
+from spiderpig.construction.transmissions import TRANSMISSIONS, DriveHub, JointDrive
 from spiderpig.construction.transmissions.base import motor_ends, place_motor
 from spiderpig.construction.transmissions.belt import BeltDrive
 from tests import cache
@@ -100,14 +100,14 @@ def test_the_drives_alternate_sides_and_the_axle_nests(belt):
     nested = {s.layer for s in plan.shapes("pillar:O") if s.label.endswith("nested")}
     want = set(hubs[0].layers(plan.layers["b1"])) | set(hubs[1].layers(plan.layers["b2"]))
     assert nested == want
-    groups = [g for g in design.groups if isinstance(g, DriveGroup)]
+    groups = [g for g in design.groups if isinstance(g, JointDrive)]
     assert [g.transmission.key for g in groups] == ["belt", "belt"]
 
 
 @pytest.mark.no_fabricate
 def test_the_drives_error_terms_are_the_belts_and_the_motors(belt):
     _, design = belt
-    g = next(g for g in design.groups if isinstance(g, DriveGroup))
+    g = next(g for g in design.groups if isinstance(g, JointDrive))
     t = g.error_terms(design.ctx)
     big = BeltDrive().big["pitch_d"] / 2
     assert t.backlash_deg == pytest.approx(math.degrees(2 * 0.02 / big))   # both meshes
@@ -123,7 +123,7 @@ def test_the_belt_arm_builds_inside_its_claims_and_buys_its_drives(belt):
     from spiderpig.hardware.bom import bom_from_mechanism
 
     tmpl, design = belt
-    drives = [g.name for g in design.groups if isinstance(g, DriveGroup)]
+    drives = [g.name for g in design.groups if isinstance(g, JointDrive)]
     assert check_side(design, tmpl.freeze_at(2.0), groups=drives) == []
     fab = cache.cached_side(_arm(), 1.0)
     rows = {r.key: r.qty for r in bom_from_mechanism(fab).purchased}

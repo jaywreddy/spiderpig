@@ -147,6 +147,9 @@ register(Role("pillar", "frame pivot", "spiderpig.construction:AXLES", ("walker"
 register(Role("pin", "pin between links", "spiderpig.construction:AXLES",
               ("walker", "mechanism"), field="pin", default="spiderpig.config:config_pin",
               help="the axles that join links to links"))
+register(Role("servo", "drive servo", "spiderpig.servos:REGISTRY", ("walker", "mechanism"),
+              field="servo", default="sts3215",
+              help="the serial-bus servo that turns the crank (an arm's motors: actuator)"))
 register(Role("crank", "crank", "spiderpig.construction:CRANKS", ("walker", "mechanism"),
               field="crank", default="spiderpig.config:config_crank",
               help="the crankshaft the drive turns: webs and crankpins"))

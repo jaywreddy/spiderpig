@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import itertools
 import math
+import re
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -17,7 +19,7 @@ from tests.tiers import quick
 
 TS = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
 ALL = linkage.available()
-CRANKED = [k for k in ALL if linkage.get(k).kind != "arm"]   # (an arm's one time is a tour)
+CRANKED = [k for k in ALL if not linkage.get(k).ranged]   # (an arm's one time is a tour)
 WALKERS = linkage.available("walker")
 
 
@@ -26,6 +28,42 @@ def test_registry_has_the_default_first_and_the_others():
     assert linkage.get("strider").default_module == "double"
     assert "klann" in ALL                     # the wobbly demo stays registered
     assert not linkage.get("klann").default_module
+
+
+@pytest.mark.no_fabricate
+@pytest.mark.parametrize("key", ALL)
+def test_capabilities_agree_with_the_kind(key):
+    """The structural capabilities a stage branches on and the kind label they derive:
+    a walker walks on cranked inputs, an arm's inputs are ranged and it has no floor, a
+    mechanism neither."""
+    lk = linkage.get(key)
+    assert (lk.kind == "walker") == (lk.walks and not lk.ranged)
+    assert (lk.kind == "arm") == (lk.ranged and not lk.walks)
+    assert (lk.kind == "mechanism") == (not lk.ranged and not lk.walks)
+
+
+# the sites still comparing a kind to its name: none (the user-facing words and registries
+# key by kind or print it; the drives go by the motor role that applies, 2026-10-14)
+_KIND_TEST_ALLOWED: set[str] = set()
+_KIND = r"[\"'](?:arm|walker|mechanism)[\"']"
+_KIND_TEST = re.compile(rf"\bkind\s*(?:==|!=)\s*{_KIND}|{_KIND}\s*(?:==|!=)\s*[\w.]*kind\b"
+                        rf"|\bkind\s+(?:not\s+)?in\s*[(\[{{][^)\]}}]*{_KIND}")
+
+
+@pytest.mark.no_fabricate
+def test_no_stage_branches_on_the_kind_name():
+    """A stage tests what a linkage does (:attr:`linkage.Linkage.ranged`, ``walks``, or a
+    config's ``layout``), never its kind's name: the kind is a label."""
+    root = Path(__file__).resolve().parents[1]
+    found = []
+    for path in sorted((root / "spiderpig").rglob("*.py")):
+        rel = path.relative_to(root).as_posix()
+        if rel in _KIND_TEST_ALLOWED:
+            continue
+        for i, line in enumerate(path.read_text().splitlines(), 1):
+            if _KIND_TEST.search(line):
+                found.append(f"{rel}:{i}: {line.strip()}")
+    assert not found, "branch on a capability, not the kind's name:\n" + "\n".join(found)
 
 
 def test_klann_reference_foot_value():

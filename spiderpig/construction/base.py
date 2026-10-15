@@ -82,6 +82,16 @@ class ConstructionError(ValueError):
         self.notes = list(notes)
 
 
+def stock_length(s, need: float, what: str) -> float:
+    """``s.length_for(need)`` (:meth:`hardware.fasteners.Screw.length_for`: the shortest
+    stocked length that reaches), a :class:`ConstructionError` naming ``what`` when none
+    does."""
+    try:
+        return s.length_for(need)
+    except LookupError as e:
+        raise ConstructionError(f"{what}: {e}") from None
+
+
 @dataclass(frozen=True)
 class DriveInterface:
     """What the crank couples to, in side coordinates.

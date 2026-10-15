@@ -255,7 +255,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         except KeyError as e:
             rep.failures.append(Failure.from_exception(e, stage="bom"))
     if "urdf" in formats:
-        if design.kind != "arm":
+        if not design.lk.ranged:
             logging.getLogger("spiderpig.export").warning(
                 "urdf: %s is a %s: the URDF is an arm's (its inputs drive links over "
                 "ranges), so the format is skipped", cfg.linkage, design.kind)
@@ -267,14 +267,14 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
                 files += urdf.write(mech, cfg, build_t, out / "urdf", name)
     with _timed("glb/mjcf" if job is None else "glb/mjcf (waiting for its worker)"):
         files += _robot_files(design, formats, out, job)
-    if "mjcf" in formats and design.kind != "walker":
+    if "mjcf" in formats and not design.lk.walks:
         # the MJCF is the walking robot's (two sides on a floor, the drives walking it); a
         # mechanism has nothing to walk, so the format is skipped, not an error
         logging.getLogger("spiderpig.export").warning(       # on ExportReport.warnings
             "mjcf: %s is a%s %s, with nothing to walk: the MJCF is a walker's robot model "
             "(verify(\"full\") runs it), so the format is skipped%s", cfg.linkage,
-            "n" if design.kind == "arm" else "", design.kind,
-            " (an arm's MuJoCo model comes with urdf)" if design.kind == "arm" else "")
+            "n" if design.lk.ranged else "", design.kind,
+            " (an arm's MuJoCo model comes with urdf)" if design.lk.ranged else "")
     return files, bom_summary
 
 
@@ -329,7 +329,7 @@ def _walker_formats(design: Design, formats: list[str]) -> list[str]:
     """The formats of the walker at the bake's reference angle: ``glb``, and ``mjcf`` for a
     walker (a mechanism's is skipped, with a warning)."""
     return [f for f in ("glb", "mjcf") if f in formats
-            and (f == "glb" or design.kind == "walker")]
+            and (f == "glb" or design.lk.walks)]
 
 
 def _start_robot_job(design: Design, formats: list[str], before_build: bool = False):
@@ -401,7 +401,7 @@ def _robot_files(design: Design, formats: list[str], out: Path, job=None) -> lis
             logging.getLogger("spiderpig.export").warning("%s", w)
         return moved
     robot, props = None, {}          # the parts' mass properties: the bake's, for the MJCF
-    if "glb" in formats or ("mjcf" in formats and design.kind == "walker"):
+    if "glb" in formats or ("mjcf" in formats and design.lk.walks):
         # the viewer's bake and the MuJoCo model are both of the walker at the bake's
         # reference angle: fabricated once here from the design's own side (its plan), not
         # again by each from the config (which, in a fresh process, planned again first)
@@ -414,7 +414,7 @@ def _robot_files(design: Design, formats: list[str], out: Path, job=None) -> lis
         bake_gltf(out / f"{name}.glb", cfg, profile=False, fabricated=robot, side=design.side,
                   props=props)
         files.append(out / f"{name}.glb")
-    if "mjcf" in formats and design.kind == "walker":
+    if "mjcf" in formats and design.lk.walks:
         import json
 
         from spiderpig.sim.mjcf import build_mjcf, set_fabricated

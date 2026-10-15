@@ -65,7 +65,7 @@ def axes(config, design=None) -> dict[str, Axis]:
     builds the robot. ``zero``: each joint's reference (0 for the turntable and wrist; the
     planar inputs' design angles are absolute, the homing sets them)."""
     from spiderpig import actuators
-    from spiderpig.construction.transmissions import DriveGroup
+    from spiderpig.construction.transmissions import JointDrive
     from spiderpig.fabricate import design_side, template_for
 
     side = config.side_config()
@@ -74,7 +74,7 @@ def axes(config, design=None) -> dict[str, Axis]:
     lk = config.lk
     out: dict[str, Axis] = {}
     for g in design.groups:
-        if not isinstance(g, DriveGroup):
+        if not isinstance(g, JointDrive):
             continue
         hub = g.hub(design.ctx)
         sense = 1 if hub.down else -1

@@ -10,7 +10,13 @@ from pathlib import Path
 
 from spiderpig import linkage, servos
 from spiderpig import walk as walk_model
-from spiderpig.config import BuildConfig, ParamError, default_params, default_robot
+from spiderpig.config import (
+    BuildConfig,
+    ParamError,
+    default_params,
+    default_robot,
+    robot_layout,
+)
 from spiderpig.design import Design, design_id, engine_version
 from spiderpig.hardware.catalog import sheet_size, sheet_thickness
 from spiderpig.materials import link_sheets
@@ -48,7 +54,7 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
             raise SpecErrors(errors)
     lk = linkage.get(spec.linkage.key)
     module = spec.legs.module or default_module(lk)
-    sides = spec.legs.sides or (2 if lk.kind == "walker" else 1)
+    sides = spec.legs.sides or (2 if lk.walks else 1)
     phases = (None if spec.legs.phases_deg is None
               else tuple(math.radians(p) for p in spec.legs.phases_deg))
     d = BuildConfig()
@@ -59,7 +65,7 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
     try:
         config = BuildConfig(
             linkage=lk.key, module=module, phases=phases,
-            robot=(sides == 2 if lk.kind != "arm" else spec.legs.robot
+            robot=(sides == 2 if robot_layout(lk) != "turret" else spec.legs.robot
                    if spec.legs.robot is not None else default_robot(lk.key)),
             proportions=tuple(sorted(spec.linkage.params.items())),
             sheet=sheet, thickness=thickness,
@@ -94,10 +100,10 @@ def config_warnings(config: BuildConfig, sides: int | None = None) -> list[str]:
 
 def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
     warnings: list[str] = []
-    if lk.kind == "walker" and sides == 1:
+    if lk.walks and sides == 1:
         warnings.append("sides = 1 builds one side (no chassis); the walk metrics still "
                         "model the two-sided robot")
-    if len(lk.inputs) > 1 and lk.kind != "arm":    # (an arm's inputs are its drives')
+    if len(lk.inputs) > 1 and not lk.ranged:      # (an arm's inputs are its drives')
         warnings.append(second_input_note(lk))
     if servos.get(config.servo).speed_rpm is None:
         warnings.append(f"servo {config.servo} lists no speed: speed_mm_s assumes "
@@ -157,7 +163,7 @@ def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
         doc["linkage"]["params"] = dict(config.proportions)
     legs: dict = {"module": config.module,
                   "sides": config.sides if sides is None else int(sides)}
-    if lk.kind == "arm":
+    if robot_layout(lk) == "turret":
         legs["robot"] = config.robot
     if config.phases is not None:
         legs["phases_deg"] = [round(math.degrees(p), 6) for p in config.phases]
@@ -197,7 +203,7 @@ def _resolved(spec: Spec, config: BuildConfig, module: str, sides: int) -> dict:
         "version": spec.version, "kind": spec.kind,
         "linkage": {"key": config.linkage, "params": design["proportions"]},
         "legs": {"module": module, "phases_deg": design["phases_deg"], "sides": sides,
-                 **({"robot": config.robot} if config.lk.kind == "arm" else {})},
+                 **({"robot": config.robot} if robot_layout(config.lk) == "turret" else {})},
         "motion": targets["motion"], "size": targets["size"], "budget": targets["budget"],
         "materials": {"sheet": config.sheet, "thickness_mm": config.thickness,
                       "pitch_mm": config.pitch, "servo": config.servo,

@@ -362,7 +362,7 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
                       text, tag="turret"))
     _check(ops, {r["name"] for r in rows + turret_rows})
     arm = getattr(getattr(design.ctx, "config", None), "lk", None)
-    side_order = ARM_ORDER if arm is not None and arm.kind == "arm" else SIDE_ORDER
+    side_order = ARM_ORDER if arm is not None and arm.ranged else SIDE_ORDER
     return _order(ops, ROBOT_ORDER if robot else side_order)
 
 

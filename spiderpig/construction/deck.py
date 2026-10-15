@@ -95,7 +95,7 @@ from dataclasses import dataclass, replace
 
 from build123d import Axis, Box, Cylinder, Part, Pos, scale
 
-from spiderpig.construction.base import Build, ConstructionError, Context
+from spiderpig.construction.base import Build, ConstructionError, Context, stock_length
 from spiderpig.construction.chassis import (
     MODEL_GAP,
     STEEL,
@@ -106,7 +106,7 @@ from spiderpig.construction.chassis import (
     tie_points_ctx,
 )
 from spiderpig.hardware.bom import BomLine
-from spiderpig.hardware.catalog import get, pick_length
+from spiderpig.hardware.catalog import get
 from spiderpig.hardware.electronics import HV_WARNING
 from spiderpig.hardware.fasteners import CLEARANCE, screw
 from spiderpig.materials import sheet
@@ -145,7 +145,7 @@ RAIL_SCREW_L = 8.0       # the rail's bore past its plate face (the screw's tip 
 def rail_screw_length(t_plate: float) -> float:
     """The shortest stock button head through an inner plate ``t_plate`` thick and the whole
     nut in its trap (and 0.3 mm past it): 8 mm on the 0.080 in frame, 10 on 0.125 in."""
-    return pick_length(t_plate + NUT_DEPTH + RAIL_NUT_H + 0.3, RAIL_SCREW.lengths)
+    return stock_length(RAIL_SCREW, t_plate + NUT_DEPTH + RAIL_NUT_H + 0.3, "deck: the rail")
 STANDOFF_AF = 5.0
 BOARD_X0 = 1.0           # the board's inner end, from x_c
 JACK_PROUD = 0.9         # the board's DC jack past its front end (Waveshare's STEP model)
@@ -361,7 +361,7 @@ def deck_nut(lay: DeckLayout) -> dict:
     nut = get("m3_nut").dims
     af, h = float(nut.get("af", RAIL_NUT_AF)), float(nut.get("h", RAIL_NUT_H))
     y1 = lay.deck_y - NUT_ROOF - NUT_FIT
-    length = pick_length(lay.pitch + NUT_ROOF + NUT_FIT + h + 0.3, DECK_SCREW.lengths)
+    length = stock_length(DECK_SCREW, lay.pitch + NUT_ROOF + NUT_FIT + h + 0.3, "deck")
     return {"af": af, "h": h, "y0": y1 - h, "y1": y1, "screw_l": length}
 
 
@@ -674,7 +674,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
     # button head from above through each ear and the deck, an M3 nut under the deck
     nut_d = get("m3_nut").dims
     nut_af, nut_h = float(nut_d.get("af", RAIL_NUT_AF)), float(nut_d.get("h", RAIL_NUT_H))
-    ear_len = pick_length(EAR_H + lay.pitch + nut_h + 0.5, CRADLE_SCREW.lengths)
+    ear_len = stock_length(CRADLE_SCREW, EAR_H + lay.pitch + nut_h + 0.5, "deck: the cradle")
     ye = yt + EAR_H
     for i, (ex, ez) in enumerate(lay.cradle_ears()):
         side = 1.0 if ez > 0 else -1.0
@@ -864,7 +864,7 @@ def deck_clearance(mech) -> dict:
     (``overlapping``). ``blocked``: what stops the deck going in (:func:`deck_path`, the
     assembly's way down onto the rails). ``ok`` is all of it. The rails' screws are left
     out of the moving-part check: they come up through the inner plate from the leg side,
-    and their heads are the drive group's claims (:meth:`servos.mount.DriveGroup.claims`),
+    and their heads are the drive group's claims (:meth:`servos.mount.ServoDrive.claims`),
     which the planner keeps clear of every moving part in XY over the cycle wherever they
     sit, in the gap under the plate or sunk into the layer there (the plan's ``heads``)."""
     by_name = {b.name: b for b in mech.bodies}

@@ -29,8 +29,7 @@ from spiderpig.construction.crank import CrankGroup as CrankGroup
 from spiderpig.construction.pivots import PIVOTS
 from spiderpig.construction.plates import FramePlates, LinkPlates
 from spiderpig.construction.transmissions import TRANSMISSIONS as TRANSMISSIONS
-from spiderpig.construction.transmissions import DriveGroup as ArmDrive
-from spiderpig.servos.mount import DriveGroup
+from spiderpig.construction.transmissions import JointDrive
 
 AXLES = {c.key: c for c in PIVOTS}
 # ``bolt`` (the default, config.DEFAULT_CRANKS): hex standoff crankpins on single aluminium
@@ -59,22 +58,41 @@ def transmission(key: str):
     return _pick(TRANSMISSIONS, key, "transmission")
 
 
-def _drive_groups(ctx: Context, config) -> list[Group]:
-    """The servo on the crank; an arm's inputs each a stepper and a transmission to the
-    link it drives (:mod:`construction.transmissions`; the roles ``actuator`` and
-    ``transmission``, per drive)."""
-    if getattr(config, "linkage", None) and config.lk.kind == "arm":
-        from spiderpig import actuators
+def _servo_drive(ctx: Context, config) -> list[Group]:
+    """The servo on the crank (the role ``servo``)."""
+    from spiderpig.servos.mount import ServoDrive  # (it imports the constructions)
 
-        lk = config.lk
-        out: list[Group] = []
-        for name in lk.inputs:
-            link, about = lk.drives[name]
-            out.append(ArmDrive(name, link, about,
-                                transmission(config.role("transmission", name)),
-                                actuators.get(config.role("actuator", name))))
-        return out
-    return [DriveGroup(ctx.servo)]
+    return [ServoDrive(ctx.servo)]
+
+
+def _joint_drives(ctx: Context, config) -> list[Group]:
+    """Each input a stepper and a transmission to the link it drives
+    (:mod:`construction.transmissions`; the roles ``actuator`` and ``transmission``, per
+    drive)."""
+    from spiderpig import actuators
+
+    lk = config.lk
+    out: list[Group] = []
+    for name in lk.inputs:
+        link, about = lk.drives[name]
+        out.append(JointDrive(name, link, about,
+                              transmission(config.role("transmission", name)),
+                              actuators.get(config.role("actuator", name))))
+    return out
+
+
+DRIVES = {"servo": _servo_drive, "actuator": _joint_drives}
+"""The drive groups by the motor role that fills them (:mod:`spiderpig.roles`): a design
+takes the one whose role applies to its linkage's kind (2026-10-14: a kind test before)."""
+
+
+def _drive_groups(ctx: Context, config) -> list[Group]:
+    """The drives of the motor role that applies to the design (:data:`DRIVES`)."""
+    from spiderpig import roles as rolemod
+
+    kind = config.lk.kind if getattr(config, "linkage", None) else "walker"
+    (role,) = [r for r in DRIVES if rolemod.applies(r, kind)]
+    return DRIVES[role](ctx, config)
 
 
 def _crank_groups(ctx: Context, config) -> list[Group]:

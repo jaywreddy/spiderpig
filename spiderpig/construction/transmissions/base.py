@@ -19,6 +19,7 @@ from spiderpig.construction.base import (
     Group,
     Realized,
     hardware,
+    stock_length,
 )
 from spiderpig.construction.joints import ErrorTerms
 from spiderpig.hardware.bom import BomLine
@@ -130,7 +131,7 @@ class Transmission:
     def check(self, ctx: Context, hub: DriveHub) -> None:
         return None
 
-    def realize(self, build: Build, group: DriveGroup, hub: DriveHub, out: Realized,
+    def realize(self, build: Build, group: JointDrive, hub: DriveHub, out: Realized,
                 layers: list[int]) -> None:
         raise NotImplementedError
 
@@ -199,7 +200,7 @@ def screw_length(sk, grip: float, depth: float) -> float:
 
 
 @dataclass
-class DriveGroup(Group):
+class JointDrive(Group):
     """One arm input's drive: a stepper on a frame plate and its transmission to the driven
     link's hub (module docstring). The drives on one pivot alternate sides: the first's
     motor under the outer plate (its hub under its link), the next's on the inner plate
@@ -517,7 +518,7 @@ class DriveGroup(Group):
         it; or 6 mm into the hub's tapped holes."""
         sk = screw("bhcs", "3")
         need = link_t + (hub_t + 2.4 if self.transmission.nuts else 6.0)
-        return float(next((L for L in sk.lengths if need - 1e-6 <= L), sk.lengths[-1]))
+        return sk.length_for(need, longest=True)
 
     def _bolt_past(self, ctx: Context, pitch: float) -> int:
         """The layers a nutted bolt (its nut, its tip) takes past the hub."""
@@ -644,7 +645,7 @@ class DriveGroup(Group):
             out.bodies.append(hardware(f"{stem}_motor_screw{i}", screw_solid(
                 xy, sk, outer_face, length, up=not hub.down), frame, fab="purchased",
                 bom_key=sk.key(length), color=STEEL))
-        clamp = next(L for L in sk.lengths if st + ctx.sheet_t("frame") - 1e-6 <= L)
+        clamp = stock_length(sk, st + ctx.sheet_t("frame"), "drive: the slider's clamp")
         for i, xy in enumerate(self.clamp_points(hub)):
             out.bodies.append(hardware(f"{stem}_clamp{i}", screw_solid(
                 xy, sk, outer_face + sgn * st, clamp, up=hub.down), frame, fab="purchased",

@@ -41,7 +41,7 @@ with: the gap under a layer belongs to that layer.
 | `ChicagoAxle.assembly` | Each pin is one body in two pieces. The barrel is bonded into its host link and goes on with it. The screw goes in from the cap side once the links above are on. |
 | `StandoffAxle.assembly` | The column (standoff, outside button head and washer) goes on the bare outer plate. The inner screw goes in at the join. The take-up shims go on the column's top. |
 | `LinkPlates.assembly`, `FramePlates.assembly` | Each link goes in its layer, a foot link's TPU sock first. The outer plate goes first, the inner plate first in its unit. |
-| `DriveGroup.assembly` | The servo, its front screws, and the horn with its spacer. |
+| `ServoDrive.assembly` | The servo, its front screws, and the horn with its spacer. |
 | `chassis.assembly`, `deck.assembly` (robot level, a `RobotView`) | The tie chains and their screws, the studs, each servo's own centre plates with its rear screw, the deck rails, the deck's electronics on the bench, and the deck onto the rails. |
 
 **The robot's order.** `ROBOT_ORDER` is data (a side on its own uses `SIDE_ORDER`). It lists
