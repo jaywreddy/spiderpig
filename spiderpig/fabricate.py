@@ -24,7 +24,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
 
 from spiderpig import construction, linkage, servos
-from spiderpig.config import BuildConfig, is_cradle
+from spiderpig.config import BuildConfig, is_cradle, plan_objective
 from spiderpig.construction.base import Build, Context, Realized
 from spiderpig.construction.robot import FrameTies, assemble_robot
 from spiderpig.construction.underside import underside
@@ -113,7 +113,7 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
         # else the pivots' heads sunk with the crank's in gaps (stack.HEADS_ORDER)
         heads = "gap_sink"
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin, heads=heads,
-                     **plate_z(ctx))
+                     objective=plan_objective(config.lk), **plate_z(ctx))
     if deadline is not None:
         spec = replace(spec, max_seconds=min(spec.max_seconds, deadline.remaining))
     crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
@@ -135,16 +135,31 @@ def plate_z(ctx: Context) -> dict:
     return {"frame_t": ctx.sheet_t("frame"), "link_t": link_t, "gaps": gap_options()}
 
 
+_HINTS: dict[tuple, dict[str, int] | None] = {}
+
+
 def _leg_hint(config: BuildConfig, deadline: Deadline | None = None) -> dict[str, int] | None:
-    """One leg's plan (the single module's), for the planner to try each leg of a bigger
-    module at (a hint for the order it tries layers in, nothing more)."""
+    """One leg's plan (the single module's, as the planner makes it: its fewest layers on a
+    walker's objective, "layers", proven), for the planner to try each leg of a bigger module
+    at (a hint for the order it tries layers in, nothing more). Its first plan alone is no
+    guide: the Strider's on the XL330 takes a layer more than its thinnest, and the double's
+    legs found no plan at it (2026-10-14). Remembered per single module."""
     if config.module == "single":
         return None
     one = replace(config, module="single", phases=None, robot=False)
+    tmpl = template_for(one)
+    key = _key(tmpl, one)
+    if key in _HINTS and deadline is None:
+        return _HINTS[key]
     try:
-        return design_side(template_for(one), one, advise=False, deadline=deadline).plan.layers
+        _, _, problem = side_problem(tmpl, one, deadline, hint=False)
+        static_stage(tmpl, problem)
+        got: dict[str, int] | None = dict(problem.solve().layers)
     except ValueError:
-        return None
+        got = None
+    if deadline is None:
+        _HINTS[key] = got
+    return got
 
 
 def ground_clearance(tmpl, ctx: Context) -> float | None:

@@ -123,10 +123,11 @@ from spiderpig.construction.pivots.common import (
     STEEL,
     Column,
     bored,
+    build_sleeves,
     column_air,
-    gap_washers,
+    column_slots,
     host_of,
-    ring_runs,
+    sleeve_count,
     stem_of,
     xy_of,
 )
@@ -135,7 +136,7 @@ from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get
 from spiderpig.hardware.fastener_catalog import CHICAGO_LENGTHS, chicago
 from spiderpig.materials import washer_od
-from spiderpig.shapes import Cut, disc, ring, union
+from spiderpig.shapes import Cut, disc, union
 from spiderpig.stack import Unbuildable
 
 PTFE_COLOR = "#f2f2f2"
@@ -236,14 +237,17 @@ class ChicagoShaft:
                                     f"more shims than two {ctx.pitch:g} mm end layers hold")
 
     def column(self, pillar: bool, links, top: int, anchored: tuple[bool, bool],
-               pitch: float, layout=None, air=None) -> None:
+               pitch: float, layout=None, air=None, hi=None) -> None:
         """The planner's rule: a stock barrel must span the pin's links (their layers, the
         washer and the least play; at the plan's own z, its gaps and thicker plates
-        included): :class:`stack.Unbuildable` otherwise."""
+        included): :class:`stack.Unbuildable` otherwise. A search's layout is a lower bound
+        of the stack (:class:`stack.Layout`): too long for the longest barrel there is too
+        long in every plan; the shims' rule (a maximum on what is left over, which a taller
+        plan may meet) waits for the plan's own z."""
         if pillar or not links:
             return
         stack = (max(links) - min(links) + 1) * pitch
-        if layout is not None and layout.final:
+        if layout is not None:
             stack = layout.z(max(links))[1] - layout.z(min(links))[0]
             if air is not None:         # its own parts' stack: the barrel closes the air
                 stack -= air(min(links), max(links))
@@ -321,6 +325,11 @@ class ChicagoShaft:
         from spiderpig.construction.pivots.common import HEAD_CLEARANCE
 
         it = self.item()
+        if not L.final and not L.estimate:
+            # a search's layout (a lower bound of the plan's z): the least each end needs in
+            # every plan, its head and washer (the shims and the play are the plan's)
+            return (float(it["head_h"]) + extra[0],
+                    float(it["screw_head_h"]) + self.washer_t + extra[1])
         stack = L.z(k1)[1] - L.z(k0)[0] + extra[0] + extra[1] - air
         gap_hi, gap_lo = L.gap(k1), L.gap(k0 - 1)
         try:
@@ -340,6 +349,12 @@ class ChicagoShaft:
         # keeps a clearance under the next layer
         return (h_lo + (HEAD_CLEARANCE if gap_lo else 0.0),
                 h_hi + (HEAD_CLEARANCE if gap_hi else 0.0))
+
+    def stock_key(self, stack: float) -> str | None:
+        """The catalog key of the barrel a ``stack`` mm stack takes (``None``: none does)."""
+        need = stack + self.washer_t + self.min_play
+        length = next((L for L in self.lengths if need - EPS <= L), None)
+        return None if length is None else self.key_of(length)
 
     def shim_count(self, total: float) -> int:
         """Shim rings for ``total`` mm, thickest first."""
@@ -494,6 +509,23 @@ class ChicagoAxle:
                     ) -> tuple[float, float]:
         return self.shaft.end_heights(L, k0, k1, air=air)
 
+    def sleeve_skip(self, col: Column) -> tuple[int, ...]:
+        """The clearance gaps of the column no sleeve fills (another part of the pin's
+        does): none."""
+        return ()
+
+    def prints(self, group: AxleGroup, view: Build, col: Column) -> int:
+        """The sleeves this pin prints at the plan's z (:func:`common.sleeve_count`; its
+        head spacers, a part a pin always has where it has one, aren't counted)."""
+        return sleeve_count(column_slots(view, group, col, skip=self.sleeve_skip(col)))
+
+    def stock_keys(self, group: AxleGroup, view: Build, col: Column) -> list[str]:
+        """The stock part this pin buys at the plan's z (its barrel, or the pin of the
+        length its stack takes)."""
+        air = column_air(view, group, col.k0, col.k1)
+        key = self.shaft.stock_key(view.z(col.k1)[1] - view.z(col.k0)[0] - air)
+        return [] if key is None else [key]
+
     def dims(self, ctx: Context, pillar: bool) -> AxleDims:
         p = ctx.params
         self.shaft.check(ctx, pillar)
@@ -565,12 +597,9 @@ class ChicagoAxle:
         for k in col.between:
             if col.roles[k][0] == "neck":
                 raise ConstructionError(f"{group.name}: a barrel can't neck down (layer {k})")
-        for ks, r, z0, z1 in ring_runs(build, col):
-            out.bodies.append(hardware(f"{stem}_ring{ks[0]}",
-                                       ring(xy, 2 * r, self.hole(), z0, z1),
-                                       host, fab="printed", color=SLEEVE_COLOR))
+        build_sleeves(build, group, column_slots(build, group, col, skip=self.sleeve_skip(col)),
+                      out, self.hole(), host, stem)
         f = self.shaft.realize(build, group, col, out)
-        gap_washers(build, group, col, out, self.shaft.d, host, stem)
         bonded = self.shaft.bonded
         for m in group.axis.members:
             if m != host or not bonded:

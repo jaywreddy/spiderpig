@@ -21,7 +21,12 @@ from spiderpig.construction import ConstructionError
 from spiderpig.construction.axle import AxleGroup
 from spiderpig.construction.base import FRAME_INNER, FRAME_OUTER, Build, Params, Realized
 from spiderpig.construction.contract import check_side
-from spiderpig.construction.pivots.common import Column
+from spiderpig.construction.pivots.common import (
+    Column,
+    column_air,
+    column_slots,
+    sleeve_count,
+)
 from spiderpig.fabricate import fabricate
 from spiderpig.hardware.bom import bom_from_mechanism
 from spiderpig.hardware.catalog import get
@@ -201,7 +206,8 @@ def test_holes_cut_for_each_construction(side):
                 assert [x.d for x in got.cuts[m]] == [pytest.approx(p.hole(6.0))]
             col = Column.of(build, g)
             lo, hi = c.faces(col.links, build.top, (0 in anchors, build.top in anchors))
-            axle = c.column_axle(set(col.links), hi, build.ctx.pitch, lo)
+            axle = c.column_axle(set(col.links), hi, build.ctx.pitch, lo, build.plan.layout,
+                                 lambda a, b, g=g: column_air(build, g, a, b))
             for k in anchors:
                 assert [x.d for x in got.cuts[plates[k]]] == [pytest.approx(axle.end_hole)]
         else:
@@ -267,15 +273,25 @@ def test_nothing_on_a_cantilever_pillar_can_slide(side):
 
 
 def test_spacers_and_retainers_are_what_the_key_says(side):
+    """Between its retained parts an axle prints one sleeve per run of touching rings and
+    gap rings (the sleeve rule, ``common.sleeve_runs``), each named after its lowest, and
+    together they fill every spacer layer and every gap the column crosses."""
     _, _design, build, fab, axles = side
     for g in axles:
         bodies = {b.name.split("_", 2)[2]: b for b in _group_bodies(fab, g)}
         col = Column.of(build, g)
-        rings = {n for n in bodies if n.startswith("ring")}
-        assert rings == {f"ring{k}" for k in col.between}, g.name
+        slots = column_slots(build, g, col)
+        sleeves = {n for n in bodies if n.startswith(("ring", "gap"))}
+        assert sleeves <= {s.name for s in slots}, g.name
+        if not g.pillar:            # (a pillar's end shims may stop its top sleeve short)
+            assert len(sleeves) == sleeve_count(slots), g.name
         printed = {n for n, b in bodies.items() if b.fab == "printed"}
-        assert rings <= printed
-        assert {f"gap{k}_spacer" for k in col.washers} <= set(bodies), g.name
+        assert sleeves <= printed
+        spans = sorted((bodies[n].part.bounding_box().min.Z,
+                        bodies[n].part.bounding_box().max.Z) for n in sleeves)
+        for sl in slots:            # every slot inside a sleeve (to its print tolerance)
+            assert any(z0 <= sl.z0 + 1e-3 and sl.z0 + 0.1 <= z1 for z0, z1 in spans), (
+                g.name, sl)
         if g.pillar:
             (standoff,) = [b for n, b in bodies.items() if n.startswith("standoff")]
             assert standoff.bom_key.startswith(("gobilda_1501_", "pillar_shaft_"))

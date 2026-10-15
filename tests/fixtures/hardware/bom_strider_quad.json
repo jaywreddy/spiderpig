@@ -39,7 +39,7 @@
   "cutting_usd": 183.07,
   "filaments": {
    "PETG filament": 1.9,
-   "PLA filament": 70.9,
+   "PLA filament": 60.0,
    "TPU 95A flexible filament": 2.5
   },
   "made": [
@@ -109,7 +109,7 @@
     "qty": 8,
     "sheet": "acrylic_3mm",
     "size_mm": "65 x 78 x 3.0 mm",
-    "volume_cm3": 3.2876054649737116
+    "volume_cm3": 3.287605464973711
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -129,7 +129,7 @@
     "qty": 8,
     "sheet": "acrylic_3mm",
     "size_mm": "14 x 77 x 3.0 mm",
-    "volume_cm3": 2.5981328873730227
+    "volume_cm3": 2.598132887373023
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -203,7 +203,7 @@
     "qty": 2,
     "sheet": "al6061_2p5mm",
     "size_mm": "29 x 37 x 2.5 mm",
-    "volume_cm3": 1.2152329394704555
+    "volume_cm3": 1.215232939470453
    },
    {
     "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
@@ -231,7 +231,7 @@
     "qty": 2,
     "sheet": "al6061_2p5mm",
     "size_mm": "29 x 37 x 2.5 mm",
-    "volume_cm3": 1.2917339841147168
+    "volume_cm3": 1.291733984114717
    },
    {
     "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
@@ -245,7 +245,7 @@
     "qty": 2,
     "sheet": "al6061_2p5mm",
     "size_mm": "43 x 35 x 2.5 mm",
-    "volume_cm3": 2.0273963735007374
+    "volume_cm3": 2.027396373500727
    },
    {
     "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
@@ -261,7 +261,7 @@
     "qty": 4,
     "sheet": "al6061_2p5mm",
     "size_mm": "43 x 59 x 2.5 mm",
-    "volume_cm3": 2.1926249394704596
+    "volume_cm3": 2.1926249394704516
    },
    {
     "material": "5052 aluminium sheet 0.080 in (2.032 mm), laser cut",
@@ -289,7 +289,7 @@
     "qty": 2,
     "sheet": "al5052_2mm",
     "size_mm": "157 x 100 x 2.0 mm",
-    "volume_cm3": 10.515317206073425
+    "volume_cm3": 10.515317206073421
    },
    {
     "material": "5052 aluminium sheet 0.063 in (1.6 mm), laser cut",
@@ -372,7 +372,7 @@
     "qty": 16,
     "sheet": "",
     "size_mm": "15 x 14 x 3.0 mm",
-    "volume_cm3": 0.12716287700695814
+    "volume_cm3": 0.1271628770069581
    },
    {
     "material": "PLA filament",
@@ -381,26 +381,14 @@
     "name": "L.crank_pin_collar_hi_J1_leg0",
     "names": [
      "L.crank_pin_collar_hi_J1_leg0",
-     "R.crank_pin_collar_hi_J1_leg0"
-    ],
-    "qty": 2,
-    "sheet": "",
-    "size_mm": "9 x 9 x 1.2 mm",
-    "volume_cm3": 0.039693952727283946
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.crank_pin_collar_hi_J1_leg1",
-    "names": [
      "L.crank_pin_collar_hi_J1_leg1",
+     "R.crank_pin_collar_hi_J1_leg0",
      "R.crank_pin_collar_hi_J1_leg1"
     ],
-    "qty": 2,
+    "qty": 4,
     "sheet": "",
-    "size_mm": "9 x 9 x 1.1 mm",
-    "volume_cm3": 0.03671690627273769
+    "size_mm": "9 x 9 x 1.2 mm",
+    "volume_cm3": 0.03969395272728426
    },
    {
     "material": "PLA filament",
@@ -423,26 +411,14 @@
     "name": "L.crank_pin_collar_lo_J1_leg0",
     "names": [
      "L.crank_pin_collar_lo_J1_leg0",
-     "R.crank_pin_collar_lo_J1_leg0"
+     "L.crank_pin_collar_lo_J1_leg1",
+     "R.crank_pin_collar_lo_J1_leg0",
+     "R.crank_pin_collar_lo_J1_leg1"
     ],
-    "qty": 2,
+    "qty": 4,
     "sheet": "",
     "size_mm": "9 x 9 x 1.2 mm",
     "volume_cm3": 0.038370820969707856
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.crank_pin_collar_lo_J1_leg1",
-    "names": [
-     "L.crank_pin_collar_lo_J1_leg1",
-     "R.crank_pin_collar_lo_J1_leg1"
-    ],
-    "qty": 2,
-    "sheet": "",
-    "size_mm": "9 x 9 x 0.7 mm",
-    "volume_cm3": 0.021500891060612197
    },
    {
     "material": "PLA filament",
@@ -456,7 +432,21 @@
     "qty": 2,
     "sheet": "",
     "size_mm": "9 x 9 x 1.0 mm",
-    "volume_cm3": 0.031755162181827015
+    "volume_cm3": 0.031755162181827
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_pin_collar_lo_J1_leg3",
+    "names": [
+     "L.crank_pin_collar_lo_J1_leg3",
+     "R.crank_pin_collar_lo_J1_leg3"
+    ],
+    "qty": 2,
+    "sheet": "",
+    "size_mm": "9 x 9 x 0.4 mm",
+    "volume_cm3": 0.013231317575761516
    },
    {
     "material": "PLA filament",
@@ -465,26 +455,14 @@
     "name": "L.crank_pin_sleeve_J1_leg0",
     "names": [
      "L.crank_pin_sleeve_J1_leg0",
-     "R.crank_pin_sleeve_J1_leg0"
-    ],
-    "qty": 2,
-    "sheet": "",
-    "size_mm": "8 x 8 x 22.4 mm",
-    "volume_cm3": 0.6174025920674328
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.crank_pin_sleeve_J1_leg1",
-    "names": [
      "L.crank_pin_sleeve_J1_leg1",
+     "R.crank_pin_sleeve_J1_leg0",
      "R.crank_pin_sleeve_J1_leg1"
     ],
-    "qty": 2,
+    "qty": 4,
     "sheet": "",
-    "size_mm": "8 x 8 x 23.0 mm",
-    "volume_cm3": 0.6339697457007267
+    "size_mm": "8 x 8 x 22.4 mm",
+    "volume_cm3": 0.6174025920674325
    },
    {
     "material": "PLA filament",
@@ -511,8 +489,8 @@
     ],
     "qty": 2,
     "sheet": "",
-    "size_mm": "8 x 8 x 24.4 mm",
-    "volume_cm3": 0.741314932481451
+    "size_mm": "8 x 8 x 24.3 mm",
+    "volume_cm3": 0.7382792447972517
    },
    {
     "material": "PLA filament",
@@ -521,13 +499,11 @@
     "name": "L.crank_ring_J1_leg0_3",
     "names": [
      "L.crank_ring_J1_leg0_3",
-     "L.crank_ring_J1_leg1_7",
      "L.crank_ring_J1_leg2_13",
      "R.crank_ring_J1_leg0_3",
-     "R.crank_ring_J1_leg1_7",
      "R.crank_ring_J1_leg2_13"
     ],
-    "qty": 6,
+    "qty": 4,
     "sheet": "",
     "size_mm": "12 x 12 x 2.6 mm",
     "volume_cm3": 0.13103740037755687
@@ -541,15 +517,13 @@
      "L.crank_ring_J1_leg0_4",
      "L.crank_ring_J1_leg1_8",
      "L.crank_ring_J1_leg2_14",
-     "L.crank_ring_J1_leg3_18",
      "L.crank_ring_J1_leg3_20",
      "R.crank_ring_J1_leg0_4",
      "R.crank_ring_J1_leg1_8",
      "R.crank_ring_J1_leg2_14",
-     "R.crank_ring_J1_leg3_18",
      "R.crank_ring_J1_leg3_20"
     ],
-    "qty": 10,
+    "qty": 8,
     "sheet": "",
     "size_mm": "12 x 12 x 2.9 mm",
     "volume_cm3": 0.14615710042112134
@@ -571,6 +545,20 @@
     "sheet": "",
     "size_mm": "12 x 12 x 3.9 mm",
     "volume_cm3": 0.19655610056633582
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_ring_J1_leg1_7",
+    "names": [
+     "L.crank_ring_J1_leg1_7",
+     "R.crank_ring_J1_leg1_7"
+    ],
+    "qty": 2,
+    "sheet": "",
+    "size_mm": "12 x 12 x 2.5 mm",
+    "volume_cm3": 0.12599750036303617
    },
    {
     "material": "PLA filament",
@@ -604,6 +592,20 @@
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
+    "name": "L.crank_ring_J1_leg3_18",
+    "names": [
+     "L.crank_ring_J1_leg3_18",
+     "R.crank_ring_J1_leg3_18"
+    ],
+    "qty": 2,
+    "sheet": "",
+    "size_mm": "12 x 12 x 2.8 mm",
+    "volume_cm3": 0.1411172004066006
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
     "name": "L.crank_stub_thrust",
     "names": [
      "L.crank_stub_thrust",
@@ -632,141 +634,33 @@
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap10_spacer",
+    "name": "L.pillar_J2_leg0_gap14_spacer",
     "names": [
-     "L.pillar_J2_leg0_gap10_spacer",
-     "L.pillar_J2_leg0_gap16_spacer",
-     "L.pillar_J6_leg0_gap10_spacer",
-     "L.pillar_J6_leg0_gap16_spacer",
-     "R.pillar_J2_leg0_gap10_spacer",
-     "R.pillar_J2_leg0_gap16_spacer",
-     "R.pillar_J6_leg0_gap10_spacer",
-     "R.pillar_J6_leg0_gap16_spacer"
-    ],
-    "qty": 8,
-    "sheet": "",
-    "size_mm": "12 x 12 x 3.5 mm",
-    "volume_cm3": 0.2867370884839568
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap11_spacer",
-    "names": [
-     "L.pillar_J2_leg0_gap11_spacer",
-     "L.pillar_J6_leg0_gap11_spacer",
-     "R.pillar_J2_leg0_gap11_spacer",
-     "R.pillar_J6_leg0_gap11_spacer"
+     "L.pillar_J2_leg0_gap14_spacer",
+     "L.pillar_J6_leg0_gap14_spacer",
+     "R.pillar_J2_leg0_gap14_spacer",
+     "R.pillar_J6_leg0_gap14_spacer"
     ],
     "qty": 4,
     "sheet": "",
-    "size_mm": "12 x 12 x 3.8 mm",
-    "volume_cm3": 0.3113145532111534
+    "size_mm": "12 x 12 x 21.7 mm",
+    "volume_cm3": 0.9360394946324875
    },
    {
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap12_spacer",
+    "name": "L.pillar_J2_leg0_gap18_spacer",
     "names": [
-     "L.pillar_J2_leg0_gap12_spacer",
-     "L.pillar_J6_leg0_gap12_spacer",
-     "R.pillar_J2_leg0_gap12_spacer",
-     "R.pillar_J6_leg0_gap12_spacer"
+     "L.pillar_J2_leg0_gap18_spacer",
+     "L.pillar_J6_leg0_gap18_spacer",
+     "R.pillar_J2_leg0_gap18_spacer",
+     "R.pillar_J6_leg0_gap18_spacer"
     ],
     "qty": 4,
     "sheet": "",
-    "size_mm": "12 x 12 x 3.6 mm",
-    "volume_cm3": 0.29492957672635567
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap17_spacer",
-    "names": [
-     "L.pillar_J2_leg0_gap17_spacer",
-     "L.pillar_J6_leg0_gap17_spacer",
-     "R.pillar_J2_leg0_gap17_spacer",
-     "R.pillar_J6_leg0_gap17_spacer"
-    ],
-    "qty": 4,
-    "sheet": "",
-    "size_mm": "12 x 12 x 2.2 mm",
-    "volume_cm3": 0.18023474133277342
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap1_spacer",
-    "names": [
-     "L.pillar_J2_leg0_gap1_spacer",
-     "L.pillar_J2_leg0_gap5_spacer",
-     "L.pillar_J2_leg0_gap6_spacer",
-     "L.pillar_J2_leg0_gap9_spacer",
-     "L.pillar_J2_leg0_gap15_spacer",
-     "L.pillar_J6_leg0_gap1_spacer",
-     "L.pillar_J6_leg0_gap5_spacer",
-     "L.pillar_J6_leg0_gap6_spacer",
-     "L.pillar_J6_leg0_gap9_spacer",
-     "L.pillar_J6_leg0_gap15_spacer",
-     "R.pillar_J2_leg0_gap1_spacer",
-     "R.pillar_J2_leg0_gap5_spacer",
-     "R.pillar_J2_leg0_gap6_spacer",
-     "R.pillar_J2_leg0_gap9_spacer",
-     "R.pillar_J2_leg0_gap15_spacer",
-     "R.pillar_J6_leg0_gap1_spacer",
-     "R.pillar_J6_leg0_gap5_spacer",
-     "R.pillar_J6_leg0_gap6_spacer",
-     "R.pillar_J6_leg0_gap9_spacer",
-     "R.pillar_J6_leg0_gap15_spacer"
-    ],
-    "qty": 20,
-    "sheet": "",
-    "size_mm": "12 x 12 x 4.0 mm",
-    "volume_cm3": 0.3276995296959511
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap2_spacer",
-    "names": [
-     "L.pillar_J2_leg0_gap2_spacer",
-     "L.pillar_J6_leg0_gap2_spacer",
-     "R.pillar_J2_leg0_gap2_spacer",
-     "R.pillar_J6_leg0_gap2_spacer"
-    ],
-    "qty": 4,
-    "sheet": "",
-    "size_mm": "12 x 12 x 3.4 mm",
-    "volume_cm3": 0.2785446002415587
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap3_spacer",
-    "names": [
-     "L.pillar_J2_leg0_gap3_spacer",
-     "L.pillar_J2_leg0_gap7_spacer",
-     "L.pillar_J2_leg0_gap13_spacer",
-     "L.pillar_J6_leg0_gap3_spacer",
-     "L.pillar_J6_leg0_gap7_spacer",
-     "L.pillar_J6_leg0_gap13_spacer",
-     "R.pillar_J2_leg0_gap3_spacer",
-     "R.pillar_J2_leg0_gap7_spacer",
-     "R.pillar_J2_leg0_gap13_spacer",
-     "R.pillar_J6_leg0_gap3_spacer",
-     "R.pillar_J6_leg0_gap7_spacer",
-     "R.pillar_J6_leg0_gap13_spacer"
-    ],
-    "qty": 12,
-    "sheet": "",
-    "size_mm": "12 x 12 x 2.7 mm",
-    "volume_cm3": 0.2211971825447667
+    "size_mm": "12 x 12 x 17.9 mm",
+    "volume_cm3": 0.7910253448886494
    },
    {
     "material": "PLA filament",
@@ -775,30 +669,30 @@
     "name": "L.pillar_J2_leg0_gap4_spacer",
     "names": [
      "L.pillar_J2_leg0_gap4_spacer",
-     "L.pillar_J2_leg0_gap8_spacer",
-     "L.pillar_J2_leg0_gap14_spacer",
-     "L.pillar_J2_leg0_gap18_spacer",
-     "L.pillar_J2_leg0_gap20_spacer",
      "L.pillar_J6_leg0_gap4_spacer",
-     "L.pillar_J6_leg0_gap8_spacer",
-     "L.pillar_J6_leg0_gap14_spacer",
-     "L.pillar_J6_leg0_gap18_spacer",
-     "L.pillar_J6_leg0_gap20_spacer",
      "R.pillar_J2_leg0_gap4_spacer",
-     "R.pillar_J2_leg0_gap8_spacer",
-     "R.pillar_J2_leg0_gap14_spacer",
-     "R.pillar_J2_leg0_gap18_spacer",
-     "R.pillar_J2_leg0_gap20_spacer",
-     "R.pillar_J6_leg0_gap4_spacer",
-     "R.pillar_J6_leg0_gap8_spacer",
-     "R.pillar_J6_leg0_gap14_spacer",
-     "R.pillar_J6_leg0_gap18_spacer",
-     "R.pillar_J6_leg0_gap20_spacer"
+     "R.pillar_J6_leg0_gap4_spacer"
     ],
-    "qty": 20,
+    "qty": 4,
     "sheet": "",
-    "size_mm": "12 x 12 x 3.0 mm",
-    "volume_cm3": 0.24577464727196338
+    "size_mm": "12 x 12 x 22.1 mm",
+    "volume_cm3": 0.9508363960308956
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pillar_J2_leg0_gap8_spacer",
+    "names": [
+     "L.pillar_J2_leg0_gap8_spacer",
+     "L.pillar_J6_leg0_gap8_spacer",
+     "R.pillar_J2_leg0_gap8_spacer",
+     "R.pillar_J6_leg0_gap8_spacer"
+    ],
+    "qty": 4,
+    "sheet": "",
+    "size_mm": "12 x 12 x 35.6 mm",
+    "volume_cm3": 1.4502318182271634
    },
    {
     "material": "PLA filament",
@@ -807,82 +701,14 @@
     "name": "L.pillar_J2_leg0_ring1",
     "names": [
      "L.pillar_J2_leg0_ring1",
-     "L.pillar_J2_leg0_ring2",
-     "L.pillar_J2_leg0_ring3",
-     "L.pillar_J2_leg0_ring5",
-     "L.pillar_J2_leg0_ring6",
-     "L.pillar_J2_leg0_ring7",
-     "L.pillar_J2_leg0_ring9",
-     "L.pillar_J2_leg0_ring10",
-     "L.pillar_J2_leg0_ring11",
-     "L.pillar_J2_leg0_ring12",
-     "L.pillar_J2_leg0_ring13",
-     "L.pillar_J2_leg0_ring15",
-     "L.pillar_J2_leg0_ring16",
-     "L.pillar_J2_leg0_ring17",
-     "L.pillar_J2_leg0_ring19",
-     "L.pillar_J2_leg0_ring20",
-     "L.pillar_J2_leg0_ring21",
-     "L.pillar_J2_leg0_ring22",
      "L.pillar_J6_leg0_ring1",
-     "L.pillar_J6_leg0_ring2",
-     "L.pillar_J6_leg0_ring3",
-     "L.pillar_J6_leg0_ring5",
-     "L.pillar_J6_leg0_ring6",
-     "L.pillar_J6_leg0_ring7",
-     "L.pillar_J6_leg0_ring9",
-     "L.pillar_J6_leg0_ring10",
-     "L.pillar_J6_leg0_ring11",
-     "L.pillar_J6_leg0_ring12",
-     "L.pillar_J6_leg0_ring13",
-     "L.pillar_J6_leg0_ring15",
-     "L.pillar_J6_leg0_ring16",
-     "L.pillar_J6_leg0_ring17",
-     "L.pillar_J6_leg0_ring19",
-     "L.pillar_J6_leg0_ring20",
-     "L.pillar_J6_leg0_ring21",
-     "L.pillar_J6_leg0_ring22",
      "R.pillar_J2_leg0_ring1",
-     "R.pillar_J2_leg0_ring2",
-     "R.pillar_J2_leg0_ring3",
-     "R.pillar_J2_leg0_ring5",
-     "R.pillar_J2_leg0_ring6",
-     "R.pillar_J2_leg0_ring7",
-     "R.pillar_J2_leg0_ring9",
-     "R.pillar_J2_leg0_ring10",
-     "R.pillar_J2_leg0_ring11",
-     "R.pillar_J2_leg0_ring12",
-     "R.pillar_J2_leg0_ring13",
-     "R.pillar_J2_leg0_ring15",
-     "R.pillar_J2_leg0_ring16",
-     "R.pillar_J2_leg0_ring17",
-     "R.pillar_J2_leg0_ring19",
-     "R.pillar_J2_leg0_ring20",
-     "R.pillar_J2_leg0_ring21",
-     "R.pillar_J2_leg0_ring22",
-     "R.pillar_J6_leg0_ring1",
-     "R.pillar_J6_leg0_ring2",
-     "R.pillar_J6_leg0_ring3",
-     "R.pillar_J6_leg0_ring5",
-     "R.pillar_J6_leg0_ring6",
-     "R.pillar_J6_leg0_ring7",
-     "R.pillar_J6_leg0_ring9",
-     "R.pillar_J6_leg0_ring10",
-     "R.pillar_J6_leg0_ring11",
-     "R.pillar_J6_leg0_ring12",
-     "R.pillar_J6_leg0_ring13",
-     "R.pillar_J6_leg0_ring15",
-     "R.pillar_J6_leg0_ring16",
-     "R.pillar_J6_leg0_ring17",
-     "R.pillar_J6_leg0_ring19",
-     "R.pillar_J6_leg0_ring20",
-     "R.pillar_J6_leg0_ring21",
-     "R.pillar_J6_leg0_ring22"
+     "R.pillar_J6_leg0_ring1"
     ],
-    "qty": 72,
+    "qty": 4,
     "sheet": "",
-    "size_mm": "9 x 9 x 3.0 mm",
-    "volume_cm3": 0.11097676048805946
+    "size_mm": "12 x 12 x 19.1 mm",
+    "volume_cm3": 0.8265288761659499
    },
    {
     "material": "PLA filament",
@@ -891,34 +717,26 @@
     "name": "L.pin_J10_leg0_gap3_spacer",
     "names": [
      "L.pin_J10_leg0_gap3_spacer",
-     "L.pin_J10_leg1_gap7_spacer",
      "L.pin_J10_leg2_gap13_spacer",
      "L.pin_J3_leg0_gap3_spacer",
-     "L.pin_J3_leg1_gap7_spacer",
      "L.pin_J3_leg2_gap13_spacer",
      "L.pin_J7_leg0_gap3_spacer",
-     "L.pin_J7_leg1_gap7_spacer",
      "L.pin_J7_leg2_gap13_spacer",
      "L.pin_J8_leg0_gap3_spacer",
-     "L.pin_J8_leg1_gap7_spacer",
      "L.pin_J8_leg2_gap13_spacer",
      "R.pin_J10_leg0_gap3_spacer",
-     "R.pin_J10_leg1_gap7_spacer",
      "R.pin_J10_leg2_gap13_spacer",
      "R.pin_J3_leg0_gap3_spacer",
-     "R.pin_J3_leg1_gap7_spacer",
      "R.pin_J3_leg2_gap13_spacer",
      "R.pin_J7_leg0_gap3_spacer",
-     "R.pin_J7_leg1_gap7_spacer",
      "R.pin_J7_leg2_gap13_spacer",
      "R.pin_J8_leg0_gap3_spacer",
-     "R.pin_J8_leg1_gap7_spacer",
      "R.pin_J8_leg2_gap13_spacer"
     ],
-    "qty": 24,
+    "qty": 16,
     "sheet": "",
     "size_mm": "8 x 8 x 2.7 mm",
-    "volume_cm3": 0.09650737012378807
+    "volume_cm3": 0.0983098589087852
    },
    {
     "material": "PLA filament",
@@ -929,36 +747,48 @@
      "L.pin_J10_leg0_spacer_hi",
      "L.pin_J10_leg1_spacer_hi",
      "L.pin_J10_leg2_spacer_hi",
-     "L.pin_J10_leg3_spacer_hi",
      "L.pin_J3_leg0_spacer_hi",
-     "L.pin_J3_leg1_spacer_hi",
      "L.pin_J3_leg2_spacer_hi",
      "L.pin_J7_leg0_spacer_hi",
-     "L.pin_J7_leg1_spacer_hi",
      "L.pin_J7_leg2_spacer_hi",
      "L.pin_J8_leg0_spacer_hi",
      "L.pin_J8_leg1_spacer_hi",
      "L.pin_J8_leg2_spacer_hi",
-     "L.pin_J8_leg3_spacer_hi",
      "R.pin_J10_leg0_spacer_hi",
      "R.pin_J10_leg1_spacer_hi",
      "R.pin_J10_leg2_spacer_hi",
-     "R.pin_J10_leg3_spacer_hi",
      "R.pin_J3_leg0_spacer_hi",
-     "R.pin_J3_leg1_spacer_hi",
      "R.pin_J3_leg2_spacer_hi",
      "R.pin_J7_leg0_spacer_hi",
-     "R.pin_J7_leg1_spacer_hi",
      "R.pin_J7_leg2_spacer_hi",
      "R.pin_J8_leg0_spacer_hi",
      "R.pin_J8_leg1_spacer_hi",
-     "R.pin_J8_leg2_spacer_hi",
-     "R.pin_J8_leg3_spacer_hi"
+     "R.pin_J8_leg2_spacer_hi"
     ],
-    "qty": 28,
+    "qty": 20,
     "sheet": "",
     "size_mm": "8 x 8 x 1.2 mm",
     "volume_cm3": 0.04369327062612668
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J10_leg1_gap7_spacer",
+    "names": [
+     "L.pin_J10_leg1_gap7_spacer",
+     "L.pin_J3_leg1_gap7_spacer",
+     "L.pin_J7_leg1_gap7_spacer",
+     "L.pin_J8_leg1_gap7_spacer",
+     "R.pin_J10_leg1_gap7_spacer",
+     "R.pin_J3_leg1_gap7_spacer",
+     "R.pin_J7_leg1_gap7_spacer",
+     "R.pin_J8_leg1_gap7_spacer"
+    ],
+    "qty": 8,
+    "sheet": "",
+    "size_mm": "8 x 8 x 2.6 mm",
+    "volume_cm3": 0.09466875302327481
    },
    {
     "material": "PLA filament",
@@ -978,7 +808,23 @@
     "qty": 8,
     "sheet": "",
     "size_mm": "8 x 8 x 2.2 mm",
-    "volume_cm3": 0.07863563491567939
+    "volume_cm3": 0.08010432948123261
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J10_leg3_spacer_hi",
+    "names": [
+     "L.pin_J10_leg3_spacer_hi",
+     "L.pin_J8_leg3_spacer_hi",
+     "R.pin_J10_leg3_spacer_hi",
+     "R.pin_J8_leg3_spacer_hi"
+    ],
+    "qty": 4,
+    "sheet": "",
+    "size_mm": "8 x 8 x 1.1 mm",
+    "volume_cm3": 0.040052164740616035
    },
    {
     "material": "PLA filament",
@@ -993,8 +839,8 @@
     ],
     "qty": 4,
     "sheet": "",
-    "size_mm": "8 x 8 x 0.5 mm",
-    "volume_cm3": 0.018205529427552845
+    "size_mm": "8 x 8 x 0.6 mm",
+    "volume_cm3": 0.021846635313063207
    },
    {
     "material": "PLA filament",
@@ -1005,40 +851,32 @@
      "L.pin_J11_leg0_gap4_spacer",
      "L.pin_J11_leg1_gap8_spacer",
      "L.pin_J11_leg2_gap14_spacer",
-     "L.pin_J11_leg3_gap18_spacer",
      "L.pin_J3_leg0_gap4_spacer",
      "L.pin_J3_leg1_gap8_spacer",
      "L.pin_J3_leg2_gap14_spacer",
-     "L.pin_J3_leg3_gap18_spacer",
      "L.pin_J4_leg0_gap4_spacer",
      "L.pin_J4_leg1_gap8_spacer",
      "L.pin_J4_leg2_gap14_spacer",
-     "L.pin_J4_leg3_gap18_spacer",
      "L.pin_J7_leg0_gap4_spacer",
      "L.pin_J7_leg1_gap8_spacer",
      "L.pin_J7_leg2_gap14_spacer",
-     "L.pin_J7_leg3_gap18_spacer",
      "R.pin_J11_leg0_gap4_spacer",
      "R.pin_J11_leg1_gap8_spacer",
      "R.pin_J11_leg2_gap14_spacer",
-     "R.pin_J11_leg3_gap18_spacer",
      "R.pin_J3_leg0_gap4_spacer",
      "R.pin_J3_leg1_gap8_spacer",
      "R.pin_J3_leg2_gap14_spacer",
-     "R.pin_J3_leg3_gap18_spacer",
      "R.pin_J4_leg0_gap4_spacer",
      "R.pin_J4_leg1_gap8_spacer",
      "R.pin_J4_leg2_gap14_spacer",
-     "R.pin_J4_leg3_gap18_spacer",
      "R.pin_J7_leg0_gap4_spacer",
      "R.pin_J7_leg1_gap8_spacer",
-     "R.pin_J7_leg2_gap14_spacer",
-     "R.pin_J7_leg3_gap18_spacer"
+     "R.pin_J7_leg2_gap14_spacer"
     ],
-    "qty": 32,
+    "qty": 24,
     "sheet": "",
     "size_mm": "8 x 8 x 3.0 mm",
-    "volume_cm3": 0.10723041124865358
+    "volume_cm3": 0.10923317656531709
    },
    {
     "material": "PLA filament",
@@ -1049,24 +887,72 @@
      "L.pin_J11_leg0_spacer_hi",
      "L.pin_J11_leg1_spacer_hi",
      "L.pin_J11_leg2_spacer_hi",
-     "L.pin_J11_leg3_spacer_hi",
      "L.pin_J4_leg0_spacer_hi",
      "L.pin_J4_leg1_spacer_hi",
      "L.pin_J4_leg2_spacer_hi",
-     "L.pin_J4_leg3_spacer_hi",
      "R.pin_J11_leg0_spacer_hi",
      "R.pin_J11_leg1_spacer_hi",
      "R.pin_J11_leg2_spacer_hi",
-     "R.pin_J11_leg3_spacer_hi",
      "R.pin_J4_leg0_spacer_hi",
      "R.pin_J4_leg1_spacer_hi",
-     "R.pin_J4_leg2_spacer_hi",
-     "R.pin_J4_leg3_spacer_hi"
+     "R.pin_J4_leg2_spacer_hi"
     ],
-    "qty": 16,
+    "qty": 12,
     "sheet": "",
     "size_mm": "8 x 8 x 0.9 mm",
     "volume_cm3": 0.03276995296959516
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J11_leg3_gap18_spacer",
+    "names": [
+     "L.pin_J11_leg3_gap18_spacer",
+     "L.pin_J3_leg3_gap18_spacer",
+     "L.pin_J4_leg3_gap18_spacer",
+     "L.pin_J7_leg3_gap18_spacer",
+     "R.pin_J11_leg3_gap18_spacer",
+     "R.pin_J3_leg3_gap18_spacer",
+     "R.pin_J4_leg3_gap18_spacer",
+     "R.pin_J7_leg3_gap18_spacer"
+    ],
+    "qty": 8,
+    "sheet": "",
+    "size_mm": "8 x 8 x 2.9 mm",
+    "volume_cm3": 0.10559207067980671
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J11_leg3_spacer_hi",
+    "names": [
+     "L.pin_J11_leg3_spacer_hi",
+     "L.pin_J4_leg3_spacer_hi",
+     "R.pin_J11_leg3_spacer_hi",
+     "R.pin_J4_leg3_spacer_hi"
+    ],
+    "qty": 4,
+    "sheet": "",
+    "size_mm": "8 x 8 x 1.0 mm",
+    "volume_cm3": 0.0364110588551057
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J3_leg1_spacer_hi",
+    "names": [
+     "L.pin_J3_leg1_spacer_hi",
+     "L.pin_J7_leg1_spacer_hi",
+     "R.pin_J3_leg1_spacer_hi",
+     "R.pin_J7_leg1_spacer_hi"
+    ],
+    "qty": 4,
+    "sheet": "",
+    "size_mm": "8 x 8 x 1.3 mm",
+    "volume_cm3": 0.047334376511637306
    },
    {
     "material": "PLA filament",
@@ -1096,7 +982,7 @@
     "qty": 2,
     "sheet": "",
     "size_mm": "20 x 20 x 1.8 mm",
-    "volume_cm3": 0.44902534041143477
+    "volume_cm3": 0.4490253404114318
    },
    {
     "material": "PLA filament",
@@ -1115,10 +1001,10 @@
   "notes": [
    "Horn screw shims (under each head): screws L.0, L.1, L.2, L.3, R.0, R.1, R.2, R.3: 1 mm (2 x M3 flat washer (DIN 125-A, 3.2 x 7 x 0.5)).",
    "Horn screws: a drop of low-strength threadlocker (Loctite 222) each (8), steel into the metal horn; none in a plastic horn.",
-   "Chicago pins bonded off the barrel head (no printed spacer under it, thinner than a print): pin:J3_leg3 0.2 mm, pin:J7_leg3 0.2 mm; set the gap with a feeler gauge while the epoxy cures.",
-   "Printed parts need about 75 g of filament at 100 % infill (71 g of PLA filament (1.24 g/cm3); 2 g of PETG filament (1.27 g/cm3); 2 g of TPU 95A flexible filament (1.22 g/cm3)); less with sparse infill."
+   "Chicago pins bonded off the barrel head (no printed spacer under it, thinner than a print): pin:J10_leg1 0.1 mm, pin:J3_leg3 0.3 mm, pin:J7_leg3 0.3 mm, pin:J8_leg1 0.1 mm; set the gap with a feeler gauge while the epoxy cures.",
+   "Printed parts need about 64 g of filament at 100 % infill (60 g of PLA filament (1.24 g/cm3); 2 g of PETG filament (1.27 g/cm3); 2 g of TPU 95A flexible filament (1.22 g/cm3)); less with sparse infill."
   ],
-  "printed_g": 75.22616146635076,
+  "printed_g": 64.37255801185674,
   "purchased": [
    {
     "alternatives": [
@@ -1590,16 +1476,16 @@
     "category": "standoff",
     "cost_usd": 55.599999999999994,
     "cut_by": "",
-    "key": "pillar_shaft_6_m3_129.1",
-    "name": "6 mm round steel standoff, 129.1 mm, tapped M3 both ends (MISUMI NETRF6-129.1)",
+    "key": "pillar_shaft_6_m3_128.4",
+    "name": "6 mm round steel standoff, 128.4 mm, tapped M3 both ends (MISUMI NETRF6-128.4)",
     "on_hand": false,
     "pack_price_usd": 11.12,
     "pack_qty": 1,
     "packs": 5,
     "qty": 4.0,
     "same_pack_as": "",
-    "sku": "NETRF6-129.1",
-    "url": "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode=NETRF6-129.1",
+    "sku": "NETRF6-128.4",
+    "url": "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode=NETRF6-128.4",
     "vendor": "MISUMI",
     "verified": false,
     "where": [
@@ -1783,14 +1669,14 @@
     "pack_price_usd": 29.99,
     "pack_qty": 1,
     "packs": 1,
-    "qty": 0.071,
+    "qty": 0.06,
     "same_pack_as": "",
     "sku": "Prusament PLA Jet Black 1kg",
     "url": "https://www.prusa3d.com/product/prusament-pla-jet-black-1kg-nfc/",
     "vendor": "Prusa Research",
     "verified": true,
     "where": [
-     "printed parts: 71 g at 100 % infill"
+     "printed parts: 60 g at 100 % infill"
     ]
    },
    {
@@ -2290,11 +2176,11 @@
   "purchases_usd": 243.69,
   "title": ""
  },
- "engine_version": "0.1.0+b266aedf3f13",
+ "engine_version": "0.1.0+e5812d70d3bd",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-547faf0b98f8d8dd"
+ "source_key": "gen-3834db18384c6712"
 }

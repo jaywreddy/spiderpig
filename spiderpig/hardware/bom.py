@@ -1060,7 +1060,7 @@ sold singly is $5-13; two make the 1 mm shim; the M4 DIN 433 one (4.3 x 8 x 0.5)
 for the 4 x 8 family. The M3 washer is 1 mm wider than the 3 x 6 shim it stands for (Accu's
 DIN 433, 6 mm, was its own cart until 2026-10-08): the constructions model and claim a
 clamped stack at :func:`shim_od`. Clamped shims only (a horn screw's head, a pillar's end,
-a frame tie): the unclamped ones are printed (construction.pivots.common.gap_washers, the
+a frame tie): the unclamped ones are printed (construction.pivots.common.build_sleeves, the
 Chicago pins' head spacers)."""
 
 

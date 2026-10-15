@@ -149,7 +149,7 @@ def test_the_crank_runs_along_its_pin_through_the_link_that_sweeps_o(key, pin, t
     assert verify_plan(plan, tmpl) == []
 
 
-@pytest.mark.parametrize(("module", "layers"), [("single", 10), ("double", 10),
+@pytest.mark.parametrize(("module", "layers"), [("single", 8), ("double", 9),
                                                 ("decker", 12), ("quad", 13)])
 def test_klann_plans_keep_their_layers_and_are_proven_thinnest(module, layers):
     """The demo Klann's modules on the default constructions (the bolt crank's single
@@ -161,7 +161,7 @@ def test_klann_plans_keep_their_layers_and_are_proven_thinnest(module, layers):
     assert plan.height == pytest.approx(sum(plan.t(k) for k in range(plan.top + 1))
                                         + sum(plan.gaps.values()))
     assert plan.optimal, plan.proof
-    assert plan.proof.startswith(f"no plan in {plan.top} layers or fewer")
+    assert f"; no plan in {plan.top} layers or fewer" in plan.proof
 
 
 def test_the_routers_rules_are_the_bolt_cranks():

@@ -1471,6 +1471,135 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/construction/cradle.py`, `spiderpig/cradle_pack.py`,
   `spiderpig/hardware/cradle_catalog.py`, `tests/test_cradle.py`.
 
+### 2026-10-14: the planner plans the lowest stack, proves it soundly, and searches in parallel jobs (the brief: the planner encodes the true optimum, not proxies and arbitrary tie-breaks; the search in parallel, both head placements, the walkers' improvements committed)
+
+- **What was unsound.** The search's z was a pitch a layer with no gaps, and rules read it
+  as if it were the plan's. They refused layerings every real plan of them builds:
+  - **a cradle's pins made to length** (`PivotPinShaft`): two 0.190 in links in
+    neighbouring layers looked 6.35 mm thick, not 9.65. A 10 mm pin's end then looked
+    3.4 mm too tall for any slot. B was "proven" thinnest a layer or two too thick;
+  - **standoff pillars** (`StandoffAxle.column`): a short column that no stock length fills
+    at a pitch a layer can be filled once the plan's gaps are in;
+  - **the crank's stock standoffs and stub** (`BoltCrank._web_span_ok`, `stub_layers_web`):
+    their tables were made at a few nominal z's;
+  - **the hand crank** (`HandCrank.claims`): the layers its block crosses and the rod's least
+    height came from a z estimate.
+- **The fix: the search's z is a bound** of every plan its layering can become
+  (`stack.bound_layout`; `Layout.t_hi`, `span_hi`, `z_hi`):
+  - each layer is at least its frame, fixed or placed links' sheet, with no gaps;
+  - each layer is at most the thickest sheet it may yet hold, and each gap at most
+    `GAP_MAX`;
+  - a rule that refuses what is too long reads the lower bound; one that refuses what is too
+    short reads the upper; a window refuses only where no z between them fits; everything
+    else waits for the plan's z.
+
+  `tests/test_seam_stack.py` checks this against `tests/brute.py` (`brute.lowest`) on a
+  cradle pin. The old search gave 5 layers, "proven"; the brute force and the new search
+  give 4.
+- **The plan's z** (`finalize`): it starts where it always did. Where that settles into a z
+  some claim can't be built at, it starts again from the least z (a cradle's thick links).
+  Then each gap is lowered to the thinnest the plan still builds at (`_descend`), since
+  settling only ever grew them. A standoff longer than its column holds the plates apart
+  (`Claim.hold`, `StandoffAxle.hold`: up to `max_long`, 0.8 mm, was always accepted, the
+  links loose by as much), so a gap is lowered only where the stack really is lower, and a
+  hold left is taken into a gap (`_take_up`): the plan's height is what the parts stand
+  at. A hold no gap can take counts in the objective (`StackPlan.hold`).
+- **The objective** (`StackProblem.key`), in order:
+  1. the height, frame plate to frame plate: what the module occupies between its plates,
+     what packs and what the pillars and pins span (what stands outside the plates is the
+     same for every plan of a design);
+  2. the crank route's cost;
+  3. the stock parts' cost (each claim's `tally`, at unit prices);
+  4. the parts printed;
+  5. a fixed tie-break.
+
+  Products plan on it, proven. **Walkers plan on "layers"** (`config.plan_objective`): the
+  fewest layers, then the cheapest route, a size's search stopping at its first plan with no
+  route cost, as before. On the height the Strider double planned 15 layers at 67.96 mm
+  against 14 at 68.76 (0.8 mm lower, a layer more), unproven after 166 s wall on 16
+  workers, 1,678 CPU s (measured at `91479cc`, before the router's tables were made sound):
+  the walkers' crank router prunes on its route's cost, which bounds nothing on the
+  height, so every size the proof needs runs out of budget. `config.LINKAGE_OBJECTIVES`
+  puts a linkage on the height when that is wanted.
+- **Both head placements, side by side.** The 2026-10-04 rule (heads in gaps only where
+  sunk finds no plan) is gone; each placement is a job of its own, run in parallel. The rule
+  cost the cradles nothing: neither A nor B has a plan with its heads sunk. Among the
+  walkers, the dwell rocker and the `klann_lego` quad now plan sunk (below).
+- **Parallel jobs** (`stack/drive.py`, `stack_pool.py`). A job is a stack size, a head
+  placement, a node budget and perhaps a plan to beat. Its answer is its own, so the plan is
+  the same with any number of workers (`SPIDERPIG_PLAN_WORKERS`, up to eight; none with
+  `SPIDERPIG_WORKERS=0`; one under pytest-xdist). A short job stops at its first plan.
+  The plain search and a leg at a time run side by side, and a short job whose answer isn't
+  read is stopped; once sizes get dear (`stack.drive.DEAR`), idle workers run the size the
+  search likely asks next; a proof job is split by its first link's layer, four sizes at a
+  time.
+  Each placement has its own `max_total_nodes`, as each had when the second ran only after
+  the first: an unproven design (the Strider quad) spends twice the CPU. A job's CPU
+  deadline is `max_seconds`, a placement's jobs one and a half of them together
+  (`stack.drive.SPENT_SECONDS`: TrotBot's toe quad returns in 80 s under a 15 s deadline,
+  155 s when each job had its own). The leg hint is the single module's proven plan, as it
+  was (its first plan alone, a layer thicker on the XL330, left the Strider double there
+  with no plan in 61 layers). Planning time as
+  `design_side` (the leg hint included), wall seconds (min-max), interleaved runs, on
+  20 cores shared with other agents. At load 2-6 (three runs, `58ebfca`, before the cheap
+  sizes ran here):
+
+  | design | before (serial) | serial | 8 workers |
+  |---|---|---|---|
+  | Strider double | 3.52-4.39 | 3.62-4.70 | 3.62-4.38 (CPU 10-12 s) |
+  | B (`decanter_rcm`) | 7.23-8.62 | 4.07-4.80 | 2.96-3.45 |
+  | A (`decanter_hinge`) | 5.12-5.86 | 0.29-0.33 | 0.37-0.43 |
+  | Strider quad | 27.3-35.2 | 71.0-83.4 | 21.2-22.0 (CPU 123-125 s) |
+
+  Under load the Strider double's workers could lose (at load 14-44, 5.3-21 s against
+  4.6-11.9 before): they spent 2.5 times its CPU, its sizes cheap but each worker's start
+  and caches its own. Since `d8c1090` a size runs in the workers only once sizes get dear
+  (`stack.drive.DEAR`), and here, one job at a time, before. At load 18-21 (`d8c1090`):
+  the Strider double 7.45 s before, 7.91 serial, 7.61 with workers (7.4, 7.9 and 7.7 CPU
+  s); B 16.0, 8.8, 6.3; A 6.7, 0.38, 0.68. At load 54-73: the Strider quad 115.9 s
+  before, 95.8 with workers (53 against 182 CPU s).
+
+- **The sleeve rule** (`construction.pivots.common.sleeve_runs`): one printed sleeve per run
+  of rings and gap rings between an axle's retained parts. It is stepped where it prints and
+  split only where a ring would be cut under what it keeps. The study's "+12 rings" on B's
+  14-layer plan was the old one-ring-per-slot bookkeeping. Its "+2 real" was a gap ring
+  under X's and Y's clevis heads, where the clevis pin's take-up spacer already is: that
+  gap is now the spacer's (`ClevisPinAxle.sleeve_skip`).
+- **The cradles**, before and after, on design review round 1's design (`decanting-cradle`
+  `a52a821` against it merged here; `cradle_report`, each pin's span and its jam SF, walking
+  in brackets):
+
+  | | layers | height mm | pin spans mm | jam (walk) SF: pins; pillars | bought | printed |
+  |---|--:|--:|---|---|---|--:|
+  | B before | 17 | 84.23 | J, J2, K 8.00; P 11.94; X, Y 7.79 | J 11.36 (100.5), J2 2.30 (20.9), K 1.54 (7.17), P 2.87 (12.9), X 2.73 (9.52), Y 2.36 (21.2); O1 1.40 (13.27), O2 1.40 (5.70) | 46 lines, USD 421.68 | 73 |
+  | B after | 16 | 84.05 | J, J2, K 7.83; P, X, Y the same | J 11.57 (102.4), J2 2.35 (21.3), K 1.57 (7.30), P, X, Y the same; O1 1.40 (13.35), O2 1.41 (5.71) | the same lines, USD 421.68 | 61 |
+  | A before | 13 | 65.53 | E 8.73 | E 3.26 (15.5); G 1.82 (12.41) | 43 lines, USD 340.58 | 43 |
+  | A after | 12 | 65.35 | E 8.55 | E 3.31 (15.8); G 1.83 (12.48) | the same lines, USD 340.58 | 43 |
+
+  B's pillars, made to length in steps, stand 0.05 mm proud of their columns, which no gap
+  takes: it plans 84.10 mm as the parts stand, the height its objective ranked. The lowest
+  plan also has every pin's shortest span here; every other SF (the links, the crank, the
+  columns, the frame plates, the rod, the crankpin) is the same or a little higher.
+  Strength stays downstream (`strength.check`), not part of the objective. B's pack
+  (`spiderpig pack-inspect decanter_rcm`) keeps its box: 699 x 496 x 610 mm outside, 211.6
+  litres, automatic (its plan's packing 699 x 499 x 608 to 699 x 498 x 608).
+- **The walkers** (identity gate against `next-320384d`; the new baseline
+  `planner-f667d6b` and every diff: [PLANNER-gate-diffs.md](PLANNER-gate-diffs.md)). Every
+  design keeps its layer count and route; every stack is lower (0.1 to 6.6 mm) and prints
+  fewer parts (the sleeve rule: 173 to 111 on the Strider double). The `klann_lego` quad
+  and the dwell rocker plan with their heads sunk and cost less; the Klann quad costs USD
+  33.52 more (a pillar made to length: the height comes first). Strength and wobble stay
+  outside the objective: the Klann quad's cantilever pillar falls to jam SF 0.84 (its audit
+  failed before and fails on as many joints), the `klann_lego` quad's pillars keep 0.2 mm
+  their 0.5 mm shims can't take.
+- **Where:** `spiderpig/stack/{geometry,plan,plan_z,search,drive}.py`,
+  `spiderpig/stack_pool.py`, `spiderpig/construction/axle.py`,
+  `spiderpig/construction/handcrank.py`,
+  `spiderpig/construction/pivots/{common,chicago,clevis,pivot_pin,standoff}.py`,
+  `spiderpig/construction/crank/web.py`, `spiderpig/config.py`,
+  `spiderpig/fabricate.py`, `tests/brute.py`, `tests/test_seam_stack.py`,
+  `tests/test_seam_pivots.py`.
+
 ### 2026-10-14: cradle B's pack, turn 1: the cradle box off the drive side (user: "iterate multiple turns on the packing ... You can make design changes to assist with packing")
 
 - **What:** B comes apart into the base board, the passive side panel, the cradle box, the

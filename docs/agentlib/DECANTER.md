@@ -276,8 +276,9 @@ stops there:
     held 1.72 and 1.49).
   - K's and J2's heads stand under b2 and b3, their clips in the gap over b4 and b5, their
     ends in the cradle link's layer, where b6 never comes near them.
-  - B's stack is 84.23 mm a side (79.68 until 2026-10-14: the clevis pin at K moves b2
-    and b3 a layer up, and b6 is 0.187 in).
+  - B's stack is 84.05 mm a side in 16 layers (the planner of 2026-10-14: 84.23 in 17
+    before it; 79.68 until 2026-10-14: the clevis pin at K moves b2 and b3 a layer up, and
+    b6 is 0.187 in).
 - **The pillars** are 12 mm steel standoffs (MISUMI NETRF12, M6 ends;
   `StandoffAxle.cradle_shaft`), each made to its plates' gap: a 6 L's jam bent the 10 mm
   ones (SF 0.78 at B's O2). An M6 button head goes through each plate without a washer, to
@@ -963,10 +964,11 @@ at a hand's speed (`WormBox.eta_hand`, 0.55 on the NRV040): 66 N·m at B's crank
 - The joints' rows leave out 30° of crank round either toggle, where a blocked
   crank-rocker's forces grow without bound; the clutch's case rates them (below). There
   only clearance protects: the decanter's lip and anything under the cradle.
-- What A holds there: pin E (steel) 3.26, the crankpin 1.81, the keyed plates 2.15, the
-  rod's buckling 2.32, pillar G 1.82 (on its box: below), its cradle link b2 1.82 (in
+- What A holds there: pin E (steel) 3.31 (3.26 before the planner of 2026-10-14 put it in
+  12 layers, its span 8.55 mm), the crankpin 1.81, the keyed plates 2.15, the
+  rod's buckling 2.32, pillar G 1.83 (on its box: below), its cradle link b2 1.82 (in
   bending, chord by chord; 0.187 in 5052, its E-Tr1 32 mm wide against buckling), the
-  columns 2.43 and more, the outer plate's members 2.24, the inner's 3.33 (at the 40 N
+  columns 2.44 and more, the outer plate's members 2.25, the inner's 3.34 (at the 40 N
   push's 69.3 N·m: 2.88, 1.6, 1.9, 2.05, 1.63, 1.61, 2.17, 2.01, 2.97).
 - Turning it: 36.9 N·m at A's crank at worst, a sealed full 6 L on the mounting round's
   saddles: the NRV040's SF 1.57 at a hand's speed (1.22 on its 45 N·m). 32.2 N at A's 85
@@ -1188,12 +1190,12 @@ review's structure, mounting and drive rounds):
 | swing | −50.0° to +30.0°, the mouth still (0 mm), every bottle's mouth on the pivot |
 | transmission | 36.7° at worst (the rod's); the parallelograms 48.5° and 51.5° |
 | gearbox | 35.1 N·m peak: SF 1.65 on the NRV040's 58.1 N·m at a hand's speed (1.28 on its 45 N·m); 20.8 N at the 125 mm grip at the worst start (the bar 22 N, MIL-STD-1472H) |
-| jam (61.3 N·m, the clutch's cap) | pillars O1 and O2 1.4 (on their box), b6 1.42, pin K 1.54 (clevis), b4 1.55 (its chord's buckling), the outer plate's members 1.61, the inner's 1.76, b1 1.91, b3 2.0, the crank's keyway 2.15, pin J2 2.3 (clevis), column D1 2.35, pin Y 2.36 and pin X 2.73 (clevis), pin P 2.87 (steel), b2 3.29, pin J 11.4 (steel) |
+| jam (61.3 N·m, the clutch's cap) | pillars O1 and O2 1.4 (on their box), b6 1.42, b4 1.55 (its chord's buckling), pin K 1.57 (clevis), the outer plate's members 1.61, the inner's 1.76, b1 1.91, b3 2.0, the crank's keyway 2.15, pin J2 2.35 (clevis), column D1 2.35, pin Y 2.36 and pin X 2.73 (clevis), pin P 2.87 (steel), b2 3.29, pin J 11.6 (steel) |
 | walking | every joint, link, column and plate 4.15 or more; the crank's keyway 3.76 |
 | rod, crankpin | buckling 1.71 × its jam force; the crankpin 2.11 jammed |
 | the clutch's cap over the whole turn | every part 1.36 or more 30° and more from the toggles (pillar O2); pillar O2 1.15 at ±25°, 0.93 at ±20°; the rod buckles within ±17° of rest, ±9° of full tilt (round 1's drive review) |
 | stand | tips at 25.1° at worst (a full 6 L, over the rear edge); the drive side 29.7°, the passive side 28.7°, the front 40.2°; a push of 45.5 N or more at a bottle's top (an empty 750 ml, toward the drive side). The board 40 mm toward the drive side and 682 mm long, round 1: it had been 25.9° (26.0° to the drive side, 31.7° to the other) and 32.0 N |
-| stack | 84.23 mm a side (79.68 before: the clevis pin at K, b6 in 0.187 in) |
+| stack | 84.05 mm a side, 16 layers (the planner of 2026-10-14; 84.23 in 17 before it, 79.68 before the clevis pin at K and b6 in 0.187 in) |
 
 Before the review's round (2026-10-13, the old rules and a 331 mm centre of mass): pillar
 O2 1.33, pin J2 1.40, pillar O1 1.42, b3 and b4 1.74, b2 2.61, b6 3.51; the gearbox 1.52

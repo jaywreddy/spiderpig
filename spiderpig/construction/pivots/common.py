@@ -1,13 +1,25 @@
-"""Pieces the metal-shaft pivots share: the claimed column, printed rings, small hardware
-solids."""
+"""Pieces the metal-shaft pivots share: the claimed column, printed sleeves, small hardware
+solids.
+
+**The sleeve rule** (2026-10-14, :func:`sleeve_runs`): what an axle prints between the parts
+it retains (its links, the frame plates it is anchored in, its heads and clips) is one
+sleeve per contiguous run of rings (a spacer or shoulder layer) and gap rings (the washer
+through a clearance gap), stepped where their radii differ, and split only where printing
+needs it: a sleeve prints without support when its radius never grows away from the bed, so
+each piece is cut down to the running least from its bed end (whichever end keeps the
+most), and a run splits where that would cut a ring under what it must keep (a shoulder's
+overlap of its link's hole). The parts an axle prints are then a property of the layout,
+not one per layer and one per gap (:func:`sleeve_count`, the planner's ``tally``).
+"""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from spiderpig.construction.axle import AxleGroup, full_rings
 from spiderpig.construction.base import Build, Realized, hardware
-from spiderpig.shapes import disc
+from spiderpig.shapes import disc, ring, union
 
 STEEL = "#4a4a4a"
 RING_COLOR = "#a9cbe0"       # the laser-cut spacer rings' colour (rings are printed now)
@@ -131,54 +143,133 @@ def ring_z(build: Build, k: int) -> tuple[float, float]:
     return (z0, z1) if full_rings(build.ctx) else (z0, min(z1, z0 + build.ctx.pitch))
 
 
-def ring_runs(build: Build, col, fill: dict[int, float] | None = None
-              ) -> list[tuple[list[int], float, float, float]]:
-    """The printed rings of a column's spacer layers ``col.between``: ``(layers, radius, z0,
-    z1)`` each. One ring per layer; where the rings fill their layers
-    (:func:`construction.axle.full_rings`, a cradle's), one sleeve for each run of touching
-    layers with the same ring (fewer parts, one step to put on). ``fill``: extra height on
-    a layer's ring (:meth:`StandoffAxle.ring_fill`)."""
-    fill = fill or {}
-    out: list[tuple[list[int], float, float, float]] = []
-    merge = full_rings(build.ctx)
-    for k in col.between:
-        _, r = col.roles[k]
-        z0, z1 = ring_z(build, k)
-        z1 += fill.get(k, 0.0)
-        if (merge and out and out[-1][0][-1] == k - 1 and out[-1][1] == r
-                and abs(out[-1][3] - z0) < 1e-6):
-            ks, _, a, _ = out[-1]
-            out[-1] = ([*ks, k], r, a, z1)
+@dataclass(frozen=True)
+class Slot:
+    """One ring of an axle's printed run: a spacer ring in a layer or the ring through a
+    clearance gap (``name``: the body it was before the sleeve rule), ``z0``..``z1``, the
+    radius its claim gives it (``r``) and the least it may be cut to and still do its job
+    (``least``: a shoulder's overlap of its link's hole)."""
+
+    name: str
+    z0: float
+    z1: float
+    r: float
+    least: float = 0.0
+
+
+def _printable(seg: Sequence[Slot]) -> list[float] | None:
+    """The radii a run of touching slots prints at as one piece without support (each its
+    claim's at most, never growing away from the bed: the running least from the bottom, or
+    from the top with the piece printed upside down; the one that keeps more), ``None``
+    when either would cut a slot under its ``least``."""
+    best: tuple[float, list[float]] | None = None
+    for order in (range(len(seg)), range(len(seg) - 1, -1, -1)):
+        radii = [0.0] * len(seg)
+        least = float("inf")
+        for i in order:
+            least = min(least, seg[i].r)
+            radii[i] = least
+        if any(r < s.least - 1e-9 for r, s in zip(radii, seg, strict=True)):
+            continue
+        kept = sum(r * r * (s.z1 - s.z0) for r, s in zip(radii, seg, strict=True))
+        if best is None or kept > best[0] + 1e-12:
+            best = (kept, radii)
+    return None if best is None else best[1]
+
+
+def sleeve_runs(slots: Sequence[Slot], eps: float = 1e-6) -> list[list[tuple[Slot, float]]]:
+    """The printed sleeves of an axle's slots (any order): slots that touch (one's top the
+    next's bottom, within ``eps``) are one run, each run one sleeve (its slots with the
+    radius each prints at: :func:`_printable`), split only where one piece can't print
+    without cutting a slot under its ``least`` (a slot alone always prints, at its own
+    radius). Bottom up."""
+    order = sorted(slots, key=lambda s: (s.z0, s.z1))
+    runs: list[list[Slot]] = []
+    for s in order:
+        if runs and abs(runs[-1][-1].z1 - s.z0) <= eps:
+            runs[-1].append(s)
         else:
-            out.append(([k], r, z0, z1))
+            runs.append([s])
+    pieces: list[list[tuple[Slot, float]]] = []
+    for run in runs:
+        i = 0
+        while i < len(run):
+            j, radii = i, [run[i].r]
+            while j + 1 < len(run):
+                got = _printable(run[i:j + 2])
+                if got is None:
+                    break
+                j, radii = j + 1, got
+            pieces.append(list(zip(run[i:j + 1], radii, strict=True)))
+            i = j + 1
+    return pieces
+
+
+def column_slots(build: Build, group: AxleGroup, col: Column, *,
+                 fill: dict[int, float] | None = None, trim: dict[int, float] | None = None,
+                 skip: Sequence[int] = ()) -> list[Slot]:
+    """The slots of a column (:class:`Slot`): a ring in each spacer layer between its ends
+    (:func:`ring_z`, ``fill`` more on top) and one through each clearance gap it crosses
+    (``trim[k]``: what something else of the axle's takes of gap ``k``'s top: a standoff's
+    end shims; ``skip``: gaps another part of the axle fills, a clevis pin's take-up
+    spacer)."""
+    from spiderpig.construction.axle import STOP_OVERLAP
+
+    p, d = build.ctx.params, group.dims(build.ctx)
+    stop = p.hole(2 * d.axle) / 2 + STOP_OVERLAP
+    out = []
+    for k in col.between:
+        role, r = col.roles[k]
+        z0, z1 = ring_z(build, k)
+        out.append(Slot(f"ring{k}", z0, z1 + (fill or {}).get(k, 0.0), r,
+                        stop if role == "shoulder" else d.neck))
+    for k in col.washers:
+        if k in skip:
+            continue
+        z0, z1 = build.plan.gap_z(k)
+        z1 -= (trim or {}).get(k, 0.0)
+        if z1 - z0 > 1e-6:
+            out.append(Slot(f"gap{k}_spacer", z0, z1, col.gaps[k][1], d.neck))
     return out
 
 
-def gap_washers(build: Build, group: AxleGroup, col: Column, out: Realized, shaft_d: float,
-                host: str, stem: str, color: str = "#f2f2f2",
-                trim: dict[int, float] | None = None) -> float:
-    """What an axle carries through every clearance gap of its column (the plan's): one
-    printed ring at the gap's height (unclamped: it only locates the links; under
-    :data:`PRINT_MIN` the gap is left as play). ``trim[k]``: the height at the top of gap
-    ``k`` something else of the axle's takes (a standoff column's end shims), so its ring
-    stops under it. Returns the play left in all (mm)."""
-    from spiderpig.materials import washer_od
-
+def build_sleeves(build: Build, group: AxleGroup, slots: Sequence[Slot], out: Realized,
+                  bore: float, host: str, stem: str) -> tuple[float, dict[str, str]]:
+    """The printed sleeves of ``slots`` (:func:`sleeve_runs`), bored ``bore`` mm, into
+    ``out``: each named after its lowest slot (``{stem}_ring{k}``, ``{stem}_gap{k}_spacer``);
+    one under :data:`PRINT_MIN` tall is left as play. Returns (the play left, mm; each
+    slot's sleeve by the slot's name)."""
     xy = xy_of(build, group)
     play = 0.0
-    for k in col.washers:
-        g = build.plan.gaps.get(k, 0.0) - (trim or {}).get(k, 0.0)
-        if g <= 1e-6:
+    of: dict[str, str] = {}
+    for piece in sleeve_runs(slots):
+        z0, z1 = piece[0][0].z0, piece[-1][0].z1
+        if z1 - z0 < PRINT_MIN - 1e-6:
+            play += z1 - z0
             continue
-        if g < PRINT_MIN - 1e-6:
-            play += g
-            continue
-        z0, _ = build.plan.gap_z(k)
-        od = washer_od(shaft_d)
-        part = bored(disc(xy, od / 2, z0, z0 + g), xy, shaft_d + 0.3, z0, z0 + g)
-        out.bodies.append(hardware(f"{stem}_gap{k}_spacer", part, host, fab="printed",
-                                   color=SLEEVE_COLOR))
-    return play
+        name = f"{stem}_{piece[0][0].name}"
+        part = union([ring(xy, 2 * r, bore, s.z0, s.z1) for s, r in piece]) \
+            if len(piece) > 1 else ring(xy, 2 * piece[0][1], bore, z0, z1)
+        out.bodies.append(hardware(name, part, host, fab="printed", color=SLEEVE_COLOR))
+        of.update(dict.fromkeys((s.name for s, _ in piece), name))
+    return play, of
+
+
+def sleeve_count(slots: Sequence[Slot]) -> int:
+    """The sleeves :func:`build_sleeves` prints of ``slots`` (the planner's ``tally``)."""
+    return sum(1 for piece in sleeve_runs(slots)
+               if piece[-1][0].z1 - piece[0][0].z0 >= PRINT_MIN - 1e-6)
+
+
+def unit_usd(key: str) -> float:
+    """What one of catalog item ``key`` costs (its first offer: the pack's price over the
+    pack; 0 unpriced): the planner's ``tally`` of a stock part."""
+    from spiderpig.hardware.catalog import get
+
+    offer = get(key).offer
+    if offer is None or offer.price_usd is None:
+        return 0.0
+    return offer.price_usd / max(offer.pack_qty, 1)
 
 
 def column_air(build: Build, group: AxleGroup, a: int, b: int) -> float:

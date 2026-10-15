@@ -30,9 +30,11 @@ key                 construction
                     ``config.PRODUCT_PIN_JOINTS``, :mod:`construction.pivots.clevis`)
 ==================  ================================================================
 
-Every pivot's spacer rings and gap rings are printed (:func:`common.gap_washers`): an
-unclamped spacer only sets play, so it needn't be bought; clamped shims are steel
-(:data:`hardware.bom.SHIM_AS`).
+Every pivot's spacer rings and gap rings are printed, one sleeve per run of them between
+the parts the axle retains (the sleeve rule of 2026-10-14, :func:`common.sleeve_runs`,
+:func:`common.build_sleeves`): an unclamped spacer only sets play, so it needn't be bought;
+clamped shims are steel (:data:`hardware.bom.SHIM_AS`). What an axle prints and the stock
+part it buys at a plan's z (``prints``, ``stock_keys``) are the planner's ``tally``.
 
 Every one states its claims through :class:`construction.axle.AxleDims`: a shaft can't
 neck down, so every layer between the ends is a loose spacer at least as wide as the
