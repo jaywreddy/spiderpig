@@ -1616,8 +1616,13 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
     keeper holds it, so the box can come off the drive side as it lies, and the passive
     panel's pins lift off with their keepers on: the loose spacer and its two steps go. The
     keepers are the planned gap rings re-made in `assemble_cradle` (the pivots are the
-    planner's to edit); `bom.part_filament` prints them in TPU (`meta["keepers"]`), and
-    each is fastened to its pin (`meta["fastened"]`: an interference fit, not a clash).
+    planner's to edit): under the planner's sleeve rule (`pivots.common.sleeve_runs`) the
+    gap between b4 (b5) and the cradle link is one slot and one sleeve on each pin
+    (`pin_X_gap13_spacer` on the 16-layer plan; the head's gap is the take-up spacer's,
+    `sleeve_skip`), and the keeper is that sleeve with its bore filled in to 7.6 mm: it owns
+    the gap, no second part (B prints 61 parts, as before the keepers).
+    `bom.part_filament` prints them in TPU (`meta["keepers"]`), and each is fastened to its
+    pin (`meta["fastened"]`: an interference fit, not a clash).
   - **The steps** (`cradle.module_steps`, the guide's): eight to take it apart (six before:
     two more, the drive side's clips and the box's lift), ten back together (nine before:
     the box onto the drive side's pins first, pin X, then the box turned about it and b5
@@ -1628,7 +1633,8 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
     hand crank beside it, the drive panel outer plate down over it, its gearbox beside the
     box (6 foam pads to 54 mm), the passive panel bay down over the drive panel's, turned a
     quarter (8 pads to 51 mm). Two searches (150 s x 4, 300 s x 5) found the same.
-- **Numbers:** 699 x 499 x 608 mm, 211.9 L, fill 4.0 % before; 740 x 316 x 600 mm, 140.6 L,
+- **Numbers** (on the planner's 16-layer plan of the same day; on the 17-layer one 211.9 and
+  140.6 L): 699 x 498 x 608 mm, 211.8 L, fill 4.0 % before; 740 x 316 x 600 mm, 140.5 L,
   fill 6.2 % (-34 %), every piece supported, no overlaps, the mass centre 40 % up. The box
   is the cradle box's length (723 mm levelled, Y's pins 122 mm in front of the mouth to the
   rails' end 600 behind it: 41 mm over the board) by the board's width, the board, the box

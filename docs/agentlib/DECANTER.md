@@ -713,8 +713,9 @@ they go in (`/api/cradle/{key}/pack`). B packs as modules, A flat.
 guide's last two steps; the cradle box on its own since the pack's turn 1, the same day).
 The base board, the passive side panel, the cradle box, the drive side panel and the hand
 crank. No tool, no small part left loose: 740 x 316 x 600 mm outside, about 141 L (the
-real-shape packer's plan), where the drive side carrying the cradle box had packed in 699 x
-499 x 608, 212 L (its flat pack had been 112).
+real-shape packer's plan, on the planner's 16-layer stack of 2026-10-14), where the drive
+side carrying the cradle box had packed in 699 x 498 x 608, 212 L (its flat pack had been
+112).
 1. Crank it to the pack pose: from rest, turn the handle the way that swings the crank's arm
    down, until the arm lies along the drive side's outer plate's rear leg, straight down
    from the gearbox (`cradle.PACK_POSES`, `pack_pose`; `cradle_pack.pack_t`). Seen from
@@ -821,9 +822,10 @@ two panels nested over it. Packed the other ways a person would try: the passive
 the board, the drive panel bay to bay over it, the box on top, 182 L; the drive panel on the
 board under the passive panel, the box on top, 186 L.
 
-**The pack's leads, measured** (turn 1, 2026-10-14, on round 1's design; `--split` and a
-board swapped for a smaller box in a scratch driver; each searched 90-120 s on 4 processes;
-contact sheets in the worktree's `build/pack/`):
+**The pack's leads, measured** (turn 1, 2026-10-14, on round 1's design and its 17-layer
+plan; `--split` and a board swapped for a smaller box in a scratch driver; each searched
+90-120 s on 4 processes; on the planner's 16-layer plan the first two rows are 211.8 and
+140.5 L):
 
 | lead | box, outside | litres | what it takes |
 |---|---|---|---|
