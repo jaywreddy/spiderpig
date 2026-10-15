@@ -1681,10 +1681,10 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
     0.56, greased); `saddles` lists them (2 x the most friction cited for the faces).
   - **The post 15 mm, plated** (m3, and N1's own consequence). With the post on the screw's
     side it alone takes the roll of a load at the axis, as it did; counted with what rides
-    the block at its weight (1.2 kg: the report's, not the 0.75 kg the test had used), a 6
-    L hung a hair off the rods took the 12 mm post at 2.96 x its yield (2.99 at round 1's
-    masses), under the 3 asked. MISUMI PETR15-150 (15 mm, M8, electroless nickel, a stocked
-    length, USD 19.25: 2.27 less than a plated 12 mm, PETRF12-130), 5.6 x; its socket 30
+    the block at its weight (about 1 kg: the report's, not the 0.75 kg the test had used), a
+    6 L hung a hair off the rods took the 12 mm post at 2.99 x its yield (2.96 with this
+    round's PETG rails), under the 3 asked. MISUMI PETR15-150 (15 mm, M8, electroless nickel, a stocked
+    length, USD 19.25: 2.54 less than a plated 12 mm, PETRF12-130), 5.7 x; its socket 30
     mm deep under a collar (the boss 53 mm long over it), rated in bearing (8 x); an M8 x 12
     button head into its foot (Bolt Depot 6654, USD 0.40), the screw table's first M8
     (`fasteners.SCREWS`).
@@ -1752,7 +1752,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
     across its layers; rating every part against the across-layer figure would have thrown
     away the in-layer strength the rails' new pose buys.
 - **Numbers** (`cradle_report.saddles`, 2026-10-15): every row over its bar; the worst
-  printed one the rails' tongues, 4.2 x (4) at rest; the post 5.6 x its yield; both
+  printed one the rails' tongues, 4.2 x (4) at rest; the post 5.7 x its yield; both
   guides 2.5 x or more the most friction cited. `balance`: every bottle centred 62.9 mm
   or more inside its support, the mouth lifted 0.89 mm at most. Clash-free at rest, level
   and full tilt on B and A, every size at its setting with the bottle at the pad and

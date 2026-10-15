@@ -184,8 +184,8 @@ register(
         notes="The rear saddle's post (construction.cradle.POST; review round 2): the V "
               "block's boss slides on it in a wine cradle, so plated (bare steel rusts, and "
               "rust raises the boss's friction: m3); 15 mm, as the post now takes a hung 6 "
-              "L's roll with its share of the moving parts at 5.6 x its yield (12 mm had "
-              "been 2.96 x). Its steel taken as the NETRF12's, 1018 or equivalent at 220 "
+              "L's roll with its share of the moving parts at 5.7 x its yield (12 mm had "
+              "been 2.99 x). Its steel taken as the NETRF12's, 1018 or equivalent at 220 "
               "MPa."),
     Item("m8_bhcs_12", "M8 x 12 button head socket screw (ISO 7380), 18-8", "fastener",
          (Offer("Bolt Depot", BD + "6654", "6654", price_usd=0.40, verified=True,

@@ -1320,7 +1320,7 @@ POST = (150.0, -141.0)        # the post: a 15 mm steel standoff (M8 ends), nick
 #                               (MISUMI PETR15-150: a sliding guide in a wine cradle, bare
 #                               steel rusts; review round 2, m3), its length and foot. It takes
 #                               the roll of a load hung at the screw: 15 mm since round 2 (12
-#                               mm took a hung 6 L and the parts riding the block at 2.96 x
+#                               mm took a hung 6 L and the parts riding the block at 2.99 x
 #                               its yield)
 POST_KEY = "standoff_15_m8_nickel_150"      # (hardware.cradle_catalog: MISUMI PETR15-150)
 POST_D = 15.0
@@ -1624,9 +1624,9 @@ def _post_y(xz: tuple[float, float], y0: float, y1: float) -> Shape3D:
     x, z = xz
     across, along = POST_FLATS
     r = POST_D / 2
-    flats = [_box(*sorted((x + sign * across / 2, x + sign * (r + 1.0))), a, b, z - r - 1.0,
-                  z + r + 1.0)
-             for sign in (-1, 1) for a, b in ((y0 - 1.0, y0 + along), (y1 - along, y1 + 1.0))]
+    flats = [_box(min(xa, xb), max(xa, xb), a, b, z - r - 1.0, z + r + 1.0)
+             for xa, xb in ((x - across / 2, x - r - 1.0), (x + across / 2, x + r + 1.0))
+             for a, b in ((y0 - 1.0, y0 + along), (y1 - along, y1 + 1.0))]
     return difference(_rod_y(x, z, r, y0, y1), *flats,
                       *[_rod_y(x, z, M8.d * 0.42, a, b) for a, b in ((y0 - 1, y0 + 16.0),
                                                                     (y1 - 16.0, y1 + 1))])

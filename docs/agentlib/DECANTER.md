@@ -538,8 +538,8 @@ block travels 15 mm, the rear one 72: a neck from 28 to 48 mm across, a body fro
     screw with the knob lifted (4.1 x its turn back, dry; 0.8 x greased: not a hold).
   - The screw holds the block at its +z end. A bottle's weight at the axis rolls the block
     about it, and the post takes that couple (it is 22 x stiffer than the lead screw's
-    core): 15 mm, as it takes a 6 L hung a hair off the rods and the 1.2 kg riding the
-    block at 5.6 x its yield (12 mm, round 1's, took it at 2.96 x once the parts riding
+    core): 15 mm, as it takes a 6 L hung a hair off the rods and the 1.0 kg riding the
+    block at 5.7 x its yield (12 mm, round 1's, took it at 2.99 x once the parts riding
     the block were counted at their weight). Its friction also makes a loaded block hard
     to drive down.
   - The screw's knob sits at |z| 110, 10 mm outboard of a 6 L's widest as it's laid in.
@@ -710,13 +710,13 @@ yield, 3 x; a grip at the least friction cited (printed PETG on steel: 0.24-0.30
 | part | load | stress | SF (bar) |
 |---|---|---|---|
 | rear V block on its rods' seats | 109 N (a 6 L, level) | 0.28 MPa | 169 (4) |
-| rear barrel nut on the block | 121 N (a 6 L hung with what rides the block, 1.2 kg) | 2.3 MPa | 21 (4) |
-| rear post (15 mm), bending | 13.0 N·m roll, a 6 L hung at the screw | 39 MPa | 5.6 on 220 (3) |
-| rear post at rest | 12.9 N·m: a hung impériale's pull along the axis, 121 mm over its root, and its roll | 39 MPa | 5.6 (3) |
-| rear post's socket, 30 mm deep | the post's couple, as bearing | 5.8 MPa | 8.1 (4) |
-| rear lead screw | its share of the roll; a 50 N knock between its nut and bushing | 33, 56 MPa | 6.4, 3.8 (3) |
-| rear V block at the post's boss | the post's share of the roll | 0.9 MPa | 53 (4) |
-| rear lead screw's lock (the knob's teeth) | 115 N·mm: a 6 L hung, the thread greased | 0.4 MPa | 111 (4) |
+| rear barrel nut on the block | 119 N (a 6 L hung with what rides the block, 1.0 kg) | 2.2 MPa | 21 (4) |
+| rear post (15 mm), bending | 12.9 N·m roll, a 6 L hung at the screw | 39 MPa | 5.7 on 220 (3) |
+| rear post at rest | 12.7 N·m: a hung impériale's pull along the axis, 121 mm over its root, and its roll | 38 MPa | 5.7 (3) |
+| rear post's socket, 30 mm deep | the post's couple, as bearing | 5.7 MPa | 8.2 (4) |
+| rear lead screw | its share of the roll; a 50 N knock between its nut and bushing | 14, 56 MPa | 15, 3.8 (3) |
+| rear V block at the post's boss | the post's share of the roll | 0.9 MPa | 54 (4) |
+| rear lead screw's lock (the knob's teeth) | 114 N·mm: a 6 L hung, the thread greased | 0.4 MPa | 113 (4) |
 | rear lead screw's brake, the knob lifted | the block's load on the collar's TPU washer | 4.1 x the thread's turn back dry, 0.8 x greased | told, not the hold |
 | rear knob's tower, across its layers | a 50 N knock at the knob | 6.4 MPa | 2.8 (2.5) |
 | the V blocks' guides raised (`cradle_report.drawers`) | rear: 40.1-53 mm engaged, 27 mm off; front: 44.9 mm, 40 mm off | jam past 0.74-0.98; 0.56 | 2.5-3.3 on 0.30 dry; 3.3 on 0.17 greased (2) |
@@ -801,7 +801,7 @@ development box). What it found, and what changed:
   lips bend in their layers), the gauge on its side; the T-slot's lips 5.5 mm (5), to take
   a firm hand's 1 N·m on the lock.
 - **Minor:** base first when loading (m1); uncork standing (m2); the post nickel plated,
-  and 15 mm (it had taken a hung 6 L at 2.96 x its yield, under the 3 asked), MISUMI
+  and 15 mm (it had taken a hung 6 L at 2.99 x its yield, under the 3 asked), MISUMI
   PETR15-150, USD 19.25, on an M8 x 12 (m3); the pad's bottom 0.5 mm lower, 3.25 mm down a 750's
   rim, and the guide measures the neck 80 mm from the lip and the body where it lies (m4);
   the front V's box guide 45 mm tall at its push's side, greased (m5); a drain from the
