@@ -657,7 +657,9 @@ class CradleTies(Group):
                 f"{' and '.join(clipped)} (the ring printed in TPU over the link "
                 f"{'each' if many else 'the'} pin stands in) pushed down onto that link: "
                 "firm, it grips the pin, and it is what holds the pin in its link when the side "
-                "lies down with its clip out (the trip's breakdown; both sides' keepers)."
+                "lies down with its clip out (the trip's breakdown; both sides' keepers). "
+                "Check each: held head down, its clip out, the pin mustn't slide in its "
+                "keeper; one that does is reprinted with its bore 0.2 mm smaller."
                 if clipped else "")
         return [Op(STACK, (k, 0, "ties"), whole(link), "Cradle link and tie rods",
                    "The four tie rods onto the cradle link, an M5 button head "
