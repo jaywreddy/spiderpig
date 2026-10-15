@@ -66,6 +66,8 @@ from spiderpig.sim.mjcf import SimParams, load_model, motor_line
 from spiderpig.sim.run import (
     HOLD_GAIN,
     MotionIndex,
+    _cap,
+    crank_torque_limit,
     kinematic_gait,
     loop_forces,
     motions,
@@ -112,6 +114,11 @@ class LiveSim:
         self.tau = float(first["forcerange"][1]) if first else 0.0
         self.rated = first.get("rated_torque")
         self.walks = bool(self.meta.get("freejoint"))     # free on a floor (else fixed)
+        # a fixed design's crank servo pushes no harder than the limit it is set to (what
+        # `spiderpig control servo` writes, the strength rates its joints at), as
+        # sim.run.turn and hold cap it; a walker's sim keeps the stall it always had
+        self.limit = (None if self.walks or not self.drives
+                      else crank_torque_limit(config, self.meta))
         self.bodies = list(self.meta["bodies"])
         self._index = MotionIndex(self.model, self.meta)
         feet = self.meta.get("feet") or {}
@@ -255,6 +262,8 @@ class LiveSim:
                         u = cmd + HOLD_GAIN * (self._travel - phi)
                     d.ctrl[act] = np.clip(u, -self.vmax, self.vmax)
                     motor_line(self.model, d, act, self.vmax, self.tau)
+                    if self.limit is not None:
+                        _cap(self.model, act, self.limit)
                 d.ctrl[self._pos] = targets
                 self._mj.mj_step(self.model, d)
 
@@ -295,6 +304,7 @@ class LiveSim:
                           for k, q in enumerate(self.joints)},
                "sites": self.sites,
                "torque_stall": self.tau, "torque_rated": self.rated,
+               "torque_limit": self.limit,
                "mass": self.meta["mass"]["total"], "payload_g": self.params.payload_g,
                "timestep": self.model.opt.timestep, "crank_sign": self.meta["crank_sign"],
                "rest_height": self.meta["rest_height"], "robot": cfg.robot,

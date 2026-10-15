@@ -7,9 +7,9 @@
 What drives a design (:func:`actuators.controllers.motors_of`: serial-bus servos where the
 role ``servo`` is a slot of its kind, else steppers) picks its writer in :data:`WRITERS`:
 
-* ``bus_servo`` (a crank's servos: a walker's, a mechanism's): ``servos.json``, the bus
+* ``servo`` (a crank's servos: a walker's, a mechanism's): ``servos.json``, the bus
   setup :func:`.servos.setup` makes (IDs, baud, mode, torque limit, each crank's zero);
-* ``stepper`` (an arm's inputs): ``printer.cfg``, the Klipper configuration
+* ``actuator`` (an arm's inputs, its steppers): ``printer.cfg``, the Klipper configuration
   :func:`.klipper.printer_cfg` makes of its axes (:func:`.mapping.axes`) and their sensors;
 
 and either one ``HOMING.md``: the numbered steps that zero it (:func:`.servos.homing_steps`,

@@ -352,7 +352,13 @@ def test_a_mechanism_on_its_own_is_one_side():
     _check(mech, st)
     assert {x.side for x in st} == {None}
     assert {x.stage for x in st} <= {"stack", "unit", "join", "wiring", "other"}
-    # its controller (2026-10-14): bought as lines, wired in its last step, no deck
+    # no controller named: none (review fix round 2: a stored mechanism keeps its BOM), so
+    # no wiring step; named, its board is bought as lines and wired in its last step
+    assert not [x for x in st if x.stage == "wiring"]
+    named = BuildConfig(linkage="hoecken_pantograph", module="single", robot=False,
+                        roles=(("controller", "esp32_bus_servo"),))
+    mech = cache.cached_side(named, 1.0)
+    st, _ = _quantities(mech, cache.cached_design(named)[1])
     (wiring,) = [x for x in st if x.stage == "wiring"]
     assert wiring.number == len(st)
     assert "esp32_servo_driver" in wiring.extras

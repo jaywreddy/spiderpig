@@ -57,6 +57,7 @@ from spiderpig.design import canonical_json, jsonable
 from spiderpig.spec import (
     CAPABILITIES,
     OUTPUT_TARGETS,
+    PLACE_AXES,
     SECTIONS,
     TARGET_FIELDS,
     Target,
@@ -67,8 +68,6 @@ from spiderpig.stages.resolve import undriven_inputs
 from spiderpig.store import PROJECT, Store
 from spiderpig.task import TASK_FIELDS, Task
 
-PLACE_AXES = 3
-"""A place task's positional axes: two across the bench and one to lift off it."""
 DOWN_MM = 2.0
 """A screen's sampling of an arm's box: a pose this close over its lowest reaches it."""
 
@@ -633,12 +632,26 @@ def _spec(c: Candidate, task: Task) -> dict:
         doc.setdefault(section, {})[metric] = t.to_dict()
     if "payload_g" in task.plain and CAPABILITIES["ranged"][0](lk):
         doc.setdefault("precision", {})["payload_g"] = task.plain["payload_g"]
+    _name_controller(doc, lk, c.module)
     for e in validate(doc):          # (nothing should be refused: drop it if it is)
         section, _, metric = e.path.partition(".")
         if section in SECTIONS and metric in doc.get(section, {}):
             del doc[section][metric]
     doc["task"] = task.to_dict()     # (what verify's task.* rows re-check on the design)
     return doc
+
+
+def _name_controller(doc: dict, lk: linkage.Linkage, module: str) -> None:
+    """A candidate whose kind leaves its controller unnamed (``none``: a mechanism's, so a
+    stored one keeps its BOM) names the board that drives its motors, the one that speaks
+    its servo's protocol (:func:`actuators.controllers.default_key`): the machine a task
+    builds is wired and powered, its spec saying so (2026-10-14)."""
+    from spiderpig.actuators import controllers
+
+    cfg = BuildConfig(linkage=lk.key, module=module)
+    if not rolemod.applies("controller", lk.kind) or cfg.role("controller"):
+        return
+    doc.setdefault("constructions", {})["controller"] = controllers.default_key(cfg)
 
 
 # ---------------------------------------------------------------------------

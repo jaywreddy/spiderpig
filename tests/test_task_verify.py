@@ -68,8 +68,11 @@ def test_a_candidates_spec_carries_the_task():
         spec = tasks._spec(tasks.Candidate(key, lk.name, lk.kind, "single"), task)
         assert spec["task"] == task.to_dict()
         assert not validate(spec)
+        same = {"linkage": {"key": key}}           # the same machine, its controller named
+        if "constructions" in spec:                # (a mechanism's board, 2026-10-14)
+            same["constructions"] = spec["constructions"]
         assert tasks._body(api.resolve(spec, None).resolved) == tasks._body(
-            api.resolve({"linkage": {"key": key}}, None).resolved)   # the store's lend
+            api.resolve(same, None).resolved)                         # the store's lend
 
 
 # -- the URDF and the five-bar's second input -----------------------------------------
@@ -255,3 +258,26 @@ def test_a_trace_task_is_confirmed_on_a_mechanism(tmp_path):
     assert "task.path_mm" not in v.unverified
     assert v.ok, v.describe()
     assert cast(Any, api.load(d.id, tmp_path)).spec.task == d.spec.task   # stored with it
+
+
+@pytest.mark.no_fabricate
+def test_a_place_task_needs_three_axes_and_a_mechanism_candidate_names_its_board():
+    """A one-input mechanism has an output but not the three positional axes a place task
+    takes: resolve refuses it with that reason (review round 3); a trace task's mechanism
+    candidate names the board that speaks its servo's protocol (its kind leaves it none)."""
+    errs = validate({"linkage": {"key": "hoecken"}, "task": {"do": "place",
+                                                            "area_mm": [50, 50]}})
+    assert any("positional axes" in e.message for e in errs)
+    walker = validate({"linkage": {"key": "strider"}, "task": {"do": "place",
+                                                              "area_mm": [50, 50]}})
+    assert any("no output" in e.message for e in walker)
+    from spiderpig.task import Task
+
+    lk = linkage.get("hoecken")
+    spec = tasks._spec(tasks.Candidate("hoecken", lk.name, lk.kind, "single"),
+                       Task.from_dict(LINE))
+    assert spec["constructions"]["controller"] == "esp32_bus_servo"
+    arm = linkage.get(ARM)
+    spec = tasks._spec(tasks.Candidate(ARM, arm.name, arm.kind, "single"),
+                       Task.from_dict(LINE))
+    assert "controller" not in spec.get("constructions", {})      # an arm's default stands

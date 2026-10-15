@@ -1802,3 +1802,24 @@ round and branch that way.)
   through the websocket in the quick tier, in-process and on a real server on a free port
   (`tests/test_sim_live_kinds.py`); the recorded fixed designs' hold test is by capability.
 - No part, plan or BOM moves (the emitter and the fabrication are untouched).
+
+### 2026-10-14: review round 3's last findings (the merge's reviews signed off)
+
+- **The reviews:** round 3 found no MUST left. The merge-goal reviewer's verdict: one
+  engine for the three shipped kinds, from a task through verify to the guide, control
+  files, BOM and the live viewer.
+- **A place task needs three positional axes,** checked at resolve (`spec.TASK_CAN`,
+  `spec.PLACE_AXES`, which `api.tasks` now reads): a one-input mechanism with an output is
+  refused with the reason, where before it validated and every verify failed it.
+- **The live sim caps a fixed design's crank** at the torque limit its servo is set to
+  (`sim.live.LiveSim.limit`, the hello's `torque_limit`), as `sim.run.turn` and `hold` do.
+  A walker's live sim keeps the stall it always had.
+- **A task's mechanism candidate names its board** (`api.tasks._name_controller`: the one
+  that speaks its servo's protocol). The kind's default stays `none` so stored mechanisms
+  keep their BOMs, while the machine a task builds is wired and powered. A candidate's spec
+  already has a new id, from its task.
+- **Smaller fixes:**
+  - the live-sim server test hands uvicorn its bound socket (no port race under xdist);
+  - `control/files.py`'s docstring uses the motor roles' names.
+- **Gate:** no part, plan or BOM moved; the baseline is `platform-814096d` (the two
+  mechanisms' BOMs without the kit, from review fix round 2).

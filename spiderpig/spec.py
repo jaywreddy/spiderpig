@@ -980,11 +980,28 @@ def validate(data: Mapping) -> list[SpecError]:
     return v.errors
 
 
+PLACE_AXES = 3
+"""A place task's positional axes: over an area and up off it (``api.tasks`` screens by it)."""
+
+
+def _place_axes(lk: linkage.Linkage) -> int:
+    """The output's positional axes: its inputs in the plane, and a yaw where its robot
+    stands on a turntable (the role ``turntable``)."""
+    from spiderpig import roles as rolemod
+
+    return len(lk.inputs) + int(rolemod.applies("turntable", lk.kind))
+
+
 TASK_CAN = {"walk": (lambda lk: lk.walks, "has no feet"),
-            "place": (CAPABILITIES["output"][0], CAPABILITIES["output"][2]),
+            "place": (lambda lk: CAPABILITIES["output"][0](lk)
+                      and _place_axes(lk) >= PLACE_AXES,
+                      lambda lk: CAPABILITIES["output"][2] if not CAPABILITIES["output"][0](lk)
+                      else f"has {_place_axes(lk)} positional axes for its output, under the "
+                           f"{PLACE_AXES} placing over an area and lifting off it takes"),
             "trace": (CAPABILITIES["output"][0], CAPABILITIES["output"][2])}
-"""What a task's ``do`` asks of the linkage: its test (feet, an output) and what a linkage
-without it is (the refusal's words)."""
+"""What a task's ``do`` asks of the linkage: its test (feet, an output, a place's three
+positional axes) and what a linkage without it is (the refusal's words, or a function of
+the linkage giving them)."""
 
 
 def _validate_task(v: _Validator, doc, lk: linkage.Linkage | None) -> None:
@@ -1001,6 +1018,7 @@ def _validate_task(v: _Validator, doc, lk: linkage.Linkage | None) -> None:
     do = doc["do"]
     can, lacks = TASK_CAN[do]
     if not can(lk):
+        lacks = lacks(lk) if callable(lacks) else lacks
         v.err("task.do", f"{lk.key} {lacks}: it can't {do} (candidates ranks the linkages "
                          f"that can)", [d for d, (c, _) in TASK_CAN.items() if c(lk)])
 

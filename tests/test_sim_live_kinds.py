@@ -143,6 +143,22 @@ def test_a_reset_puts_the_arm_back_and_its_targets_stand(arm):
     arm.set_joints({q: j["value"] for q, j in arm.hello()["joints"].items()})
 
 
+def test_a_mechanisms_live_crank_pushes_no_harder_than_its_set_limit(mech):
+    """The live session caps a fixed design's crank servo at the torque limit it is set to
+    (``spiderpig control servo`` writes it; the strength rates the joints there), as
+    ``sim.run.turn`` and ``hold`` do (review round 3); the hello says so."""
+    from spiderpig.config import torque_limit_nm
+
+    h = mech.hello()
+    assert h["torque_limit"] == pytest.approx(torque_limit_nm(MECH))
+    assert h["torque_limit"] < h["torque_stall"]
+    mech.set_command(1.0)
+    _run(mech, 0.5)
+    act = mech._act
+    assert float(np.max(mech.model.actuator_forcerange[act, 1])) <= h["torque_limit"] + 1e-9
+    mech.set_command(0.0)
+
+
 def test_a_mechanisms_crank_turns_and_holds(mech):
     """A mechanism's one crank: its servo's speed is the command (``[speed]``, a fraction of
     the no-load speed), on its speed-torque line; at zero the servo holds the crank where it
@@ -295,12 +311,12 @@ def _served():
 
     import uvicorn
 
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
+    s = socket.socket()                     # bound here and handed over: no other process
+    s.bind(("127.0.0.1", 0))                # can take the port between the two (xdist)
+    port = s.getsockname()[1]
     srv = uvicorn.Server(uvicorn.Config(server.app, host="127.0.0.1", port=port,
                                         lifespan="off", log_level="warning"))
-    thread = threading.Thread(target=srv.run, daemon=True)
+    thread = threading.Thread(target=srv.run, kwargs={"sockets": [s]}, daemon=True)
     thread.start()
     try:
         deadline = time.monotonic() + 20
@@ -311,6 +327,7 @@ def _served():
     finally:
         srv.should_exit = True
         thread.join(10)
+        s.close()
 
 
 def test_a_real_server_streams_an_arm_and_a_mechanism(adopted):

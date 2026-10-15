@@ -341,10 +341,12 @@ table to lose it); with an identity difference too, `compare` exits 4 (order dif
 5 (DIFFERENT), so neither verdict hides the other (`identity_gate.exit_status`); `mise run gate -- audit DIR` checks a snapshot alone, and the slow
 `tests/test_gate_audits.py` runs the eight audits (a known failure a strict `xfail`).
 
-**Current baseline** (the merged walkers-mechanisms-and-arm engine after review round 1,
-2026-10-14): `~/.cache/spiderpig/gate/platform-9aae3e3/`, from which DESIGNS.md is
+**Current baseline** (the merged walkers-mechanisms-and-arm engine after review round 2,
+2026-10-14): `~/.cache/spiderpig/gate/platform-814096d/`, from which DESIGNS.md is
 generated; compare against it: `mise run gate -- compare
-~/.cache/spiderpig/gate/platform-9aae3e3`. It differs from `platform-78e35e8` (kept) in BOMs
+~/.cache/spiderpig/gate/platform-814096d`. It differs from `platform-9aae3e3` (kept) by the
+two mechanisms' BOMs alone (their controller unnamed is `none`: the kit's lines gone, the
+torque-limit note added). `platform-9aae3e3` differs from `platform-78e35e8` (kept) in BOMs
 and audits only, no part, plan or DXF moved: the cutting model's cut-length term (every
 design), the walkers' foot rows, a mechanism's controller kit and its jam rating at its
 torque limit, the arms' MJCF out of the URDF folder. `platform-78e35e8` differs from
