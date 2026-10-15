@@ -135,8 +135,10 @@ def _host(b, by) -> str:
 
 
 def part_mass_kg(config: BuildConfig, b) -> float:
-    """A part's mass (kg): :mod:`hardware.mass`'s (a bought part at its catalogued mass)."""
-    _, dens, fixed = mass_mod.material_of(b, config.sheet, "pla_filament", None)
+    """A part's mass (kg): :mod:`hardware.mass`'s (a bought part at its catalogued mass; a
+    printed one solid, in PETG if it's one of :data:`construction.cradle.PETG_PARTS`)."""
+    fil = "petg_filament" if b.name in cr.PETG_PARTS else "pla_filament"
+    _, dens, fixed = mass_mod.material_of(b, config.sheet, fil, None)
     if fixed is not None:
         return fixed / 1000.0
     return mass_mod.part_props(b.placed_part()).volume * dens / 1e6
@@ -602,16 +604,44 @@ def stand(linkage: str = "decanter_rcm", store=None) -> dict:
     return stability(config, mech, design, ts)
 
 
-PLA_ALLOW = 10.0        # MPa: a printed PLA part under a load that stays (a quarter of its
-#                         ~40 MPa across its layers: it creeps, it doesn't break)
+PRINTED = {
+    ("pla", "in"): 51.0, ("pla", "across"): 17.0,
+    ("petg", "in"): 47.0, ("petg", "across"): 18.0,
+}
+"""MPa: a printed part's strength, solid (100 % infill): in its layers (Prusament's
+tensile yield of printed specimens, horizontal, ISO 527-1) and across them (their
+interlayer adhesion): Prusament PLA's datasheet v1.1 of 2022-07-27 (51 ± 3 and 17 ± 3)
+and PETG's v1.1 of 2022-02-16 (47 ± 2 and 18 ± 4), the specimens printed solid. A part
+in bearing (pressed, not pulled) takes the in-layer figure."""
+SUSTAINED_SF = 4.0      # a load that stays (a bottle at rest, a lock's preload): a quarter of
+#                         the cited strength (it creeps, it doesn't break)
+TRANSIENT_SF = 2.5      # a load of minutes or less (the pour, a knock): about 2 on the
+#                         strength's low end (the mean less its spread)
+PLA_ALLOW = PRINTED["pla", "across"] / SUSTAINED_SF
+"""MPa: what a printed PLA part takes across its layers under a load that stays, 4.25 (a
+quarter of Prusament's 17; review round 2, N6: it had been 10, called a quarter of a ~40
+MPa that no datasheet gives). The saddles, the gauge and the base stop are PETG now
+(:data:`construction.cradle.PETG_PARTS`), rated by :data:`PRINTED`."""
 STAINLESS_YIELD = 210.0     # MPa: the thumbscrews' 18-8, as annealed 304 (no class named)
 CORKSCREW_N = 13.0      # a corkscrew's push into the cork (the mechanical review: 6-13 N)
-LOCK_TORQUE_NM = 0.5    # the base stop's knob (26 mm) turned tight by hand
+LOCK_TORQUE_NM = (0.5, 1.0)     # the base stop's knob (26 mm) turned tight by hand: the least
+#                                 (its grip) and the most (its lips' stress) a hand gives it
 NUT_FACTOR = 0.2        # a dry steel screw's preload: torque / (factor x diameter)
-PLA_FRICTION = 0.3
+PETG_STEEL = {"dry": (0.24, 0.30), "oiled": (0.13, 0.17)}
+"""Printed PETG on steel, static friction, the least and the most over 30-70 N: Stoimenov
+et al., "Static and Kinetic Friction of 3D Printed Polymers and Composites", Tribology in
+Industry 46(1), 2024, figs. 8 and 9 (dry, and with SAE 15W40 oil). A grip is rated at the
+least, a jam at the most. (Printed PLA, the same paper: 0.20-0.30 dry, 0.16-0.20 oiled.)"""
+GREASED = 0.10          # a face the screw's grease has reached (review round 2, N5: under
+#                         the paper's oiled least)
 TPU_FRICTION = 0.5      # the rear lead screw's TPU 95A brake washer on aluminium and PLA, dry
 LEAD_FRICTION = 0.08    # its bronze nut on the stainless screw, greased: the least it may be
 KNOCK_N = 50.0          # a knock sideways on the rear knob (a hand, a bottle going in)
+GRIP_BAR = 2.0          # a grip (the base stop's lock) over what it holds, at the least
+#                         friction cited
+DRAWER_BAR = 2.0        # a guide's jamming friction over the most cited for its faces
+E_PETG = 1500.0         # MPa: printed PETG's tensile modulus (Prusament, horizontal)
+MOUTH_LIFT_MAX = 1.0    # mm: the most the rails' sag may lift the mouth (balance)
 BASE_RING = 10.0        # a bottle's base rests on a ring this far in from its body's radius
 HEEL = 10.0             # its body's last 10 mm, rounded into the base, rest on nothing
 
@@ -693,10 +723,21 @@ def balance(rest_deg: float = -50.0, full_deg: float = 30.0) -> dict:
     above it: either is a couple with the weight's pull along the axis, and moves the
     centre toward the base by its depth x tan(tilt) (review round 1, B1). The centre of mass:
     ``BottleSize.com_from_mouth`` (round 1's shell-and-wine model). A centre past the
-    support's end lifts the neck off the front V: ``ok`` false."""
-    front, _ = cr.SADDLES
-    x0 = front.vee[0]
+    support's end lifts the neck off the front V: ``ok`` false.
+
+    The rear V block is rigid to its back end (``rigid_end_mm``, 380); behind it the rails'
+    flanges bend (review round 2, N3: they had been taken as rigid). A centre behind 380
+    rests the bottle on that end and the flanges' end, the flanges taking ``flange_n``
+    (both, at the end, the bottle pivoting on the block's end: the most they can take
+    there); they sag ``sag_mm`` there (each rail a cantilever from its socket, its tongue
+    held without play, :func:`rail_section`, printed PETG's modulus) and the bottle tips
+    about the block's end, lifting the mouth ``mouth_lift_mm``: ``ok`` false over
+    :data:`MOUTH_LIFT_MAX`. As the pour moves the centre in front of 380 the lift goes
+    back to nothing, smoothly."""
+    front, rear = cr.SADDLES
+    x0, xr = front.vee[0], rear.vee[1]
     flange_end = cr.FLANGE_END - cr.CLEAR
+    _, rail_i, _ = rail_section()
     rows = []
     for size in cr.SIZES:
         at = cr.setting(size)
@@ -708,12 +749,37 @@ def balance(rest_deg: float = -50.0, full_deg: float = 30.0) -> dict:
         for case, deg, depth in (("rest", rest_deg, depth_rest), ("level", 0.0, 0.0),
                                  ("full", full_deg, rim)):
             x = com + depth * math.tan(math.radians(abs(deg)))
+            wn = size.mass_full_kg * G * math.cos(math.radians(deg))
+            on = wn * (x - xr) / (end - xr) if x > xr and end > xr else 0.0
+            span = max(end - xr, 0.0)
+            sag = on / 2 * span ** 3 / (3 * E_PETG * rail_i)
+            lift = sag * xr / span if span else 0.0
             rows.append({"bottle": size.name, "case": case, "tilt_deg": round(deg, 1),
                          "com_mm": round(com, 1), "couple_depth_mm": round(depth, 1),
                          "centre_mm": round(x, 1), "support_mm": [x0, round(end, 1)],
-                         "margin_mm": round(end - x, 1), "ok": x0 < x < end})
+                         "margin_mm": round(end - x, 1), "rigid_end_mm": xr,
+                         "rigid_margin_mm": round(xr - x, 1), "flange_n": round(on, 1),
+                         "sag_mm": round(sag, 2), "mouth_lift_mm": round(lift, 2),
+                         "ok": x0 < x < end and lift <= MOUTH_LIFT_MAX})
     return {"rows": rows, "worst_margin_mm": min(r["margin_mm"] for r in rows),
+            "worst_mouth_lift_mm": max(r["mouth_lift_mm"] for r in rows),
             "ok": all(r["ok"] for r in rows)}
+
+
+def rail_section() -> tuple[float, float, float]:
+    """A base stop rail's section behind the V block (the -z one's; the +z one's T-slot keel
+    stiffens it): its bar, its outer keel and its flange (:func:`construction.cradle._rails`):
+    :func:`_section`'s area, second moment and farthest fibre (mm)."""
+    rear = cr.SADDLES[1]
+    lo, hi, _ = cr.REAR_FLANGE
+    yb, ft = cr.FLANGE
+    kz = cr.RAIL_Z - cr.RAIL_KEEL
+
+    def zv(y: float) -> float:
+        return y - rear.apex
+
+    return _section([(zv(hi), hi), (cr.RAIL_Z, hi), (cr.RAIL_Z, yb), (kz, yb), (kz, lo),
+                     (zv(lo) + ft, lo), (zv(yb) + ft, yb), (zv(yb), yb)])
 
 
 def _section(zy) -> tuple[float, float, float]:
@@ -733,6 +799,41 @@ def _section(zy) -> tuple[float, float, float]:
     return abs(a), abs(i), far
 
 
+def drawers() -> list[dict]:
+    """The V blocks' guides as drawers (review round 2, N1 and m5): a block pushed up off its
+    guide's middle cocks on it, and the guide's friction grows with the push, so that past
+    ``mu_jam = engagement / (2 x offset)`` no push lifts it. At each bottle's setting: the
+    rear block's boss on its post, pushed at the lead screw beside it
+    (:data:`construction.cradle.REAR_POST`; it had been 213 mm across the block), and the
+    front block in its box, pushed at the thumbscrew 40 mm off the box's middle (it cocks
+    onto the -z wall's top and the +z wall's foot, its cheek up the taller wall,
+    :data:`construction.cradle.FRONT_GUIDE`). Each against the most friction cited for its
+    faces (:data:`PETG_STEEL`): the rear boss on its plated post dry; the front block, PETG
+    in PETG (unmeasured), greased as the guide says, at the oiled most, and its dry figure
+    beside it (``mu_dry``)."""
+    front = cr.SADDLES[0]
+    e_rear = math.hypot(cr.REAR_LEAD[0] - cr.REAR_POST[0], cr.REAR_LEAD[1] - cr.REAR_POST[1])
+    flat = cr.POST_FLATS[1]                   # (the boss rides the round between the flats)
+    post0, post1 = cr.POST[1] + flat, cr.POST[1] + cr.POST[0] - flat
+    b0, b1 = cr.REAR_BOSS[1], cr.REAR_BOSS[2]
+    e_front = cr.FRONT_JACK[1]
+    wall, cheek, _ = cr.FRONT_GUIDE
+    dry, oiled = PETG_STEEL["dry"][1], PETG_STEEL["oiled"][1]
+    out = []
+    for size in cr.SIZES:
+        at = cr.setting(size)
+        for guide, eng, e, mu in (
+                ("rear", min(b1 + at.rear, post1) - max(b0 + at.rear, post0), e_rear, dry),
+                ("front", min(cheek + at.front, wall) - (front.bottom + at.front), e_front,
+                 oiled)):
+            jam = eng / (2.0 * e)
+            out.append({"bottle": size.name, "guide": guide, "engagement_mm": round(eng, 1),
+                        "offset_mm": round(e, 1), "mu_jam": round(jam, 3), "mu": mu,
+                        "mu_dry": dry, "sf": round(jam / mu, 2),
+                        "ok": jam / mu >= DRAWER_BAR})
+    return out
+
+
 def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 0.0
             ) -> dict:
     """The saddles' loads and stresses, a sealed full bottle of each size at its own setting
@@ -742,22 +843,32 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
     * the rear V block on its tie rods (a 6 L methuselah's V blocks sit on them);
     * a V block hung on its thumbscrew (the heaviest a 6 L set a hair off the rods): the
       screw's barrel nut in the block, the roll couple of a load at the axis held at the
-      block's end (the post, stiffer, and the screw share it), and at rest the pitch of the
-      bottle's pull along the axis, 121 mm over the post's root, on the post too;
-    * the rear lead screw: its brake (the collar's TPU washer under the block's load) against
-      the thread turning back under it, its span and its tower under a knock at the knob;
+      block's +z end (the post, stiffer, and the screw beside it share it), and at rest the
+      pitch of the bottle's pull along the axis, 121 mm over the post's root, on the post
+      too;
+    * the rear lead screw: its lock (the knob's teeth) against the thread turning back under
+      the block's load with the thread greased, the brake washer without it, dry and
+      greased; its span and its tower under a knock at the knob;
+    * the guides (:func:`drawers`): the friction at which raising each V block would jam;
     * the base stop at rest (the bottle's pull down the axis and a corkscrew's push): its
-      gate's plate in bending between its ears, its lock's grip (the knob's preload on two
-      faces) and the T-slot's lips under that preload; its rails as cantilevers from their
-      sockets, the body's share on their flanges at worst (the bottle on the front V and the
-      flanges' end), the sockets' floors under their tongues;
+      gate's plate in bending between its ears, its lock's grip (the knob's least preload on
+      two faces, at the least friction cited) and the T-slot's lips under its most; its
+      rails as cantilevers from their sockets, the body's share on their flanges at worst
+      (the bottle on the front V and the flanges' end), their tongues where they leave the
+      sockets, the tongues' ribs and the sockets' floors;
     * the lip gauge at full tilt (the weight down the axis, no friction counted): its pad,
       its arm across the mouth, its bar beside the neck, its bridge over the post (the push
-      is off their lines by the hinge's 41 mm across and the rim's height), the post (bent
-      by the push, twisted by its turn) and the pin (the turn's couple on its knuckles).
+      is off their lines by the bolt's 41 mm across and the rim's height), the post (bent by
+      the push, twisted by its turn), the bolt (the turn's couple on its cheeks); and,
+      fixed, a knock down on its pad, its turn on the post's top's edge.
 
-    Each row: the load (N, or N·m where the case says), the stress (MPa) and its limit
-    (:data:`PLA_ALLOW` for a printed part, the steel's yield), their ratio ``sf``.
+    Each row: the load (N, or N·m or N·mm where the case says), the stress (MPa) and its
+    limit (a printed part's cited strength, :data:`PRINTED`, in its layers or across them as
+    it's printed; the steel's yield), their ratio ``sf`` against the row's ``bar``
+    (:data:`SUSTAINED_SF` for a printed part's load that stays, :data:`TRANSIENT_SF` for the
+    pour's or a knock's, 3 for steel); a grip's row its grip over its load at the least
+    friction cited (a row with no ``bar`` is told, not rated). Every printed part rated here
+    is PETG, solid (:data:`construction.cradle.PETG_PARTS`; review round 2, N6 and m9).
     ``moving_kg``: what rides the rear V block (itself, its liner, the base stop), hung with
     the bottle."""
     g = G
@@ -766,26 +877,43 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
     front, rear = cr.SADDLES
     rows: list[dict] = []
 
-    def row(part: str, case: str, load: float, stress: float, limit: float) -> None:
+    def row(part: str, case: str, load: float, stress: float, limit: float, bar: float,
+            basis: str) -> None:
+        sf = round(limit / max(stress, 1e-9), 2)
         rows.append({"part": part, "case": case, "load_n": round(load, 1),
-                     "stress_mpa": round(stress, 2), "limit_mpa": limit,
-                     "sf": round(limit / max(stress, 1e-9), 2)})
+                     "stress_mpa": round(stress, 2), "limit_mpa": limit, "basis": basis,
+                     "bar": bar, "sf": sf, "ok": sf >= bar})
+
+    def printed(part: str, case: str, load: float, stress: float, across: bool,
+                lasting: str) -> None:
+        row(part, case, load, stress, PRINTED["petg", "across" if across else "in"],
+            SUSTAINED_SF if lasting == "sustained" else TRANSIENT_SF,
+            f"PETG {'across' if across else 'in'} its layers, {lasting}")
+
+    def steel(part: str, case: str, load: float, stress: float, limit: float) -> None:
+        row(part, case, load, stress, limit, 3.0, "steel's yield")
+
+    def grip(part: str, case: str, load: float, held: float, mu: float,
+             bar: float | None) -> None:
+        sf = round(held / max(load, 1e-9), 2)
+        rows.append({"part": part, "case": case, "load_n": round(load, 3),
+                     "grip_n": round(held, 3), "mu": mu, "bar": bar, "sf": sf,
+                     "ok": bar is None or sf >= bar})
 
     s_rest = math.sin(math.radians(-rest_deg))
     c_rest = math.cos(math.radians(rest_deg))
     # the rear V block on its two rods (the 6 L, lying level): each seat a 9 mm wide arc
     # over 24 mm of rod
     seat_area = 2.0 * math.sqrt(cr.SEAT_R ** 2 - (cr.SEAT_R - cr.SEAT_DEPTH) ** 2) * 24.0
-    row("rear V block's seats on the tie rods", "a full 6 L methuselah, level", w_max,
-        w_max / 2 / seat_area, PLA_ALLOW)
+    printed("rear V block's seats on the tie rods", "a full 6 L methuselah, level", w_max,
+            w_max / 2 / seat_area, False, "sustained")
     # hung on its lead screw: the barrel nut bears up on the bore's end over it
     hung = (heavy.mass_full_kg + moving_kg) * g
     nd = cr.LEAD_NUT[0]
     ring = math.pi / 4 * ((nd + 0.2) ** 2 - (cr.LEAD_SCREW[0] + 1.0) ** 2)
-    row("rear barrel nut on the V block", "a full 6 L, hung, level", hung, hung / ring,
-        PLA_ALLOW)
-    zs = cr.REAR_LEAD[1]
-    xp = cr.REAR_POST[0]
+    printed("rear barrel nut on the V block", "a full 6 L, hung, level", hung, hung / ring,
+            False, "sustained")
+    xs, zs = cr.REAR_LEAD
     post_i = math.pi * cr.POST_D ** 4 / 64
     post_s = math.pi * cr.POST_D ** 3 / 32
     root = cr.LEAD_SCREW[2]
@@ -793,10 +921,10 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
     screw_s = math.pi * root ** 3 / 32
     share = post_i / (post_i + screw_i)
     couple = hung * zs                                        # N·mm, about the axis
-    row("rear post (NETRF12, bending)", "the roll of a full 6 L hung at the screw (N·m)",
-        couple * share / 1000, couple * share / post_s, NETRF10_YIELD)
-    row("rear lead screw (bending)", "its share of that roll (N·m)",
-        couple * (1 - share) / 1000, couple * (1 - share) / screw_s, STAINLESS_YIELD)
+    steel("rear post (bending)", "the roll of a full 6 L hung at the screw (N·m)",
+          couple * share / 1000, couple * share / post_s, NETRF10_YIELD)
+    steel("rear lead screw (bending)", "its share of that roll (N·m)",
+          couple * (1 - share) / 1000, couple * (1 - share) / screw_s, STAINLESS_YIELD)
     # at rest, a bottle hung on the screw (any but the methuselah, whose block sits on its
     # rods): its pull along the axis, at the axis, pitches the block about the post's root
     worst = (0.0, None)
@@ -805,105 +933,139 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
             continue
         m = (size.mass_full_kg + moving_kg) * g
         com = size.com_from_mouth
-        pitch = m * c_rest * (com - xp) + (m * s_rest + CORKSCREW_N) * -cr.REAR_FOOT_TOP
+        pitch = m * c_rest * (com - xs) + (m * s_rest + CORKSCREW_N) * -cr.REAR_FOOT_TOP
         roll = m * c_rest * zs
         both = math.hypot(pitch, roll)
         if both > worst[0]:
             worst = (both, size)
     both, size = worst
     if size is not None:
-        row("rear post (NETRF12, bending at rest)", f"a full {size.name} hung: the pull "
-            "along the axis and the roll (N·m)", both * share / 1000,
-            both * share / post_s, NETRF10_YIELD)
-    # the V block at the post's boss: the post's share of the roll into its flats and the
-    # gusset under them
+        steel("rear post (bending at rest)", f"a full {size.name} hung: "
+              "the pull along the axis and the roll (N·m)", both * share / 1000,
+              both * share / post_s, NETRF10_YIELD)
+    # the post's socket in the carrier: its couple as a bearing pressure, linear down the
+    # socket's depth (the carrier prints standing: in its layers)
+    m_post = max(couple, both) * share
+    depth_s = cr.POST_COLLAR[1] - cr.POST[1]
+    printed("rear post's socket (bearing)", f"the post's couple at worst, {depth_s:g} mm "
+            "deep (N·m)", m_post / 1000, 6 * m_post / (cr.POST_D * depth_s ** 2), False,
+            "sustained")
+    # the V block at the post's boss: the post's share of the roll into the +z flat and the
+    # gusset under it, along both bosses
     depth = cr.REAR_FLANGE[1] - cr.GUSSET[1]
-    row("rear V block at the post's boss", "the post's share of the roll (N·m)",
-        couple * share / 1000, couple * share / (cr.GUSSET[0] * depth ** 2 / 6), PLA_ALLOW)
-    # the lead screw's brake: the collar's TPU washer, pressed by the block's load, against
-    # the thread turned back by it (its lead 8 mm: no self-locking)
+    along = xs - cr.REAR_POST[0] + cr.GUSSET[0]
+    printed("rear V block at the post's boss", "the post's share of the roll (N·m)",
+            couple * share / 1000, couple * share / (along * depth ** 2 / 6), False,
+            "sustained")
+    # the lead screw's hold: its lead (8 mm) turns it back under the block's load; the
+    # knob's teeth hold it (a third of them bearing), the brake washer only slows it
     od, d = cr.COLLAR[0] / 2, cr.LEAD_SCREW[0] / 2 + 0.3
     r_brake = 2.0 / 3.0 * (od ** 3 - d ** 3) / (od ** 2 - d ** 2)
     pitch_d = cr.LEAD_SCREW[0] - 1.0                          # its mean diameter, Tr8 x 2
     lead_a = math.atan(cr.LEAD / (math.pi * pitch_d))
     phi = math.atan(LEAD_FRICTION / math.cos(math.radians(15.0)))
     back = cr.LEAD / (2 * math.pi) * math.tan(lead_a - phi) / math.tan(lead_a)  # mm per N
-    rows.append({"part": "rear lead screw's brake (no turning back)",
-                 "case": "any load on the block: its brake's grip per its pull back (mm·N/N)",
-                 "load_n": round(back, 3), "grip_n": round(TPU_FRICTION * r_brake, 3),
-                 "sf": round(TPU_FRICTION * r_brake / back, 2)})
+    n_t, r_t, r_i, h_t = cr.LOCK_TEETH
+    torque = hung * back                                       # N·mm
+    chord = 2 * r_i * math.sin(math.pi / n_t)                 # a tooth's root, notch to notch
+    tau = torque / ((r_t + r_i) / 2) / (n_t / 3 * chord * h_t)
+    printed("rear lead screw's lock (the knob's teeth)", "a full 6 L hung, the thread "
+            "greased (N·mm)", torque, math.sqrt(3) * tau, False, "sustained")
+    grip("rear lead screw's brake, the knob lifted", "any load: the TPU washer's grip per "
+         "its pull back (N·mm/N), dry", back, TPU_FRICTION * r_brake, TPU_FRICTION, 3.0)
+    grip("rear lead screw's brake, the knob lifted, greased", "the same, the washer's "
+         "faces greased (the lock holds; told, not rated)", back, GREASED * r_brake,
+         GREASED, None)
     # a knock at the rear knob: into the tower's arm (the screw's top in its bushing), the
     # tower bending at its root; the screw between the nut and the bushing, knocked midway
     tx0, tx1, tz0, tz1 = cr.TOWER
-    k0, k1 = cr.REAR_KNOB
+    _, k0, k1, _ = cr.REAR_KNOB
     lever = (k0 + k1) / 2 - cr.REAR_FOOT_TOP
     t_s = min((tx1 - tx0) * (tz1 - tz0) ** 2, (tz1 - tz0) * (tx1 - tx0) ** 2) / 6
-    row("rear knob's tower (bending)", "a 50 N knock sideways at the knob", KNOCK_N,
-        KNOCK_N * lever / t_s, PLA_ALLOW)
+    printed("rear knob's tower (bending)", "a 50 N knock sideways at the knob", KNOCK_N,
+            KNOCK_N * lever / t_s, True, "transient")
     span = cr.ARM[1] - cr.LEAD_BOSS[2]
-    row("rear lead screw (bending)", "a 50 N knock midway between the nut and the bushing",
-        KNOCK_N, KNOCK_N * span / 4 / screw_s, STAINLESS_YIELD)
+    steel("rear lead screw (bending)", "a 50 N knock midway between the nut and the bushing",
+          KNOCK_N, KNOCK_N * span / 4 / screw_s, STAINLESS_YIELD)
     share_f = max(max((cr.SADDLES[1].vee[0] + cr.SADDLES[1].vee[1]) / 2
                       - z.com_from_mouth, 0.0)
                   / ((cr.SADDLES[1].vee[0] + cr.SADDLES[1].vee[1]) / 2 - sum(front.vee) / 2)
                   * z.mass_full_kg * g for z in cr.SIZES)
-    row("front thumbscrew's nut on the V block", "the heaviest front share, level", share_f,
-        share_f / (3 * math.sqrt(3) / 2 * (cr.M6_HEX[0] / math.sqrt(3)) ** 2
-                   - math.pi * 3.3 ** 2), PLA_ALLOW)
+    printed("front thumbscrew's nut on the V block", "the heaviest front share, level",
+            share_f, share_f / (3 * math.sqrt(3) / 2 * (cr.M6_HEX[0] / math.sqrt(3)) ** 2
+                                - math.pi * 3.3 ** 2), False, "sustained")
+    rows.extend({"part": f"{r['guide']} V block's guide (raised: the drawer)",
+                 "case": f"set for a {r['bottle']}: {r['engagement_mm']:g} mm engaged, "
+                         f"pushed {r['offset_mm']:g} mm off it",
+                 "mu_jam": r["mu_jam"], "mu": r["mu"], "bar": DRAWER_BAR, "sf": r["sf"],
+                 "ok": r["ok"]} for r in drawers())
     # the base stop at rest: down the axis, the gate's plate a beam between its ears
     push = w_max * s_rest + CORKSCREW_N
     span = 2 * (cr.GROOVE[0] + cr.GROOVE[1]) / 2
     height = cr.REAR_FLANGE[1] + 6.0 - cr.GATE_BOTTOM
-    row("base stop's gate (bending)", "a full 6 L at rest, a corkscrew's push", push,
-        push * span / 4 / (height * cr.GATE_T ** 2 / 6), PLA_ALLOW)
-    preload = LOCK_TORQUE_NM * 1000 / (NUT_FACTOR * 5.0)
-    grip = 2 * PLA_FRICTION * preload
-    rows.append({"part": "base stop's lock (its grip)", "case": "the same: its knob tight "
-                 "by hand, the ear on the rail and the washer on the T-slot's lips",
-                 "load_n": round(push, 1), "grip_n": round(grip, 1),
-                 "sf": round(grip / push, 2)})
+    printed("base stop's gate (bending)", "a full 6 L at rest, a corkscrew's push", push,
+            push * span / 4 / (height * cr.GATE_T ** 2 / 6), False, "sustained")
+    least, most = (t * 1000 / (NUT_FACTOR * 5.0) for t in LOCK_TORQUE_NM)
+    mu = PETG_STEEL["dry"][0]
+    grip("base stop's lock (its grip)", f"the same: its knob tight by hand "
+         f"({LOCK_TORQUE_NM[0]:g} N·m), the ear on the rail and the washer on the T-slot's "
+         "lips", push, 2 * mu * least, mu, GRIP_BAR)
     _, neck, lip, (ww, _), _, _, _ = cr.TSLOT
     wd = cr.LOCK_WASHER[0]
     reach = ww / 2 - (neck / 2 + wd / 2) / 2                   # the load's lever to the root
     width = wd + 2 * lip                                       # along the slot (45° spread)
-    row("base stop's T-slot lips (bending)", "the lock's preload", preload,
-        preload / 2 * reach / (width * lip ** 2 / 6), PLA_ALLOW)
+    printed("base stop's T-slot lips (bending)", f"the lock's preload, its knob at "
+            f"{LOCK_TORQUE_NM[1]:g} N·m", most, most / 2 * reach / (width * lip ** 2 / 6),
+            False, "sustained")
     # the rails: the body's share on the flanges at worst, each rail a cantilever from its
-    # socket; the socket's floor under the tongue's back end
-    lo, hi, _ = cr.REAR_FLANGE
-    yb, ft = cr.FLANGE
-    apex = rear.apex
-
-    def zv(y: float) -> float:
-        return y - apex
-
-    _, rail_i, far = _section([(zv(hi), hi), (cr.RAIL_Z, hi), (cr.RAIL_Z, lo),   # (the -z
-                               (zv(lo) + ft, lo), (zv(yb) + ft, yb), (zv(yb), yb)])  # one's)
+    # socket; its tongue where it leaves the socket, the tongue's ribs at its front end, the
+    # socket's floor under the tongue's back end
+    _, rail_i, far = rail_section()
     xr, xf = rear.vee[1], sum(front.vee) / 2
-    m_rail, case = 0.0, ""
+    worst_m = {"sustained": (0.0, ""), "transient": (0.0, "")}  # at rest; level, the pour
     for z in cr.SIZES:
         end = min(cr.FLANGE_END - cr.CLEAR, z.length - HEEL)
         if end <= xr:
             continue
         com = z.com_from_mouth
-        for name, deg, depth in (("at rest", rest_deg, max(min(
+        for name, lasting, deg, depth in (("at rest", "sustained", rest_deg, max(min(
                 z.r - BASE_RING, -(cr.GATE_BOTTOM + cr.setting(z).rear)),
-                z.r / math.sqrt(2))), ("level", 0.0, 0.0)):
+                z.r / math.sqrt(2))), ("level", "transient", 0.0, 0.0)):
             wn = z.mass_full_kg * g * math.cos(math.radians(deg))
             x = com + depth * math.tan(math.radians(abs(deg)))
             on = wn * (x - xf) / (end - xf)                    # on the flanges' end at worst
             m = on * (end - xr) / 2                            # per rail
-            if m > m_rail:
-                m_rail, case = m, f"a full {z.name} {name}: its body on the flanges' end (N·m)"
-    row("base stop's rails (bending at their sockets)", case, m_rail / 1000,
-        m_rail * far / rail_i, PLA_ALLOW)
-    tx0_, tz0_, tz1_, _ = cr.TONGUE
-    bear = m_rail / ((xr - tx0_) * 2 / 3)                      # the tongue's ends' bearing
+            if m > worst_m[lasting][0]:
+                worst_m[lasting] = (m, f"a full {z.name} {name}: its body on the flanges' "
+                                       "end (N·m)")
+    tx0_, tz0_, tz1_, th = cr.TONGUE
+    n_r, rw, _ = cr.RIBS
     t_floor = cr.SOCKET[3] - cr.RAIL_HEAD_SINK / 2
     span_f = tz1_ - tz0_ + 2 * cr.CLEAR
-    row("base stop's sockets (their floors under the tongues)", "the same", bear,
-        3 * bear * span_f / (2 * (xr - tx0_) / 2 * t_floor ** 2), PLA_ALLOW)
-    # the lip gauge at full tilt: the weight down the axis on its pad (on the rim's top)
+    checks = (  # each: its name, its load and stress from the rail's moment, its extra case
+        ("base stop's rails (bending at their sockets)",
+         lambda m: (m / 1000, m * far / rail_i), ""),
+        ("base stop's rails' tongues (bending where they leave the sockets)",
+         lambda m: (m / 1000, 6 * m / ((tz1_ - tz0_) * th ** 2)), ""),
+        ("base stop's tongues' ribs (bearing)",       # the tongue's front end, up (N)
+         lambda m: (m / (xr - tx0_), m / (xr - tx0_) / (n_r * rw * 10.0)),
+         "; the tongue's front end on its socket's roof, on the ribs' front 10 mm (N)"),
+        ("base stop's sockets (their floors under the tongues)",     # its ends' bearing
+         lambda m: (m / ((xr - tx0_) * 2 / 3), 3 * m / ((xr - tx0_) * 2 / 3) * span_f
+                    / (2 * (xr - tx0_) / 2 * t_floor ** 2)),
+         "; the tongue's back end on the floor (N)"))
+    for part, of, more in checks:          # the case that governs: at rest, or the pour
+        rated = []
+        for lasting, (m, case) in worst_m.items():
+            load, stress = of(m)
+            bar = SUSTAINED_SF if lasting == "sustained" else TRANSIENT_SF
+            rated.append((PRINTED["petg", "in"] / max(stress, 1e-9) / bar, lasting, load,
+                          stress, case))
+        _, lasting, load, stress, case = min(rated)
+        printed(part, case.removesuffix(" (N·m)") + (more or " (N·m)"), load, stress, False,
+                lasting)
+    # the lip gauge at full tilt: the weight down the axis on its pad (on the rim's top); it
+    # prints on its side (its layers across z)
     pull = w_max * math.sin(math.radians(full_deg))
     bottom, half = cr.GAUGE_PAD
     ax0, ax1 = cr.GAUGE_FRONT
@@ -912,37 +1074,44 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
     yp, zp = cr.GAUGE_PIVOT
     rim = (bottom + max(z.r_neck for z in cr.SIZES)) / 2
     t = ax1 - ax0                                              # their depth along x
-    row("lip gauge's pad (bending)", "a full 6 L at full tilt, no friction", pull,
-        pull * (y0 - bottom) / ((2 * half) * t ** 2 / 6), PLA_ALLOW)
-    row("lip gauge's arm (bending)", "the same", pull,
-        pull * -bz1 / ((y1 - y0) * t ** 2 / 6), PLA_ALLOW)
+    printed("lip gauge's pad (bending)", "a full 6 L at full tilt, no friction", pull,
+            pull * (y0 - bottom) / ((2 * half) * t ** 2 / 6), False, "transient")
+    printed("lip gauge's arm (bending)", "the same", pull,
+            pull * -bz1 / ((y1 - y0) * t ** 2 / 6), True, "transient")
     bw, bh = bz1 - bz0, y1 - y0
-    row("lip gauge's bar (bending both ways)", "the same", pull,
-        pull * -(bz0 + bz1) / 2 / (bh * bw ** 2 / 6)
-        + pull * ((y0 + y1) / 2 - rim) / (bw * bh ** 2 / 6), PLA_ALLOW)
-    rw, rh = rz1 - rz0, by1 - by0
-    row("lip gauge's bridge (bending both ways)", "the same", pull,
-        pull * -zp / (rh * rw ** 2 / 6) + pull * ((by0 + by1) / 2 - rim) / (rw * rh ** 2 / 6),
-        PLA_ALLOW)
+    printed("lip gauge's bar (bending both ways)", "the same", pull,
+            pull * -(bz0 + bz1) / 2 / (bh * bw ** 2 / 6)
+            + pull * ((y0 + y1) / 2 - rim) / (bw * bh ** 2 / 6), False, "transient")
+    rw_, rh = rz1 - rz0, by1 - by0
+    printed("lip gauge's bridge (bending both ways)", "the same", pull,
+            pull * -zp / (rh * rw_ ** 2 / 6) + pull * ((by0 + by1) / 2 - rim)
+            / (rw_ * rh ** 2 / 6), False, "transient")
     px0, px1, _ = cr.GAUGE_POST
     pl, pw = px1 - px0, -cr.FRONT_HALF - cr.CLEAR - cr.FRONT_W[0]   # along x, across
     turn = pull * -zp                                          # N·mm, about the post's axis
-    sigma = pull * (yp - cr.FRONT_TOP) / (pw * pl ** 2 / 6)
+    sigma = pull * (yp - cr.FRONT_GUIDE[0]) / (pw * pl ** 2 / 6)
     a, b = max(pl, pw), min(pl, pw)
     tau = turn / ((1 / 3 - 0.21 * b / a * (1 - (b / a) ** 4 / 12)) * a * b ** 2)
-    row("lip gauge's post (bent and twisted)", "the same (its knuckle on the post's back)",
-        pull, math.sqrt(sigma ** 2 + 3 * tau ** 2), PLA_ALLOW)
+    printed("lip gauge's post (bent and twisted)", "the same (its cheek on the post's back)",
+            pull, math.sqrt(sigma ** 2 + 3 * tau ** 2), True, "transient")
     (f0, f1), (b0, b1) = cr.GAUGE_KNUCKLES
     spacing = (b0 + b1) / 2 - (f0 + f1) / 2
-    on_pin = turn / spacing                                    # each knuckle on the pin
+    on_pin = turn / spacing                                    # each cheek on the bolt
     m_pin = on_pin * ((f1 - f0) / 2 + (px0 - f1))
-    row("lip gauge's pin (M5, bending)", "its knuckles' couple, the push's turn", on_pin,
-        m_pin / (math.pi * 4.134 ** 3 / 32), STAINLESS_YIELD)
-    row("lip gauge's post's bore (bearing)", "the pin's couple in it", on_pin,
-        6 * turn / ((cr.TIE_HOLE - 0.2) * pl ** 2), PLA_ALLOW)
-    worst_sf = min(r["sf"] for r in rows)
-    return {"rows": rows, "worst_sf": worst_sf, "balance": balance(rest_deg, full_deg),
-            "gauge": cr.gauge_return()}
+    steel("lip gauge's bolt (M5, bending)", "its cheeks' couple, the push's turn", on_pin,
+          m_pin / (math.pi * 4.134 ** 3 / 32), STAINLESS_YIELD)
+    printed("lip gauge's post's bore (bearing)", "the bolt's couple in it", on_pin,
+            6 * turn / ((cr.TIE_HOLE - 0.2) * pl ** 2), False, "transient")
+    held = cr.gauge_fixed()
+    knock = KNOCK_N * -zp                                      # its turn about the bolt
+    edge = knock / min(held["edge_levers_mm"])
+    printed("lip gauge on its post (fixed)", "a 50 N knock down on its pad: its turn on the "
+            "post top's edge (2 mm of it)", edge, edge / (pl * 2.0), False, "transient")
+    rated = [r for r in rows if r.get("bar")]
+    worst = min(rated, key=lambda r: r["sf"] / r["bar"])
+    return {"rows": rows, "ok": all(r["ok"] for r in rows),
+            "worst": {"part": worst["part"], "sf": worst["sf"], "bar": worst["bar"]},
+            "balance": balance(rest_deg, full_deg), "gauge": held}
 
 
 def wheel_sweep(mech) -> list[dict]:

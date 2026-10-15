@@ -593,7 +593,7 @@ def clutch(start_nm: float, grip_r: float, box: WormBox) -> dict:
             "plunger_n": sorted(f_at)}
 
 
-DESIGN_START_NM: dict[str, float] = {"decanter_rcm": 2.661, "decanter_hinge": 2.797}
+DESIGN_START_NM: dict[str, float] = {"decanter_rcm": 2.68, "decanter_hinge": 2.817}
 """Per cradle, a sealed full 6 L's worst starting turn at the input (N·m) at the catalogue's
 static efficiency (:data:`NRV050`): ``cradle_report``'s ``handle_torque_nm``, which a test
 holds these to. The clutch is set on the user's own measurement; these draw it (the guide's
