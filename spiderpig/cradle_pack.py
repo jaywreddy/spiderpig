@@ -597,9 +597,11 @@ PACK_PLANS: dict[str, vp.Plan] = {
                     why="as it lay when the box came off, its outer plate down: its plates "
                         "over the box, the gearbox down beside it onto the board, on foam "
                         "pads (the heaviest module low)"),
-            vp.Step("passive", down="bay", spin=270, corner="+x+z", after=("drive",),
-                    why="last, its bay face down over the drive panel's, turned a quarter, "
-                        "its links between the drive panel's, on foam pads"),
+            vp.Step("passive", down="bay", spin=180, corner="+x+z", after=("drive",),
+                    why="last, its bay face down over the drive panel's, turned end for end, "
+                        "its links between the drive panel's, on foam pads (a quarter turn "
+                        "until the side frames' redesign of 2026-10-20: its inner plate's "
+                        "bottom chord then lands on the drive panel's b2 and b3, 171 L)"),
         ),
         note="B's pieces since pack turn 1 (2026-10-14): the board, the passive side panel, "
              "the cradle box, the drive side panel, the hand crank. The box's length is the "
@@ -616,9 +618,11 @@ PACK_PLANS: dict[str, vp.Plan] = {
         steps=(
             vp.Step("passive", down="outer",
                     why="its plates flat on the board, its pillars up (foam pads level it)"),
-            vp.Step("drive", down="outer", spin=180,
-                    why="turned end for end: its plates lie beside the passive panel's, their "
-                        "pillars between each other's links, both on the board"),
+            vp.Step("drive", down="outer", spin=90,
+                    why="turned a quarter: its plates lie across the passive panel's, their "
+                        "pillars between each other's links, both on the board (end for end "
+                        "until the side frames' redesign of 2026-10-20: its gearbox then "
+                        "lands on the passive panel's wider outer plate, 107 L)"),
         ),
         note="A's pieces: the board, the side panels, the inner plates, the cradle links, "
              "the tie rods, the saddles, the light, the base stop, the hand crank; what the "

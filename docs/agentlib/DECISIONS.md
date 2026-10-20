@@ -2315,3 +2315,98 @@ quotes of 2026-10-14):
 | OSH Cut instead of SendCutSend | +124.18 on the aluminium | its 5052 arrives undeburred |
 | anodizing | +118 or more | A's 683.6 mm frames over the 23 in maximum; the 24 mm links can't be |
 | frames in 0.250 in (2.37 x stiffer across) | +32.26 | not a saving: an option for the sway |
+
+### 2026-10-20: the cradles' side frames redesigned to hold the clutch's cap (the user's brief: every part SF 1.3 or more at the cap, B first)
+
+Round 2's structure entry (2026-10-15, above) left the side frames open at the hand crank's
+clutch's cap (`cradle_report.OPEN_AT_CAP`): B's outer plate 0.60, pillar O2 0.73, column D2
+0.97; A's outer plate 0.41, column D3 0.83, inner plate 1.09, pillar G 1.25. Two causes: the
+posts stood nearly on one line across the drive's force, and the gearbox turns the outer
+plate at O. Both are fixed; `OPEN_AT_CAP` is empty and the tests assert again (A's grip,
+`OPEN_GRIP`, stays the user's call).
+
+- **What was weighed** (B, `cradle_report.structure` with the stand varied, each rated at
+  63.7 N·m; costs from the build's BOM):
+
+  | option | worst at the cap | added | BOM |
+  |---|---|---|---|
+  | two rail columns at 220 and 280, an inner bottom chord, members widened (built) | 1.37 (unchanged parts; the frame 1.39) | 4 columns, 8 screws, 8 washers | +66.70 |
+  | round 2's concept, three rail columns, the same widths | 1.36 at 160/230/290, 1.25 at 60/180/290 | 6, 12, 12 | about +80 |
+  | one rail column at 240 | 1.28, the column itself | 2, 4, 4 | about +65 |
+  | the inner plate tied to the board (a tab in a notch; the cheaper alternative tried) | posts 1.36 or more, but the rail buckles at 0.75-1.13 carrying the rod's reaction to the feet | a notch, cleats | not cheaper |
+  | 0.250 in frames alone | pillar O2 0.77, column D2 1.02 | none | about +75 |
+
+  - The rearmost column takes the inner plate's turn in its plane, whatever the number of
+    columns: a third between doesn't share it. So two, which the order's 10-pack of B's
+    post length already holds (6 used before): no standoff is bought for them.
+  - The board tie was modelled by a penalty on the inner plate's motion at the tab (a
+    script, not the library). It also needs the inner plate to reach the board, so it
+    saves nothing on the plate, and its 4.75 mm tab bears on the birch's edge, found blind
+    on the way back.
+- **B, built** (`cradle.STANDS`): columns E1 and E2 on the rail, the inner plate's 40 mm
+  chord D2-E1-E2 (its leg D1-D2 32 mm).
+  - The rail is 44 mm wide (`cradle.rail_y`): its line, its feet's screws and the columns
+    stand 10 mm higher, its bottom edge 0.5 mm over the board as before, so the columns
+    clear the cleats' tops by 7.5 mm. The feet's printed brackets' uprights stand as much
+    taller (`cradle._bracket`).
+  - The gearbox's turn: the rear leg O-Fr 56 mm wide, O1-O 40. O2-Fr is 32, for its
+    buckling.
+  - At the cap: pillar O1 and b6 1.37 (unchanged), the outer plate 1.39 (the rail at E2,
+    whose foot puts 26 N·m into it), column E2 1.40, pillar O2 1.58, the inner plate 1.61,
+    column D2 2.66. Walking 4.15 or more (the crank's keyway). Over the whole turn 1.34 or
+    more 30° from the toggles.
+  - The side's stiffness across at O1 is 6.35 N/mm (2.67), and a 20 N push sways it 1.57 mm.
+- **A, built:** a column E1 on the rail under D3 with the inner leg down to it (40 mm). The
+  strut G-O is 96 mm wide (48), the legs from O 40, the rail 40 and 8 mm up (at 34 mm,
+  5 up, the leg to E1 dipped 2.5 mm into the board: the clash test found it).
+  - At the cap: the outer plate 1.37 (G-O at O), the tie rods 1.38, pillar G 1.40, the
+    inner plate 1.45, column D3 1.61, column E1 1.77 (1.95 at 34 mm). Walking 3.94 (the
+    keyway). Over the turn 1.36 (pillar G).
+  - G takes 9.01 N/mm across (2.92; 8.64 at 34 mm), a 20 N push 1.11 mm. Two columns (-100
+    and 60 mm) gave 1.38: one does.
+- **Checked:** no column in a link's sweep (the nearest 94 mm, B's E2 from the crank's), the
+  inner plates' new members under the tie rods' paths. The plans are the same (B 16 layers,
+  84.65 mm). The clutch's case, the blocked cases and their thresholds re-rated.
+  - A block at the front tie now finds B's inner plate first (0.26 at the cap); the frame
+    starts to give at +6.7 N at the grip (+4.1 before).
+  - At the rear saddle and a 6 L's base nothing falls under 1.3 within either clutch.
+- **Heavier:** each side panel 0.61 kg on B (the cradle 16.45 kg, 1.24 more), the cradle
+  1.10 kg on A (15.23 kg). The weight sits low, so the stand tips later: B at 26.7° rear
+  (25.5), A at 25.3° (24.5).
+- **The board cut:** the outer plate is cut at the board's top from the mouth's height
+  (`CradleStand.realize`), not from the feet, which a raised rail moves.
+- **Lay-flat** (`cradle.LAY_BLOCKS`, `REST_POSES`): the weight low on the rail moved the
+  lying sides' centres away from the binding edge (O1's block to the gearbox).
+  - B's cradle lying tips at 18.2° (15.4) and the drive side with the box at 17.7° (14.3):
+    its test's bar is back at 15°, from round 2's drive's temporary 14°.
+  - On D2's head the heavier drive panel alone tipped at 25.3°, under its 30° bar. The
+    second block moves to the rail's column E1 (39.7°). A lies at 17.6°.
+  - The breakdown is unchanged otherwise: the columns are inside each side panel, and the
+    steps are the same (the pack pose, the hand crank off, 4 thumb knobs, 2 R-clips, the
+    passive panel lifted off). The guide's lay step
+    names E1's head (`cradle._blocks_words`); its column steps take the new columns as they
+    are.
+- **The pack.** Round 2's 18 mm taller pack (740 x 316 x 601, 140.7 L, to 740 x 334 x 600,
+  148.1 L) is traced (`pack-inspect`, 723ff13 against dcd2693):
+  - Round 2's 40 mm front leg made the passive panel's outer plate 9.6 mm longer at its
+    front foot. The quarter-turned panel no longer fitted beside the drive panel's rod b1
+    and pin P, 3 mm off the box's wall.
+  - The packer set it 11 mm over, its inner plate on them: 16.6 mm higher.
+  - The posts' DIN 125 washers made it 1.6 mm thicker (the stack 0.6 mm).
+  - This redesign's inner chords would have taken it to 171 L (740 x 385 x 600; the
+    search found nothing better): the passive panel's chord lands on the drive panel's b2
+    and b3. Turned end for end (`cradle_pack.PACK_PLANS`), it packs in 740 x 337 x 600,
+    149.4 L, under the test's 150.
+  - A's drive panel end for end landed its gearbox on the passive panel's wider outer
+    plate (107 L). Turned a quarter, it packs in 700 x 213 x 601, 89.6 L (89.3 before).
+- **The BOM:** B USD 1,307.24 to 1,373.94 (+66.70): the inner plate +53.10 (its blank 361
+  x 67 to 525 x 282 mm), the outer plate +10.16, the screws and washers +3.44, the
+  standoffs 0. A USD 1,005.50 to 1,056.74 (+51.24): the outer plate +17.58, the inner plate
+  +19.96, two standoffs +11.98 (12 to 14 at the 10-tier), the screws and washers +1.72. One
+  column, screw and washer size: NETRF12 at the side's post length, M6 x 16 A2-70, DIN 125.
+- Products only: the walkers' identity gate against `planner-f667d6b` is identical.
+- **Where:** `spiderpig/construction/cradle.py` (`STANDS`, `rail_y`, `_bracket`,
+  `CradleStand.realize`, `LAY_BLOCKS`, `_blocks_words`), `spiderpig/cradle_report.py`
+  (`OPEN_AT_CAP`, `VERDICT`), `spiderpig/cradle_drive.py` (`verdict`),
+  `spiderpig/cradle_pack.py` (`PACK_PLANS`), `tests/test_cradle.py`,
+  `docs/agentlib/DECANTER.md` ("The side frames at the clutch's cap").
