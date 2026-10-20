@@ -34,7 +34,9 @@ An agent's step (a foreground command, or the wait for a background one) should 
 whole context uncached. A job longer than that runs in the background and in chunks, each
 one's end a notification. `tests/test_cradle.py`'s slow tests (each a fabrication of a
 whole cradle or more, a minute or two, from `cached_product` when it holds this code's)
-in five chunks at `-n 4`, each 3-4 min on a cold cache at load 5:
+in five chunks at `-n 4`, measured 2026-10-20 at load 4-8: 165-260 s each on a cold
+cache, the clash chunks 51 s warm (verify, the claims, every pose, the room, the build and
+the packs still fabricate afresh; over load 8, run the last chunk as two):
 
 ```bash
 pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "clash_free and decanter_rcm"
