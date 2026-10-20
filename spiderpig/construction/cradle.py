@@ -82,7 +82,18 @@ from spiderpig.construction.robot import prefixed
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import CLEARANCE, Screw, screw
 from spiderpig.mechanism import Body, Mechanism
-from spiderpig.shapes import Cut, Rect, Shape3D, cut_holes, difference, disc, moved, pill, union
+from spiderpig.shapes import (
+    Cut,
+    Rect,
+    Shape3D,
+    cut_holes,
+    difference,
+    disc,
+    moved,
+    pill,
+    pills,
+    union,
+)
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
 
 LIP_HEIGHT = 550.0      # the bottle's mouth over the table (mm): at rest, 50° neck up, the
@@ -910,18 +921,18 @@ _KEEP_OUT_MEMO: dict = {}
 
 def _keep_out(build: Build) -> tuple[Shape3D, ...]:
     """The inner plate's keep-outs (:func:`_tie_paths`, :func:`_tip_paths`) fused into one
-    tool (none: ``()``). That one boolean of a few hundred pills is most of a cradle's
-    fabrication (62 of B's 95 s, measured 2026-10-20) and the same at every crank angle (the
-    paths are over the whole turn, the layer the plan's): memoized by every pill's exact
-    ends, radius and z extent, so a process's next fabrication of the design (another
-    angle, a report's clash angles) fuses nothing. The fused tool is what
-    :func:`plate_part` fused itself."""
+    tool (none: ``()``): their sections fused as one planar region and extruded once
+    (:func:`shapes.pills`; as a fuse of the prisms it was 62-70 of B's 95-100 s first
+    fabrication, measured 2026-10-20, the same point set). The same at every crank angle
+    (the paths are over the whole turn, the layer the plan's): memoized by every pill's
+    exact ends, radius and z extent, so a process's next fabrication of the design (another
+    angle, a report's clash angles) fuses nothing."""
     specs = tuple(_tie_specs(build) + _tip_specs(build))
     if not specs:
         return ()
     hit = _KEEP_OUT_MEMO.get(specs)
     if hit is None:
-        hit = union([pill(*s) for s in specs])
+        hit = pills(specs)
         if len(_KEEP_OUT_MEMO) > 8:
             _KEEP_OUT_MEMO.clear()
         _KEEP_OUT_MEMO[specs] = hit
