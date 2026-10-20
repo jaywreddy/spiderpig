@@ -343,17 +343,24 @@ def test_a_cradle_warns_when_its_own_default_replaces_a_named_one():
     assert any("materials.sheet acrylic_3mm" in w for w in d.warnings)
 
 
-@pytest.mark.construction
-@pytest.mark.parametrize(("key", "t"), quick(
-    [(k, t) for k in CRADLES for t in (0.0, 2.2)], [("decanter_hinge", 2.2)]))
-def test_a_cradle_side_stays_inside_its_claims(key, t):
-    from spiderpig.construction.contract import check_side
-    from spiderpig.fabricate import design_side, template_for
+OWN_GROUPS = ("stand", "ties")
+"""A cradle's own side groups: the stand's columns and members, the cradle box's tie rods."""
 
-    cfg = BuildConfig(linkage=key, robot=False)
-    tmpl = template_for(cfg)
-    design = design_side(tmpl, cfg)
-    assert check_side(design, tmpl.freeze_at(t)) == []
+
+@pytest.mark.construction
+@pytest.mark.parametrize(("key", "t", "groups"), quick(
+    [(k, t, None) for k in CRADLES for t in (0.0, 2.2)] + [(k, 2.2, OWN_GROUPS) for k in CRADLES],
+    [(k, 2.2, OWN_GROUPS) for k in CRADLES]))
+def test_a_cradle_side_stays_inside_its_claims(key, t, groups):
+    """Every part of a cradle's side inside its own claims at a crank angle
+    (``contract.check_side``): the whole side (``groups`` ``None``: every group realized
+    and checked, 12-30 s since the inner plate's keep-out is fused in 2D; slow), or the
+    cradle's own groups alone (:data:`OWN_GROUPS`, the others realized only where those
+    need them: about a second, the fast tier's)."""
+    from spiderpig.construction.contract import check_side
+
+    tmpl, design = cache.cached_design(BuildConfig(linkage=key, robot=False))
+    assert check_side(design, tmpl.freeze_at(t), groups=groups) == []
 
 
 @pytest.mark.construction
@@ -1119,6 +1126,40 @@ def cached_report_fabrications(monkeypatch):
     monkeypatch.setattr(cradle_report, "fabricate", fabricate)
 
 
+@pytest.fixture
+def cached_cradle_fabrications(monkeypatch, cached_report_fabrications):
+    """Every fabrication of a cradle from the test cache: ``cradle_report``'s
+    (:func:`cached_report_fabrications`), the api's (``api.building.fabricate_at``: a build,
+    a verify's clash angles) and ``spiderpig build``'s, each a mechanism of the caller's own
+    (``cache.own_product``, as the store's fabrication cache hands one out: ``build`` adds to
+    its ``bom_extras``), when the design's plan is the cache's (else fabricated). Both
+    cradles' ``standard`` verify rows are the fresh ones' to the byte (measured
+    2026-10-20)."""
+    from spiderpig import build
+    from spiderpig.api import building
+
+    fabricate_at, fabricate = building.fabricate_at, build.fabricate
+
+    def cached(cfg, plan) -> bool:
+        return (is_cradle(cfg) and not cfg.robot
+                and cache.plan_doc(plan) == cache.plan_doc(cache.cached_design(cfg)[1].plan))
+
+    def at(design, t):
+        if design.side is not None and cached(design.config, design.side.plan):
+            return cache.own_product(design.config, t)
+        return fabricate_at(design, t)
+
+    def fab(tmpl, config=None, t=1.0, *, store=None):
+        from spiderpig.fabricate import design_side
+
+        if config is not None and cached(config, design_side(tmpl, config).plan):
+            return cache.own_product(config, t)
+        return fabricate(tmpl, config, t, store=store)
+
+    monkeypatch.setattr(building, "fabricate_at", at)
+    monkeypatch.setattr(build, "fabricate", fab)
+
+
 @pytest.mark.slow
 @pytest.mark.strength
 @pytest.mark.usefixtures("cached_report_fabrications")
@@ -1507,10 +1548,11 @@ def test_the_cradle_has_an_assembly_order(key):
 
 @pytest.mark.slow
 @pytest.mark.construction
+@pytest.mark.usefixtures("cached_cradle_fabrications")
 def test_the_cradle_builds_an_order_without_a_walkers_words(tmp_path):
-    """``spiderpig build`` of A (slow: the whole machine's STEP): its BOM's title is the
-    cradle's, ORDER.md has no acrylic note, no servo boxes, the TPU parts are the cradle's,
-    and nothing is bought for a Chicago pin's epoxy."""
+    """``spiderpig build`` of A (slow: the whole machine's STEP; its fabrication from the test
+    cache): its BOM's title is the cradle's, ORDER.md has no acrylic note, no servo boxes,
+    the TPU parts are the cradle's, and nothing is bought for a Chicago pin's epoxy."""
     from spiderpig.build import main
 
     assert main(["--linkage", "decanter_hinge", "--side-only", "--out", str(tmp_path),
@@ -1524,13 +1566,14 @@ def test_the_cradle_builds_an_order_without_a_walkers_words(tmp_path):
 @pytest.mark.slow
 @pytest.mark.api
 @pytest.mark.parametrize("key", CRADLES)
+@pytest.mark.usefixtures("cached_cradle_fabrications")
 def test_verify_rates_a_cradles_joints_at_its_own_loads(key):
     """``api.verify`` rates a cradle's joints at its own statics (cradle_report.loads), as an
     audit does: A and B fail on nothing, their side frames included since the redesign of
     2026-10-20 (a joint under jam SF 1 is verify's failure; the report's tests hold every
     part at 1.3; design review round 2 had left the side frames open at the clutch's cap,
     ``cradle_report.OPEN_AT_CAP``). One cradle per test (each a ``standard`` verify: a build,
-    the contract, the clashes, two to three minutes)."""
+    the contract, the clashes; its fabrications from the test cache)."""
     from spiderpig import api
 
     d = api.resolve({"kind": "mechanism", "linkage": {"key": key}}, store=None)
