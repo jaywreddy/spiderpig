@@ -187,6 +187,12 @@ stops there:
   - **The crank block:** eight 0.125 in 6061 plates (`handcrank.BLOCK_PLATES`), each the
     arm's whole outline, on the stock 25 mm keyed output shaft; its top where round 1 had
     it, so the rod rides where it did and the planner's plan is unchanged.
+    - Each plate's outline (the arm's pill on its hub's disc) is closed R10 at the neck
+      (`plates.CRANK_FILLET_R`, design review round 3's laser-cut minor 1: two 55.6° cusps
+      there, the arm's most bent section); what the closing adds lies in the crank's own
+      sweep and is claimed (`plates.arm_fills`). The keyway's web to the hub's edge stays
+      4.83 mm (1.52 t: a 6061 warning, 2.5 x SendCutSend's hard minimum); a hub 1.5 mm
+      bigger would make it 2 t for USD 1.20 more on B, not done (every round-3 fix USD 0).
     - The lowest three are keyed on the 8 mm key's straight flanks (`KEYED_PLATES`; the
       keyseat is end-milled, so the key's ends are round). Their slots are cut 0.25 mm
       under the key (`KEY_SLOT`: a laser's ±0.13 stays under it) and filed together on the
@@ -402,6 +408,17 @@ stops there:
     back, a rail along the base. Its inside corners are rounded 20 mm (`Stand.fillet_r`:
     the outline grown and shrunk back, `cradle.plate_part`), so the joints read as one
     shape. Both sides' outer plates are the same file.
+  - **Both plates' outlines** (design review round 3's laser-cut minor 5): where a boss, or
+    a member running straight on (within `cradle.STEP_TURN`, 30°), stands at most
+    `cradle.STEP_MAX` (4.5 mm) proud of a strip, the strip runs as the hull of the two
+    stations' discs, and from a proud station into a plain strip as a straight taper of 1
+    in `cradle.TAPER_RUN` (`cradle._tapered`): the closing had left S-shaped 2.5-4 mm steps
+    in straight edges (three on A's outer plate, two on B's inner leg D1-O2, the inner
+    plate's columns on A). A taper that would reach the inner plate's keep-outs keeps its
+    step; a designed widening (B's 64 mm member at O2) keeps its shape. Every convex corner
+    is rounded `cradle.EDGE_R` (3 mm: an opening, after the board's cut, which had left a
+    sharp point where it met the front leg's R28 end). B's inner plate gains 157 mm² a
+    plate, A's plates 246 and 601.
   - **Inner plate:** a block round the hinge, and a leg over the outer plate's front leg
     down to about 200 mm over the table, tied to the outer plate by five columns (the
     fifth, D3, since 2026-10-14: the outer leg takes 2 kN jammed, and from D2 to the foot
@@ -2095,9 +2112,30 @@ Things to know before cutting and on the bench:
   - Until round 2 the BOM printed B's cutting at USD 301.58. That left out a "USD 68-136"
     7075 band and an unpriced birch line: about USD 457 short.
   - Each file's estimate is in ORDER.md's upload table, and which files arrive as cut (under
-    SendCutSend's 1 x 3 in deburring minimum, `bom.hand_deburred`).
-- **On arrival** (the guide's first stage, `assembly.CRADLE_ARRIVAL`):
-  - Deburr by hand the links that come as cut (B's b4 and b5, 24 mm wide).
+    SendCutSend's deburring minimum, `bom.hand_deburred`: 0.995 x 3 in, its quoting app's
+    limit, which its tables round to 1 x 3 in; `sheet_catalog.SCS_DEBURR_MM`).
+- **The cut rules' inside corners** (design review round 3's laser-cut minor 1): a cradle's
+  cut-outs are read corner by corner (`manufacture.inside_corners`: every tangent break
+  turning round the cut-out) against SendCutSend's published laser radius, "approximately
+  the kerf width" (`sheet_catalog.SCS_LASER_CORNER_R`, 0.3 mm; the 0.8 mm had no source).
+  The keyways' square ends (the bore's arc had hidden them) and the clutch seat ring's hex
+  are warnings, harmless (a key's chamfered edges, a printed hex). The walkers keep the
+  arcs-only reading and 0.8 mm (their audits are the identity gate's).
+- **On arrival** (the guide's first stage, `assembly.CRADLE_ARRIVAL`; design review round
+  3's laser-cut minors 2, 3, 4 and 6):
+  - A paint-pen label on every part (its file's): some files differ only by a hole or a
+    slot (the crank block's keyed and clear plates: the gearbox's key drops through a
+    clear one's slot). ORDER.md says so under its upload table; the guide's parts table
+    names the crank block plates and calls the birch CNC-routed (`labels.part_types`).
+  - Deburr by hand the parts that come as cut, which the step names from the fabrication
+    (`assembly.as_cut_words`: B's b4 and b5, 24 mm wide).
+  - The clutch's seat ring: its clean (entry) face marked, each of its six holes' edges
+    broken alike there with a countersink, two turns by hand; it goes on that face out, to
+    the balls (the seats are the holes' edges: a burr wears off and drifts the setting).
+  - Each 8 mm pin slides through its holes by hand before it goes on: the 0.250 in rod's
+    8.2 mm holes can come 0.05 mm under the g6 pin (±0.005 in and the thick sheet's
+    taper), opened from the exit face with fine sandpaper rolled round a 7 mm drill bit's
+    shank (or an 8 mm H8 reamer). The hole stays 8.2 mm: no part changes.
   - Caliper every link at its pin holes. SendCutSend's sheets run up to +0.69 mm thick at
     0.250 in and +0.23 mm at 0.187 in (its spec tables).
   - Then order the made-to-length pins (MISUMI CCGH8: the measured stack + 0.3 mm; ORDER.md
