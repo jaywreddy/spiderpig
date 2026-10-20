@@ -378,6 +378,10 @@ def sheet(title: str, subtitle: str, pieces, metrics: dict, grid, base: str | No
                  "slide: the most it moves along the floor before it meets a neighbour",
                  "    or the wall, and which way (mm, cells: the real is up to 2 more)",
                  "pads (black): blocks cut to the real gap under a piece (the cut list)",
+                 *([f"spacers: {metrics['spacers']['count']} printed in TPU, "
+                    f"{metrics['spacers']['volume_cm3']:.0f} cm3 solid, about "
+                    f"{metrics['spacers']['grams']} g printed (each a piece here)"]
+                   if metrics.get("spacers", {}).get("count") else []),
                  "TIPS: its centre of mass is over nothing it rests on"):
         d.text((x, y), line, fill=MUTED, font=f)
         y += 22

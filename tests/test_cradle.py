@@ -568,6 +568,46 @@ def test_a_quick_release_pins_gap_ring_is_its_keeper():
 
 @pytest.mark.construction
 @pytest.mark.no_fabricate
+@pytest.mark.parametrize("sign", [1, -1])
+def test_a_board_bracket_takes_a_stud_and_a_knob(sign):
+    """B's brackets stay on its board (pack turn 2, the packing review's L1;
+    ``cradle.BOARD_BRACKETS``): the plate's M5 is a stud (a button head from the plate's
+    inside, where the nut was, M5 x 16), its jam nut on the plate's outer face inside the
+    upright's slot, which is open from the stud to the upright's top; a printed knob on the
+    stud (an M5 nut pressed in) bears on the upright either side of the slot and clears the
+    foot's plain M6 nut; no thumb knob on the board's bolt. Nothing overlaps."""
+    from build123d import Box, Location
+
+    face, t = 0.0, 4.75
+    bracket, parts, _ = cr._bracket((0.0, 22.5), 0.0, face, sign, t, board=True)
+    by = {suffix: (part, key) for part, key, suffix in parts}
+    assert {k: v[1] for k, v in by.items()} == {
+        "screw0": "m5_bhcs_16", "nut0": "m5_nut", "knob0": None, "nut2": "m5_nut",
+        "screw1": "m6_carriage_25", "washer1": "m6_washer_wide", "nut1": "m6_nut"}
+    shapes = {"bracket": bracket, **{k: v[0] for k, v in by.items()}}
+    for (a, sa), (b, sb) in itertools.combinations(shapes.items(), 2):
+        inter = sa & sb
+        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3, (a, b)
+    stud, jam, knob, nut = (by[k][0].bounding_box() for k in ("screw0", "nut0", "knob0", "nut2"))
+    out = (lambda bb: bb.max.Z) if sign > 0 else (lambda bb: -bb.min.Z)
+    inn = (lambda bb: bb.min.Z) if sign > 0 else (lambda bb: -bb.max.Z)
+    assert inn(stud) == pytest.approx(-t - cr.M5.head_h, abs=0.01)    # its head inside
+    assert out(stud) > out(nut)                                       # a thread past it
+    assert inn(jam) == pytest.approx(face, abs=0.01)
+    assert out(jam) < cr.BRACKET[2]                                   # (in the slot)
+    assert inn(knob) == pytest.approx(cr.BRACKET[2], abs=0.01)         # on the upright
+    nut1 = by["nut1"][0].bounding_box()
+    assert inn(nut1) - out(knob) >= 1.0                               # clear of the foot's nut
+    # the slot: nothing of the bracket over the stud, its jam nut's width, to the top
+    bb = bracket.bounding_box()
+    slot = Box(cr.STUD_SLOT - 0.4, bb.max.Y - 26.5, cr.BRACKET[2] - 0.2).moved(
+        Location((0.0, (26.5 + bb.max.Y) / 2, sign * cr.BRACKET[2] / 2)))
+    inter = bracket & slot
+    assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
 def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
     """The base board comes off by hand: each bracket's carriage bolt (M6 x 25) through its
     foot's oversize hole (the side settles where the linkage puts it), an 18-8 fender washer
