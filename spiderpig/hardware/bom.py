@@ -45,7 +45,7 @@ import itertools
 import json
 import math
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, cast
@@ -1120,8 +1120,8 @@ takes a press with less creep and cracking than PLA (``construction.printed`` pr
 snap axles in PETG for the same strain); ``None`` here leaves it in the build's filament."""
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
-CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer, the feet and (B) "
-                                      "the quick-release pins' keepers",
+CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer, the feet, the "
+                                      "pack's spacers and (B) the quick-release pins' keepers",
                        PRESS_FILAMENT: "the saddles' carriers and V blocks, the rear knob and "
                                        "its hub, the base stop's rails and gate and the lip "
                                        "gauge, solid; the hand crank's hub, arm, cap and grip "
@@ -1498,12 +1498,15 @@ def line_body(line: BomLine, names) -> str | None:
 
 def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                        group: bool = True,
-                       groups: dict[str, list[MadeGroup]] | None = None) -> Bom:
+                       groups: dict[str, list[MadeGroup]] | None = None,
+                       extra: Sequence[tuple[MadeRow, str]] = ()) -> Bom:
     """Collect purchases and made parts from a fabricated mechanism.
 
     ``group=False`` lists every made part on its own row (faster: no shape
     comparison); ``groups`` passes :func:`group_made` results already computed
-    (method -> groups).
+    (method -> groups). ``extra``: printed parts that aren't the mechanism's bodies (a
+    decanting cradle's pack spacers, ``cradle_pack.pack_kit``), each a row and its filament
+    (catalog key): listed, and their filament counted.
     """
     lines: list[BomLine] = []
     made: list[MadeRow] = []
@@ -1551,6 +1554,9 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
             if method == "printed":
                 grams[fil] = grams.get(fil, 0.0) + (made[-1].volume_cm3 * g.qty
                                                     * filament_density(fil))
+    for row, fil in extra:              # (printed, not bodies: a cradle's pack spacers)
+        made.append(row)
+        grams[fil] = grams.get(fil, 0.0) + row.volume_cm3 * row.qty * filament_density(fil)
     total = sum(grams.values())
     for fil, g in grams.items():
         if not fil or g <= 0:

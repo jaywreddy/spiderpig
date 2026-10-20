@@ -526,6 +526,7 @@ def main(argv=None) -> int:
     rows = export_prints(groups["printed"], out / "print", density=filament_density(filament),
                          filaments=printed_filaments(mech, filament), stems=print_stems(types),
                          poses=mech.meta.get("print_poses"))
+    kit = _pack_spacers(config, store, out / "print", rows) if is_cradle(config) else []
     n_print = sum(r["qty"] for r in rows)
     print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
     for r in rows:
@@ -560,7 +561,7 @@ def main(argv=None) -> int:
               f"order.csv to {out / 'laser' / 'parts'}")
 
     title = bom_title(config)
-    bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
+    bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups, extra=kit)
     if args.no_dxf:
         bom.notes.append("Sheet stock not counted (--no-dxf).")
     if config.robot and (note := torque_limit_note(config)):
@@ -584,6 +585,38 @@ def main(argv=None) -> int:
         # what makes the same build again a no-op (the store keeps it)
         uptodate.record(opts, key, read)
     return 0
+
+
+def _pack_spacers(config, store, folder: Path, rows: list[dict]) -> list:
+    """A decanting cradle's pack spacers (``cradle_pack.pack_kit``: printed in TPU, each
+    shaped to the pack): an STL each in ``folder`` (``pack_spacer_*.stl``, lying as it goes
+    in the box), a row each in ``rows`` and ``parts.csv``, and their BOM rows, each with its
+    filament (``bom_from_mechanism``'s ``extra``)."""
+    from spiderpig.cradle_pack import SPACER_FILAMENT, pack_kit, spacer_stl
+    from spiderpig.hardware.bom import MadeRow, _filament_name
+
+    kit = pack_kit(config, store)
+    if not kit or not kit.get("spacers"):
+        return []
+    fil = _filament_name(SPACER_FILAMENT)
+    out = []
+    for d in kit["spacers"]:
+        name = f"pack_{d['key']}"
+        size = " x ".join(f"{v:.1f}" for v in spacer_stl(d, folder / f"{name}.stl"))
+        rows.append({"file": f"{name}.stl", "qty": 1, "mirrored": 0,
+                     "print": "print 1 (the pack: 15 % gyroid, two walls)", "size_mm": size,
+                     "filament": fil,
+                     "grams_each_100pct": round(d["volume_cm3"]
+                                                * filament_density(SPACER_FILAMENT), 1),
+                     "parts": name})
+        out.append((MadeRow(name=name, method="printed", material=fil, size_mm=size,
+                            volume_cm3=float(d["volume_cm3"]), names=[name]),
+                    SPACER_FILAMENT))
+    with open(folder / "parts.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    return out
 
 
 def _write_manifest(out: Path, config, args=None) -> None:

@@ -113,27 +113,10 @@ def placed_pieces(inp: dict, layout: dict) -> list:
     """The pieces of ``layout`` (a pack payload) in its order, each part's mesh (of the
     cradle's input ``inp``, :func:`spiderpig.cradle_pack.gather`) moved by its piece's
     matrix or its own (:class:`spiderpig.voxpack.Packed`)."""
-    from spiderpig import voxpack as vp
+    from spiderpig.cradle_pack import in_order, module_packed, spacer_packed
 
-    out = []
-    for mod in layout["modules"]:
-        meshes, names, mass, mom, vol = [], [], 0.0, np.zeros(3), 0.0
-        for n in mod["parts"]:
-            m = np.asarray(mod.get("part_matrix", {}).get(n, mod["matrix"]), float)
-            pos, tri = inp["meshes"][n]
-            if len(tri):
-                meshes.append((np.asarray(pos, float) @ m[:3, :3].T + m[:3, 3],
-                               np.asarray(tri, np.int64)))
-                names.append(n)
-            p = inp["parts"][n]
-            c = m[:3, :3] @ np.asarray(p["com"], float) + m[:3, 3]
-            mass += p["mass"]
-            mom += p["mass"] * c
-            vol += p["volume"]
-        com = mom / mass if mass > 0 else np.concatenate([q for q, _ in meshes]).mean(axis=0)
-        out.append(vp.Packed(mod["key"], mod.get("label", mod["key"]), meshes, mass, com, vol,
-                             names))
-    return out
+    return [module_packed(inp, d) if kind == "piece" else spacer_packed(d)
+            for kind, d in in_order(layout)]
 
 
 def missing_of(inp: dict, layout: dict) -> tuple[list[str], list[str]]:

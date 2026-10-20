@@ -420,7 +420,27 @@ BRACKET = (36.0, 30.0, 5.0)     # a foot's printed bracket: its length, legs' he
 it and the plate (its nut in the layer over the plate) and a carriage bolt up through the
 base board and its foot's oversize hole, an 18-8 fender washer and a printed thumb knob (an
 18-8 nut pressed in it) on it (:func:`_bracket`). A rail raised over :data:`_FOOT_Y`
-(:func:`rail_y`) raises its feet' screws with it and their brackets' uprights as much."""
+(:func:`rail_y`) raises its feet' screws with it and their brackets' uprights as much. On a
+cradle of :data:`BOARD_BRACKETS` the bracket stays bolted to the board and the plate's M5 is
+a stud with a knob on it, dropping into the upright's open-topped slot."""
+BOARD_BRACKETS: frozenset[str] = frozenset({"decanter_rcm"})
+"""The cradles whose foot brackets stay bolted to the base board (the pack's turn 2,
+2026-10-20; the packing review's L1): B's. Each outer plate's foot M5 is then a stud, an M5
+button head from the plate's inside (its head where the nut was, in the layer over the
+plate: the same claim) held by a jam nut on the plate's outer face (threadlocker, once), and
+a printed knob on it (an 18-8 nut pressed in) clamps the bracket's upright to the plate by
+hand. The upright is slotted open at its top (:data:`STUD_SLOT`), so the cradle lifts
+straight off its board with the knobs loosened a few turns, the studs, jam nuts and knobs
+with it, and drops back with each stud in its slot (the slots and the cleats guide it). The
+bracket's foot is bolted down by its carriage bolt, washer and a plain M6 nut (a 10 mm
+wrench, at the first build: no knob turns there again). Its passive side's brackets had set
+the pack's height, 30 mm proud of the panel lying on top (B's box 149.4 L; with them on the
+board 141 L, :mod:`spiderpig.cradle_pack`)."""
+STUD_SLOT = 12.0        # the upright's open-topped slot: the jam nut's corners (9.24 mm) and
+#                         1.3 mm of play either side (the side settles where the linkage
+#                         puts it, as the foot's oversize hole let it: :data:`BRACKET_HOLE`)
+STUD_KNOB = (26.0, 1.5, 12)     # the stud's printed knob: across, its floor (between its
+#                                 pressed M5 nut and the upright), flutes round it
 
 
 def rail_y(rail_r: float) -> float:
@@ -2072,7 +2092,7 @@ LED_TOP = -45.0             # and its head, 10-25 mm under the glass there
 CLIP_GAP = 16.0             # the clip starts this far under the head (the head twists)
 
 
-def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
+def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float, board: bool = False
              ) -> tuple[Shape3D, list[tuple[Shape3D, str | None, str]], tuple[float, float]]:
     """A foot's printed L-bracket outside an outer plate (world): its upright leg on the
     plate's outer face (``face``; ``sign`` outward along z), its foot leg on the base board
@@ -2084,7 +2104,14 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     clears the upright's screw head). (The bracket; its screws, nuts, washer and knob, each
     with its catalog key (the knob's ``None``: printed) and its name's suffix; the base
     board's hole (x, z). A foot on a raised rail, :func:`rail_y`, raises its upright as much
-    over its screw.)"""
+    over its screw.)
+
+    ``board`` (:data:`BOARD_BRACKETS`): the bracket stays on the board. The plate's M5 is a
+    stud, its button head in the layer over the plate (where the nut was) and its jam nut
+    on the plate's outer face, in the upright's slot, open at the top (:data:`STUD_SLOT`);
+    a printed knob on the stud (:data:`STUD_KNOB`, an M5 nut pressed into it from outside,
+    its floor bearing on the upright either side of the slot) clamps the upright to the
+    plate; the bracket's foot is held down by a plain M6 nut on its washer, no knob."""
     length, height, wall = BRACKET
     fx, fy = xy
     tall = height + max(0.0, fy - (y_top + _FOOT_Y - BASE_TOP))
@@ -2093,15 +2120,30 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     zf = sorted((face, face + sign * height))
     foot = Box(length, wall, height).moved(Location((fx, y_top + wall / 2, sum(zf) / 2)))
     zb = face + sign * BOLT_OUT                      # the foot leg's bolt
-    hole_up = disc((fx, fy), TIE_HOLE / 2, zs[0] - 1, zs[1] + 1)
+    hole_up = (_stud_slot(fx, fy, y_top + tall, zs) if board
+               else disc((fx, fy), TIE_HOLE / 2, zs[0] - 1, zs[1] + 1))
     hole_down = _rod_y(fx, zb, BRACKET_HOLE / 2, y_top - 1.0, y_top + wall + 1.0)
     bracket = difference(union([up, foot]), hole_up, hole_down)
-    # through the upright and the plate, the nut over the plate's inner face
-    l_side = _m5_length(wall + t_frame + M5_NUT[1])
     inner = face - sign * t_frame
-    nut_z = sorted((inner, inner - sign * M5_NUT[1]))
-    side_screw = _screw((fx, fy), face + sign * wall, sign, l_side, M5)
-    side_nut = _nut((fx, fy), *nut_z)
+    side: list[tuple[Shape3D, str | None, str]]
+    if board:       # a stud from the plate's inside, its jam nut and its knob outside
+        k_d, floor, _ = STUD_KNOB
+        l_side = _m5_length(t_frame + wall + floor + M5_NUT[1])
+        z_k = face + sign * wall                    # the knob's floor on the upright
+        z_n = z_k + sign * floor                    # its nut, pressed in from outside
+        if (BOLT_OUT - M6_HEX[0] / math.sqrt(3) < wall + floor + M5_NUT[1] + 1.0
+                or fy - k_d / 2 < y_top + wall + 1.0 or fy + k_d / 2 > y_top + tall):
+            raise ValueError("the stud's knob doesn't clear the foot's nut, its foot leg or "
+                             "the upright's top")
+        side = [(_screw((fx, fy), inner, -sign, l_side, M5), M5.key(l_side), "screw0"),
+                (_nut((fx, fy), *sorted((face, face + sign * M5_NUT[1]))), "m5_nut", "nut0"),
+                (_stud_knob(fx, fy, z_k, sign), None, "knob0"),
+                (_nut((fx, fy), *sorted((z_n, z_n + sign * M5_NUT[1]))), "m5_nut", "nut2")]
+    else:           # through the upright and the plate, the nut over the plate's inner face
+        l_side = _m5_length(wall + t_frame + M5_NUT[1])
+        nut_z = sorted((inner, inner - sign * M5_NUT[1]))
+        side = [(_screw((fx, fy), face + sign * wall, sign, l_side, M5), M5.key(l_side),
+                 "screw0"), (_nut((fx, fy), *nut_z), "m5_nut", "nut0")]
     # a carriage bolt up from under the base board (its square neck in the board's square
     # hole: it can't turn), through the foot, its washer and knob on the foot from above
     d, blen, head_d, neck_h, head_h = CARRIAGE
@@ -2114,7 +2156,7 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     if neck_h > BASE_T or BASE_T + wall + w_t + nut_h + 1.0 > blen:
         raise ValueError("the carriage bolt doesn't reach through the board, the foot, its "
                          "washer and its nut, a thread past it")
-    if BOLT_OUT - knob_d / 2 < wall + M5.head_h + 1.0:
+    if not board and BOLT_OUT - knob_d / 2 < wall + M5.head_h + 1.0:
         raise ValueError("the thumb knob would hit the upright's screw head")
     if w_od / 2 - (BRACKET_HOLE - d) / 2 < BRACKET_HOLE / 2 + 1.0:
         raise ValueError("the washer doesn't cover the bracket's oversize hole")
@@ -2126,10 +2168,40 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     y_n = y_w + w_t                                 # the nut and the knob, on the washer
     nut = difference(_hex_y(fx, zb, af, y_n, y_n + nut_h),
                      _rod_y(fx, zb, d / 2, y_n - 1.0, y_n + nut_h + 1.0))
-    return bracket, [(side_screw, M5.key(l_side), "screw0"), (side_nut, "m5_nut", "nut0"),
-                     (union([head, shank]), f"m6_carriage_{blen:g}", "screw1"),
-                     (washer, WASHER_KEY, "washer1"), (nut, "m6_nut", "nut1"),
-                     (_knob(fx, zb, y_n), None, "knob")], (fx, zb)
+    base = [(union([head, shank]), f"m6_carriage_{blen:g}", "screw1"),
+            (washer, WASHER_KEY, "washer1"), (nut, "m6_nut", "nut1")]
+    if not board:
+        base.append((_knob(fx, zb, y_n), None, "knob"))
+    return bracket, side + base, (fx, zb)
+
+
+def _stud_slot(x: float, y: float, top: float, zs) -> Shape3D:
+    """A board bracket's slot (world): :data:`STUD_SLOT` wide through the upright (z
+    ``zs``) from over its top down to a round bottom under the stud's jam nut at ``(x,
+    y)``, its corners 0.3 mm over it (the rail then 0.2 mm over the board)."""
+    r = STUD_SLOT / 2
+    c = y - M5_NUT[0] / math.sqrt(3) - 0.3 + r     # the bottom's centre
+    z0, z1 = zs[0] - 1.0, zs[1] + 1.0
+    return union([disc((x, c), r, z0, z1),
+                  _box(x - r, x + r, c, top + 1.0, z0, z1)])
+
+
+def _stud_knob(x: float, y: float, z0: float, sign: int) -> Shape3D:
+    """A board bracket's stud's printed knob (world, along z from ``z0``, the upright's
+    outer face, ``sign`` outward): fluted, :data:`STUD_KNOB`'s floor on the upright, then a
+    hex pocket open outward that an 18-8 M5 nut is pressed into, the stud's bore through."""
+    d, floor, flutes = STUD_KNOB
+    z1 = z0 + sign * (floor + M5_NUT[1])
+    zk = sorted((z0, z1))
+    zp = sorted((z0 + sign * floor, z1 + sign))
+    r = (M5_NUT[0] + 2 * KNOB_PRESS) / math.sqrt(3)
+    pts = [(x + r * math.cos(math.pi / 3 * i), y + r * math.sin(math.pi / 3 * i), zp[0])
+           for i in range(6)]
+    pocket = Solid.extrude(Face(Wire.make_polygon(pts, close=True)), (0, 0, zp[1] - zp[0]))
+    cuts = [pocket, disc((x, y), 2.75, zk[0] - 1.0, zk[1] + 1.0)]
+    cuts += [disc((x + d / 2 * math.cos(a), y + d / 2 * math.sin(a)), 1.8, zk[0] - 1.0,
+                  zk[1] + 1.0) for a in np.linspace(0.0, 2 * math.pi, flutes, endpoint=False)]
+    return difference(disc((x, y), d / 2, *zk), union(cuts))
 
 
 def _knob(x: float, z: float, y0: float) -> Shape3D:
@@ -2757,7 +2829,8 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
         feet_xy = {n: tuple(float(v) for v in _node_xy(build.xy, lk, topo, stand, n))
                    for n in stand.feet}
         for n, xy in feet_xy.items():
-            bracket, screws, hole = _bracket(xy, y_top, face, sign, t_frame)
+            bracket, screws, hole = _bracket(xy, y_top, face, sign, t_frame,
+                                             lk.key in BOARD_BRACKETS)
             base_holes.append(hole)
             extras.append(hardware(f"foot_bracket_{n}{s}", bracket, host_s, fab="printed",
                                    color=SADDLE_COLOR))
@@ -2969,19 +3042,30 @@ def assembly(view) -> list:
     # knob onto its bolt once it stands on the board
     bolts = [n for n in brackets["R"] if n.endswith("_screw1")]
     on_bolt = [n for n in brackets["R"] if n.endswith(("_washer1", "_nut1", "_knob"))]
+    on_board = key in BOARD_BRACKETS
+    if on_board:        # every bracket bolted to the board; each plate's studs and knobs
+        studs = ("_screw0", "_nut0", "_knob0", "_nut2")
+        bolts = [n for s in SIDES_LR for n in brackets[s] if not n.endswith(studs)]
+        on_bolt = []
+        brackets = {s: [n for n in brackets[s] if n.endswith(studs)] for s in SIDES_LR}
     brackets["R"] = [n for n in brackets["R"] if n not in bolts and n not in on_bolt]
     if base or feet or brackets["L"]:
         ops.append(Op(FINISH, (0,), whole(*base, *feet, *locator, *brackets["L"], *bolts),
-                      "Base board", BOARD_TEXT[0], "base", lines=(*BOARD_TEXT[1:], BRACKETS)))
+                      "Base board", BOARD_TEXT[0], "base",
+                      lines=(*BOARD_TEXT[1:], *((BRACKETS_BOARD, STUDS) if on_board
+                                                else (BRACKETS,)))))
     if modules:
         if blocks:
             ops.append(Op(FINISH, (3,), whole(*blocks), "Laid on its drive side",
                           *_lay_first(key), scene=lying))
         if brackets["R"]:
-            ops.append(Op(FINISH, (4,), whole(*brackets["R"]), "Brackets", BRACKET_SIDE,
-                          "brackets_R", scene=Scene("built", "passive", show=("passive",)),
-                          lines=("On the bench, the panel on its outer plate: the washers "
-                                 "and knobs go onto the board's bolts once it stands there.",)))
+            ops.append(Op(FINISH, (4,), whole(*brackets["R"]),
+                          "Studs" if on_board else "Brackets",
+                          STUDS if on_board else BRACKET_SIDE, "brackets_R",
+                          scene=Scene("built", "passive", show=("passive",)),
+                          lines=() if on_board else (
+                              "On the bench, the panel on its outer plate: the washers and "
+                              "knobs go onto the board's bolts once it stands there.",)))
         board = (*cleats, *on_bolt)
     else:
         if brackets["R"] or on_bolt:
@@ -3236,6 +3320,17 @@ BRACKETS = (
     "the bench, in a vise), turned down by hand (snug: the foot is printed; no threadlocker, "
     "it comes off to pack). The foot's hole is 2.5 mm over the bolt: the side settles where "
     "the linkage puts it.")
+BRACKETS_BOARD = (
+    "The four printed brackets onto the board, each foot over its carriage bolt, an 18-8 "
+    "fender washer and an 18-8 M6 nut on it, finger-tight for now (they're snugged with a 10 "
+    "mm wrench once the cradle has set them where its sides want them, and stay on the "
+    "board: no knob turns there again). The foot's hole is 2.5 mm over the bolt.")
+STUDS = (
+    "At each foot of the outer plate a stud: an M5 button head from the plate's inside out "
+    "through its foot hole (a 3 mm hex key on its head), its jam nut on the plate's outer "
+    "face, an 8 mm wrench, threadlocker (it stays). Then an 18-8 M5 nut pressed into each "
+    "stud's printed knob from outside (once, in a vise) and the knob onto its stud, a few "
+    "turns: it clamps the bracket's upright to the plate, by hand.")
 TITEBOND_FAQ = "https://www.titebond.com/resources/use/all/faqs"
 
 
@@ -3263,8 +3358,12 @@ def _lay_first(key: str) -> tuple[str, str]:
             f"crank's arm down, until the arm lies along {words} (seen from outside, the leg "
             "hides it). Mark the pose for the trip with a paint pen across the drive side's "
             f"links: {marks}. Take the hand crank off (its thumb screw: lying down, its arc "
-            "would meet the towel). Undo the drive side's two thumb knobs and lift it off the "
-            "board by its outer plate's top member, a hand under the cradle box; lay it on its "
+            "would meet the towel). " + (
+                "Loosen the drive side's two knobs a few turns and lift it straight up off the "
+                "board (its studs rise out of the brackets' slots) by its outer plate's top "
+                "member" if key in BOARD_BRACKETS else
+                "Undo the drive side's two thumb knobs and lift it off the board by its outer "
+                "plate's top member") + ", a hand under the cradle box; lay it on its "
             "drive side on a folded towel, on the riser's two blocks, each on its lift (the "
             f"riser's bottom pieces): {_blocks_words(key)}. It lies level on them and the "
             "gearbox, the tie rods standing up; keep a hand on the cradle box while you work "
@@ -3321,17 +3420,25 @@ def _board_finish(key: str, modules: bool) -> tuple[str, str, tuple[str, ...]]:
 
     lk = linkage.get(key)
     turns = _turns_words(level_turns(lk))
+    board = key in BOARD_BRACKETS
     lines = []
     if modules:
         lines.append(
             "Stand the cradle up by its two outer plates' top members (a hand under the cradle "
-            "box) and set it on the board, each bracket's foot over its carriage bolt (its hole "
-            "is 2.5 mm over the bolt); the washers and the thumb knobs on, by hand, the passive "
-            "side's only started.")
+            "box) and " + (
+                "lower it onto the board, each stud's jam nut down into its bracket's slot (the "
+                "brackets' nuts still finger-tight: they move to where the sides put them); "
+                "the knobs snug by hand, the passive side's only started." if board else
+                "set it on the board, each bracket's foot over its carriage bolt (its hole is "
+                "2.5 mm over the bolt); the washers and the thumb knobs on, by hand, the "
+                "passive side's only started."))
     lines += [
         "Each rail's cleats (a pair between each two of its brackets): slide one against each "
         "face of the rail, a sheet of paper between (their play), and pencil round them.",
-        "The hand crank off (its thumb screw); undo the thumb knobs and lift the cradle off by "
+        "The hand crank off (its thumb screw); " + (
+            "loosen the knobs a few turns and lift the cradle straight up off its brackets "
+            "(they stay on the board, finished round)" if board else
+            "undo the thumb knobs and lift the cradle off") + " by "
         "its outer plates' top members; lay it on its drive side on a folded towel, on the "
         f"riser's two blocks, each on its lift: {_blocks_words(key)}, a hand on it until "
         "it settles.",
@@ -3345,14 +3452,18 @@ def _board_finish(key: str, modules: bool) -> tuple[str, str, tuple[str, ...]]:
         "and the riser locator (the notch's end grain above all: it would wick wine; the "
         "locator stands on the table, in any spill). Two or three coats, sanded lightly "
         "between, as its can says; let it cure before the cradle goes back on.",
-        "Stand the cradle back on the board, each rail between its cleats; the washers and "
-        "knobs on, the drive side's snug by hand, the passive side's only started; the hand "
-        "crank back on.",
+        "Stand the cradle back on the board, each rail between its cleats; " + (
+            "each stud's jam nut down into its bracket's slot, the knobs" if board else
+            "the washers and knobs on") + ", the drive side's snug by hand, the passive "
+        "side's only started; the hand crank back on.",
         f"Turn the handle to level ({turns} turns from rest: the bottle would lie level) "
         "with the passive side's knobs loose, then snug them there: that side settles where "
         "the linkage puts it" + (", and B's two remote centres agree best at level (round "
         "2's linkage review: snugged at rest, the forced misfit had been nearly twice)."
-        if modules else "."),
+        if modules else ".") + (
+            " Then the four brackets' M6 nuts snug with a 10 mm wrench, the cradle on them: "
+            "they stay there, and every trip after drops the studs into the same slots."
+            if board else ""),
         "Then a whole pour and back, the bottle out: both cradle links swing freely and the "
         f"handle turns evenly, under {EMPTY_GRIP_N:g} N at the grip (the luggage scale from "
         f"the hand crank's step hooked on the grip: under {EMPTY_GRIP_N / 9.81:.1f} kg); and "
@@ -3586,6 +3697,29 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
     three = ("drive", "box", "passive", "blocks")
     hold = ("Never let it rest on a pin's tip: the pin's keeper would let it slide back out "
             "of its link; if one has, lift the piece off and push the pin home by its head.")
+    knobs = 2 * len(stand_of(lk).feet)
+    if lk.key in BOARD_BRACKETS:        # (the brackets stay on the board: L1)
+        off = (f"Base board: loosen the {knobs} knobs on the outer plates' studs by hand, a "
+               "few turns each, and lift the cradle straight up off the board by its two outer "
+               "plates' top members, never by the cradle box (only the worm holds it): each "
+               "stud and its jam nut rise out of its bracket's open slot, the rails out of "
+               "their cleats. The brackets stay bolted to the board. Turn each knob back down "
+               "onto its jam nut, snug, for the trip.")
+        on = ("Stand the cradle up by its two outer plates' top members and lower it straight "
+              "onto the base board: each rail between its two cleats, each stud's jam nut down "
+              "into its bracket's slot (their lead-ins and the slots guide it down).",
+              "Back each knob off its jam nut a turn: the drive side's snug by hand, the "
+              "passive side's only started.")
+    else:
+        off = ("Base board: undo the brackets' thumb knobs by hand and lift the cradle off by "
+               "its two outer plates' top members, never by the cradle box (only the worm "
+               "holds it). The carriage bolts stay in the board, their washers and knobs back "
+               "on them.")
+        on = ("Stand the cradle up by its two outer plates' top members and set it on the base "
+              "board: each rail between its two cleats (their lead-ins guide it down), each "
+              "bracket's foot over its carriage bolt (its hole is 2.5 mm oversize).",
+              "The washers and the thumb knobs on: the drive side's snug by hand, the passive "
+              "side's only started.")
     breakdown = [
         ModuleStep(
             "the pack pose",
@@ -3607,14 +3741,10 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
             scene=Scene("pack", show=("*",), moves=(("hand_crank", 160.0, 0.0, 0.0),),
                         marks=(r"L\.handle\w*",))),
         ModuleStep(
-            "off the board",
-            "Base board: undo the brackets' thumb knobs by hand and lift the cradle off by its "
-            "two outer plates' top members, never by the cradle box (only the worm holds "
-            "it). The carriage bolts stay in the board, their washers and knobs back on them.",
-            "base",
+            "off the board", off, "base",
             scene=Scene("pack", show=("board", "drive", "box", "passive"),
                         moves=tuple((k, 0.0, 140.0, 0.0) for k in ("drive", "box", "passive")),
-                        marks=(r"foot_bracket_\w+_knob",))),
+                        marks=(r"foot_bracket_\w+_knob\d?",))),
         ModuleStep(
             "laid on its drive side",
             "Stand the riser's two blocks, each on its lift, on a folded towel and lay the "
@@ -3705,15 +3835,10 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
             "a pin without its clip is held by its keeper's grip alone.", "clips_in",
             scene=Scene("pack", "drive", show=three, marks=clips["R"])),
         ModuleStep(
-            "onto the board",
-            "Stand the cradle up by its two outer plates' top members and set it on the base "
-            "board: each rail between its two cleats (their lead-ins guide it down), each "
-            "bracket's foot over its carriage bolt (its hole is 2.5 mm oversize).", "stand",
-            ("The washers and the thumb knobs on: the drive side's snug by hand, the passive "
-             "side's only started.",),
+            "onto the board", on[0], "stand", on[1:],
             Scene("pack", show=("board", "drive", "box", "passive"),
                   moves=tuple((k, 0.0, 60.0, 0.0) for k in ("drive", "box", "passive")),
-                  marks=(r"foot_bracket_\w+_knob",))),
+                  marks=(r"foot_bracket_\w+_knob\d?",))),
         ModuleStep(
             "the riser back",
             "The riser back in its locator: its two lifts side by side, its two blocks on "
@@ -3728,7 +3853,7 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
             f"Turn the handle to level ({level} turns from rest: the bottle would lie level) "
             "with the passive side's knobs loose, then snug them there: that side settles "
             "where the linkage puts it, and B's two remote centres agree best at level.",
-            "snug", scene=Scene("level", show=("*",), marks=(r"foot_bracket_\w+R_knob",))),
+            "snug", scene=Scene("level", show=("*",), marks=(r"foot_bracket_\w+R_knob\d?",))),
         ModuleStep(
             "the checks",
             "The first build's checks again, the bottle out: turn a whole pour and back; both "
