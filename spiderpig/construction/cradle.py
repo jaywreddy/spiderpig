@@ -57,7 +57,9 @@ from __future__ import annotations
 
 import itertools
 import math
+import sys
 import threading
+import types
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import cast
@@ -1143,6 +1145,31 @@ def column_parts(stand: Stand) -> ColumnParts:
 _PART_MEMO: dict = {}
 _PART_MEMO_SIZE = 256
 _PART_LOCK = threading.Lock()   # (:func:`_own` reads a memo's shape through shapes.moved)
+_STORES = 0
+"""How many times this module's namespace has been set from outside it since import (a
+test's monkeypatch or its undo: :class:`_Module`); :func:`_part_memo`'s key carries it."""
+
+
+class _Module(types.ModuleType):
+    """This module, counting each store into its namespace from outside (``setattr(cr, ...)``,
+    a monkeypatch and its undo, ``mock.patch``): a builder :func:`_part_memo` keeps reads
+    this module's constants, so one set in place keys afresh. (Not ``globals()`` in the key:
+    that reads every name the module binds, the assembly hooks among them, into the
+    fabrication's code closure, :mod:`spiderpig.keys`.) The module's own assignments go
+    straight to its namespace, uncounted."""
+
+    def __setattr__(self, name: str, value) -> None:
+        global _STORES
+        _STORES += 1
+        super().__setattr__(name, value)
+
+    def __delattr__(self, name: str) -> None:
+        global _STORES
+        _STORES += 1
+        super().__delattr__(name)
+
+
+sys.modules[__name__].__class__ = _Module
 
 
 def _exact(v):
@@ -1198,29 +1225,26 @@ def _part_memo(fn):
     angle: the clash angles, a report's, a sweep) builds none of them again (B's 19 s of
     its 27 s second fabrication, measured 2026-10-20). Keyed by everything that shapes the
     parts: ``fn``, every argument exactly (:func:`_exact`: an argument it can't key is
-    built afresh), and this module's every global as it is (their ids: a constant or a
+    built afresh), and this module's constants as they are (:data:`_STORES`: a constant or a
     helper set in its place, as a test's ``monkeypatch`` does, is another key; nothing
-    changes one in place; an entry holds the globals it was keyed by, so their ids stay
-    theirs). Each caller gets parts of its own (:func:`_own`)."""
+    changes one in place). Each caller gets parts of its own (:func:`_own`)."""
     import functools
 
     @functools.wraps(fn)
     def memoized(*args, **kwargs):
-        held = tuple(globals().values())
         try:
-            key = (fn.__qualname__, tuple(map(id, held)), _exact(args),
-                   _exact(sorted(kwargs.items())))
+            key = (fn.__qualname__, _STORES, _exact(args), _exact(sorted(kwargs.items())))
         except TypeError:
             return fn(*args, **kwargs)
         with _PART_LOCK:
             hit = _PART_MEMO.get(key)
             if hit is not None:
-                return _own(hit[0])
+                return _own(hit)
         made = fn(*args, **kwargs)
         with _PART_LOCK:
             if len(_PART_MEMO) >= _PART_MEMO_SIZE:
                 _PART_MEMO.clear()
-            _PART_MEMO.setdefault(key, (made, held))
+            _PART_MEMO.setdefault(key, made)
             return _own(made)
 
     return memoized

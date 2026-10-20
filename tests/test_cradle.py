@@ -978,8 +978,11 @@ def test_the_cradles_angle_free_parts_are_memoized_by_all_that_shapes_them(monke
     wider = cr._tpu_foot(10.0, 20.0, 30.0)
     assert not wider.wrapped.IsPartner(foot.wrapped)
     assert wider.volume < foot.volume - 1.0
-    monkeypatch.undo()
-    assert cr._tpu_foot(10.0, 20.0, 30.0).wrapped.IsPartner(foot.wrapped)
+    monkeypatch.undo()              # (a store too: built afresh, as it was)
+    back = cr._tpu_foot(10.0, 20.0, 30.0)
+    assert not back.wrapped.IsPartner(wider.wrapped)
+    assert back.volume == pytest.approx(foot.volume, rel=1e-12)
+    assert cr._tpu_foot(10.0, 20.0, 30.0).wrapped.IsPartner(back.wrapped)
     assert cr._exact(-0.0) != cr._exact(0.0)
     assert cr._exact(np.float64(1.5)) == cr._exact(1.5)
     assert cr._exact({"a": 1, "b": 2}) != cr._exact({"b": 2, "a": 1})     # (in order)
