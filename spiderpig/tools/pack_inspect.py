@@ -419,6 +419,8 @@ def judge(inp: dict, layout: dict, name: str, out: Path, draw: bool = True,
         m["past_claimed_box"] = bool((grid.lo < said[0] - 0.5).any()
                                      or (grid.hi > said[1] + 0.5).any())
     m["name"] = name
+    m["count"] = len(layout["modules"])            # (the cradle's pieces; and its spacers)
+    m["spacers"] = spacer_summary(layout)
     m["plan"] = layout.get("plan")
     m["linkage"] = inp["linkage"]
     m["missing"], m["missing_parts"] = missing_of(inp, layout)
@@ -448,10 +450,22 @@ def judge(inp: dict, layout: dict, name: str, out: Path, draw: bool = True,
             "unsupported": m["unsupported"], "overlaps": len(m["overlaps"]),
             "order_faults": len(m["order_faults"]), "mass_centre_frac": m["mass_centre_frac"],
             "pads": m["pads"]["count"], "tallest_pad_mm": m["pads"]["tallest_mm"],
+            "spacers": m["spacers"]["count"], "spacer_grams": m["spacers"]["grams"],
             "max_slide_mm": m["restraint"]["max_slide_mm"],
             "search": m.get("search"),
             "sheet": str(png) if png else None, "metrics": str(out / f"{name}.json"),
             "layout": str(out / f"{name}.layout.json")}
+
+
+def spacer_summary(layout: dict) -> dict:
+    """A layout's printed spacers (``cradle_pack.spacer_json``): how many, their solid's
+    volume (cm^3), their mass as printed (g) and each one's key, label, size and why."""
+    kit = layout.get("spacers") or []
+    return {"count": len(kit),
+            "volume_cm3": round(sum(d["volume_cm3"] for d in kit), 1),
+            "grams": round(sum(d.get("mass_kg", 0.0) for d in kit) * 1000.0),
+            "list": [{k: d.get(k) for k in ("key", "label", "size_mm", "volume_cm3", "why",
+                                            "on", "words")} for d in kit]}
 
 
 def complete(row: dict) -> bool:
@@ -571,7 +585,7 @@ def main(argv=None) -> int:
     log.info("%.1f s in all (the engine's import aside)", time.perf_counter() - t0)
     w = max(len(r["name"]) for r in rows)
     print(f"{'candidate':{w}}  {'box mm (outside)':>20}  {'litres':>6}  {'fill':>6}  "
-          f"{'pads':>4}  {'slide':>5}  unsupported")
+          f"{'pads':>4}  {'spacers':>9}  {'slide':>5}  unsupported")
     for r in rows:
         dims = " x ".join(f"{v:.0f}" for v in r["outside_mm"])
         bad = ", ".join(r["unsupported"]) or "-"
@@ -584,8 +598,9 @@ def main(argv=None) -> int:
             sp, lit = r["search"], r["search"].get("litres", {})
             extra += (f"  {sp['seeds']} seeds: {lit.get('best')}-{lit.get('worst')} L, "
                       f"{sp.get('at_best', 0)} at the best")
+        kit = f"{r['spacers']} {r['spacer_grams']} g" if r["spacers"] else "-"
         print(f"{r['name']:{w}}  {dims:>20}  {r['volume_l']:6.1f}  {r['fill']:6.1%}  "
-              f"{r['pads']:4d}  {r['max_slide_mm']:5.0f}  {bad}{extra}")
+              f"{r['pads']:4d}  {kit:>9}  {r['max_slide_mm']:5.0f}  {bad}{extra}")
         if r["sheet"]:
             print(f"{'':{w}}  {r['sheet']}")
     return 0 if all(complete(r) for r in rows) else 1

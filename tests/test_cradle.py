@@ -2420,6 +2420,62 @@ def test_a_pad_is_a_block_that_fits():
     assert off["base_mm"] is None
 
 
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_printed_spacers_hold_what_the_pads_held():
+    """``voxpack.spacers`` (the pack's turn 2: printed spacers where the foam pads were): a
+    plate held 30 mm over a slab at one end by a leg, its centre over nothing (on pads), and
+    a block loose on the slab with room round it. The spacers are the slab's empty cells:
+    each plate pad's a block from the slab to the plate's underside, its lips round the
+    plate's edge, grown until it doesn't slide; the block gets a restraint beside it. Judged
+    with them (``metrics``, each spacer at its rank in the order): the plate rests directly,
+    on them, nothing slides more than a cell (3 mm), nothing overlaps, the order holds; a
+    spacer's cells' surface (``vox_mesh``) is closed and voxelizes back to its cells; a
+    spacer round-trips its JSON."""
+    from spiderpig import voxpack as vp
+
+    def piece(key, boxes, mass):
+        ms = [vp.box_mesh(lo, hi) for lo, hi in boxes]
+        pos = np.concatenate([q for q, _ in ms])
+        tri = np.concatenate([t + 8 * i for i, (_, t) in enumerate(ms)])
+        vol, c = vp.mesh_volume(pos, tri)
+        return vp.Packed(key, key, [(pos, tri)], mass, c, vol, [key])
+
+    base = piece("base", [((-120, 0, -120), (240, 9, 120))], 3.0)
+    plate = piece("plate", [((0, 39, -60), (180, 45, 60)), ((0, 9, -6), (12, 39, 6))], 2.0)
+    block = piece("block", [((-90, 9, -90), (-50, 40, -50))], 0.5)
+    pieces = [base, plate, block]
+    g = vp.occupancy(pieces)
+    rows = vp.metrics(pieces, grid=g)["pieces"]
+    assert rows[1]["rests"] == "padded" and rows[1]["pads"]
+    assert max(rows[2]["free_mm"].values()) > 3.0                 # (the block, loose)
+    kit = vp.spacers(g, rows)
+    support = [sp for sp in kit if sp.why == "support"]
+    assert support and all(sp.under == "plate" and sp.on == ("base",) for sp in support)
+    assert {q for sp in support for q in sp.pads} == {q["id"] for q in rows[1]["pads"]}
+    assert any(sp.under == "block" and sp.why.startswith("restraint") for sp in kit)
+    packed = []
+    for sp in kit:
+        pos, tri = sp.mesh()
+        vol, cen = vp.mesh_volume(pos, tri)
+        assert vol == pytest.approx(sp.volume)                     # (closed, outward)
+        packed.append((sp.rank, 1, vp.Packed(sp.key, sp.key, [(pos, tri)], 0.01, cen, vol,
+                                             [sp.key])))
+        v = sp.vox()
+        assert (vp.voxelize([(pos, tri)], v.cell, org=v.org, shape=v.occ.shape).occ
+                == v.occ).all()
+        back = vp.Spacer.from_json(sp.to_json())
+        assert (back.cols == sp.cols).all() and back.rank == sp.rank and back.on == sp.on
+    order = sorted([(float(i), 0, pc) for i, pc in enumerate(pieces)] + packed,
+                   key=lambda t: (t[0], t[1]))
+    m = vp.metrics([pc for *_, pc in order], (g.lo, g.hi))
+    by = {r["key"]: r for r in m["pieces"]}
+    assert by["plate"]["rests"] == "direct" and not by["plate"]["pads"]
+    assert set(by["plate"]["on"]) <= {sp.key for sp in support} | {"base"}
+    assert m["restraint"]["max_slide_mm"] <= vp.CELL, m["restraint"]
+    assert (m["overlaps"], m["order_faults"], m["unsupported"]) == ([], [], [])
+
+
 def _made_up_cradle(parts: dict) -> dict:
     """A cradle's pack input (``cradle_pack.gather``'s) made up of boxes: each part's name
     (``cradle_pack.pieces`` sorts them into pieces by it) -> its boxes ((lo, hi) each) and

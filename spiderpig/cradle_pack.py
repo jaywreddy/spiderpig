@@ -939,11 +939,11 @@ def pack_input(inp: dict, plan: vp.Plan | None | str = "default", cell: float = 
     assert plan is None or isinstance(plan, vp.Plan)
     pcs, steps, items, _ = pack_items(inp, splits, relevel)
     layout, packer = vp.pack(items, plan, cell, seq)
-    return layout_payload(inp, pcs, steps, items, layout, packer.plan)
+    return layout_payload(inp, pcs, steps, items, layout, packer.plan, cell)
 
 
 def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
-                   layout: vp.Layout, plan: vp.Plan) -> dict:
+                   layout: vp.Layout, plan: vp.Plan, cell: float = CELL) -> dict:
     """The payload (:func:`flat_pack`'s) of ``layout``: a piece's ``pads`` measured on the
     real meshes (``voxpack.measure_pads``); a layout its plan stopped (a step with no room)
     says so (``missing``: the pieces it didn't place, ``warnings``: why; its ``score`` is
@@ -966,9 +966,10 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
     packed = [module_packed(inp, mod) for mod in mods]
     lo, hi = vp.box_of(packed)
     inside = [float(v) for v in hi - lo]
-    grid = vp.occupancy(packed, (lo, hi))
-    judged = {r["key"]: r for r in vp.metrics(packed, (lo, hi), grid=grid)["pieces"]}
-    kit = vp.spacers(grid, [judged[m["key"]] for m in mods])
+    grid = vp.occupancy(packed, (lo, hi), cell)       # (the judge's grid: its cells)
+    judged = {r["key"]: r for r in vp.metrics(packed, (lo, hi), cell, grid=grid)["pieces"]}
+    kit = (vp.spacers(grid, [judged[m["key"]] for m in mods]) if not layout.missing
+           else [])                     # (a packing its plan stopped: no spacers for it)
     for mod in mods:
         mod["pads"] = [{k: v for k, v in q.items() if k != "piece"}
                        for q in judged[mod["key"]]["pads"]]

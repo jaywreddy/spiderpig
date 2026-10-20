@@ -1896,6 +1896,10 @@ class _Spacers:
         self.names = list(keys)
         self.made: list[Spacer] = []
         self.shape = self.occ.shape
+        # the cells a spacer may take: inside the pieces' bounds (the box's clearance, a
+        # cell all round, stays the box's), each axis's past the last
+        self.end = tuple(math.floor((float(g.hi[a]) - CLEAR - float(g.lo[a])) / g.cell
+                                    + 1e-6) for a in range(3))
 
     def ids(self, name: str) -> list[int]:
         """The grid owners named ``name``: a piece's index, or a spacer's (-2 - n)."""
@@ -1942,7 +1946,7 @@ class _Spacers:
         nx, ny, nz = self.shape
         cols = np.zeros((nx, nz), bool)
         for i0, i1, k0, k1 in sp.rects:
-            cols[max(i0, 1):min(i1, nx - 1), max(k0, 1):min(k1, nz - 1)] = True
+            cols[max(i0, 1):min(i1, self.end[0]), max(k0, 1):min(k1, self.end[2])] = True
         ii, kk = np.nonzero(cols)
         empty = np.zeros((0, 4), np.int64)
         if not len(ii):
@@ -1959,7 +1963,7 @@ class _Spacers:
         a = np.where(prof & (at < jj[:, None]), at, -1).max(axis=1) + 1
         b = np.where(prof & (at >= jj[:, None]), at, ny).min(axis=1)
         j0 = np.maximum(np.maximum(a, cap0), 1)
-        j1 = np.minimum(np.minimum(b, cap1), ny - 1)
+        j1 = np.minimum(np.minimum(b, cap1), self.end[1])
         ok &= j1 > j0
         rk = self.ranks_of(self.owner[ii, :, kk])
         over = np.where(prof & (at >= j1[:, None]), rk, np.inf).min(axis=1)
@@ -2045,8 +2049,13 @@ class _Spacers:
 
     def commit(self, sp: _Spec, cols: np.ndarray, key: str) -> Spacer:
         """The spacer made: its cells full in the grid from now on (a piece for the next).
-        A restraint's rank is then fixed: just after the most of what is under it."""
+        A restraint's rank is then fixed: just after the most of what is under it. A key
+        already made gets ``_2``, ``_3`` .."""
         idx = -2 - len(self.made)
+        taken = {sp.key for sp in self.made}
+        n, base = 2, key
+        while key in taken:
+            key, n = f"{base}_{n}", n + 1
         if sp.rank is None:
             sp.rank = max((self.rank(int(self.owner[i, j0 - 1, k]))
                            for i, k, j0, _ in cols.tolist()
@@ -2198,7 +2207,7 @@ def spacers(g: Grid, rows: Sequence[dict]) -> list[Spacer]:
                 if len(c) and _stands(st, c):
                     st.commit(sub, c, f"spacer_{sub.pads[0]}" if sub.pads
                               else f"spacer_{r['key']}")
-    for _ in range(3):                      # restraints for what still slides
+    for _ in range(6):                      # restraints for what still slides
         more = False
         owners = [p for p in range(len(keys)) if p or len(keys) == 1]   # (not the base)
         for p in owners + [-2 - n for n in range(len(st.made))]:
@@ -2210,12 +2219,14 @@ def spacers(g: Grid, rows: Sequence[dict]) -> list[Spacer]:
             for way in sorted(WAYS, key=lambda w: -free[w]):
                 if free[way] <= SPACER_HOLD:
                     break
-                sp = _bar(st, p, mine, way)
-                if sp is None:
-                    continue
-                cols = st.grow(sp)
-                if len(cols) and _stands(st, cols):
-                    cols = _split(st, sp, cols)[0][1]
+                for sp in _bar(st, p, mine, way):
+                    cols = st.grow(sp)
+                    if len(cols):
+                        cols = _split(st, sp, cols)[0][1]
+                    if len(cols) and not _steady(st, cols):
+                        cols = _trimmed(st, cols)
+                    if not len(cols) or not _steady(st, cols):
+                        continue
                     if p < 0:               # (a spacer's: one print with it)
                         st.merge(-2 - p, cols)
                     else:
@@ -2224,6 +2235,7 @@ def spacers(g: Grid, rows: Sequence[dict]) -> list[Spacer]:
                     more = True
                     mine = st.owner == p
                     free = st.slide(mine)
+                    break
         if not more:
             break
     return st.made
@@ -2287,7 +2299,26 @@ def _least_gap(mine: np.ndarray, others: np.ndarray, a: int, sgn: int
     return int(g[c]), np.array(c), int(nxt[c])
 
 
-def _bar(st: _Spacers, p: int, mine: np.ndarray, way: str) -> _Spec | None:
+def _least_gaps(mine: np.ndarray, others: np.ndarray, a: int, sgn: int, k: int = 4
+                ) -> list[tuple[int, np.ndarray, int]]:
+    """:func:`_least_gap`'s ``k`` least, each at least two footprints (:data:`SPACER_GROW`)
+    across from those before it."""
+    out = []
+    left = mine.copy()
+    other = 2 if a == 0 else 0
+    for _ in range(k):
+        got = _least_gap(left, others, a, sgn)
+        if got is None:
+            break
+        out.append(got)
+        c = got[1]
+        sl = [slice(None)] * 3
+        sl[other] = slice(max(int(c[other]) - 4 * SPACER_GROW, 0), int(c[other]) + 4 * SPACER_GROW)
+        left[tuple(sl)] = False
+    return out
+
+
+def _bar(st: _Spacers, p: int, mine: np.ndarray, way: str) -> list[_Spec]:
     """A restraint for piece ``p`` sliding ``way`` (:func:`spacers`): a block in the gap beside
     its foot that way, where the gap is least, from the piece (its end's sides too, a lip
     round it) to what it would meet (or the box's wall), standing on what is under it; in
@@ -2295,32 +2326,24 @@ def _bar(st: _Spacers, p: int, mine: np.ndarray, way: str) -> _Spec | None:
     a, sgn = WAYS[way]
     js = np.flatnonzero(mine.any(axis=(0, 2)))
     foot = mine.copy()
-    foot[:, int(js[0]) + 4:, :] = False         # (its lowest four layers)
-    got = _least_gap(foot, st.occ & ~mine, a, sgn)
-    if got is None:
-        return None
-    _, c, end = got
+    foot[:, int(js[0]) + 4:, :] = False         # (its lowest four layers, else all of it)
     n_a = st.shape[a]
-    obstacle = None
-    if 0 <= end < n_a:
-        q = c.copy()
-        q[a] = end
-        obstacle = int(st.owner[tuple(q)])
-        last = end - sgn
-    else:
-        last = n_a - 2 if sgn > 0 else 1
-    lo_a, hi_a = sorted((int(c[a]) - sgn * SPACER_LIP, last))
-    if hi_a - lo_a + 1 > SPACER_SPAN:
-        return None                     # (too long a print: nothing near enough that way)
     other = 2 if a == 0 else 0
-    w0, w1 = int(c[other]) - SPACER_GROW, int(c[other]) + SPACER_GROW + 1
-    rect = (lo_a, hi_a + 1, w0, w1) if a == 0 else (w0, w1, lo_a, hi_a + 1)
-    j = int(c[1])
-    seed = np.empty((st.shape[0], st.shape[2], 3), np.int64)
-    seed[...] = (j, j - SPACER_REACH, j + SPACER_LIP)
-    _ = obstacle
-    return _Spec([rect], seed, st.rank(p) if p < 0 else None, st.name(p), (), (st.name(p),),
-                 "toward", why=f"restraint {way}")      # (a spacer's goes in with it)
+    out = []
+    for cells in (foot, mine):
+        for _, c, end in _least_gaps(cells, st.occ & ~mine, a, sgn):
+            last = (end - sgn if 0 <= end < n_a else st.end[a] - 1 if sgn > 0 else 1)
+            lo_a, hi_a = sorted((int(c[a]) - sgn * SPACER_LIP, last))
+            if hi_a - lo_a + 1 > SPACER_SPAN:
+                continue                # (too long a print: nothing near enough)
+            w0, w1 = int(c[other]) - SPACER_GROW, int(c[other]) + SPACER_GROW + 1
+            rect = (lo_a, hi_a + 1, w0, w1) if a == 0 else (w0, w1, lo_a, hi_a + 1)
+            j = int(c[1])
+            seed = np.empty((st.shape[0], st.shape[2], 3), np.int64)
+            seed[...] = (j, j - SPACER_REACH, j + SPACER_LIP)
+            out.append(_Spec([rect], seed, st.rank(p) if p < 0 else None, st.name(p), (),
+                             (st.name(p),), "toward", why=f"restraint {way}"))
+    return out          # (a spacer's restraint goes in with it: its rank)
 
 
 def _grow_merged(st: _Spacers, specs: list[_Spec]) -> list[tuple[_Spec, np.ndarray]]:
