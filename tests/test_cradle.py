@@ -2544,6 +2544,24 @@ def test_pack_inspect_draws_and_judges_a_layout(tmp_path):
     assert json.loads((tmp_path / "hand.layout.json").read_text()) == layout
 
 
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_pack_inspects_default_search_stays_within_its_budget(monkeypatch):
+    """``pack-inspect --search`` without ``--seconds``: 60 s a seed, less when its seeds'
+    rounds (``--workers`` at a time; one after another with no workers) would take it past
+    ``SEARCH_BUDGET_S`` in all, so the default command stays an agent's step."""
+    from spiderpig.tools import pack_inspect as pi
+
+    assert pi.search_seconds(None, 4) == pi.SEARCH_SECONDS
+    assert pi.search_seconds(12, 4) == pi.SEARCH_BUDGET_S / 3
+    for seeds, procs in ((None, 4), (6, 6), (12, 4), (30, 6), (5, 1)):
+        n = seeds or procs
+        rounds = math.ceil(n / procs)
+        assert pi.search_seconds(seeds, procs) * rounds <= pi.SEARCH_BUDGET_S + 1e-9
+    monkeypatch.setenv("SPIDERPIG_WORKERS", "0")
+    assert pi.search_seconds(4, 4) == pi.SEARCH_BUDGET_S / 4
+
+
 RISER_REF = "tests/fixtures/cradle/riser_reference.json"
 
 
