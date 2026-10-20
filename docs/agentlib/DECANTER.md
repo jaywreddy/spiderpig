@@ -889,8 +889,8 @@ of mass (390 mm) the crank's peak is 35.8 N·m on B (the NRV050's SF 2.37 on its
 bar 22: open); the clutch's cap 63.7 and 67.1 N·m (1.33 and 1.27 x under the gearbox's
 maximum). B's stand tips at 25.5° over its rear edge (41.7° front, 28.9° drive side, 31.2°
 passive side), A's at 24.5° to its drive side (39.2°, 25.3° rear, 33.0°). The side frames'
-redesign of 2026-10-20 makes the cradle 16.45 kg on B and 15.17 on A, and its stand tips at
-26.7° on B (rear), 25.2° on A (drive side). The clutch is set at 1.3 x the user's measured start, so its
+redesign of 2026-10-20 makes the cradle 16.45 kg on B and 15.23 on A, and its stand tips at
+26.7° on B (rear), 25.3° on A (drive side). The clutch is set at 1.3 x the user's measured start, so its
 least slip in the check's window stays 1.2 x the start on both, whatever the mass (the
 NRV040's fixed setting had cleared A's by 1.10).
 
@@ -1132,12 +1132,12 @@ pieces' real shapes, each its hull's stable face nearest the way it's set down; 
 | the drive side panel alone on its blocks (the way back starts here) | 6.77 | the same | 0.1° | 39.7° | 25.2 N |
 | the cradle box on its links' long edges, its saddles' tops down | 3.58 | both cradle links' edges and the base stop's knob | 10.9° | 41.5° | 17.6 N |
 | the passive side panel on its outer plate | 2.54 | pillar O1's screw head and its two brackets | 3.4° | 58.2° | 16.8 N |
-| A, off its board while the finish cures, on its drive side on the blocks | 11.51 | the gearbox and the two blocks on their lifts | 0.2° | 17.8° | 15.1 N |
+| A, off its board while the finish cures, on its drive side on the blocks | 11.57 | the gearbox and the two blocks on their lifts | 0.2° | 17.6° | 15.0 N |
 
 The side frames' redesign (2026-10-20) put about 0.6 kg more on each side panel, most of it
 low on the rail and its inner chord, away from the binding edge (below): the cradle lying
 tips at 18.2° (15.4 before), the drive side with the box at 17.7° (14.3, its test's bar 15°
-again: 14° from round 2's drive), A at 17.8° (17.2). The second block went from column D2's
+again: 14° from round 2's drive), A at 17.6° (17.2). The second block went from column D2's
 head on the front leg to the rail's column E1's (`cradle.LAY_BLOCKS`): on D2's the heavier
 drive panel alone tipped at 25.3°, under its 30° bar; on E1's (or E2's) 39.7°.
 
@@ -1358,8 +1358,8 @@ mm handle, 69.3 at A's on its 105, and no bound; round 1 made it the clutch's 61
 - What A holds there (each side as one frame, below, at the merged drive's 67.1 N·m; the
   side frames redesigned on 2026-10-20):
   - the outer plate 1.37 (the strut G-O at the gearbox), the tie rods across the bay 1.38,
-    pillar G 1.40, the inner plate 1.43 (its leg down to column E1);
-  - column D3 1.58, column E1 1.95, the other columns 2.58 and more;
+    pillar G 1.40, the inner plate 1.45 (its leg down to column E1);
+  - column D3 1.61, column E1 1.77, the other columns 2.63 and more;
   - its cradle link b2 1.65 (in bending, chord by chord; 0.187 in 5052, its E-Tr1 32 mm
     wide against buckling);
   - pin E (steel) 2.86, the crankpin 1.65, the keyed plates 2.21, the tie rods' end screws
@@ -1373,11 +1373,11 @@ mm handle, 69.3 at A's on its 105, and no bound; round 1 made it the clutch's 61
 - Turning it: 37.7 N·m at A's crank at worst, a sealed full 6 L on the mounting round's
   saddles (round 2's), with round 2's 12 mm tie rods: the NRV050 SF 2.25 on its 85 N·m
   (round 1's NRV040: 1.22 on its 45). 22.0 N at A's 130 mm grip run in, 25.0 new (the bar
-  22 N, open: "The drive"; round 1's 85 mm crank had 32.2). It tips at 25.2° to its drive
-  side (its test's bar is 15°), 26.6° over its rear edge (30.0° with the wine leaving as it
-  pours), 33.5° to the other side and 39.4° forward, and takes a 42.0 N push at a bottle's
+  22 N, open: "The drive"; round 1's 85 mm crank had 32.2). It tips at 25.3° to its drive
+  side (its test's bar is 15°), 26.7° over its rear edge (30.0° with the wine leaving as it
+  pours), 33.6° to the other side and 39.5° forward, and takes a 42.3 N push at a bottle's
   top (toward the drive side), the worst over the swing (the side frames' redesign of
-  2026-10-20 put 1 kg more low on the stand; before it 24.5°, 25.3°, 33.0°, 39.2° and
+  2026-10-20 put 1.1 kg more low on the stand; before it 24.5°, 25.3°, 33.0°, 39.2° and
   38.3 N; before round 2's structure 24.5°,
   25.3°, 33.1°, 39.4° and 36.7 N; round 2's window under the base stop, on the NRV040: 23.9°, 25.5°, 30.5°,
   38.4° and 35.6 N; before the window 24.0°, 25.6°, 30.6°, 38.6° and 36.1 N).
@@ -1465,7 +1465,7 @@ as a beam between both plates) missed. They feed `strength.check` (`loads_doc`'s
   across the plates at a pivot, on the side as one frame.
   - B's O1 takes 6.35 N/mm, its O2 29.3, since the side frames' redesign of 2026-10-20
     (round 2's: 2.67 and 12.8). A 20 N hand sideways on the bottle, both sides sharing it,
-    sways the pivots 1.57 mm (3.75; A's G: 8.64 N/mm, 1.16 mm, round 2's 2.92 and 3.4).
+    sways the pivots 1.57 mm (3.75; A's G: 9.01 N/mm, 1.11 mm, round 2's 2.92 and 3.4).
   - The review's grillage of the outer plate alone had 1.41 N/mm and 7 mm.
   - Round 2's wider front leg (B1) is the cheap improvement taken: 2.0 N/mm on the side as
     one frame with the 24 mm leg.
@@ -1569,11 +1569,11 @@ at the cap):
 | | B, 63.7 N·m | A, 67.1 N·m |
 |---|---|---|
 | the worst part at the cap | pillar O1 and b6 1.37 (unchanged) | the outer plate 1.37 (G-O at O) |
-| the side frame | the outer plate 1.39 (the rail at E2), column E2 1.40, pillar O2 1.58 (0.73), the inner plate 1.61, column E1 2.01, column D2 2.66 (0.97) | the outer plate 1.37 (0.41), pillar G 1.40 (1.25), the inner plate 1.43 (1.09), column D3 1.58 (0.83), column E1 1.95 |
-| walking, the worst | the crank's keyway 4.15; the outer plate 4.7 (2.83) | the crank's keyway 3.94; pillar G 6.14 (3.71 the side frame) |
+| the side frame | the outer plate 1.39 (the rail at E2), column E2 1.40, pillar O2 1.58 (0.73), the inner plate 1.61, column E1 2.01, column D2 2.66 (0.97) | the outer plate 1.37 (0.41), pillar G 1.40 (1.25), the inner plate 1.45 (1.09), column D3 1.61 (0.83), column E1 1.77 |
+| walking, the worst | the crank's keyway 4.15; the outer plate 4.7 (2.83) | the crank's keyway 3.94; pillar G 6.15 (3.71 the side frame) |
 | the cap over the whole turn | 1.34 or more 30° and more from the toggles (pillar O1) | 1.36 or more (pillar G) |
-| the side's stiffness across | O1 6.35 N/mm (2.67), O2 29.3 (12.8); a 20 N push sways the pivots 1.57 mm (3.75) | G 8.64 N/mm (2.92), 1.16 mm (3.4) |
-| weight | the cradle 1.24 kg heavier (each side panel 0.61 kg) | 1.04 kg heavier |
+| the side's stiffness across | O1 6.35 N/mm (2.67), O2 29.3 (12.8); a 20 N push sways the pivots 1.57 mm (3.75) | G 9.01 N/mm (2.92), 1.11 mm (3.4) |
+| weight | the cradle 1.24 kg heavier (each side panel 0.61 kg) | 1.10 kg heavier |
 
 (Round 2's numbers in brackets.)
 
@@ -1963,8 +1963,8 @@ Things to know before cutting and on the bench:
     760.28 against 758.19 quoted, A to 580.03 against 573.82.
   - Today's files, with the side frames' redesign of 2026-10-20: B's cutting USD 860.49
     (5052 0.187 in 347.50, 7075 177.42, the birch 237.84, 6061 75.00, 0.250 in 22.73), the
-    whole build USD 1,373.94 (purchases 513.45). A's cutting is USD 642.73 (5052 0.187 in
-    311.24), the whole build 1,056.54 (purchases 413.81). (Round 2's drive merged, before
+    whole build USD 1,373.94 (purchases 513.45). A's cutting is USD 642.93 (5052 0.187 in
+    311.44), the whole build 1,056.74 (purchases 413.81). (Round 2's drive merged, before
     the redesign: B 797.23 and 1,307.24, A 605.39 and 1,005.50; before that merge B 768.44
     and 1,190.54, A 580.35 and 920.93.)
   - Until round 2 the BOM printed B's cutting at USD 301.58. That left out a "USD 68-136"

@@ -2360,16 +2360,19 @@ plate at O. Both are fixed; `OPEN_AT_CAP` is empty and the tests assert again (A
   strut G-O is 96 mm wide (48), the legs from O 40, the rail 40 and 8 mm up (at 34 mm,
   5 up, the leg to E1 dipped 2.5 mm into the board: the clash test found it).
   - At the cap: the outer plate 1.37 (G-O at O), the tie rods 1.38, pillar G 1.40, the
-    inner plate 1.43, column D3 1.58. Walking 3.94 (the keyway). Over the turn 1.36.
-  - G takes 8.64 N/mm across (2.92). Two columns (-100 and 60 mm) gave 1.38: one does.
+    inner plate 1.45, column D3 1.61, column E1 1.77 (1.95 at 34 mm). Walking 3.94 (the
+    keyway). Over the turn 1.36 (pillar G).
+  - G takes 9.01 N/mm across (2.92; 8.64 at 34 mm), a 20 N push 1.11 mm. Two columns (-100
+    and 60 mm) gave 1.38: one does.
 - **Checked:** no column in a link's sweep (the nearest 94 mm, B's E2 from the crank's), the
   inner plates' new members under the tie rods' paths. The plans are the same (B 16 layers,
   84.65 mm). The clutch's case, the blocked cases and their thresholds re-rated.
   - A block at the front tie now finds B's inner plate first (0.26 at the cap); the frame
     starts to give at +6.7 N at the grip (+4.1 before).
   - At the rear saddle and a 6 L's base nothing falls under 1.3 within either clutch.
-- **Heavier:** each side panel 0.61 kg on B (the cradle 16.45 kg, 1.24 more), 1.04 kg on A.
-  The weight sits low, so the stand tips later: B at 26.7° rear (25.5), A at 25.2° (24.5).
+- **Heavier:** each side panel 0.61 kg on B (the cradle 16.45 kg, 1.24 more), the cradle
+  1.10 kg on A (15.23 kg). The weight sits low, so the stand tips later: B at 26.7° rear
+  (25.5), A at 25.3° (24.5).
 - **The board cut:** the outer plate is cut at the board's top from the mouth's height
   (`CradleStand.realize`), not from the feet, which a raised rail moves.
 - **Lay-flat** (`cradle.LAY_BLOCKS`, `REST_POSES`): the weight low on the rail moved the
@@ -2377,7 +2380,7 @@ plate at O. Both are fixed; `OPEN_AT_CAP` is empty and the tests assert again (A
   - B's cradle lying tips at 18.2° (15.4) and the drive side with the box at 17.7° (14.3):
     its test's bar is back at 15°, from round 2's drive's temporary 14°.
   - On D2's head the heavier drive panel alone tipped at 25.3°, under its 30° bar. The
-    second block moves to the rail's column E1 (39.7°). A lies at 17.8°.
+    second block moves to the rail's column E1 (39.7°). A lies at 17.6°.
   - The breakdown is unchanged otherwise: the columns are inside each side panel, and the
     steps are the same (the pack pose, the hand crank off, 4 thumb knobs, 2 R-clips, the
     passive panel lifted off). The guide's lay step
@@ -2398,8 +2401,8 @@ plate at O. Both are fixed; `OPEN_AT_CAP` is empty and the tests assert again (A
     plate (107 L). Turned a quarter, it packs in 700 x 213 x 601, 89.6 L (89.3 before).
 - **The BOM:** B USD 1,307.24 to 1,373.94 (+66.70): the inner plate +53.10 (its blank 361
   x 67 to 525 x 282 mm), the outer plate +10.16, the screws and washers +3.44, the
-  standoffs 0. A USD 1,005.50 to 1,056.54 (+51.04): the outer plate +17.16, the inner plate
-  +20.18, two standoffs +11.98 (12 to 14 at the 10-tier), the screws and washers +1.72. One
+  standoffs 0. A USD 1,005.50 to 1,056.74 (+51.24): the outer plate +17.58, the inner plate
+  +19.96, two standoffs +11.98 (12 to 14 at the 10-tier), the screws and washers +1.72. One
   column, screw and washer size: NETRF12 at the side's post length, M6 x 16 A2-70, DIN 125.
 - Products only: the walkers' identity gate against `planner-f667d6b` is identical.
 - **Where:** `spiderpig/construction/cradle.py` (`STANDS`, `rail_y`, `_bracket`,
