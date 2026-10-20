@@ -2995,7 +2995,11 @@ def test_the_cradle_packs_in_one_box(key):
                   for q, i, _ in tessellate_many(shapes, 0.5, 0.5) if len(i)]
         pieces.append(vp.Packed(m["key"], m["label"], meshes, 1.0,
                                 np.concatenate([q for q, _ in meshes]).mean(axis=0), 0.0))
-    judged = vp.metrics(pieces, (lo, hi))
+    # judged on the grid the spacers were shaped on (its corner within a rounding of the
+    # floor's: a spacer's faces on its cells' faces, on a grid off by a hair they would claim
+    # a cell more each way)
+    org = np.asarray(p["spacers"][0]["org"], float) if p["spacers"] else lo
+    judged = vp.metrics(pieces, (org, hi))
     # (a spacer is shaped to the pack's meshes; the parts tessellated again here, a curve's
     # chords lie a little otherwise: a sliver of its TPU, under SPACER_SLIVER mm^3, gives)
     assert [o for o in judged["overlaps"] if (not o["a"].startswith("spacer_")

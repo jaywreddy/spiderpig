@@ -491,9 +491,9 @@ stops there:
       nut pressed in) bears on the upright either side of the slot and clamps it to the
       plate by hand. The foot is held down by its carriage bolt, washer and a plain M6 nut
       (a 10 mm wrench at the first build, snugged once the cradle has set the brackets where
-      its sides want them): no knob turns at the board again. The knob, 6 mm thick, sits
-      between the upright and the foot's nut, 4.7 mm clear of it; it couldn't beside the
-      thumb knob that was there (that knob's edge was 5 mm off the upright, and the board's
+      its sides want them): no knob turns at the board again. The knob, 5.5 mm thick,
+      sits between the upright and the foot's nut, 5.7 mm clear of its corners; it couldn't
+      beside the thumb knob that was there (that knob's edge was 5 mm off the upright, and the board's
       edge 3.5 mm past it on the passive side). So the cradle lifts straight off the board
       with its four knobs loosened a few turns (its studs, jam nuts and knobs with it), and
       goes back with each stud dropping into its slot; the brackets, their bolts and nuts

@@ -2426,7 +2426,7 @@ plate at O. Both are fixed; `OPEN_AT_CAP` is empty and the tests assert again (A
     and with it the four knobs and washers taken off and put back on the board's bolts at
     every trip (the review's m2). The passive panel, on top in the box, had stood 30 mm
     taller on its brackets' foot legs; its studs stand 11.2 mm: 141.1 L. The studs' knob
-    had to sit between the upright and the foot's fastener, 6 mm thick, which the thumb
+    had to sit between the upright and the foot's fastener, 5.5 mm thick, which the thumb
     knob's 24 mm left no room for: hence the plain nut (the review's "printed knob on the
     M5" with the upright slotted open at the top, otherwise as it asked). The stock 30 x 24
     x 12 in carton (Uline S-4417) then takes the pack's parts with 2.8 mm over them, not the
