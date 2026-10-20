@@ -38,7 +38,8 @@ PICTURE = (1200, 900)
 THUMB = (300, 300)
 COVER = (1600, 1200)
 EXPLODE = 20.0          # mm the parts a stack step adds are drawn lifted
-GUIDE_ROOTS = ("spiderpig.guide.make:build_guide",)
+GUIDE_ROOTS = ("spiderpig.guide.make:build_guide", "spiderpig.cradle_pack:pack_kit",
+               "spiderpig.cradle_pack:box_steps")
 RENDER_ROOTS = ("spiderpig.guide.render:render_jobs",)
 
 

@@ -970,6 +970,7 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
     judged = {r["key"]: r for r in vp.metrics(packed, (lo, hi), cell, grid=grid)["pieces"]}
     kit = (vp.spacers(grid, [judged[m["key"]] for m in mods]) if not layout.missing
            else [])                     # (a packing its plan stopped: no spacers for it)
+    _number(kit, len(mods))
     for mod in mods:
         mod["pads"] = [{k: v for k, v in q.items() if k != "piece"}
                        for q in judged[mod["key"]]["pads"]]
@@ -995,7 +996,8 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
         "mass_centre_mm": round(com_y - float(lo[1]), 1),
         "unsupported": [p.key for p in layout.placed if not p.supported],
         "spacers": [spacer_json(sp, by[sp.under].label if sp.under in by else
-                                "Spacer " + sp.under.removeprefix("spacer_")) for sp in kit],
+                                "Spacer " + sp.under.removeprefix("spacer_").lstrip("0"))
+                    for sp in kit],
         "missing": list(dict.fromkeys([*layout.missing, *(it.key for it in items
                                                           if it.key not in by_placed)])),
         "warnings": list(layout.warnings),
@@ -1009,6 +1011,19 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
     if inp.get("slide_off") is not None:
         out["slide_off"] = inp["slide_off"]
     return out
+
+
+def _number(kit: list[vp.Spacer], n_pieces: int) -> None:
+    """Spacers keyed ``spacer_01`` .. in the order they go in (their ranks among the
+    pieces'), what they stand on or hold renamed with them."""
+    order = sorted(range(len(kit)), key=lambda i: (kit[i].rank, i))
+    names = {kit[i].key: f"spacer_{n:02d}" for n, i in enumerate(order, 1)}
+    for sp in kit:
+        sp.key = names[sp.key]
+        sp.under = names.get(sp.under, sp.under)
+        sp.on = tuple(names.get(o, o) for o in sp.on)
+    kit.sort(key=lambda sp: sp.key)
+    _ = n_pieces
 
 
 def module_packed(inp: dict, mod: dict) -> vp.Packed:
@@ -1046,7 +1061,7 @@ def spacer_json(sp: vp.Spacer, carries: str) -> dict:
 
     d = sp.to_json()
     on = ", ".join(sp.on)
-    d["label"] = "Spacer " + sp.key.removeprefix("spacer_")
+    d["label"] = "Spacer " + sp.key.removeprefix("spacer_").lstrip("0")
     d["words"] = (f"under the {carries.lower()} ({', '.join(sp.bears)}), on {on}; in place of "
                   f"pad{'s' if len(sp.pads) > 1 else ''} {', '.join(sp.pads)}")
     d["mass_kg"] = round(sp.volume / 1000.0 * filament_density(SPACER_FILAMENT) * SPACER_FILL
@@ -1108,43 +1123,70 @@ def part_words(name: str) -> str:
 
 def box_steps(layout: dict) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """Into the box and out of it, the guide's steps (each a title and its text) from a pack
-    payload: each piece in its turn (:func:`in_order`), the spacers that go in before it on
-    what they stand on (a support under where it comes, its lips round it; a restraint
-    beside what it holds), its face down; out, the other way round."""
+    payload: each piece in its turn (:func:`in_order`), the spacers that go in before it
+    first (each on what it stands on: a support where the piece it carries comes down, its
+    lips round what it bears on; a restraint against the side of the piece it holds), the
+    piece its face down and where its plan puts it (the step's ``why`` to its first colon);
+    out, the other way round, each piece and the spacers under it."""
+    plan = PACK_PLANS.get(layout.get("linkage", ""))
+    labels = {m["key"]: _the(m.get("label", m["key"])) for m in layout["modules"]}
+    labels.update({d["key"]: d.get("label", d["key"]) for d in layout.get("spacers") or []})
+
+    def on(names) -> str:
+        return _join([labels.get(o, part_words(o)) if o != "floor" else "the carton's floor"
+                      for o in names])
+
     into: list[tuple[str, str]] = []
     waiting: list[dict] = []
-    labels = {m["key"]: m.get("label", m["key"]) for m in layout["modules"]}
     for kind, d in in_order(layout):
         if kind == "spacer":
             waiting.append(d)
             continue
         said = []
         for sp in waiting:
-            on = ", ".join(part_words(o) if o != "floor" else "the carton's floor"
-                           for o in sp["on"])
-            what = sp["label"]
             if sp.get("why", "support").startswith("restraint"):
-                held = part_words(sp["under"])
-                said.append(f"{what} on {on}, against {held}'s side (it fills the gap there)")
+                said.append(f"{sp['label']} on {on(sp['on'])}, against "
+                            f"{labels.get(sp['under'], part_words(sp['under']))}'s side "
+                            "(where it goes, if it isn't in yet)")
             else:
-                parts = ", ".join(part_words(n) for n in sp.get("bears", ()))
-                said.append(f"{what} on {on}, where {labels.get(d['key'], d['key']).lower()} "
-                            f"comes down on it ({parts}): its lips seat round them")
+                bears = _join([part_words(n) for n in sp.get("bears", ())])
+                said.append(f"{sp['label']} on {on(sp['on'])}, under where {labels[d['key']]} "
+                            f"comes down ({bears}): its lips seat round them")
         waiting = []
         face = {"bottom": "standing as in use", "outer": "its outer plate down",
-                "bay": "its bay face down"}.get(d.get("down", ""), "")
-        rests = ", ".join(part_words(o) if o != "floor" else "the carton's floor"
-                          for o in d.get("on", []))
+                "bay": "its bay face down"}.get(d.get("down", "")
+                                                if d["key"] in ("box", "drive", "passive")
+                                                else "", "")
+        step = plan.step(d["key"]) if plan is not None else None
+        where = (step.why.split(":")[0].split(" (")[0] if step is not None and step.why
+                 else "")
         text = (("First " + "; ".join(said) + ". Then " if said else "")
-                + f"{d['label'].lower()}" + (f", {face}" if face else "")
-                + (f", onto {rests}" if rests else "") + ".")
-        into.append((d["label"], text[0].upper() + text[1:]))
+                + labels[d["key"]] + (f", {where}" if where else f", {face}" if face else "")
+                + (f", on {on(d.get('on', []))}" if d.get("on") and not where else "") + ".")
+        into.append((d.get("label", d["key"]), text[0].upper() + text[1:]))
     if waiting:
-        into.append(("Last spacers", "; ".join(sp["label"] for sp in waiting) + "."))
-    out = [(f"{t} out", "Lift it straight up and out" + (", and its spacers" if "First " in x
-                                                          else "") + ".")
-           for t, x in reversed(into)]
+        into.append(("The last spacers", _join([sp["label"] for sp in waiting]) + "."))
+    out: list[tuple[str, str]] = []
+    after: list[str] = []
+    for kind, d in reversed(in_order(layout)):     # (a piece, then the spacers before it)
+        if kind == "spacer":
+            after.append(d["label"])
+            continue
+        if out and after:
+            title, text = out[-1]
+            out[-1] = (title, text[:-1] + f"; then {_join(after)}.")
+        after = []
+        out.append((d.get("label", d["key"]),
+                    f"Lift {labels[d['key']]} straight up and out."))
+    if after and out:
+        title, text = out[-1]
+        out[-1] = (title, text[:-1] + f"; then {_join(after)}.")
     return into, out
+
+
+def _the(label: str) -> str:
+    """``Drive side panel`` -> ``the drive side panel``."""
+    return "the " + label[0].lower() + label[1:]
 
 
 def spacer_packed(d: dict) -> vp.Packed:
