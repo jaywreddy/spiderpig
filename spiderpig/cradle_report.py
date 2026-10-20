@@ -144,10 +144,34 @@ def part_mass_kg(config: BuildConfig, b) -> float:
     return mass_mod.part_props(b.placed_part()).volume * dens / 1e6
 
 
+_MASSES: dict = {}
+
+
 def masses(config: BuildConfig, mech) -> tuple[dict[str, float], dict[str, np.ndarray]]:
     """Per side body class (both sides' parts summed: the motion is planar), its mass (kg)
     and first moment (kg mm, world XY) in the fabricated cradle ``mech`` (its V blocks at
-    the drawn bottle's setting, their lowest: the load case's)."""
+    the drawn bottle's setting, their lowest: the load case's).
+
+    Memoized by everything it reads (the sheet, and each body's name, part object, pose,
+    host, fabrication, BOM key and sheet; an entry holds its parts, so their ids stay
+    theirs): a report asks it of one cradle for every load case (28 times in B's, 112 of
+    its 229 s, measured 2026-10-20), each time integrating every placed part afresh."""
+    held = tuple((b.part, getattr(b.part, "wrapped", None)) for b in mech.bodies)
+    key = (config.sheet, tuple((b.name, id(p), id(w), b.pose.matrix.tobytes(), b.rigid_with,
+                                b.fab, b.bom_key, b.sheet)
+                               for b, (p, w) in zip(mech.bodies, held, strict=True)))
+    hit = _MASSES.get(key)
+    if hit is not None:
+        m_of, mom = hit[1]
+        return dict(m_of), {k: v.copy() for k, v in mom.items()}
+    m_of, mom = _masses(config, mech)
+    if len(_MASSES) > 8:
+        _MASSES.clear()
+    _MASSES[key] = (held, (m_of, mom))
+    return dict(m_of), {k: v.copy() for k, v in mom.items()}
+
+
+def _masses(config: BuildConfig, mech) -> tuple[dict[str, float], dict[str, np.ndarray]]:
     by = {b.name: b for b in mech.bodies}
     m_of: dict[str, float] = {}
     mom: dict[str, np.ndarray] = {}

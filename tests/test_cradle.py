@@ -19,6 +19,7 @@ from spiderpig.config import BuildConfig, ParamError, design_from_query, is_crad
 from spiderpig.construction import cradle as cr
 from spiderpig.construction.handcrank import HandCrank
 from spiderpig.linkages.decanters import TIES
+from tests import cache
 from tests.tiers import quick
 
 CRADLES = ("decanter_hinge", "decanter_rcm")
@@ -969,35 +970,50 @@ def test_a_tie_rod_that_would_sweep_into_the_inner_plate_fails():
         cr._ties_clear_the_inner_plate(build, done, ties)
 
 
+SWING_ANGLES = ("rest", "full", "1.0", "3.5", "5.2", "165deg", "180deg", "345deg")
+"""The clash test's crank angles: at rest, at full tilt, three across the turn, and where A's
+105 mm hand crank met its cradle link b2 and tie Tr2's screw (design review round 1's drive:
+about 165-195° and 330-345° of crank)."""
+
+
+def _swing_angle(key: str, name: str) -> float:
+    """The crank angle :data:`SWING_ANGLES` names for ``key`` (rest and full: the least and
+    the most tilt of 721 samples of the turn)."""
+    if name in ("rest", "full"):
+        ts = np.linspace(0, 2 * math.pi, 721)
+        tilt = _tilt(key, ts)
+        return float(ts[int(np.argmin(tilt) if name == "rest" else np.argmax(tilt))])
+    if name.endswith("deg"):
+        return float(np.radians(float(name[:-3])))
+    return float(name)
+
+
 @pytest.mark.slow
 @pytest.mark.construction
+@pytest.mark.parametrize("angle", SWING_ANGLES)
 @pytest.mark.parametrize("key", CRADLES)
-def test_the_whole_cradle_is_clash_free_over_the_swing(key):
+def test_the_whole_cradle_is_clash_free_over_the_swing(key, angle):
     """Both sides, the box, the stand on its base plate, the bottle (a 6 L methuselah, the V
     blocks at their lowest) and the decanter at rest, at full tilt and across the turn: no
     two parts meet, the hand crank's sweep meets nothing, and every bottle size at its own
     setting (its V blocks raised, its base stop moved) meets nothing, nor do they; the base
     stop never comes nearer the base board than a finger's 25 mm (ISO 13854: at rest, set
-    for a 6 L, its lowest)."""
+    for a 6 L, its lowest). One crank angle per test (each a fabrication of the whole
+    cradle, a minute or two, from the test cache when it holds this code's: the angles run
+    side by side under xdist, each test under 5 min)."""
     from spiderpig.construction.contract import bad_solids, clashes
     from spiderpig.cradle_report import wheel_sweep
-    from spiderpig.fabricate import fabricate, template_for
 
     cfg = BuildConfig(linkage=key, robot=False)
-    tmpl = template_for(cfg)
-    ts = np.linspace(0, 2 * math.pi, 721)
-    tilt = _tilt(key, ts)
-    # (and where A's 105 mm hand crank met its cradle link b2 and tie Tr2's screw, design
-    # review round 1's drive: about 165-195° and 330-345° of crank)
-    angles = [ts[int(np.argmin(tilt))], ts[int(np.argmax(tilt))], 1.0, 3.5, 5.2,
-              *np.radians([165.0, 180.0, 345.0])]
-    for t in angles:
-        mech = fabricate(tmpl, cfg, float(t))
-        assert clashes(mech) == [], t
-        assert wheel_sweep(mech) == [], t
-        assert cr.finger_gap(mech) >= cr.FINGER_GAP + 15.0, t   # (the board's window)
-        for size in cr.SIZES:
-            assert cr.bottle_hits(mech, size) == [], (t, size.key)
+    t = _swing_angle(key, angle)
+    mech = cache.cached_product(cfg, t)
+    assert clashes(mech) == [], t
+    assert wheel_sweep(mech) == [], t
+    assert cr.finger_gap(mech) >= cr.FINGER_GAP + 15.0, t   # (the board's window)
+    for size in cr.SIZES:
+        assert cr.bottle_hits(mech, size) == [], (t, size.key)
+    if angle != SWING_ANGLES[-1]:
+        return
     assert bad_solids(mech) == []
     names = {b.name for b in mech.bodies}
     assert {"L.gearbox", "bottle", "decanter", "led", "front_saddle", "rear_saddle",
@@ -1017,10 +1033,9 @@ def test_a_hand_on_the_grip_clears_the_cradle_over_the_whole_turn(key):
     cradle link b2 and its rear tie's screw for 64.5° of crank, which the clash test's
     angles and the crank's own solids had missed): nothing within either."""
     from spiderpig.cradle_report import hand_sweep
-    from spiderpig.fabricate import fabricate, template_for
 
     cfg = BuildConfig(linkage=key, robot=False)
-    mech = fabricate(template_for(cfg), cfg, 1.0)
+    mech = cache.cached_product(cfg, 1.0)
     got = hand_sweep(cfg, mech, 1.0)
     assert got["crank"][0] > 2.0, got
     assert got["hand"][0] > 2.0, got
@@ -1034,16 +1049,30 @@ def test_the_cradle_passes_the_cut_rules(key):
     """Every laser-cut part against SendCutSend's rules for its sheet: no errors (the least
     hole a sheet's thickness, the hole-to-edge web, the part sizes)."""
     from spiderpig import manufacture
-    from spiderpig.fabricate import fabricate, template_for
 
     cfg = BuildConfig(linkage=key, robot=False)
-    mech = fabricate(template_for(cfg), cfg, 1.0)
+    mech = cache.cached_product(cfg, 1.0)
     got = manufacture.summary(manufacture.check(mech, cfg.sheet, dxf=False))
     assert got["ok"], got
 
 
+@pytest.fixture
+def cached_report_fabrications(monkeypatch):
+    """``cradle_report``'s fabrications from the test cache (``cached_product``): a report
+    of a loaded cradle is the fresh one's to the byte (both cradles' ``report`` JSON,
+    measured 2026-10-20), in 15-20 s instead of 90-130."""
+    from spiderpig import cradle_report
+
+    def fabricate(tmpl, config, t=1.0, store=None):
+        assert store is None
+        return cache.cached_product(config, t)
+
+    monkeypatch.setattr(cradle_report, "fabricate", fabricate)
+
+
 @pytest.mark.slow
 @pytest.mark.strength
+@pytest.mark.usefixtures("cached_report_fabrications")
 def test_the_cradle_stands_turns_easily_and_holds():
     """A, the hinge (B is the main design): the mouth still for both bottles, it stands at
     15° and more and takes a 25 N push at the bottle's top (the worst over the swing), the
@@ -1215,6 +1244,7 @@ def _holds_the_clutchs_cap(r: dict, key: str) -> None:
 
 @pytest.mark.slow
 @pytest.mark.strength
+@pytest.mark.usefixtures("cached_report_fabrications")
 def test_b_stands_turns_easily_and_holds():
     """B, the virtual hinge (``docs/agentlib/DECANTER.md``): the mouth still for both
     bottles, it stands at 25° and takes a 25 N push at the bottle's top (the worst over the
@@ -1323,12 +1353,12 @@ def test_the_cradle_has_an_assembly_order(key):
     built whole on the bench and lowered onto its cradle link, the cradle lying on its drive
     side on the riser's blocks (its M1)."""
     from spiderpig.construction.assembly import FINISH, JOIN, STACK, UNIT, USE, assembly_steps
-    from spiderpig.fabricate import design_side, product, template_for
+    from spiderpig.fabricate import design_side, template_for
 
     cfg = BuildConfig(linkage=key, robot=False)
     tmpl = template_for(cfg)
     design = design_side(tmpl, cfg)
-    steps = assembly_steps(product(design, tmpl, 1.0, robot=False), design)
+    steps = assembly_steps(cache.cached_product(cfg, 1.0), design)   # (fabricate's product)
     link = cr.cradle_link(cfg.lk)
     modules = key in cr.PACK_POSES
     first = steps[0]
@@ -1459,34 +1489,35 @@ def test_the_cradle_builds_an_order_without_a_walkers_words(tmp_path):
 
 @pytest.mark.slow
 @pytest.mark.api
-def test_verify_rates_a_cradles_joints_at_its_own_loads():
+@pytest.mark.parametrize("key", CRADLES)
+def test_verify_rates_a_cradles_joints_at_its_own_loads(key):
     """``api.verify`` rates a cradle's joints at its own statics (cradle_report.loads), as an
     audit does: A and B fail on nothing but the side frames open at the clutch's cap since
     design review round 2 (``cradle_report.OPEN_AT_CAP``: a joint under jam SF 1 is verify's
-    failure; the report's tests hold every other part at 1.3); then xfail on the open ones."""
+    failure; the report's tests hold every other part at 1.3); then xfail on the open ones.
+    One cradle per test (each a ``standard`` verify: a build, the contract, the clashes,
+    two to three minutes)."""
     from spiderpig import api
     from spiderpig.cradle_report import OPEN_AT_CAP
 
-    d = api.resolve({"kind": "mechanism", "linkage": {"key": "decanter_hinge"}}, store=None)
-    q = api.verify(d, "quick")      # the default level: a catalog floor with no servo in it
-    (floor,) = [r for r in q.rows if r.requirement == "budget.cost_floor_usd"]
-    assert "NRV050" in floor.detail
-    assert "servo" not in floor.detail.lower()
-    assert not [r for r in q.rows if r.requirement == "size.mass_g"]   # a build weighs it
-    b = api.resolve({"kind": "mechanism", "linkage": {"key": "decanter_rcm"}}, store=None)
-    open_ = []
-    for key, rep in (("decanter_hinge", api.verify(d, "standard")),
-                     ("decanter_rcm", api.verify(b, "standard"))):
-        other = [f.message for f in rep.failures if f.code != "joint_overload"]
-        assert not other, other
-        culprits = {c["joint"] for f in rep.failures for c in f.culprits}
-        assert culprits <= set(OPEN_AT_CAP[key]), culprits
-        assert rep.ok == (not culprits)
-        (joints,) = [r for r in rep.rows if r.requirement == "strength.joints"]
-        assert joints.value is not None
-        open_ += [f"{key}: {sorted(culprits)}"] if culprits else []
-    if open_:
-        pytest.xfail(f"open at the clutch's cap (cradle_report.OPEN_AT_CAP): {open_}")
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": key}}, store=None)
+    if key == "decanter_hinge":
+        q = api.verify(d, "quick")  # the default level: a catalog floor with no servo in it
+        (floor,) = [r for r in q.rows if r.requirement == "budget.cost_floor_usd"]
+        assert "NRV050" in floor.detail
+        assert "servo" not in floor.detail.lower()
+        assert not [r for r in q.rows if r.requirement == "size.mass_g"]  # a build weighs it
+    rep = api.verify(d, "standard")
+    other = [f.message for f in rep.failures if f.code != "joint_overload"]
+    assert not other, other
+    culprits = {c["joint"] for f in rep.failures for c in f.culprits}
+    assert culprits <= set(OPEN_AT_CAP[key]), culprits
+    assert rep.ok == (not culprits)
+    (joints,) = [r for r in rep.rows if r.requirement == "strength.joints"]
+    assert joints.value is not None
+    if culprits:
+        pytest.xfail(f"open at the clutch's cap (cradle_report.OPEN_AT_CAP): "
+                     f"{key}: {sorted(culprits)}")
 
 
 @pytest.mark.slow
@@ -1495,10 +1526,9 @@ def test_every_printed_part_fits_a_print_bed_in_its_pose():
     """Each printed part in its print pose (``meta["print_poses"]``, :func:`build.print_pose`)
     fits a 250 x 210 x 210 mm bed, and the parts not lying in a layer have a pose."""
     from spiderpig.build import print_pose
-    from spiderpig.fabricate import fabricate, template_for
 
     cfg = BuildConfig(linkage="decanter_hinge", robot=False)
-    mech = fabricate(template_for(cfg), cfg, 1.0)
+    mech = cache.cached_product(cfg, 1.0)
     poses = mech.meta["print_poses"]
     assert sorted(mech.meta["petg"]) == sorted(cr.PETG_PARTS)
     for name in ("front_saddle", "rear_saddle", "front_saddle_vee", "rear_saddle_vee",
