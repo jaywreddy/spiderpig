@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import cast
@@ -82,7 +83,18 @@ from spiderpig.construction.robot import prefixed
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import CLEARANCE, Screw, screw
 from spiderpig.mechanism import Body, Mechanism
-from spiderpig.shapes import Cut, Rect, Shape3D, cut_holes, difference, disc, moved, pill, union
+from spiderpig.shapes import (
+    Cut,
+    Rect,
+    Shape3D,
+    cut_holes,
+    difference,
+    disc,
+    moved,
+    pill,
+    pills,
+    union,
+)
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
 
 LIP_HEIGHT = 550.0      # the bottle's mouth over the table (mm): at rest, 50° neck up, the
@@ -606,6 +618,41 @@ def _node_xy(get, lk, topo, stand: Stand, name: str) -> np.ndarray:
     return get(name)
 
 
+MOUTH_DECIMALS = 9
+"""The mm decimals :func:`mouth_xy` rounds the mouth to, 1e-9 mm (B's sits 1.1e-13 mm off
+its design's -366, 322 in its frozen mechanism, differently at each crank angle)."""
+
+
+def mouth_xy(build: Build) -> np.ndarray:
+    """The mouth's world XY (:func:`mouth_name`), the same at every crank angle: its planned
+    geometry's first sample (where the stand's claims stand it) rounded to
+    :data:`MOUTH_DECIMALS`, not the frozen mechanism's. The mouth stands still over the turn
+    (the linkage's ``Output.still`` promises it, to 1e-6 mm for B and 1e-9 for A), but B's
+    mechanism puts it up to 1.1e-13 mm off from one crank angle to the next (its cradle
+    link's pose there; A's hinge is exact), so the stand, the base board and the parts off
+    the mouth moved by that between angles and no memo of them (:func:`plate_part`,
+    :func:`_part_memo`) hit at another angle (measured 2026-10-20). Snapped when the
+    mechanism's is within that promise of the plan's (always, while the output check holds:
+    the parts move by 1e-13 mm), else the mechanism's."""
+    lk = build.ctx.config.lk
+    assert lk.output is not None            # (a cradle's: mouth_name)
+    assert lk.output.still is not None
+    name = _point_of(build.plan.topo, lk, mouth_name(lk))
+    at = build.xy(name)
+    planned = np.asarray(build.plan.topo.geometry.points[name], float).reshape(-1, 2)[0]
+    if float(np.abs(at - planned).max()) <= lk.output.still[1]:
+        return np.round(planned, MOUTH_DECIMALS)
+    return at
+
+
+def _ground_xy(build: Build):
+    """``build.xy`` but the mouth's, :func:`mouth_xy` (the stand's nodes stand off it)."""
+    lk = build.ctx.config.lk
+    mouth = _point_of(build.plan.topo, lk, mouth_name(lk))
+    lip = mouth_xy(build)
+    return lambda name: lip.copy() if name == mouth else build.xy(name)
+
+
 # --- the side-level groups ------------------------------------------------------------
 
 class CradleStand(Group):
@@ -674,8 +721,10 @@ class CradleStand(Group):
         out = Realized()
         topo = build.plan.topo
 
+        ground = _ground_xy(build)
+
         def xy(n):
-            return tuple(_node_xy(build.xy, lk, topo, stand, n))
+            return tuple(_node_xy(ground, lk, topo, stand, n))
 
         for key, members in ((FRAME_OUTER, stand.outer), (FRAME_INNER, stand.inner)):
             for a, b in members:
@@ -689,7 +738,7 @@ class CradleStand(Group):
             nodes = [np.asarray(xy(n), float) for pr in stand.outer for n in pr]
             x0 = min(p[0] for p in nodes) - 100.0
             x1 = max(p[0] for p in nodes) + 100.0
-            board = float(build.xy(_point_of(topo, lk, mouth_name(lk)))[1]) + BASE_TOP
+            board = float(mouth_xy(build)[1]) + BASE_TOP
             out.cut(FRAME_OUTER, Rect(((x0 + x1) / 2, board - 50.0), (x1 - x0, 100.0)))
         frame = topo.frame_bodies[0]
         hole = TIE_HOLE
@@ -930,18 +979,18 @@ _KEEP_OUT_MEMO: dict = {}
 
 def _keep_out(build: Build) -> tuple[Shape3D, ...]:
     """The inner plate's keep-outs (:func:`_tie_paths`, :func:`_tip_paths`) fused into one
-    tool (none: ``()``). That one boolean of a few hundred pills is most of a cradle's
-    fabrication (62 of B's 95 s, measured 2026-10-20) and the same at every crank angle (the
-    paths are over the whole turn, the layer the plan's): memoized by every pill's exact
-    ends, radius and z extent, so a process's next fabrication of the design (another
-    angle, a report's clash angles) fuses nothing. The fused tool is what
-    :func:`plate_part` fused itself."""
+    tool (none: ``()``): their sections fused as one planar region and extruded once
+    (:func:`shapes.pills`; as a fuse of the prisms it was 62-70 of B's 95-100 s first
+    fabrication, measured 2026-10-20, the same point set). The same at every crank angle
+    (the paths are over the whole turn, the layer the plan's): memoized by every pill's
+    exact ends, radius and z extent, so a process's next fabrication of the design (another
+    angle, a report's clash angles) fuses nothing."""
     specs = tuple(_tie_specs(build) + _tip_specs(build))
     if not specs:
         return ()
     hit = _KEEP_OUT_MEMO.get(specs)
     if hit is None:
-        hit = union([pill(*s) for s in specs])
+        hit = pills(specs)
         if len(_KEEP_OUT_MEMO) > 8:
             _KEEP_OUT_MEMO.clear()
         _KEEP_OUT_MEMO[specs] = hit
@@ -1111,6 +1160,92 @@ def column_parts(stand: Stand) -> ColumnParts:
     return ColumnParts(SMALL_TIE_D, 10.0, M5, TIE_SCREW, TIE_HOLE)
 
 
+_PART_MEMO: dict = {}
+_PART_MEMO_SIZE = 256
+_PART_LOCK = threading.Lock()   # (:func:`_own` reads a memo's shape through shapes.moved)
+
+
+def _exact(v):
+    """``v`` as a key equal only to an equal ``v``: floats by their bits (``-0.0`` isn't
+    ``0.0``), sequences and mappings in their order, dataclasses field by field, arrays with
+    their dtype and shape; anything else (a shape) is a ``TypeError``."""
+    import dataclasses
+
+    if v is None or isinstance(v, str):
+        return v
+    if isinstance(v, bool):
+        return ("b", v)
+    if isinstance(v, (int, np.integer)):
+        return ("i", int(v))
+    if isinstance(v, (float, np.floating)):
+        return ("f", float(v).hex())
+    if isinstance(v, np.ndarray):
+        return ("a", v.dtype.str, v.shape, tuple(_exact(x) for x in v.ravel().tolist()))
+    if isinstance(v, (tuple, list)):
+        return (type(v).__name__, tuple(_exact(x) for x in v))
+    if isinstance(v, Mapping):
+        return ("m", tuple((_exact(k), _exact(x)) for k, x in v.items()))
+    if dataclasses.is_dataclass(v) and not isinstance(v, type):
+        return ("d", type(v).__qualname__,
+                tuple((f.name, _exact(getattr(v, f.name))) for f in dataclasses.fields(v)))
+    raise TypeError(f"no exact key for a {type(v).__name__}")
+
+
+def _own(v):
+    """A memo's result as the caller's own: each shape a wrapper of its own (the same B-rep:
+    :func:`shapes.moved` by nothing, so moving it in place leaves the memo's be), each
+    container a new one."""
+    import dataclasses
+
+    from build123d import Shape
+
+    if isinstance(v, Shape):
+        return moved(v, Location())
+    if isinstance(v, (tuple, list)):
+        return type(v)(_own(x) for x in v)
+    if isinstance(v, dict):
+        return {k: _own(x) for k, x in v.items()}
+    if dataclasses.is_dataclass(v) and not isinstance(v, type):
+        return dataclasses.replace(v, **{f.name: _own(getattr(v, f.name))
+                                         for f in dataclasses.fields(v) if f.init})
+    return v
+
+
+def _part_memo(fn):
+    """``fn`` (a builder of a cradle's parts that is the same at every crank angle: the
+    cradle box's parts in the cradle's frame, the stand's base board, brackets, cleats, feet,
+    riser and decanter) memoized in the process, so a design's next fabrication (another
+    angle: the clash angles, a report's, a sweep) builds none of them again (B's 19 s of
+    its 27 s second fabrication, measured 2026-10-20). Keyed by everything that shapes the
+    parts: ``fn``, every argument exactly (:func:`_exact`: an argument it can't key is
+    built afresh), and this module's every global as it is (their ids: a constant or a
+    helper set in its place, as a test's ``monkeypatch`` does, is another key; nothing
+    changes one in place; an entry holds the globals it was keyed by, so their ids stay
+    theirs). Each caller gets parts of its own (:func:`_own`)."""
+    import functools
+
+    @functools.wraps(fn)
+    def memoized(*args, **kwargs):
+        held = tuple(globals().values())
+        try:
+            key = (fn.__qualname__, tuple(map(id, held)), _exact(args),
+                   _exact(sorted(kwargs.items())))
+        except TypeError:
+            return fn(*args, **kwargs)
+        with _PART_LOCK:
+            hit = _PART_MEMO.get(key)
+            if hit is not None:
+                return _own(hit[0])
+        made = fn(*args, **kwargs)
+        with _PART_LOCK:
+            if len(_PART_MEMO) >= _PART_MEMO_SIZE:
+                _PART_MEMO.clear()
+            _PART_MEMO.setdefault(key, (made, held))
+            return _own(made)
+
+    return memoized
+
+
 def _place(part, lip, tilt: float, z: float = 0.0):
     """A part drawn in the cradle's frame (the mouth at the origin, the axis along +x)
     turned by ``tilt`` about z and put at ``lip`` (world XY, z)."""
@@ -1118,6 +1253,7 @@ def _place(part, lip, tilt: float, z: float = 0.0):
     return moved(part, loc)
 
 
+@_part_memo
 def _bottle(size: BottleSize, axis_y0: float, slope: float, x0: float) -> Shape3D:
     """The bottle in the cradle's frame: its mouth at (x0, axis_y0 + slope x0), its axis
     sloped ``slope`` (radians, nose up positive)."""
@@ -1316,6 +1452,7 @@ GAUGE_PIN = 40.0              # M5 x 40 tap bolt: front cheek, post, back cheek,
 GAUGE_PIN_KEY, GAUGE_NUT_KEY = "m5_tap_bolt_40", "m5_nylon_nut"
 
 
+@_part_memo
 def _front_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
                   ) -> tuple[Shape3D, list[Shape3D]]:
     """The front saddle's carrier (cradle frame): a floor on the two tie rods (an M3 set
@@ -1379,6 +1516,7 @@ def _front_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
 FRONT_PEGS = ((63.65, -24.0),)      # the front liner's pegs (x, the V face's y), each side
 
 
+@_part_memo
 def _front_vee(s: Saddle) -> tuple[Shape3D, Shape3D, Shape3D]:
     """The front V block at its lowest (cradle frame): the neck's V, sitting on the tie
     rods, its tab into the carrier's +z wall holding the thumbscrew's M6 nut (in a hex
@@ -1401,6 +1539,7 @@ def _front_vee(s: Saddle) -> tuple[Shape3D, Shape3D, Shape3D]:
     return vee, liner, nut
 
 
+@_part_memo
 def _jack(xz: tuple[float, float], d: float, length: float, head: tuple[float, float],
           head_y: float, knob_r: float) -> tuple[Shape3D, Shape3D]:
     """A thumbscrew (cradle frame): a hex screw ``d`` x ``length`` standing in its carrier's
@@ -1415,6 +1554,7 @@ def _jack(xz: tuple[float, float], d: float, length: float, head: tuple[float, f
     return screw_, knob
 
 
+@_part_memo
 def _gauge() -> tuple[Shape3D, Shape3D, Shape3D]:
     """The lip gauge (cradle frame), fixed: two cheeks either side of the front carrier's
     post, an M5 tap bolt through them and the post along the axis, a nylon-insert nut
@@ -1630,6 +1770,7 @@ def _tslot_lead_in(x: float, inward: int) -> list[Shape3D]:
     return out
 
 
+@_part_memo
 def _rear_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
                  ) -> tuple[Shape3D, list[Shape3D]]:
     """The rear saddle's carrier (cradle frame): two side blocks on the two tie rods, joined
@@ -1693,6 +1834,7 @@ def _rear_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
     return difference(part, *cuts), screws
 
 
+@_part_memo
 def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
               ) -> tuple[Shape3D, Shape3D, Shape3D, Shape3D]:
     """The rear V block at its lowest (cradle frame): a V shell (:data:`VEE_T`) sitting on
@@ -1773,6 +1915,7 @@ class LeadScrew:
     set_screw: Shape3D
 
 
+@_part_memo
 def _lead_screw() -> LeadScrew:
     """The rear thumbscrew (cradle frame): the Tr8 x 8 lead screw from its foot in the
     carrier's bore up through its clamping collar (in the carrier's pocket on a TPU brake
@@ -1886,6 +2029,7 @@ LOCK_KEYS = ("m5_tap_bolt_25", "m5_washer_wide", "m5_nut")
 LOCK_WASHER = (15.0, 1.2)     # the M5 fender washers (under the bolt's head, on the lips)
 
 
+@_part_memo
 def _rails(s: Saddle) -> tuple[list[Shape3D], list[Shape3D], list[Shape3D]]:
     """The base stop's rails (cradle frame, the V block at its lowest): two bars, one each
     side, continuing the rear V block's flats behind it, their guide grooves (the +z one's
@@ -1955,6 +2099,7 @@ def _rails(s: Saddle) -> tuple[list[Shape3D], list[Shape3D], list[Shape3D]]:
     return rails, liners, screws
 
 
+@_part_memo
 def _gate(s: Saddle, stop: float) -> tuple[Shape3D, list[Shape3D]]:
     """The base stop's gate, its face at ``stop`` (cradle frame, the V block at its lowest):
     a plate across the V behind the bottle's base (a millimetre inside the liners' face,
@@ -2014,6 +2159,7 @@ def _gate(s: Saddle, stop: float) -> tuple[Shape3D, list[Shape3D]]:
     return gate, [bolt, knob, washer0, washer1, nut]
 
 
+@_part_memo
 def _led(front: Saddle) -> tuple[Shape3D, Shape3D, Shape3D, list[Shape3D], list[Shape3D]]:
     """The penlight under the shoulder and its clip, in the cradle's frame: the light stands
     behind the front saddle, its head up under the shoulder; the clip, a part of its own
@@ -2092,6 +2238,7 @@ LED_TOP = -45.0             # and its head, 10-25 mm under the glass there
 CLIP_GAP = 16.0             # the clip starts this far under the head (the head twists)
 
 
+@_part_memo
 def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float, board: bool = False
              ) -> tuple[Shape3D, list[tuple[Shape3D, str | None, str]], tuple[float, float]]:
     """A foot's printed L-bracket outside an outer plate (world): its upright leg on the
@@ -2269,6 +2416,7 @@ def _square_hole(x: float, z: float, side: float, y0: float, y1: float) -> Shape
                     for sx in (-1, 1) for sz in (-1, 1))])
 
 
+@_part_memo
 def _base_plate(lip, stand: Stand, y_top: float, holes: list[tuple[float, float]],
                 z_mid: float = 0.0) -> tuple[Shape3D, list[tuple[float, float]]]:
     """The base board (world): from the stand's front to its rear edge, :data:`BASE_HALF`
@@ -2325,6 +2473,7 @@ def _bay_fillets(xb: float, zc: float, edge: float, rb: float, r: float, y0: flo
     return out
 
 
+@_part_memo
 def _riser_locator(lip, y_table: float) -> list[Shape3D]:
     """The riser locator (world): :data:`LOCATOR`'s layers of the board's birch, glued, on the
     table in the board's notch (its outline the notch's, :data:`LOCATOR`'s play in, from its
@@ -2411,6 +2560,7 @@ def riser_pieces(x: float, z: float, y_table: float) -> list[tuple[str, Shape3D]
     return out
 
 
+@_part_memo
 def _cleats(xs: list[float], y_top: float, face: float, sign: int, t_frame: float
             ) -> list[Shape3D]:
     """A rail's birch cleats (world), glued to the base board either side of the outer
@@ -2434,6 +2584,7 @@ def _cleats(xs: list[float], y_top: float, face: float, sign: int, t_frame: floa
 FOOT_STEM = 10.0            # a TPU foot's stem through the base board's corner hole
 
 
+@_part_memo
 def _tpu_foot(x: float, z: float, y_top: float) -> Shape3D:
     """A printed TPU foot (world): a pad under the base board's corner, a stem up through
     its hole and a bulb over it that snaps it in: a cone (a 30° lead-in) on a ledge, the
@@ -2616,7 +2767,7 @@ def cradle_frame(design, side: Mechanism) -> CradleFrame:
     build = Build(design.ctx, design.plan, side)
     topo = design.plan.topo
     o, a = lk.output.frame
-    lip = build.xy(_point_of(topo, lk, mouth_name(lk)))
+    lip = mouth_xy(build)
     d = build.xy(_point_of(topo, lk, a)) - build.xy(_point_of(topo, lk, o))
     tilt = math.atan2(d[1], d[0])
     from spiderpig.linkages.decanters import TIES
@@ -2656,6 +2807,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
     link_bottom = plan.z(plan.layers[link])[0]
     half = z_mid - (link_bottom + t_link)           # a tie rod's half-length
     build = Build(design.ctx, plan, side)
+    ground = _ground_xy(build)
     extras: list[Body] = []
     fastened = []
     tie_len = round(2 * half, 1)
@@ -2673,7 +2825,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
     foot_half = z_mid - z0                            # a base tie between the outer plates
     foot_len = round(2 * foot_half, 1)
     for n in stand.base_ties:
-        xy = tuple(_node_xy(build.xy, lk, topo, stand, n))
+        xy = tuple(_node_xy(ground, lk, topo, stand, n))
         extras.append(hardware(f"base_tie_{n}", _tie(xy, -foot_half, foot_half, SMALL_TIE_D, 10.0),
                                frame_host,
                                fab="purchased", bom_key=_standoff(foot_len), color=TIE_COLOR))
@@ -2686,7 +2838,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
     bay_half = BAY / 2                  # a bay tie between the inner plates' bay faces
     bay_len = round(2 * bay_half, 1)
     for n in stand.bay_ties:
-        xy = tuple(_node_xy(build.xy, lk, topo, stand, n))
+        xy = tuple(_node_xy(ground, lk, topo, stand, n))
         extras.append(hardware(f"bay_tie_{n}", _tie(xy, -bay_half, bay_half, SMALL_TIE_D, 10.0),
                                frame_host,
                                fab="purchased", bom_key=_standoff(bay_len), color=TIE_COLOR))
@@ -2826,7 +2978,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
     for s, sign in (("L", -1), ("R", 1)):
         face = sign * (z_mid - plan.z(0)[0])          # the outer plate's outer face
         host_s = prefixed(topo.frame_bodies[0], s)
-        feet_xy = {n: tuple(float(v) for v in _node_xy(build.xy, lk, topo, stand, n))
+        feet_xy = {n: tuple(float(v) for v in _node_xy(ground, lk, topo, stand, n))
                    for n in stand.feet}
         for n, xy in feet_xy.items():
             bracket, screws, hole = _bracket(xy, y_top, face, sign, t_frame,
@@ -2887,6 +3039,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                      bom_extras=list(side.bom_extras) + list(passive.bom_extras) + glue)
 
 
+@_part_memo
 def _decanter(lip) -> tuple[Shape3D, list[tuple[str, Shape3D]]]:
     """A standard decanter under the mouth (display, :data:`DECANTER_PROFILE`) on the
     printed riser (:func:`riser_pieces`, :data:`DECANTER_RISER` tall) in the riser locator's

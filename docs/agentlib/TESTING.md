@@ -13,7 +13,7 @@ the module packages (PLAN P1-P6) build on; `tests/cache.py`, `tests/_modules.py`
 |---|---|---|
 | `mise run test-<module>` | `-m "<module> and not slow and not e2e" -n 4 --dist worksteal` | iterating on one area |
 | `mise run test-quick` | `-m "not slow and not e2e" -n 4` (every module's fast tier) | before handing back |
-| `mise run test-cradle` | `tests/test_cradle.py -m "not slow and not e2e" -n 4` (about a minute) | iterating on the cradles; the slow ones in chunks (below) |
+| `mise run test-cradle` | `tests/test_cradle.py -m "not slow and not e2e" -n 4` (about 20 s) | iterating on the cradles; the slow ones in chunks (below) |
 | full: `mise run remote-test`, or locally `pytest -p no:warnings -m 'not e2e' -n 12 --dist worksteal` | everything but the browser tests | before a merge |
 | `mise run test-fixtures` | the currency tests (`-m fixture_regen`) with `--regen` | after an intended engine change |
 | `mise run test-viewer` | `npm run typecheck && npm test` (vitest) | viewer edits |
@@ -33,10 +33,12 @@ An agent's step (a foreground command, or the wait for a background one) should 
 5 minutes: past that the model's prompt cache expires, and the next call re-reads the
 whole context uncached. A job longer than that runs in the background and in chunks, each
 one's end a notification. `tests/test_cradle.py`'s slow tests (each a fabrication of a
-whole cradle or more, a minute or two, from `cached_product` when it holds this code's)
-in five chunks at `-n 4`, measured 2026-10-20 at load 4-8: 165-260 s each on a cold
-cache, the clash chunks 51 s warm (verify, the claims, every pose, the room, the build and
-the packs still fabricate afresh; over load 8, run the last chunk as two):
+whole cradle or more: 25-35 s fresh, 4-6 s at another crank angle in the same worker, from
+`cached_product` when it holds this code's) in five chunks at `-n 4`. Measured 2026-10-20
+at load 1.5-4, the cache cold for the code but both cradles' t = 1.0 entries: 96, 87, 60,
+86 and 84 s (they were 165-260 s before the inner plate's keep-out was fused in 2D and the
+cradle box's parts memoized); every test under 65 s. What still fabricates afresh: every
+pose, the room, the packs (meshed) and the whole side's claims (20 s each):
 
 ```bash
 pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "clash_free and decanter_rcm"
@@ -50,6 +52,10 @@ pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "$R and not decante
 The clash test is one test per crank angle and the verify test one per cradle (each under
 5 min, the checks as before). The identity gate likewise: `compare DIR --designs
 strider_quad`, then the other five.
+
+A scratch script that fabricates a cradle: `SPIDERPIG_OCCT_THREADS=2` (B's first
+fabrication 29 s at 1.4 cores, against 28 s at 1.7 on 3 and 33 s on 1; a second one in the
+process 4 s on any; measured 2026-10-20 at load 1.5-3), 1 when several run at once.
 
 ## The scorecard, CI, the doc check
 
@@ -142,6 +148,7 @@ cache.cached_design(cfg) -> (tmpl, SideDesign)               # design_side, plan
 cache.cached_side(cfg, t=1.0, *, fresh=False) -> Mechanism   # fabricate_side, BREP-cached
 cache.cached_robot(cfg, t=1.0, *, fresh=False) -> Mechanism  # fabricate (robot=True), BREP-cached
 cache.cached_product(cfg, t=1.0, *, fresh=False) -> Mechanism  # fabricate (robot=False): a cradle
+cache.own_product(cfg, t=1.0) -> Mechanism   # cached_product's entry read again: the caller's own
 cache.seed_plan(cfg) -> bool       # seed fabricate._LAYOUTS only (a later design_side re-makes it)
 cache.prebuilt_store(cfg, tmp_path, t=1.0) -> Store          # a copy of a resolved+planned+built store
 cache.recorded(module, name, make) -> data                   # tests/fixtures/<module>/<name>.json
@@ -152,8 +159,13 @@ cache.assert_current(module, name, make) -> data             # that fixture's cu
   `cached_side` (always the side) and forced by `cached_robot` (a mechanism has no robot:
   `ParamError`). The template is `fabricate.template_for(cfg)`. `cached_product` is what
   `fabricate` makes with `robot` off: a decanting cradle whole (both sides, the box, the
-  stand), a minute or two fresh, a tenth of a second loaded; `tests/test_cradle.py` takes
-  its fabrications there but the ones it meshes (the flat pack) or builds files from.
+  stand), 25-35 s fresh (4-6 s at another crank angle in the same process: the box's
+  parts and the plates are memoized there), a tenth of a second loaded;
+  `tests/test_cradle.py` takes its fabrications there but the one it meshes (the flat
+  pack). The verify and build tests take theirs through `cached_cradle_fabrications` (the
+  api's `fabricate_at`, `spiderpig build`'s and `cradle_report`'s `fabricate`), each from
+  `own_product`: a mechanism of the caller's own, as the store's fabrication cache hands
+  one out (`spiderpig build` adds its sheet lines to `bom_extras`).
 - The conftest factories are wrappers with their old signatures: `design(module, servo,
   linkage="klann", **build)`, `side(module, t, servo, **build)`, `robot(module, t,
   **build)`. Every existing test uses the cache through them.
@@ -292,8 +304,9 @@ auto`, the default), or judges a saved layout (`--layout pack.json`: a
 `/api/cradle/{key}/pack` body, or a `*.layout.json` it wrote), and writes per candidate a
 contact sheet (`build/pack/<linkage>/<name>.png`: four views, three slices, the legend, the
 pads' cut list), the metrics (`<name>.json`: `voxpack.metrics`) and the layout. The first
-run fabricates and tessellates the cradle (minutes, cold); the input is then kept in the
-store's `pack/` (`cradle_pack.cached_input`), and a run is seconds.
+run fabricates and tessellates the cradle (B 47 s, A 37 s; the whole default run 70 s cold,
+measured 2026-10-20); the input is then kept in the store's `pack/`
+(`cradle_pack.cached_input`), and a run is seconds.
 
 Read the metrics, not only the picture:
 
@@ -314,9 +327,11 @@ Read the metrics, not only the picture:
   (`voxpack.free_travel`, on the 3 mm cells: the real travel is up to two cells more).
   `loose` lists the pieces that slide more than the foam's `CLEAR`; spacers drive it empty.
 - `search` (with `--search`): `--seeds N` anneals N seeds (`--workers` at a time, each
-  `--seconds`), keeps the best and reports every run and the spread across them
-  (`voxpack.spread`: the best, median and worst score and box litres, how many seeds came
-  within half a litre of the best). One seed's box is a sample: quote the spread with it.
+  `--seconds`: 60 by default, less when the seeds' rounds would take the search past
+  `pack_inspect.SEARCH_BUDGET_S` in all), keeps the best and reports every run and the
+  spread across them (`voxpack.spread`: the best, median and worst score and box litres,
+  how many seeds came within half a litre of the best). One seed's box is a sample: quote
+  the spread with it.
 
 The search's score (`voxpack.score`) charges a layout's pads by count, volume and the
 tallest (`voxpack.pad_cost`), so of two layouts in one box the one on fewer, smaller pads

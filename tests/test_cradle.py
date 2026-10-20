@@ -343,17 +343,24 @@ def test_a_cradle_warns_when_its_own_default_replaces_a_named_one():
     assert any("materials.sheet acrylic_3mm" in w for w in d.warnings)
 
 
-@pytest.mark.construction
-@pytest.mark.parametrize(("key", "t"), quick(
-    [(k, t) for k in CRADLES for t in (0.0, 2.2)], [("decanter_hinge", 2.2)]))
-def test_a_cradle_side_stays_inside_its_claims(key, t):
-    from spiderpig.construction.contract import check_side
-    from spiderpig.fabricate import design_side, template_for
+OWN_GROUPS = ("stand", "ties")
+"""A cradle's own side groups: the stand's columns and members, the cradle box's tie rods."""
 
-    cfg = BuildConfig(linkage=key, robot=False)
-    tmpl = template_for(cfg)
-    design = design_side(tmpl, cfg)
-    assert check_side(design, tmpl.freeze_at(t)) == []
+
+@pytest.mark.construction
+@pytest.mark.parametrize(("key", "t", "groups"), quick(
+    [(k, t, None) for k in CRADLES for t in (0.0, 2.2)] + [(k, 2.2, OWN_GROUPS) for k in CRADLES],
+    [(k, 2.2, OWN_GROUPS) for k in CRADLES]))
+def test_a_cradle_side_stays_inside_its_claims(key, t, groups):
+    """Every part of a cradle's side inside its own claims at a crank angle
+    (``contract.check_side``): the whole side (``groups`` ``None``: every group realized
+    and checked, 12-30 s since the inner plate's keep-out is fused in 2D; slow), or the
+    cradle's own groups alone (:data:`OWN_GROUPS`, the others realized only where those
+    need them: about a second, the fast tier's)."""
+    from spiderpig.construction.contract import check_side
+
+    tmpl, design = cache.cached_design(BuildConfig(linkage=key, robot=False))
+    assert check_side(design, tmpl.freeze_at(t), groups=groups) == []
 
 
 @pytest.mark.construction
@@ -951,6 +958,54 @@ def test_a_cradles_bom_says_what_its_total_leaves_out():
 
 
 @pytest.mark.construction
+def test_the_cradles_angle_free_parts_are_memoized_by_all_that_shapes_them(monkeypatch):
+    """``cr._part_memo`` (the cradle box's, the base board's and the feet's parts, the same
+    at every crank angle): the same arguments give the same B-rep, each caller's part its
+    own (moving one in place leaves the next where it was); a module constant set in its
+    place (a monkeypatch) is another key, as is ``-0.0`` against ``0.0``; an argument with no
+    exact key (a shape) is built afresh."""
+    from build123d import Location
+
+    foot = cr._tpu_foot(10.0, 20.0, 30.0)
+    again = cr._tpu_foot(10.0, 20.0, 30.0)
+    assert again is not foot
+    assert again.wrapped.IsPartner(foot.wrapped)
+    c = foot.center()
+    again.move(Location((5.0, 0.0, 0.0)))
+    assert cr._tpu_foot(10.0, 20.0, 30.0).center() == c
+    assert foot.center() == c
+    monkeypatch.setattr(cr, "FOOT_BORE", cr.FOOT_BORE + 2.0)
+    wider = cr._tpu_foot(10.0, 20.0, 30.0)
+    assert not wider.wrapped.IsPartner(foot.wrapped)
+    assert wider.volume < foot.volume - 1.0
+    monkeypatch.undo()
+    assert cr._tpu_foot(10.0, 20.0, 30.0).wrapped.IsPartner(foot.wrapped)
+    assert cr._exact(-0.0) != cr._exact(0.0)
+    assert cr._exact(np.float64(1.5)) == cr._exact(1.5)
+    assert cr._exact({"a": 1, "b": 2}) != cr._exact({"b": 2, "a": 1})     # (in order)
+    with pytest.raises(TypeError):
+        cr._exact(foot)
+
+
+@pytest.mark.construction
+def test_the_mouth_is_snapped_to_the_plan_at_every_crank_angle():
+    """``cr.mouth_xy``: B's mouth is still over the turn to 1e-13 mm in its frozen mechanism,
+    and exactly its design's (-366, 322 from O: the planned geometry's first sample rounded
+    to 1e-9 mm) at every angle, so the stand's members and the base board, and their memos,
+    are the same at every angle."""
+    from spiderpig.construction.base import Build
+
+    cfg = BuildConfig(linkage="decanter_rcm", robot=False)
+    tmpl, design = cache.cached_design(cfg)
+    name = cr._point_of(design.plan.topo, cfg.lk, cr.mouth_name(cfg.lk))
+    planned = np.asarray(design.plan.topo.geometry.points[name], float).reshape(-1, 2)[0]
+    for t in (1.0, 3.5, 5.2):
+        build = Build(design.ctx, design.plan, tmpl.freeze_at(t))
+        assert np.abs(build.xy(name) - planned).max() < 1e-9
+        assert cr.mouth_xy(build).tolist() == [-366.0, 322.0]
+
+
+@pytest.mark.construction
 def test_a_tie_rod_that_would_sweep_into_the_inner_plate_fails():
     """The planner checks nothing in the inner plate's layer (a frame plate's), so the ties
     check their paths over the turn against its members: one across a tie's arc fails."""
@@ -1069,6 +1124,40 @@ def cached_report_fabrications(monkeypatch):
         return cache.cached_product(config, t)
 
     monkeypatch.setattr(cradle_report, "fabricate", fabricate)
+
+
+@pytest.fixture
+def cached_cradle_fabrications(monkeypatch, cached_report_fabrications):
+    """Every fabrication of a cradle from the test cache: ``cradle_report``'s
+    (:func:`cached_report_fabrications`), the api's (``api.building.fabricate_at``: a build,
+    a verify's clash angles) and ``spiderpig build``'s, each a mechanism of the caller's own
+    (``cache.own_product``, as the store's fabrication cache hands one out: ``build`` adds to
+    its ``bom_extras``), when the design's plan is the cache's (else fabricated). Both
+    cradles' ``standard`` verify rows are the fresh ones' to the byte (measured
+    2026-10-20)."""
+    from spiderpig import build
+    from spiderpig.api import building
+
+    fabricate_at, fabricate = building.fabricate_at, build.fabricate
+
+    def cached(cfg, plan) -> bool:
+        return (is_cradle(cfg) and not cfg.robot
+                and cache.plan_doc(plan) == cache.plan_doc(cache.cached_design(cfg)[1].plan))
+
+    def at(design, t):
+        if design.side is not None and cached(design.config, design.side.plan):
+            return cache.own_product(design.config, t)
+        return fabricate_at(design, t)
+
+    def fab(tmpl, config=None, t=1.0, *, store=None):
+        from spiderpig.fabricate import design_side
+
+        if config is not None and cached(config, design_side(tmpl, config).plan):
+            return cache.own_product(config, t)
+        return fabricate(tmpl, config, t, store=store)
+
+    monkeypatch.setattr(building, "fabricate_at", at)
+    monkeypatch.setattr(build, "fabricate", fab)
 
 
 @pytest.mark.slow
@@ -1459,10 +1548,11 @@ def test_the_cradle_has_an_assembly_order(key):
 
 @pytest.mark.slow
 @pytest.mark.construction
+@pytest.mark.usefixtures("cached_cradle_fabrications")
 def test_the_cradle_builds_an_order_without_a_walkers_words(tmp_path):
-    """``spiderpig build`` of A (slow: the whole machine's STEP): its BOM's title is the
-    cradle's, ORDER.md has no acrylic note, no servo boxes, the TPU parts are the cradle's,
-    and nothing is bought for a Chicago pin's epoxy."""
+    """``spiderpig build`` of A (slow: the whole machine's STEP; its fabrication from the test
+    cache): its BOM's title is the cradle's, ORDER.md has no acrylic note, no servo boxes,
+    the TPU parts are the cradle's, and nothing is bought for a Chicago pin's epoxy."""
     from spiderpig.build import main
 
     assert main(["--linkage", "decanter_hinge", "--side-only", "--out", str(tmp_path),
@@ -1476,13 +1566,14 @@ def test_the_cradle_builds_an_order_without_a_walkers_words(tmp_path):
 @pytest.mark.slow
 @pytest.mark.api
 @pytest.mark.parametrize("key", CRADLES)
+@pytest.mark.usefixtures("cached_cradle_fabrications")
 def test_verify_rates_a_cradles_joints_at_its_own_loads(key):
     """``api.verify`` rates a cradle's joints at its own statics (cradle_report.loads), as an
     audit does: A and B fail on nothing, their side frames included since the redesign of
     2026-10-20 (a joint under jam SF 1 is verify's failure; the report's tests hold every
     part at 1.3; design review round 2 had left the side frames open at the clutch's cap,
     ``cradle_report.OPEN_AT_CAP``). One cradle per test (each a ``standard`` verify: a build,
-    the contract, the clashes, two to three minutes)."""
+    the contract, the clashes; its fabrications from the test cache)."""
     from spiderpig import api
 
     d = api.resolve({"kind": "mechanism", "linkage": {"key": key}}, store=None)
@@ -2494,6 +2585,24 @@ def test_pack_inspect_draws_and_judges_a_layout(tmp_path):
     assert img.size[0] > 2000
     assert img.size[1] > 1000
     assert json.loads((tmp_path / "hand.layout.json").read_text()) == layout
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_pack_inspects_default_search_stays_within_its_budget(monkeypatch):
+    """``pack-inspect --search`` without ``--seconds``: 60 s a seed, less when its seeds'
+    rounds (``--workers`` at a time; one after another with no workers) would take it past
+    ``SEARCH_BUDGET_S`` in all, so the default command stays an agent's step."""
+    from spiderpig.tools import pack_inspect as pi
+
+    assert pi.search_seconds(None, 4) == pi.SEARCH_SECONDS
+    assert pi.search_seconds(12, 4) == pi.SEARCH_BUDGET_S / 3
+    for seeds, procs in ((None, 4), (6, 6), (12, 4), (30, 6), (5, 1)):
+        n = seeds or procs
+        rounds = math.ceil(n / procs)
+        assert pi.search_seconds(seeds, procs) * rounds <= pi.SEARCH_BUDGET_S + 1e-9
+    monkeypatch.setenv("SPIDERPIG_WORKERS", "0")
+    assert pi.search_seconds(4, 4) == pi.SEARCH_BUDGET_S / 4
 
 
 RISER_REF = "tests/fixtures/cradle/riser_reference.json"
