@@ -2099,8 +2099,12 @@ def test_a_piece_rests_on_its_contacts_on_pads_or_not_at_all():
     got = vp.support(xz, gap, owner, ["under"], com, 3.0)
     assert got.how == "padded"
     assert got.on == ("under",)
-    assert got.pads
-    assert max(h for _, _, h in got.pads) == pytest.approx(15.0)
+    assert len(got.pads) == 3                            # the hull's three far corners
+    assert {p.height for p in got.pads} == {15.0}
+    assert {p.on for p in got.pads} == {"under"}
+    for p in got.pads:                                    # a PAD_SIDE square on the corner
+        assert (p.x1 - p.x0, p.z1 - p.z0) == (vp.PAD_SIDE, vp.PAD_SIDE)
+        assert p.volume == pytest.approx(vp.PAD_SIDE ** 2 * 15.0)
     far = np.where(corner, 0, 30)                        # 90 mm: more than a pad fills
     assert vp.support(xz, far, owner, ["under"], com, 3.0).how == "none"
     floor = vp.support(xz, np.zeros(len(xz)), np.full(len(xz), -1), [], com, 3.0)
@@ -2148,7 +2152,10 @@ def test_the_metrics_judge_any_layout():
 @pytest.mark.no_fabricate
 def test_the_search_keeps_its_best(monkeypatch):
     """``voxpack.anneal`` (in this process) from the greedy packing's choices: never worse
-    than where it started; ``voxpack.search`` packs its best again."""
+    than where it started; ``voxpack.search`` packs its best again. With ``seeds`` (packing
+    review 1's m6) it anneals each, keeps the best and reports every run (its score, its
+    box's litres on the real shapes: ``voxpack.outside_litres``) and the greedy start's;
+    ``voxpack.spread`` sums them up (the best, median and worst, how many at the best)."""
     from spiderpig import voxpack as vp
 
     monkeypatch.setenv("SPIDERPIG_WORKERS", "0")
@@ -2163,6 +2170,276 @@ def test_the_search_keeps_its_best(monkeypatch):
     assert sorted(c.key for c in seq) == sorted(c.key for c in start.seq)
     best = vp.search(items, None, 1.0, 1)
     assert best.score <= start.score + 1e-9
+    # N seeds (one after another here), the best kept, the spread across them reported
+    best = vp.search(items, None, 0.3, 1, seed=5, seeds=3)
+    assert [r["seed"] for r in best.runs] == [5, 6, 7, None]       # (None: the greedy start)
+    assert best.score == pytest.approx(min(r["score"] for r in best.runs), abs=0.006)
+    assert all(r["litres"] > 0 and r["tried"] >= 1 for r in best.runs)
+    assert any(r["litres"] == pytest.approx(vp.outside_litres(items, best), abs=0.06)
+               for r in best.runs if r["score"] <= best.score + 0.006)    # (the best's)
+    sp = vp.spread(best.runs)
+    assert sp["seeds"] == 3
+    assert sp["litres"]["best"] <= sp["litres"]["median"] <= sp["litres"]["worst"]
+    assert sp["litres"]["spread"] == pytest.approx(sp["litres"]["worst"] - sp["litres"]["best"])
+    assert 1 <= sp["at_best"] <= 3
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_score_charges_each_pad():
+    """``voxpack.score`` (packing review 1's m7): a pad costs ``W_PAD`` each, ``W_PAD_VOLUME``
+    a litre of them and ``W_PAD_TALL`` a metre of the tallest (``voxpack.pad_cost``), so in
+    one box the layout on fewer, smaller pads scores less (it charged 2 L a padded piece,
+    whatever its pads); a piece on five pads costs about what a padded piece did."""
+    import dataclasses
+
+    from spiderpig import voxpack as vp
+
+    items = [_item("base", "base", [((0, -3, 0), (240, 0, 180))], 2.0),
+             _item("slab", "fill", [((0, 0, 0), (200, 20, 150))], 1.0)]
+    lay = vp.Packer(items).greedy()
+
+    def on(*heights):
+        b = lay.bin.copy()
+        p = b.placed[-1]
+        pads = tuple(vp.Pad(10.0 * i, 0.0, 10.0 * i + 15.0, 15.0, h, "base")
+                     for i, h in enumerate(heights))
+        b.placed[-1] = dataclasses.replace(p, rest=vp.Support("padded", ("base",), pads))
+        return vp.score(b, {it.key: it.mass for it in items})
+
+    bare = vp.score(lay.bin, {it.key: it.mass for it in items})
+    assert bare < on(20, 20) < on(20, 20, 20) < on(20, 20, 20, 20)        # fewer
+    assert on(20, 20, 20) < on(20, 20, 50) < on(50, 50, 50)               # smaller
+    assert vp.pad_cost([]) == 0.0
+    five = [vp.Pad(0.0, 0.0, vp.PAD_SIDE, vp.PAD_SIDE, 30.0)] * 5
+    assert 1.5 < vp.pad_cost(five) < 3.0
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_metrics_measure_pads_and_free_travel():
+    """``voxpack.metrics`` on a hand-made layout (packing review 1's M1 and its restraint
+    check): a plate held 37.3 mm over a slab by one corner's post rests on pads at its other
+    corners, each one's height the real gap (``voxpack.measure_pads``, rays on the meshes:
+    37.3, where the voxels say a multiple of the cell less the foam), a footprint under the
+    plate, what it is under and on, an id by the plate's number; the cut list adds them up.
+    Each piece's free travel along the floor (``free_mm``, ``meets``) to a neighbour or the
+    box's wall: the block on the slab slides 100 mm and more, the slabs only the foam's 3 mm
+    (``restraint``: the loose pieces, the most any slides)."""
+    from spiderpig import voxpack as vp
+
+    def slab(key, boxes, mass=1.0):
+        ms = [vp.box_mesh(lo, hi) for lo, hi in boxes]
+        vols = [vp.mesh_volume(*m) for m in ms]
+        vol = sum(v for v, _ in vols)
+        com = sum(v * c for v, c in vols) / vol
+        return vp.Packed(key, key, ms, mass, com, vol, [f"{key}{i}" for i in range(len(ms))])
+
+    low = slab("low", [((0, 0, 0), (300, 10, 300))], 3.0)
+    up = slab("up", [((0, 47.3, 0), (300, 52.3, 300)), ((0, 13, 0), (20, 47.3, 20))])
+    blk = slab("b", [((100, 13, 100), (140, 33, 140))], 0.2)
+    m = vp.metrics([low, up, blk])
+    rows = {r["key"]: r for r in m["pieces"]}
+    assert rows["up"]["rests"] == "padded"
+    pads = rows["up"]["pads"]
+    assert [p["id"] for p in pads] == ["2a", "2b", "2c"][:len(pads)]
+    assert len(pads) == 3
+    for p in pads:
+        assert p["height_mm"] == pytest.approx(37.3, abs=0.05)            # the real gap
+        assert p["voxel_mm"] % vp.CELL == pytest.approx(0.0)
+        assert p["voxel_mm"] < p["height_mm"]
+        assert (p["under"], p["on"], p["on_part"]) == ("up0", "low", "low0")
+        assert p["base_mm"] == pytest.approx(10.0)
+        x0, z0, x1, z1 = p["footprint"]
+        assert 0.0 <= x0 < x1 <= 300.0
+        assert 0.0 <= z0 < z1 <= 300.0
+        assert p["size_mm"] == [pytest.approx(x1 - x0), pytest.approx(z1 - z0)]
+        assert 0 < p["size_mm"][0] <= vp.PAD_SIDE
+        assert p["fits"] is True
+    assert m["pads"]["count"] == 3
+    assert m["pads"]["tallest_mm"] == pytest.approx(37.3, abs=0.05)
+    assert m["pads"]["volume_cm3"] == pytest.approx(
+        sum(p["size_mm"][0] * p["size_mm"][1] * p["height_mm"] for p in pads) / 1e3, abs=0.06)
+    assert m["pads"]["cut_list"] == pads
+    # free travel: the block 103 mm to the -x wall, 163 to the +x (the cells: up to 2 less)
+    free, meets = rows["b"]["free_mm"], rows["b"]["meets"]
+    assert 103.0 - 2 * vp.CELL <= free["-x"] <= 103.0
+    assert 163.0 - 2 * vp.CELL <= free["+x"] <= 163.0
+    assert meets["-x"] == meets["+x"] == "wall"
+    assert free["+y"] < 47.3 - 33.0                                       # up: the plate
+    assert meets["+y"] == "up"
+    assert rows["b"]["slide_mm"] == max(free[k] for k in ("+x", "-x", "+z", "-z"))
+    assert rows["low"]["slide_mm"] == rows["up"]["slide_mm"] == vp.CLEAR
+    assert m["restraint"] == {"held_mm": vp.CLEAR, "max_slide_mm": rows["b"]["slide_mm"],
+                              "loose": ["b"]}
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_pad_is_a_block_that_fits():
+    """``voxpack.measure_pads``: each pad is a rectangular block from the top of what is
+    under it to the piece's lowest underside over its footprint, and nothing of another
+    piece runs through it. A plate 37.3 mm over a slab with a hole a rod stands up through:
+    the pad clear of the rod is its whole square, the real gap tall; one whose square takes
+    in the rod is tried smaller (``PAD_TRIES``) until it is clear of it; one centred on the
+    rod has no room at any size (``fits`` false, its height 0); one where the plate isn't is
+    unmeasured (``fits`` None: the voxels' word)."""
+    from spiderpig import voxpack as vp
+
+    def piece(key, boxes):
+        ms = [vp.box_mesh(lo, hi) for lo, hi in boxes]
+        return vp.Packed(key, key, ms, 1.0, np.zeros(3), 0.0,
+                         [f"{key}{i}" for i in range(len(ms))])
+
+    y0, y1 = 47.3, 52.3
+    low = piece("low", [((0, 0, 0), (300, 10, 300))])
+    plate = piece("plate", [((0, y0, 0), (99, y1, 300)), ((105, y0, 0), (300, y1, 300)),
+                            ((99, y0, 0), (105, y1, 99)), ((99, y0, 105), (105, y1, 300))])
+    rod = piece("rod", [((100, 12, 100), (104, 70, 104))])
+
+    def pad(cx, cz):
+        h = vp.PAD_SIDE / 2
+        return vp.Pad(cx - h, cz - h, cx + h, cz + h, 33.0, "low")
+
+    clear, beside, on_rod, off = vp.measure_pads(
+        [low, plate, rod], 1, [pad(130, 102), pad(110, 102), pad(102, 102), pad(400, 400)],
+        floor=-3.0)
+    assert clear["fits"] is True
+    assert clear["size_mm"] == [vp.PAD_SIDE, vp.PAD_SIDE]
+    assert clear["height_mm"] == pytest.approx(y0 - 10.0, abs=0.05)
+    assert (clear["base_mm"], clear["on"], clear["on_part"], clear["under"]) == (
+        pytest.approx(10.0), "low", "low0", "plate1")
+    assert beside["fits"] is True                       # (15 mm took in the rod: 9 doesn't)
+    assert beside["size_mm"] == [vp.PAD_TRIES[0], vp.PAD_TRIES[0]]
+    assert beside["footprint"][0] > 104.0
+    assert beside["height_mm"] == pytest.approx(y0 - 10.0, abs=0.05)
+    assert on_rod["fits"] is False
+    assert on_rod["height_mm"] == 0.0
+    assert off["fits"] is None
+    assert off["height_mm"] == off["voxel_mm"] == 33.0
+    assert off["base_mm"] is None
+
+
+def _made_up_cradle(parts: dict) -> dict:
+    """A cradle's pack input (``cradle_pack.gather``'s) made up of boxes: each part's name
+    (``cradle_pack.pieces`` sorts them into pieces by it) -> its boxes ((lo, hi) each) and
+    an optional turn about z (degrees); packed flat (no ``turns``)."""
+    from spiderpig import voxpack as vp
+
+    out, meshes = {}, {}
+    for n, (boxes, deg) in parts.items():
+        pos, tri, k = [], [], 0
+        for lo, hi in boxes:
+            p, t = vp.box_mesh(lo, hi)
+            pos.append(p @ vp.rot_about("z", deg).T)
+            tri.append(t + k)
+            k += len(p)
+        p, t = np.concatenate(pos), np.concatenate(tri)
+        vol, c = vp.mesh_volume(p, t)
+        meshes[n] = (p.astype(np.float32), t.astype(np.uint32))
+        out[n] = {"fab": "sheet", "bom_key": None, "rigid_with": None,
+                  "lo": p.min(axis=0).tolist(), "hi": p.max(axis=0).tolist(), "volume": vol,
+                  "mass": vol * 2.7e-6, "com": c.tolist()}
+    return {"linkage": "made_up", "link": "b6", "t": 0.0, "tilt": 0.0, "turns": None,
+            "parts": out, "meshes": meshes, "connections": [], "fastened": [], "joints": {},
+            "slide_off": None}
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_split_keeps_each_pieces_orientation():
+    """``cradle_pack.pack_items`` with a what-if split (packing review 1's m5: ``--split``
+    stood B's cradle box on its end): the piece the parts come off keeps the orientation it
+    had whole (its levelling with them: ``level``), the new piece its parent's; ``relevel``
+    names the pieces levelled afresh, on what they now hold."""
+    from spiderpig import cradle_pack as cp
+    from spiderpig import voxpack as vp
+
+    inp = _made_up_cradle({
+        "base_plate": ([((-300, -10, -200), (300, 0, 200))], 0.0),
+        "tie_T1": ([((0, 0, 0), (300, 20, 20))], 25.0),            # a bar, 25 deg up
+        "tie_T1_screwL": ([((-10, 0, 0), (10, 400, 20))], 0.0),    # a post on it, upright
+        "L.b1": ([((-200, 0, 30), (200, 150, 36))], 0.0),
+    })
+    whole = {it.key: it for it in cp.pack_items(inp)[2]}
+    bar = [np.asarray(inp["meshes"]["tie_T1"][0], float)]
+    both = [*bar, np.asarray(inp["meshes"]["tie_T1_screwL"][0], float)]
+    assert cp.level(bar) == pytest.approx(-25.0)
+    assert cp.level(both) != pytest.approx(cp.level(bar))       # (the post turns it)
+    assert np.allclose(whole["tie_T1"].pre, vp.rot_about("z", cp.level(both)))
+    splits = {"post": ["tie_T1_screw*"]}
+    _, _, items, _ = cp.pack_items(inp, splits)
+    by = {it.key: it for it in items}
+    assert by["tie_T1"].parts == ["tie_T1"]
+    assert by["post"].parts == ["tie_T1_screwL"]
+    assert np.allclose(by["tie_T1"].pre, whole["tie_T1"].pre)    # as it was whole
+    assert np.allclose(by["post"].pre, whole["tie_T1"].pre)      # its parent's
+    assert np.allclose(by["drive"].pre, np.eye(3))
+    by = {it.key: it for it in cp.pack_items(inp, splits, relevel=["tie_T1"])[2]}
+    assert np.allclose(by["tie_T1"].pre, vp.rot_about("z", -25.0))     # afresh: the bar's
+    assert np.allclose(by["post"].pre, whole["tie_T1"].pre)
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_plan_that_stops_is_judged_incomplete(tmp_path, monkeypatch):
+    """Packing review 1's M3: a plan's step with no room (the base stop ``into`` a cradle
+    box it doesn't fit) stops the packer with two of the six pieces placed. The layout says
+    so (``missing``, in order from the one that stopped it; ``warnings``; no score),
+    ``spiderpig pack-inspect`` judges it incomplete (the metrics' ``missing``, the sheet's
+    status line red, naming them) and exits 1; packed by a plan that fits, it exits 0."""
+    import json
+
+    from PIL import Image
+
+    from spiderpig import cradle_pack as cp
+    from spiderpig import voxpack as vp
+    from spiderpig.tools import pack_inspect
+
+    inp = _made_up_cradle({
+        "base_plate": ([((-300, -10, -200), (300, 0, 200))], 0.0),
+        "tie_T1": ([((0, 0, 0), (200, 40, 100))], 0.0),            # the cradle box: solid
+        "base_stop_gate": ([((0, 0, 0), (120, 60, 80))], 0.0),
+        "L.handle": ([((0, 0, 0), (100, 20, 20))], 0.0),
+        "L.b1": ([((-250, 0, 30), (250, 120, 36)), ((-250, 0, 30), (-240, 40, 160))], 0.0),
+        "R.b1": ([((-250, 0, -36), (250, 120, -30)), ((240, 0, -160), (250, 40, -30))], 0.0),
+    })
+    flat = {"down": "-y", "spin": 0}                     # (one orientation each: quick)
+    fits = vp.Plan("fits", (
+        vp.Step("tie_T1", corner="-x-z", **flat),
+        vp.Step("base_stop", after=("tie_T1",), **flat),
+        vp.Step("hand_crank", after=("tie_T1",), **flat),
+        vp.Step("drive", down="outer", spin=0, after=("base_stop", "hand_crank")),
+        vp.Step("passive", down="outer", spin=0, after=("drive",))))
+    stops = vp.Plan("stops", tuple(vp.Step("base_stop", into="tie_T1", after=("tie_T1",),
+                                           **flat) if st.key == "base_stop" else st
+                                   for st in fits.steps))
+    why = "base_stop: no room (into tie_T1, down -y)"
+    lay = cp.pack_input(inp, stops, cell=6.0)            # (6 mm cells: quick)
+    assert [m["key"] for m in lay["modules"]] == ["base", "tie_T1"]
+    assert lay["missing"] == ["base_stop", "hand_crank", "drive", "passive"]
+    assert lay["warnings"] == [why]
+    assert lay["score"] is None
+    json.dumps(lay, allow_nan=False)                     # (a JSON body: no infinity)
+
+    monkeypatch.setattr(cp, "cached_input", lambda linkage, store=None: inp)
+    out = tmp_path / "out"
+    argv = ["made_up", "--store", str(tmp_path / "store"), "--out", str(out), "--cell", "6",
+            "--plan"]
+    for plan in (stops, fits):
+        (tmp_path / f"{plan.name}.json").write_text(json.dumps(plan.to_json()))
+    assert pack_inspect.main([*argv, str(tmp_path / "stops.json")]) == 1
+    m = json.loads((out / "stops.json").read_text())
+    assert m["count"] == 2
+    assert m["missing"] == ["base_stop", "hand_crank", "drive", "passive"]
+    assert len(m["missing_parts"]) == 4
+    assert m["warnings"] == [why]
+    img = np.asarray(Image.open(out / "stops.png").convert("RGB"))[66:92, :800].astype(int)
+    red = (img[..., 0] > 140) & (img[..., 1] < 80) & (img[..., 2] < 80)
+    assert red.sum() > 200                               # the status line, red
+    assert pack_inspect.main([*argv, str(tmp_path / "fits.json"), "--no-sheet"]) == 0
+    m = json.loads((out / "fits.json").read_text())
+    assert (m["count"], m["missing"], m["missing_parts"]) == (6, [], [])
 
 
 @pytest.mark.construction
@@ -2196,6 +2473,9 @@ def test_pack_inspect_draws_and_judges_a_layout(tmp_path):
                            "matrix": up.tolist()}]}
     row = pack_inspect.judge(inp, layout, "hand", tmp_path)
     m = json.loads((tmp_path / "hand.json").read_text())
+    assert pack_inspect.complete(row)
+    assert (m["missing"], m["missing_parts"], m["warnings"]) == ([], [], [])
+    assert m["restraint"]["max_slide_mm"] == max(r["slide_mm"] for r in m["pieces"])
     assert row["overlaps"] == 0
     assert row["unsupported"] == []
     assert m["count"] == 2
@@ -2362,7 +2642,8 @@ def test_the_cradle_packs_in_one_box(key):
     part's packed bounding box (the part moved by its piece's transform, or its own) inside
     the box; judged on the real shapes (each part's tessellation moved, voxelized afresh:
     ``voxpack.metrics``): no two pieces share a cubic millimetre, none is over another that
-    goes in after it, each rests on what is under it (directly or on foam pads); the box no
+    goes in after it, each rests on what is under it (directly or on pads, each a block
+    with room where it stands: ``voxpack.measure_pads``), none missing; the box no
     bigger than :data:`PACK_BOX` (modules: :data:`MODULE_BOX`, off the base board's size);
     the steps name where the cradle link comes off its side. A packs flat, from crank angle
     0. B packs as its board, its two side panels, its cradle box and its hand crank
@@ -2413,6 +2694,10 @@ def test_the_cradle_packs_in_one_box(key):
     assert judged["order_faults"] == [], judged["order_faults"]
     assert p["unsupported"] == [], p["unsupported"]
     assert all(m["rests"] in ("direct", "padded") for m in p["modules"])
+    assert (p["missing"], p["warnings"]) == ([], [])          # every piece placed
+    assert p["score"] is not None
+    pads = [q for m in p["modules"] for q in m["pads"]]       # each a block that fits
+    assert all(q["fits"] and q["height_mm"] > 0 for q in pads), pads
     out = np.asarray(p["box"]["outside_mm"])
     if key in PACK_BOX:
         assert all(out <= PACK_BOX[key]), p["box"]

@@ -261,14 +261,46 @@ per-session folder (tests asserting on the project store expect it empty).
 decanting cradle by its plan (`cradle_pack.PACK_PLANS`) and with none (`--plan default
 auto`, the default), or judges a saved layout (`--layout pack.json`: a
 `/api/cradle/{key}/pack` body, or a `*.layout.json` it wrote), and writes per candidate a
-contact sheet (`build/pack/<linkage>/<name>.png`: four views, three slices, the legend), the
-metrics (`<name>.json`: `voxpack.metrics`) and the layout. `--search --seconds N --workers
-K` anneals round the plan (at most 6 processes); `--split KEY=GLOB` packs a what-if (parts
-off their piece). The first run fabricates and tessellates the cradle (minutes, cold); the
-input is then kept in the store's `pack/` (`cradle_pack.cached_input`), and a run is
-seconds. Its tests are the synthetic ones in `tests/test_cradle.py` (voxels, the drop,
-support and pads, the metrics, the search, the sheet: no fabrication) and the slow
-`test_the_cradle_packs_in_one_box`, which judges each cradle's flat pack on its real shapes.
+contact sheet (`build/pack/<linkage>/<name>.png`: four views, three slices, the legend, the
+pads' cut list), the metrics (`<name>.json`: `voxpack.metrics`) and the layout. The first
+run fabricates and tessellates the cradle (minutes, cold); the input is then kept in the
+store's `pack/` (`cradle_pack.cached_input`), and a run is seconds.
+
+Read the metrics, not only the picture:
+
+- `missing`, `missing_parts`, `warnings`: a plan's step with no room (an `into` or `on`
+  that doesn't fit) stops the packer with the pieces placed so far (`voxpack.Layout`'s
+  `missing`). The sheet's status line is then red, naming the missing pieces and why, and
+  the command exits 1 (`pack_inspect.complete`). Exit 0 means every candidate holds every
+  piece and part; a red line with exit 0 is a verdict (unsupported, overlaps, order faults,
+  a pad with no room), not a broken pack.
+- `pads`: the cut list. `voxpack.support` puts a pad at each corner of what a piece rests on
+  where a gap of up to `PAD_MAX` needs one; `voxpack.measure_pads` measures each on the
+  real meshes: a rectangular block, its footprint cut to the piece over it, `height_mm` the
+  real gap over that footprint (`voxel_mm` the voxels' word beside it), what it is `under`
+  and `on`, an id by the piece's number in the order (`4a`), `fits` false where no block
+  has room. `count`, `volume_cm3` and `tallest_mm` total them; the sheet draws them black.
+- `restraint`, and per piece `free_mm`, `meets`, `slide_mm`: how far each piece slides
+  along x and z (and up) before it meets a neighbour or the box's wall
+  (`voxpack.free_travel`, on the 3 mm cells: the real travel is up to two cells more).
+  `loose` lists the pieces that slide more than the foam's `CLEAR`; spacers drive it empty.
+- `search` (with `--search`): `--seeds N` anneals N seeds (`--workers` at a time, each
+  `--seconds`), keeps the best and reports every run and the spread across them
+  (`voxpack.spread`: the best, median and worst score and box litres, how many seeds came
+  within half a litre of the best). One seed's box is a sample: quote the spread with it.
+
+The search's score (`voxpack.score`) charges a layout's pads by count, volume and the
+tallest (`voxpack.pad_cost`), so of two layouts in one box the one on fewer, smaller pads
+wins. `--split KEY=GLOB` packs a what-if (parts off their piece as a piece of their own):
+every piece keeps the orientation it had whole, the new one its parent's (the piece most
+of its mass came from), so a plan's `down` names the same face; `--relevel KEY` levels a
+piece afresh.
+
+Its tests are the synthetic ones in `tests/test_cradle.py` (voxels, the drop, support and
+pads, the pads' blocks, the free travel, the score, the search and its seeds, a split, a
+plan that stops, the sheet: no fabrication) and the slow `test_the_cradle_packs_in_one_box`,
+which judges each cradle's flat pack on its real shapes (every piece placed, every pad a
+block that fits).
 
 ## The identity gate (`tests/gate/identity_gate.py`)
 

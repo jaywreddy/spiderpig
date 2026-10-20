@@ -1242,8 +1242,9 @@ inside), 3 mm of foam between two pieces (`CLEAR`, one cell all round).
   lowest, then lies nearest a corner, where it rests on what is under it
   (`voxpack.support`): its centre of mass over the convex hull of its contacts (dropped
   straight a piece first meets one point; it may sink 6 mm onto the next ones, `SETTLE`),
-  else over foam pads cut to fill gaps of up to 60 mm under it (`PAD_MAX`; the pads are
-  reported), else it would tip.
+  else over pads filling gaps of up to 60 mm under it (`PAD_MAX`; each measured on the
+  real meshes as a block that fits, its height the real gap: `voxpack.measure_pads`, a cut
+  list), else it would tip.
 - **Plans** (`cradle_pack.PACK_PLANS`, `voxpack.Plan`): a human packer's intent per piece
   (the face down, a quarter turn, a corner, the piece it rests on or nests into, what goes
   in first, why). The packer honours it and picks what it leaves free; a piece it doesn't
@@ -1254,11 +1255,14 @@ contact sheet per candidate (the top, front, side and isometric views, each piec
 colour and numbered in the order it goes in; slices at 25, 50 and 75 % of the height; the
 legend), and the metrics (`voxpack.metrics`, any layout voxelized afresh): the box, the
 true fill (the parts' own volumes over the box's inside), the air per layer, how each piece
-rests (on what, directly, on pads, or not), the real-shape overlaps (cells two pieces share,
-measured again on 1 mm cells), the order's faults, the mass centre's height. `--search`
-anneals the order, the orientations and the corners round the plan (`voxpack.search`, in
-worker processes); `--split` packs a what-if (some parts off their piece: a design change
-before it is made). The cradle page's pack view edits a layout by hand (Edit the packing:
+rests (on what, directly, on pads, or not), the pads' cut list, how far each piece slides
+along the floor before it meets a neighbour or the wall (`voxpack.free_travel`), the
+real-shape overlaps (cells two pieces share, measured again on 1 mm cells), the order's
+faults, the mass centre's height, and the pieces a plan's step had no room for (the sheet
+red, the command's exit 1). `--search` anneals the order, the orientations and the corners
+round the plan (`voxpack.search`, in worker processes; `--seeds N`, the spread across
+them); `--split` packs a what-if (some parts off their piece: a design change before it is
+made; each piece keeps its orientation, `--relevel` levels one afresh). The cradle page's pack view edits a layout by hand (Edit the packing:
 click a piece, drag its arrows in 3 mm steps, R turns it a quarter turn, T tips it; Export
 layout) for `--layout` to judge.
 

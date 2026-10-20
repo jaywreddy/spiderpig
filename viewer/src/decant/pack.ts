@@ -17,11 +17,26 @@ export interface PackModule {
   parts: string[];
   matrix: number[][];       // 4 x 4, row-major
   part_matrix?: Record<string, number[][]>;   // a part's own (a hanging link swung in)
-  rests?: 'direct' | 'padded' | 'none';       // on what it rests (``on``), on foam pads or not
+  rests?: 'direct' | 'padded' | 'none';       // on what it rests (``on``), on pads or not
   on?: string[];
-  pads?: number[][];        // x, z, height (mm) of each foam pad under it
+  pads?: PackPad[];         // the pads under it (``voxpack.measure_pads``)
   down?: string;            // the face it lies on, and its turn from there (degrees)
   spin?: number;
+}
+
+/** A pad under a packed piece: a block cut (or printed) to the real gap between the piece
+ * and what is under it (``voxpack.measure_pads``), mm in the pack's frame. */
+export interface PackPad {
+  id: string;               // its piece's number in the order, a letter: ``4a``
+  footprint: number[];      // x0, z0, x1, z1
+  size_mm: number[];        // x, z
+  height_mm: number;        // the real gap
+  voxel_mm: number;         // the voxels' estimate
+  base_mm: number | null;   // the y it stands at
+  under: string | null;     // the piece's part over it
+  on: string;               // the piece under it, or ``floor``
+  on_part: string | null;
+  fits: boolean | null;     // false: no room for a block there; null: unmeasured (the voxels')
 }
 
 export interface PackData {
@@ -37,6 +52,10 @@ export interface PackData {
   linkage?: string;
   plan?: string;            // the plan it was packed by (``cradle_pack.PACK_PLANS``)
   fill?: number;            // the parts' own volume over the box's inside
+  /** Pieces its plan couldn't place (a step with no room): the layout is part of a pack. */
+  missing?: string[];
+  warnings?: string[];
+  score?: number | null;    // ``voxpack.score``; null when a piece is missing
 }
 
 /** The clip fraction the pack's transforms start from (0, the clip's first frame, if none). */
