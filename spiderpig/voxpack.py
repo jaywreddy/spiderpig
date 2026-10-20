@@ -67,6 +67,7 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from itertools import permutations
+from typing import cast
 
 import numpy as np
 
@@ -1983,7 +1984,7 @@ class _Spacers:
         ys = np.arange(lo[1], hi[1])[None, :]
         mask[runs[:, 0] - lo[0], :, runs[:, 1] - lo[2]] = ((ys >= runs[:, 2:3])
                                                           & (ys < runs[:, 3:4]))
-        lab, _ = ndimage.label(mask)
+        lab, _ = _label(mask)
         carried = np.isin(self.owner[box], self.ids(sp.under))
         holds = set(np.unique(lab[ndimage.binary_dilation(carried) & mask]).tolist())
         for x, z, js, _, _ in sp.pad_seeds:
@@ -2244,11 +2245,10 @@ def spacers(g: Grid, rows: Sequence[dict]) -> list[Spacer]:
 def _split(st: _Spacers, sp: _Spec, cols: np.ndarray) -> list[tuple[_Spec, np.ndarray]]:
     """A spacer's runs by its 6-connected parts (largest first), each with the pads whose
     seeds it holds and its own footprint (its bounds)."""
-    from scipy import ndimage
 
     if not len(cols):
         return []
-    lab, n = ndimage.label(st.mask(cols))
+    lab, n = _label(st.mask(cols))
     if n <= 1:
         return [(sp, cols)]
     out = []
@@ -2364,6 +2364,13 @@ def _grow_merged(st: _Spacers, specs: list[_Spec]) -> list[tuple[_Spec, np.ndarr
         specs = [s for n, s in enumerate(specs) if n not in pair] + [merged]
 
 
+def _label(mask: np.ndarray) -> tuple[np.ndarray, int]:
+    """``scipy.ndimage.label``: a mask's 6-connected parts, numbered from 1, and how many."""
+    from scipy import ndimage
+
+    return cast(tuple[np.ndarray, int], ndimage.label(mask))
+
+
 def _runs(mask: np.ndarray) -> np.ndarray:
     """A mask's cells as one run a column (i, k, j0, j1): its lowest to past its highest."""
     ii, kk = np.nonzero(mask.any(axis=1))
@@ -2396,7 +2403,6 @@ def _trimmed(st: _Spacers, cols: np.ndarray) -> np.ndarray:
     """A spacer that would tip with its overhang off: the columns it doesn't stand on,
     farthest from those it does first, until it stands (:func:`_steady`), but as it was if
     it can't, or if what is left falls apart."""
-    from scipy import ndimage
 
     on = np.array([j0 <= 1 or st.occ[i, j0 - 1, k] for i, k, j0, _ in cols.tolist()])
     if not on.any():
@@ -2409,7 +2415,7 @@ def _trimmed(st: _Spacers, cols: np.ndarray) -> np.ndarray:
             continue
         keep[n] = False
         if _steady(st, cols[keep]):
-            if ndimage.label(st.mask(cols[keep]))[1] == 1:
+            if _label(st.mask(cols[keep]))[1] == 1:
                 return cols[keep]
             break
     return cols

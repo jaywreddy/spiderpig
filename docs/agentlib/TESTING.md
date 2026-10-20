@@ -316,16 +316,30 @@ Read the metrics, not only the picture:
   the command exits 1 (`pack_inspect.complete`). Exit 0 means every candidate holds every
   piece and part; a red line with exit 0 is a verdict (unsupported, overlaps, order faults,
   a pad with no room), not a broken pack.
-- `pads`: the cut list. `voxpack.support` puts a pad at each corner of what a piece rests on
-  where a gap of up to `PAD_MAX` needs one; `voxpack.measure_pads` measures each on the
-  real meshes: a rectangular block, its footprint cut to the piece over it, `height_mm` the
-  real gap over that footprint (`voxel_mm` the voxels' word beside it), what it is `under`
-  and `on`, an id by the piece's number in the order (`4a`), `fits` false where no block
-  has room. `count`, `volume_cm3` and `tallest_mm` total them; the sheet draws them black.
+- `spacers` (since pack turn 2, 2026-10-20): the printed spacers the payload carries
+  (`voxpack.spacers`, the layout's `spacers`, each judged as a piece of its own at its
+  place in the order: `cradle_pack.in_order`). Each is a block of the judge's empty 3 mm
+  cells, one run a column: a *support* where a piece's pads were (from what is under it
+  to the piece's underside, its lips round both), a *restraint* beside a piece that would
+  still slide (in the gap that way, standing on what is under it), each grown until it
+  doesn't slide itself; `count`, `volume_cm3` (the solid) and `grams` (as printed,
+  `cradle_pack.SPACER_FILL`), and per spacer its `key` ("spacer_01" .., in the order they
+  go in), `label`, `size_mm`, `why` (`support`, `restraint +x` ..), what it stands `on`
+  and its `words`. The build prints them (`print/pack_spacer_*.stl`, TPU 95A, the BOM's
+  printed rows) and the guide places them (B's "Into its box" steps).
+- `pads`: what the spacers replace, on a layout judged without them (a payload's modules
+  carry them). `voxpack.support` puts a pad at each corner of what a piece rests on where a
+  gap of up to `PAD_MAX` needs one; `voxpack.measure_pads` measures each on the real
+  meshes: a rectangular block, its footprint cut to the piece over it, `height_mm` the real
+  gap over that footprint (`voxel_mm` the voxels' word beside it), what it is `under` and
+  `on`, an id by the piece's number in the order (`4a`), `fits` false where no block has
+  room. `count`, `volume_cm3` and `tallest_mm` total them; the sheet draws them black. With
+  the spacers in, a piece rests on them and has none.
 - `restraint`, and per piece `free_mm`, `meets`, `slide_mm`: how far each piece slides
   along x and z (and up) before it meets a neighbour or the box's wall
-  (`voxpack.free_travel`, on the 3 mm cells: the real travel is up to two cells more).
-  `loose` lists the pieces that slide more than the foam's `CLEAR`; spacers drive it empty.
+  (`voxpack.free_travel`, on the 3 mm cells: the real travel is up to two cells more, a
+  spacer's one). `loose` lists the pieces (and spacers) that slide more than `CLEAR`
+  (3 mm, one cell). B's is empty; A's has one restraint spacer at 6 mm.
 - `search` (with `--search`): `--seeds N` anneals N seeds (`--workers` at a time, each
   `--seconds`: 60 by default, less when the seeds' rounds would take the search past
   `pack_inspect.SEARCH_BUDGET_S` in all), keeps the best and reports every run and the
@@ -341,10 +355,12 @@ of its mass came from), so a plan's `down` names the same face; `--relevel KEY` 
 piece afresh.
 
 Its tests are the synthetic ones in `tests/test_cradle.py` (voxels, the drop, support and
-pads, the pads' blocks, the free travel, the score, the search and its seeds, a split, a
-plan that stops, the sheet: no fabrication) and the slow `test_the_cradle_packs_in_one_box`,
-which judges each cradle's flat pack on its real shapes (every piece placed, every pad a
-block that fits).
+pads, the pads' blocks, the spacers in their place, the guide's box steps, the free
+travel, the score, the search and its seeds, a split, a plan that stops, the sheet: no
+fabrication) and the slow `test_the_cradle_packs_in_one_box`, which judges each cradle's
+flat pack on its real shapes with its spacers (every piece placed, every pad a block that
+fits and a spacer's, nothing past `PACK_SLIDE`). A pack is about 20 s (B) and 35 s (A)
+with its spacers, warm.
 
 ## The identity gate (`tests/gate/identity_gate.py`)
 

@@ -2315,8 +2315,9 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float, board: bo
     y_n = y_w + w_t                                 # the nut and the knob, on the washer
     nut = difference(_hex_y(fx, zb, af, y_n, y_n + nut_h),
                      _rod_y(fx, zb, d / 2, y_n - 1.0, y_n + nut_h + 1.0))
-    base = [(union([head, shank]), f"m6_carriage_{blen:g}", "screw1"),
-            (washer, WASHER_KEY, "washer1"), (nut, "m6_nut", "nut1")]
+    base: list[tuple[Shape3D, str | None, str]] = [
+        (union([head, shank]), f"m6_carriage_{blen:g}", "screw1"),
+        (washer, WASHER_KEY, "washer1"), (nut, "m6_nut", "nut1")]
     if not board:
         base.append((_knob(fx, zb, y_n), None, "knob"))
     return bracket, side + base, (fx, zb)
