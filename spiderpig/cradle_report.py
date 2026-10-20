@@ -710,7 +710,11 @@ KEEPER_LEAST_RATIO = 10.0   # the keepers' bar: the least grip over the pin's ow
 KEEPER_LOAD_RATIO = 1.5     # and the bench push (cradle.KEEPER_PUSH_N) over the most the steps
 #                             can put on a pin's tip: half the cradle box's weight
 KEEPER_PUSH_MAX_N = 120.0   # its push on, at the bore's nominal interference: by hand, a tube
-#                             over the pin (round 2: 80-105 N dry at the 7.4 mm bore)
+#                             over the pin (round 2: 80-105 N dry at the 7.4 mm bore); at the
+#                             tight end too (the packing review's m1, pack turn 2)
+KEEPER_BORE_TOL = 0.15      # the keeper's bore as printed, either way (cradle.KEEPER's least
+#                             interference is the pin's least less the bore's most)
+PIN_MOST = 7.99             # the clevis pin's most (McMaster's 8 mm, -0.05/-0.01)
 
 
 def keepers(config: BuildConfig, mech) -> dict:
@@ -745,6 +749,7 @@ def keepers(config: BuildConfig, mech) -> dict:
         p = delta * e / (d * ((od ** 2 + d ** 2) / (od ** 2 - d ** 2) + TPU_NU))
         return p * math.pi * d * h
 
+    tight = PIN_MOST - (cr.KEEPER[0] - KEEPER_BORE_TOL)     # (the tightest a print may be)
     rows = []
     for n in names:
         bb = by[n].placed_part().bounding_box()
@@ -756,7 +761,30 @@ def keepers(config: BuildConfig, mech) -> dict:
                      "pin_weight_n": round(w, 3), "grip_least_n": round(least, 2),
                      "push_on_n": round(TPU_FRICTION * normal(d - cr.KEEPER[0], 67.0, od, h),
                                         1),
+                     "push_on_tight_n": round(TPU_FRICTION * normal(tight, 67.0, od, h), 1),
                      "ratio": round(least / max(w, 1e-9), 1)})
+    # the way back (the packing review's M2): the cradle box lowered onto the drive side lying
+    # down, its first pin into its hole, then turned about it until the second lines up:
+    # the box's weight on the second pin's tip, about the first (gravity along the pins;
+    # the box's centre of mass in their plane); <= 0, the box lifts off it
+    box = [b for b in mech.bodies if b.part is not None and b.fab != "display"
+           and body_class(_host(b, by)) == link]
+    kg = [part_mass_kg(config, b) for b in box]
+    com = np.sum([k * np.asarray(mass_mod.part_props(b.placed_part()).com, float)
+                  for k, b in zip(kg, box, strict=True)], axis=0) / max(sum(kg), 1e-9)
+    pins = cr.trip_pins(config.lk)
+    side = next((s for s in "LR" if f"{s}.conn" in by), "L")
+    tips = {}
+    if len(pins) == 2:
+        at = {}
+        for j in pins:
+            bb = by[f"{side}.pin_{j}_pin"].placed_part().bounding_box()
+            at[j] = np.array([(bb.min.X + bb.max.X) / 2, (bb.min.Y + bb.max.Y) / 2])
+        for first, second in (pins, pins[::-1]):
+            v = at[second] - at[first]
+            gap = float(np.linalg.norm(v))
+            tips[f"{first} then {second}"] = round(
+                box_kg * G * float((com[:2] - at[first]) @ v) / gap ** 2, 1)
     return {"bore_mm": cr.KEEPER[0], "pin_d_mm": d, "least_interference_mm": cr.KEEPER[1],
             "tpu_e_mpa": TPU_E, "friction": TPU_STEEL_FRICTION, "rows": rows,
             "least_ratio": min(r["ratio"] for r in rows), "bar": KEEPER_LEAST_RATIO,
@@ -764,7 +792,8 @@ def keepers(config: BuildConfig, mech) -> dict:
             "bench_push_n": cr.KEEPER_PUSH_N,
             "load_ratio": round(cr.KEEPER_PUSH_N / load, 2), "load_bar": KEEPER_LOAD_RATIO,
             "least_over_load": round(min(r["grip_least_n"] for r in rows) / load, 2),
-            "push_on_bar_n": KEEPER_PUSH_MAX_N}
+            "push_on_bar_n": KEEPER_PUSH_MAX_N, "tight_mm": round(tight, 2),
+            "second_tip_n": tips}
 
 
 def take_up(config: BuildConfig, mech) -> dict:

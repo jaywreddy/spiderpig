@@ -3795,7 +3795,10 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
             "drive side panel on "
             f"them and its gearbox, outer plate down: {blocks}.", "drive",
             (f"Its pins {names} stand in their links on their keepers, their clips out: push "
-             "each down by its head, fully home.",),
+             "each down by its head, fully home. Then press each one's tip with a thumb, "
+             f"hard (about {KEEPER_PUSH_N / 9.81:.0f} kg): it mustn't slide; a keeper that "
+             "lets its pin slide has relaxed (reprint it 0.2 mm tighter at home; meanwhile "
+             "hold the box well off that pin's tip).",),
             Scene("pack", "drive", show=("drive", "blocks"),
                   marks=(r"decanter_riser_block\d", pins_re["L"]))),
         ModuleStep(
@@ -3804,7 +3807,11 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
             "down), holding its weight until both pins are in their holes: "
             f"pin {pins[0]} into its hole first (look in from the side)"
             + (f", then turn the box about it and swing the drive side's {nudge} until pin "
-               f"{second} lines up under its hole" if second else "") + ". " + hold,
+               f"{second} lines up under its hole. Pin {pins[0]} first, always: the box's "
+               f"centre of mass lies past it from pin {second}, so with {pins[0]} in its hole "
+               f"the box's weight lifts it off {second}'s tip (the other way round its weight "
+               f"would rest on {pins[0]}'s tip: cradle_report's keepers, second_tip_n)"
+               if second else "") + ". " + hold,
             "box_on", ("Both clips in, from the side, all the way.",),
             Scene("pack", "drive", show=("drive", "box", "blocks"),
                   moves=(("box", 0.0, 45.0, 0.0),), marks=(r"[LR]\.b6",))),
