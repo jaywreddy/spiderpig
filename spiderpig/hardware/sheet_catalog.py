@@ -39,9 +39,10 @@ or 36 x 46 in (varies per material)", min thickness .048 in, "precision linear d
 "Some edges will be sharp", and "Selecting Unfinished at order delivers parts in their
 as-cut state". The 5052 page: "Thicker gauges (.250-.500 in): some dross may appear"; the
 7075 page: "Edge clearance: at least 2x material thickness to prevent microcracks. Avoid
-tight internal corners". No page or table gives the radius a laser leaves in an inside
-corner (re-checked 2026-10-15: :data:`SCS_RULES_AL`'s 0.8 mm stays the joinery plan's
-figure).
+tight internal corners". The radius a laser leaves in an inside corner: none on those
+pages (re-checked 2026-10-15), but its sheet-cutting guidelines (fetched 2026-10-20) say
+"Approximately the kerf width (very small)" (:data:`SCS_LASER_CORNER_R`: a cradle's parts;
+:data:`SCS_RULES_AL`'s 0.8 mm, the joinery plan's figure, stays the walkers').
 
 Fetched 2026-10-04:
 
@@ -65,9 +66,9 @@ Fetched 2026-10-04:
   in my design?": no, draw the part at size; a compensated file comes back off size), so
   its sheets' ``kerf_mm`` is 0.
 
-The inside-corner radius SendCutSend cuts in aluminium (0.8 mm) is the joinery plan's
-figure: no page gives one (re-checked 2026-10-15); the laser's in acrylic is about its kerf
-(0.1 mm). Prices are estimates (neither service publishes a table: a DXF upload quotes):
+The inside-corner radius SendCutSend cuts in aluminium: the walkers' rules keep the joinery
+plan's 0.8 mm, a cradle's parts are judged on the guidelines' kerf (:data:`SCS_LASER_CORNER_R`,
+2026-10-20); the laser's in acrylic is about its kerf (0.1 mm). Prices are estimates (neither service publishes a table: a DXF upload quotes):
 a walker's per 300 x 300 mm of nested parts, a decanting cradle's cutting a fit on live
 quotes (:data:`hardware.bom.CRADLE_CUT_FITS`).
 
@@ -105,10 +106,23 @@ so the sheet a layout draws is only a page."""
 
 SCS_SPEC_URL = "https://app.sendcutsend.com/materials?sku={sku}&include_datasheet=true"
 SCS_DEBURR_URL = "https://sendcutsend.com/services/deburring-services/"
-SCS_DEBURR_MM = (1.0 * IN, 3.0 * IN)
-"""SendCutSend deburrs (by default, free) only a part at least 1 x 3 in (its spec tables'
-"Min deburring part size", and its deburring page, both fetched 2026-10-15): a narrower or
-shorter part arrives as cut, its exit face's dross on it."""
+SCS_DEBURR_MM = (0.995 * IN, 3.0 * IN)
+"""SendCutSend deburrs (by default, free) only a part at least 0.995 x 3 in: its quoting
+app's limit (the spec API's ``deburring`` operation, ``min_length`` 0.995 and
+``min_length_max`` 3.0 in on every aluminium SKU, fetched 2026-10-20 by design review round
+3's laser-cut parts review), which its spec tables and deburring page round to "1 x 3 in"
+(fetched 2026-10-15). A narrower or shorter part arrives as cut, its exit face's dross on
+it."""
+SCS_LASER_CORNER_R = 0.3
+"""The radius SendCutSend's laser leaves in an inside corner: "Approximately the kerf width
+(very small)" (its sheet-cutting guidelines, https://sendcutsend.com/guidelines/sheet-cutting/,
+fetched 2026-10-20: the router's ".063 in", the waterjet's ".032 in"), the kerf there being
+the gap common-nested parts get, ".006 to .012 in depending on material": 0.3 mm, the larger.
+A decanting cradle's laser-cut parts are judged on it, every tangent break of a cut-out read
+as a corner (:func:`manufacture.inside_corners`: a keyway's square end on its round bore had
+passed on the bore's arc); the walkers' aluminium keeps :data:`SCS_RULES_AL`'s 0.8 mm and the
+arcs-only reading until a walker change of its own (their audits are the identity gate's
+baseline, as :data:`DEBURR_CHECKED`)."""
 SCS_DEBURR_MAX_MM = (36.0 * IN, 46.0 * IN)
 """... and at most 36 x 46 in in aluminium (the tables; the page: "24 x 46 in or 36 x 46 in
 (varies per material)")."""

@@ -29,7 +29,12 @@ below), min part .187 x .375 in (4.75 x 9.53 mm), kerf compensated by the servic
 * **inside corners**: a pocket's corners come out ``corner_r`` round (SendCutSend in
   aluminium: 0.8 mm), so a pocket that must take a square corner (a hex pocket for a nut or
   a bolt head) needs corner reliefs at least that round: a pocket of straight edges only,
-  or with relief arcs tighter than that, is reported;
+  or with relief arcs tighter than that, is reported. A decanting cradle's parts
+  (``kerf_corners``: :func:`check` on a cradle) are read corner by corner
+  (:func:`inside_corners`: every tangent break turning round the cut-out, so a keyway's
+  square end on a round bore is seen, which the arcs alone hid) against SendCutSend's
+  published laser radius, about its kerf
+  (:data:`hardware.sheet_catalog.SCS_LASER_CORNER_R`);
 * **the DXF matches the solid** (``dxf``, an error): each part's contours as
   :func:`layout.save_sheets` emits them (exact lines and arcs), read back and measured
   against the solid's section (:func:`layout.fidelity`): no farther off than
@@ -162,9 +167,111 @@ def dxf_issue(body, fid: dict) -> dict | None:
                    f"flatten its curves within {CHORD_TOL:g} mm through their endpoints"}
 
 
-def part_issues(body, key: str, sketch=None) -> list[dict]:
+BREAK_DEG = 0.5         # two edges meeting at more than this: a corner, not a tangent join
+
+
+def inside_corners(wire) -> list[float]:
+    """A cut-out's inside corners, the part's (where its edge turns round the cut-out's
+    inside, so the beam leaves its own radius there), each one's radius: 0 at a tangent
+    break (two edges meeting at an angle, :data:`BREAK_DEG`), an arc's radius where the
+    cut-out lies on its centre's side (a fillet, a relief). A break the other way (a corner
+    of the part pointing into the cut-out: a keyway's mouth on its bore, a dog-bone's
+    edges) is cut sharp and isn't one."""
+    from OCP.GeomAbs import GeomAbs_Circle
+    from OCP.gp import gp_Pnt, gp_Vec
+
+    from spiderpig.layout import _ordered_edges
+
+    edges = _ordered_edges(wire)
+    if not edges:
+        return []
+
+    def tangent(c, u: float, way: float) -> tuple[float, float]:
+        p, v = gp_Pnt(), gp_Vec()
+        c.D1(u, p, v)
+        n = math.hypot(v.X(), v.Y()) or 1.0
+        return way * v.X() / n, way * v.Y() / n
+
+    pts = []
+    for c, u0, u1 in edges:
+        for k in range(8):
+            p = c.Value(u0 + (u1 - u0) * k / 8)
+            pts.append((p.X(), p.Y()))
+    area = sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1],
+                                                               strict=True))
+    inward = 1.0 if area > 0 else -1.0      # a counter-clockwise wire turns left round it
+    out: list[float] = []
+    for i, (c, u0, u1) in enumerate(edges):
+        way = 1.0 if u1 >= u0 else -1.0
+        if c.GetType() == GeomAbs_Circle:
+            ta, tm = tangent(c, u0, way), tangent(c, (u0 + u1) / 2, way)
+            if (ta[0] * tm[1] - ta[1] * tm[0]) * inward > 0:
+                out.append(float(c.Circle().Radius()))
+        cn, v0, v1 = edges[(i + 1) % len(edges)]
+        a = tangent(c, u1, way)
+        b = tangent(cn, v0, 1.0 if v1 >= v0 else -1.0)
+        cross, dot = a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]
+        if math.degrees(math.atan2(abs(cross), dot)) > BREAK_DEG and cross * inward > 0:
+            out.append(0.0)
+    return out
+
+
+def _corner_issue(body, sh, pockets, kerf_corners: bool) -> dict | None:
+    """The ``corner`` rule over ``pockets`` (a warning, the first pocket that breaks it):
+    on the sheet's ``corner_r`` by its arcs (a pocket of three straight edges or more), or
+    (``kerf_corners``) every inside corner against the laser's published radius."""
+    from spiderpig.hardware.sheet_catalog import SCS_LASER_CORNER_R
+
+    if kerf_corners:
+        least = SCS_LASER_CORNER_R if sh.service == "SendCutSend" else sh.corner_r
+        for wire in pockets:
+            sharp = [r for r in inside_corners(wire) if r < least - TOL]
+            if not sharp:
+                continue
+            tight = min(sharp)
+            return {"rule": "corner", "part": body.name, "level": "warning",
+                    "value": rounded(tight, 2), "limit": least,
+                    "detail": (f"a cut-out with {len(sharp)} inside corner"
+                               f"{'s' if len(sharp) > 1 else ''} "
+                               + ("sharp" if tight == 0 else f"{fixed(tight, 2)} mm round")
+                               + f": {sh.service}'s laser leaves about its kerf, {least:g} mm, "
+                               f"in an inside corner"),
+                    "why": "a part with square corners seats in it only if its own corners "
+                           f"are rounder than {least:g} mm (a key's chamfer, a printed part's "
+                           "nozzle-rounded corners are; a hex nut's sharp ones may not be)",
+                    "fix": f"harmless if the mating part's corners are rounder than {least:g} "
+                           "mm; else dog-bone or T-bone reliefs, or round the mating part's "
+                           "corners"}
+        return None
+    for wire in pockets:
+        edges = wire.edges()
+        arcs = [e.radius for e in edges if e.geom_type == GeomType.CIRCLE]
+        straight = [e for e in edges if e.geom_type == GeomType.LINE]
+        if len(straight) < 3:
+            continue                     # a slot or a rounded cut-out, not cornered
+        tight = min(arcs, default=0.0)
+        if tight < sh.corner_r - TOL:
+            return {"rule": "corner", "part": body.name, "level": "warning",
+                    "value": rounded(tight, 2),
+                    "limit": sh.corner_r,
+                    "detail": (f"a pocket of {len(straight)} straight edges with "
+                               + (f"{fixed(tight, 2)} mm corner reliefs" if arcs else
+                                  "sharp corners")
+                               + f": {sh.service} cuts inside corners {sh.corner_r:g} "
+                               f"mm round in {sh.material}"),
+                    "why": "a square-cornered part (a nut, a bolt head, a standoff's "
+                           "hex, a servo's corner) won't seat in a rounded corner",
+                    "fix": f"dog-bone or T-bone corner reliefs of at least "
+                           f"{sh.corner_r:g} mm radius, or round the mating part's "
+                           "corners"}
+    return None
+
+
+def part_issues(body, key: str, sketch=None, kerf_corners: bool = False) -> list[dict]:
     """The rules ``body`` breaks on sheet ``key``: ``{"rule", "part", "value", "limit",
-    "detail"}`` each (empty: none). ``sketch``: its section when the caller has it."""
+    "detail"}`` each (empty: none). ``sketch``: its section when the caller has it.
+    ``kerf_corners``: the ``corner`` rule corner by corner on the laser's published radius
+    (a decanting cradle's: :func:`check`)."""
     sh = sheet(key)
     out: list[dict] = []
     if sketch is None:
@@ -261,28 +368,8 @@ def part_issues(body, key: str, sketch=None) -> list[dict]:
                         "fix": "merge the cut-outs into one cut, move or shrink one, or widen "
                                "the plate there (the limit scales with the thickness)"})
     if sh.metal and sh.corner_r > 0:     # (a laser's kerf in acrylic: sharp enough)
-        for wire in pockets:
-            edges = wire.edges()
-            arcs = [e.radius for e in edges if e.geom_type == GeomType.CIRCLE]
-            straight = [e for e in edges if e.geom_type == GeomType.LINE]
-            if len(straight) < 3:
-                continue                     # a slot or a rounded cut-out, not cornered
-            tight = min(arcs, default=0.0)
-            if tight < sh.corner_r - TOL:
-                out.append({"rule": "corner", "part": body.name, "level": "warning",
-                            "value": rounded(tight, 2),
-                            "limit": sh.corner_r,
-                            "detail": (f"a pocket of {len(straight)} straight edges with "
-                                       + (f"{fixed(tight, 2)} mm corner reliefs" if arcs else
-                                          "sharp corners")
-                                       + f": {sh.service} cuts inside corners {sh.corner_r:g} "
-                                       f"mm round in {sh.material}"),
-                            "why": "a square-cornered part (a nut, a bolt head, a standoff's "
-                                   "hex, a servo's corner) won't seat in a rounded corner",
-                            "fix": f"dog-bone or T-bone corner reliefs of at least "
-                                   f"{sh.corner_r:g} mm radius, or round the mating part's "
-                                   "corners"})
-                break
+        if (corner := _corner_issue(body, sh, pockets, kerf_corners)) is not None:
+            out.append(corner)
     return out
 
 
@@ -291,8 +378,13 @@ def check(mech, default: str, dxf: bool = True) -> dict:
     {rule: count}, "issues": [...], "sheets": {key: label}, "kerf": {key: mm}, "dxf":
     {part: fidelity}, "dxf_worst_mm"}`` (the issues worst first per rule: the least edge,
     the smallest hole or part, the DXF farthest off). ``dxf``: also read each part's
-    emitted contours back against its solid (:func:`layout.fidelity`, the ``dxf`` rule)."""
+    emitted contours back against its solid (:func:`layout.fidelity`, the ``dxf`` rule).
+    A decanting cradle (``mech.meta["cradle_linkage"]``) has its inside corners read corner
+    by corner (``kerf_corners``: :func:`part_issues`); a walker's audit, the identity gate's
+    baseline, keeps the arcs-only reading."""
     from spiderpig.layout import sheet_kerf
+
+    kerf_corners = bool((getattr(mech, "meta", None) or {}).get("cradle_linkage"))
 
     issues: list[dict] = []
     sheets: dict[str, str] = {}
@@ -307,7 +399,7 @@ def check(mech, default: str, dxf: bool = True) -> dict:
             sketch = _profile(b)
         except Exception:   # noqa: BLE001 - a part that won't section: nothing to check here
             continue
-        found = part_issues(b, key, sketch)
+        found = part_issues(b, key, sketch, kerf_corners)
         if dxf:
             fid = fidelity(sketch)
             fids[b.name] = {k: (rounded(v, 5) if isinstance(v, float) else v)
