@@ -41,9 +41,11 @@ display).
 
 ``--search`` anneals the order, the orientations and the corners round the plan
 (:func:`spiderpig.voxpack.search`, ``--seeds`` seeds, ``--seconds`` each, ``--workers``
-processes at once, at most 6); its best is the ``search`` candidate, its choices in its
-layout's ``seq``, and the spread across the seeds (:func:`spiderpig.voxpack.spread`) in its
-metrics' ``search``: one seed's answer is a sample, so quote the spread with it.
+processes at once, at most 6; without ``--seconds``, 60 s a seed, less when the seeds'
+rounds would take more than :data:`SEARCH_BUDGET_S` in all); its best is the ``search``
+candidate, its choices in its layout's ``seq``, and the spread across the seeds
+(:func:`spiderpig.voxpack.spread`) in its metrics' ``search``: one seed's answer is a
+sample, so quote the spread with it.
 
 ``--split KEY=GLOB`` packs a what-if (the parts come off their pieces as one of their own):
 every piece keeps the orientation it had whole, the new one its parent's (``--relevel KEY``
@@ -82,6 +84,26 @@ VIEWS = {
 }
 CAPTIONS = {"top": ("top", 0, 2), "front": ("front", 0, 1), "side": ("side", 2, 1),
             "iso": ("isometric", None, None)}
+
+
+SEARCH_SECONDS = 60.0
+"""A seed's anneal by default (``--seconds``)."""
+SEARCH_BUDGET_S = 150.0
+"""A ``--search``'s whole time when ``--seconds`` isn't given: its rounds of ``--workers``
+seeds at once share it, each round :data:`SEARCH_SECONDS` at most, so a default
+``pack-inspect --search`` (with the input's first fabrication and the sheets) stays an
+agent's step, under 4 minutes."""
+
+
+def search_seconds(seeds: int | None, processes: int) -> float:
+    """Each seed's anneal when ``--seconds`` isn't given: :data:`SEARCH_SECONDS`, or less when
+    ``seeds`` (default one per process) take more rounds of ``processes`` at once (one after
+    another with ``SPIDERPIG_WORKERS=0`` or one process) than :data:`SEARCH_BUDGET_S` holds."""
+    from spiderpig import workers
+
+    n = max(1, seeds if seeds is not None else processes)
+    rounds = math.ceil(n / processes) if workers.enabled() and processes > 1 else n
+    return min(SEARCH_SECONDS, SEARCH_BUDGET_S / rounds)
 
 
 def _rgb(hex_: str) -> tuple[int, int, int]:
@@ -482,7 +504,9 @@ def main(argv=None) -> int:
                          "auto, or none with --layout")
     ap.add_argument("--search", action="store_true",
                     help="anneal the order, orientations and corners round the (first) plan")
-    ap.add_argument("--seconds", type=float, default=60.0, help="the search's time (60)")
+    ap.add_argument("--seconds", type=float, default=None,
+                    help="each seed's anneal (60; less when the seeds' rounds would take the "
+                         f"search past {SEARCH_BUDGET_S:g} s in all)")
     ap.add_argument("--workers", type=int, default=4,
                     help="the search's processes at once (4, at most 6)")
     ap.add_argument("--seed", type=int, default=0, help="the search's first seed (0)")
@@ -547,12 +571,15 @@ def main(argv=None) -> int:
         name, plan = _plan_arg((args.plan or ["default"])[0], linkage)
         t = time.perf_counter()
         _, _, items, _ = cradle_pack.pack_items(inp, splits, args.relevel)
-        best = vp.search(items, plan, args.seconds, min(max(1, args.workers), 6), args.seed,
-                         cell, log=log.info, seeds=args.seeds)
+        procs = min(max(1, args.workers), 6)
+        seconds = (args.seconds if args.seconds is not None
+                   else search_seconds(args.seeds, procs))
+        best = vp.search(items, plan, seconds, procs, args.seed, cell, log=log.info,
+                         seeds=args.seeds)
         lay = cradle_pack.pack_input(inp, plan, cell, seq=best.seq, splits=splits,
                                      relevel=args.relevel)
         lay["plan"] = f"search round {plan.name if plan else 'auto'}"
-        lay["search"] = {"seconds": args.seconds, "first_seed": args.seed,
+        lay["search"] = {"seconds": seconds, "first_seed": args.seed,
                          **vp.spread(best.runs), "runs": best.runs}
         cands.append((tag + "search", lay))
         log.info("search: %.1f s, score %.1f", time.perf_counter() - t, best.score)

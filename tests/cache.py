@@ -452,6 +452,23 @@ def cached_product(cfg, t: float = 1.0, *, fresh: bool = False):
     return _mechanism("product", cfg, t, build, fresh)
 
 
+def own_product(cfg, t: float = 1.0):
+    """:func:`cached_product`'s fabrication as the caller's own object, read from its entry
+    again (0.1 s) as :func:`spiderpig.fabcache.fabricated` hands one out: a caller that
+    changes it (``spiderpig build`` adds its sheet lines to ``bom_extras``) changes nobody
+    else's. Built afresh when the cache is off or holds no entry."""
+    cfg = replace(cfg, robot=False)
+    if enabled():
+        cached_product(cfg, t)
+        entry = _entry("product", cfg, t)
+        if entry.is_dir():
+            try:
+                return load_mechanism(entry)
+            except Exception as e:      # noqa: BLE001 - fabricated instead, never fatal
+                log.warning("%s: unreadable cache entry (%s): fabricating", entry, e)
+    return cached_product(cfg, t, fresh=True)
+
+
 # ---------------------------------------------------------------------------
 # a prebuilt store
 # ---------------------------------------------------------------------------
