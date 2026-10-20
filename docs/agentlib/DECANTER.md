@@ -411,7 +411,7 @@ stops there:
     cap").
     - Each side is then a deep box through its front leg.
   - The strut from the hinge G back to the gearbox at O is 96 mm wide (`Stand.wide`; 48
-    until the redesign), the legs from O 40 mm and the rail 34: O is held across the plate
+    until the redesign), the legs from O 40 mm and the rail 40: O is held across the plate
     only by its members, the legs from O leaned on the strut, and with them it takes the
     gearbox's turn out of the plate there.
   - Nothing crosses the bay over the mouth.
@@ -1556,7 +1556,8 @@ at the cap):
   40 mm wide.
   - Its posts then hold their ends; the inner plate's legs need no widening.
   - The gearbox's turn goes mostly into the strut G-O, so it is 96 mm wide (48 before). The
-    legs from O (Ff-O, O-Fm, O-Fr) are 40 and the rail 34 mm, 5 mm higher.
+    legs from O (Ff-O, O-Fm, O-Fr) are 40 and the rail 40 mm, 8 mm higher: its edge and
+    the 40 mm leg to E1 0.5 mm over the board.
 - Every new column is the stand's own: a NETRF12 of the side's post length on M6 x 16
   A2-70 button heads and DIN 125 washers. The guide's column steps take them as they are.
 - No column stands in a link's sweep: the nearest, B's E2, is 94 mm from the crank's. The

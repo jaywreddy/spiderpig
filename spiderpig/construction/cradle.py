@@ -433,7 +433,8 @@ def rail_y(rail_r: float) -> float:
 
 
 _RAIL_B = 22.0          # B's rail: 44 mm (its columns E1 and E2 on it)
-_RAIL_A = 17.0          # A's rail: 34 mm (its column E1 on it)
+_RAIL_A = 20.0          # A's rail: 40 mm (its column E1 on it; the inner leg to E1 40 mm wide,
+#                         its edge 0.5 mm over the board as the rail's)
 
 STANDS: dict[str, Stand] = {
     # A: the hinge G at the mouth, the crank O 173 behind and 202 under it. The outer plate
@@ -470,7 +471,7 @@ STANDS: dict[str, Stand] = {
         # across the plate (the legs from O buckled sideways at walking SF 3.0), and with the
         # legs from O it takes the gearbox's turn out of the plate there: 96 mm wide and the
         # legs 40 (the side frames' redesign, 2026-10-20: at 48 and 24 the strut held the
-        # clutch's cap at 0.63 at O on the side as one frame); the rail 34 mm; the inner
+        # clutch's cap at 0.63 at O on the side as one frame); the rail 40 mm; the inner
         # plate's G-D1 23.6 mm, so the 12 mm front tie rod Tf1 passes it by the plan's margin
         # (design review round 2's M1, 2026-10-15: at 24 it came 6.9 mm from it)
         wide={("G", "O"): 48.0, ("Ff", "O"): 20.0, ("O", "Fm"): 20.0, ("O", "Fr"): 20.0,

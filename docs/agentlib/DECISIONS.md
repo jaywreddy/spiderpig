@@ -2357,7 +2357,8 @@ plate at O. Both are fixed; `OPEN_AT_CAP` is empty and the tests assert again (A
     more 30° from the toggles.
   - The side's stiffness across at O1 is 6.35 N/mm (2.67), and a 20 N push sways it 1.57 mm.
 - **A, built:** a column E1 on the rail under D3 with the inner leg down to it (40 mm). The
-  strut G-O is 96 mm wide (48), the legs from O 40, the rail 34 and 5 mm up.
+  strut G-O is 96 mm wide (48), the legs from O 40, the rail 40 and 8 mm up (at 34 mm,
+  5 up, the leg to E1 dipped 2.5 mm into the board: the clash test found it).
   - At the cap: the outer plate 1.37 (G-O at O), the tie rods 1.38, pillar G 1.40, the
     inner plate 1.43, column D3 1.58. Walking 3.94 (the keyway). Over the turn 1.36.
   - G takes 8.64 N/mm across (2.92). Two columns (-100 and 60 mm) gave 1.38: one does.
