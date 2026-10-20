@@ -22,6 +22,7 @@ mise run build      # STEP/STL/DXF/BOM -> build/ (-- --profile: stage timings; a
 mise run test-<module>  # one module's fast tier, seconds: linkage, planner, construction,
                         # hardware, strength, api, sim, server. Iterate with these
 mise run test-viewer    # the viewer's tsc + vitest
+mise run test-cradle    # the decanting cradles' fast tests (~1 min); the slow ones in chunks
 mise run test-quick # the quick tier: -m 'not slow and not e2e', xdist -n 4
 mise run test-fixtures  # rewrite the recorded fixtures (after an engine edit: they warn stale)
 mise run test       # pytest, serial (runs viewer-build first; -m e2e for browser tests)
@@ -289,3 +290,7 @@ both sides.
   write under `tmp_path`, free ports only.
 - Iterate with the module tiers; before handing back run the gate on product edits and the
   full suite (`mise run remote-test`, or locally `pytest -m 'not e2e' -n 12`).
+- An agent's step stays under 5 min (a longer one outlives the prompt cache): no
+  foreground wait loops; a longer job runs in the background in chunks of a few minutes
+  (the slow cradle tests by `docs/agentlib/TESTING.md`'s Chunks, never the whole file; the
+  gate per design, `--designs`); a step that goes over is reported and its cause found.

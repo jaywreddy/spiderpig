@@ -72,6 +72,10 @@ run         = "uv run pytest"
 description = "The quick tier for iteration: pytest -m 'not slow' on local cores (pass more pytest args after --)"
 run         = "uv run pytest -p no:warnings -m 'not slow and not e2e' -n 4 --dist worksteal"
 
+[tasks."test-cradle"]
+description = "The decanting cradles' fast tests (tests/test_cradle.py -m 'not slow', about a minute); the slow ones by id, each under 5 min (docs/agentlib/TESTING.md, Chunks)"
+run         = "uv run pytest tests/test_cradle.py -p no:warnings -m 'not slow and not e2e' -n 4 --dist worksteal"
+
 # The module tiers (docs/agentlib/TESTING.md): -m "<module> and not slow and not e2e" -n 4,
 # on the fabrication cache (tests/cache.py); pass pytest args after --.
 [tasks."test-linkage"]
