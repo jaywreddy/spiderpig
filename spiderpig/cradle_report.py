@@ -2149,8 +2149,9 @@ VERDICT = {
                        "it doesn't: the gearbox's marks, the use limits), though at that cap "
                        "its side frames don't all hold 1.3 (open since design review round 2: "
                        "OPEN_AT_CAP), the gearbox carries the bottle and the cap within its "
-                       "maximum, its 130 mm crank turns under 22 N once the gearbox is run in, "
-                       "the stand tips past 15° (its bar)."),
+                       "maximum, its 130 mm crank turns at the 22 N bar once the gearbox is run "
+                       "in (open since design review round 2's structure: OPEN_GRIP), the "
+                       "stand tips past 15° (its bar)."),
 }
 """Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why: the
 bars ``tests/test_cradle.py`` holds, not a copied number; :func:`report`'s ``verdict`` adds its
@@ -2160,26 +2161,39 @@ design, first (design review round 2's M5: the page had opened on A, "the one to
 OPEN_AT_CAP: dict[str, dict[str, str]] = {
     "decanter_rcm": {
         "frame:outer": "its front leg from column D2 to the foot twists as the side's box "
-                       "turns out of its plane (0.62); its rear leg O-Fr carries the "
-                       "gearbox's turn down to the foot (0.89)",
+                       "turns out of its plane (0.6); its rear leg O-Fr carries the "
+                       "gearbox's turn down to the foot (0.99)",
         "pillar:O2": "the inner plate can't hold its posts' ends across the line they stand "
                      "on, so the box sways in the drive's direction and O2 bends nearly as a "
-                     "cantilever off the outer plate (0.75)",
-        "column:D2": "the same sway (1.0)"},
+                     "cantilever off the outer plate (0.73)",
+        "column:D2": "the same sway (0.97)"},
     "decanter_hinge": {
-        "frame:outer": "its front leg from column D3 to the foot twists (0.45); the strut G-O "
+        "frame:outer": "its front leg from column D3 to the foot twists (0.41); the strut G-O "
                        "and the leg Ff-O at the gearbox carry its turn out of their plane "
-                       "(0.69, 0.84)",
-        "frame:inner": "its leg D2-D3 out of its plane (1.19)",
-        "column:D3": "the side's sway (0.9)"},
+                       "(0.63, 0.77)",
+        "frame:inner": "its leg D2-D3 out of its plane (1.09)",
+        "column:D3": "the side's sway (0.83)",
+        "pillar:G": "the hinge's pillar in the same swaying box (1.25; 1.38 at round 1's "
+                    "61.3 N·m, under 1.3 since the merged drive's cap, 67.1)"},
 }
 """Per cradle, the parts that fall under the jam floor (``cradle_drive.JAM_FLOOR``) at the
 hand crank's clutch's cap since design review round 2 (2026-10-15) rated each side's posts
 and both frame plates as one frame (``cradle_structure.side_frame``), and why: an open item,
 the user's call (``docs/agentlib/DECANTER.md``, "The side frames at the clutch's cap": a box
-toward the rear, with the drive's gearbox mount). Walking they hold (B at SF 2.86 or more,
-A at 3.74). The tests hold every other part at 1.3 and nothing else under it, then xfail on
-these; the report's verdict names them."""
+toward the rear, with the drive's gearbox mount). The jam SFs at the caps of round 2's
+drive on the merged cradle (63.7 N·m on B, 67.1 on A). Walking they hold (B at SF 2.83 or
+more, A at 3.71). The tests hold every other part at 1.3 and nothing else under it, then
+xfail on these; the report's verdict names them."""
+
+OPEN_GRIP: dict[str, str] = {
+    "decanter_hinge": "a full 6 L's worst start at A's 130 mm grip, run in, is 21.97 N: at "
+                      "the 22 N bar to the report's tenth since round 2's structure (the 12 mm "
+                      "tie rods, 0.3 kg on the cradle box) met round 2's drive; 132.5 mm gives "
+                      "21.6 N and 12.2 mm of hand room, 7.5 mm over Figure 13's 125 (the 5 mm "
+                      "over is the user's call of 2026-10-15)"}
+"""Per cradle, a grip open at MIL-STD-1472H's light-load bar (``handcrank.LIGHT_LOAD_N``):
+the user's call (``docs/agentlib/DECANTER.md``, "The drive"). The tests hold it no worse
+than the bar, then xfail on it."""
 
 
 def motion(config: BuildConfig, n: int = 360) -> dict:

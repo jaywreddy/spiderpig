@@ -80,7 +80,7 @@ from spiderpig.construction.robot import prefixed
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import CLEARANCE, Screw, screw
 from spiderpig.mechanism import Body, Mechanism
-from spiderpig.shapes import Cut, Shape3D, cut_holes, difference, disc, moved, pill, union
+from spiderpig.shapes import Cut, Rect, Shape3D, cut_holes, difference, disc, moved, pill, union
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
 
 LIP_HEIGHT = 550.0      # the bottle's mouth over the table (mm): at rest, 50° neck up, the
@@ -621,6 +621,17 @@ class CradleStand(Group):
         for key, members in ((FRAME_OUTER, stand.outer), (FRAME_INNER, stand.inner)):
             for a, b in members:
                 out.pad(key, xy(a), xy(b), stand.wide.get((a, b), stand.member_r))
+        # nothing of the outer plate below the board's top: a member wider than the rail
+        # ending at a foot (B's 40 mm front leg) is cut off there, not rounded into the board
+        # (its section through the foot stays whole; the rail and the feet's bosses end
+        # 0.5 mm and less over the board, untouched)
+        feet = [np.asarray(xy(n), float) for n in stand.feet]
+        if feet:
+            nodes = [np.asarray(xy(n), float) for pr in stand.outer for n in pr]
+            x0 = min(p[0] for p in nodes) - 100.0
+            x1 = max(p[0] for p in nodes) + 100.0
+            board = min(p[1] for p in feet) - (_FOOT_Y - BASE_TOP)
+            out.cut(FRAME_OUTER, Rect(((x0 + x1) / 2, board - 50.0), (x1 - x0, 100.0)))
         frame = topo.frame_bodies[0]
         hole = TIE_HOLE
         z0, z1 = build.z(0)[1], build.z(build.top)[0]      # between the plates
@@ -1181,8 +1192,12 @@ FRONT_GUIDE = (18.0, 3.0, 3.7)      # the box guide's tall side (review round 2,
 #                                     onto that wall's top and the +z wall's foot, and the
 #                                     taller that pair the less it binds (front_drawer)
 FRONT_FLOOR = -43.0           # its floor's top (the tie rods' tops, at -42, stand proud)
-FRONT_TAB = (56.0, 70.0, -28.0)     # the V block's tab into the +z wall: x span, its top
-FRONT_JACK = (63.0, 40.0)     # the thumbscrew (x, z): an M6 x 60 hex screw, fully threaded
+FRONT_TAB = (56.0, 72.0, -28.0)     # the V block's tab into the +z wall: x span, its top
+FRONT_JACK = (65.0, 40.0)     # the thumbscrew (x, z): an M6 x 60 hex screw, fully threaded;
+#                               midway between the front tie rods, its tip in the carrier's
+#                               floor 1 mm from each 12 mm rod (design review round 2's M1:
+#                               at 63, beside a 10 mm rod, it met the 12 mm Tf1; the tab 2 mm
+#                               longer for its nut's pocket)
 FRONT_NUT_Y = -40.0           # its nut's underside in the tab, the block at its lowest
 FRONT_HEAD_Y = 9.5            # the screw's head's underside
 FRONT_SCREW = 60.0
@@ -2358,8 +2373,9 @@ hold a piece's weight until both its pins are in."""
 KEEPER_PUSH_N = 30.0
 """The bench check of each keeper (the guide's): a 30 N thumb push on its pin's tip (3 kg on
 a kitchen scale, or the luggage scale's hook), the pin mustn't slide; one that does is
-reprinted 0.2 mm tighter. 30 N is about twice the most the reassembly can put on a pin's tip
-(half the 3.2 kg cradle box, ``cradle_report.keepers``)."""
+reprinted 0.2 mm tighter. 30 N is 1.7 x the most the reassembly can put on a pin's tip
+(half the 3.6 kg cradle box, ``cradle_report.keepers``; 3.2 kg before round 2's 12 mm tie
+rods)."""
 KEEPER_COLOR = LINER_COLOR
 
 
@@ -3553,8 +3569,8 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
         ModuleStep(
             "the cradle box off",
             "Cradle box: lift it straight up off the drive side's pins, level, by its top "
-            "cradle link and a tie rod (about 3 kg). Turn it a quarter about its tie rods and "
-            "set it down on its two cradle links' long edges, its saddles' open tops down "
+            "cradle link and a tie rod (about 3.5 kg). Turn it a quarter about its tie rods "
+            "and set it down on its two cradle links' long edges, its saddles' open tops down "
             "(the base stop's knob is the third point; the tie rods level, so nothing weighs "
             "on the saddles' set screws). Push each pin's clip back through its hole.", "box",
             (f"The drive side stays on its blocks; its link {pose.nudge or 'b5'} now turns "

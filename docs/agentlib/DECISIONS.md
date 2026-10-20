@@ -2144,6 +2144,12 @@ their numbers.
     leg at the flag's screws 0.89. A: its front leg 0.45, column D3 0.9, the strut G-O 0.69,
     the inner plate 1.19.
   - Walking, both hold: B 2.86, A 3.74.
+  - **On the merged drive** (round 2's drive, `decanting-cradle` at d25b7b4, merged into this
+    round: the NRV050, its clutch's cap re-rated on this round's heavier cradle box, 63.7
+    N·m on B and 67.1 on A). B: the front leg 0.60, pillar O2 0.73, column D2 0.97; its
+    rear leg O-Fr 0.99 at O, no longer under 1.3: the toggle flag's screw holes went with
+    the flag. A: its front leg 0.41, column D3 0.83, the strut G-O 0.63, the inner plate
+    1.09, and pillar G 1.25 (1.38 at 61.3), on the list now. Walking: B 2.83, A 3.71.
   - Two causes, which the springs couldn't see:
     - Each side's posts stand nearly on one line, while the drive's force runs across it.
       The floating inner plate can't turn their ends back, so the box sways and pillar O2
@@ -2162,6 +2168,35 @@ their numbers.
     it is a cost the user should see first.
   - The parts open at the cap are listed in `cradle_report.OPEN_AT_CAP`. The report's verdict
     names them, and the tests hold every other part at 1.3, then xfail on them.
+- **Re-rated on the merged drive** (the drive round's own way, its merge with the mounting
+  round). This round's cradle box is 0.3 kg heavier, all of it the 12 mm tie rods
+  (3.61 kg; 3.2 before). So a full 6 L's drawn start is 2.712 N·m at B's input and 2.856 at
+  A's (`handcrank.DESIGN_START_NM`; 2.68 and 2.817), and the clutch's cap 63.7 and 67.1 N·m
+  (`config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`; 63.0 and 66.2).
+  - The gearbox: 1.33 and 1.27 x under its 85 N·m maximum (floor 1.25), 2.37 and 2.25 x
+    over the walking peaks of 35.8 and 37.7 N·m.
+  - The grip run in: 21.7 N on B. **A's is 21.97 N at its 130 mm crank, at MIL-STD-1472H's
+    22 N bar to the report's tenth** (21.7 before). That is open, the user's call
+    (`cradle_report.OPEN_GRIP`; its test holds it no worse and xfails). The drive round had
+    judged 127.5 mm's 21.9 N too near. 132.5 mm gives 21.6 N with 12.2 mm of hand room
+    (14.7 at 130, 9.7 at 135; `hand_sweep` at 1°). But that is 7.5 mm over Figure 13's
+    125 mm, and 5 mm over is what the user accepted.
+  - B's stand: 25.5° (rear), 28.9° to the drive side; A's 24.5° to its drive side.
+  - Every other part holds the cap at 1.3 or more 30° from the toggles: B 1.31 (the inner
+    plate), A 1.38 (the tie rods).
+  - The cradle box 3.6 kg in the guide's lift step and the keepers' bench check (30 N, 1.7 x
+    half the box).
+- **Two clashes the slow tests found**, there since this round's first commit, before the
+  merge:
+  - The front thumbscrew (`cradle.FRONT_JACK`) stood at x 63, its tip in the carrier's floor
+    touching a 10 mm Tf1 and 1 mm into the 12 mm one. It moves to 65, midway between the
+    front rods, 1 mm from each; the V block's tab is 2 mm longer for its nut (`FRONT_TAB`).
+  - B's 40 mm front leg's round end dipped 7.5 mm into the base board at its foot. The
+    outer plate is cut off at the board's top (`cradle.CradleStand`); the leg's section
+    through the foot stays whole.
+  - The recorded room under the cradle box (`tests/fixtures/cradle/riser_reference.json`) is
+    up to 2 mm less with the 12 mm rods: the Zalto Burgundy's riser by the rule is 73 mm
+    (78), its stack unchanged.
 - **B1's widening.** B's outer front leg is 40 mm from O2 to the foot (`STANDS`' `wide`,
   layer 0 only: the plan is the same). On the side as one frame, that leg went from 0.44 to
   0.62, and the side's stiffness across at O1 from 2.0 to 2.67 N/mm.
