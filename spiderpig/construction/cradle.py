@@ -3961,12 +3961,13 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
             "down), holding its weight until both pins are in their holes: "
             f"pin {pins[0]} into its hole first (look in from the side)"
             + (f", then turn the box about it and swing the drive side's {nudge} until pin "
-               f"{second} lines up under its hole. Pin {pins[0]} first, always: the box's "
-               f"centre of mass lies past it from pin {second}, so with {pins[0]} in its hole "
-               f"the box's weight lifts it off {second}'s tip (the other way round its weight "
-               f"would rest on {pins[0]}'s tip: cradle_report's keepers, second_tip_n)"
-               if second else "") + ". " + hold,
-            "box_on", ("Both clips in, from the side, all the way.",),
+               f"{second} lines up under its hole" if second else "") + ". " + hold,
+            "box_on", (*((f"Pin {pins[0]} first, always: the box's centre of mass lies past it "
+                         f"from pin {second}, so with {pins[0]} in its hole the box's weight "
+                         f"lifts it off {second}'s tip (the other way round its weight would "
+                         f"rest on {pins[0]}'s tip: cradle_report's keepers, second_tip_n).",)
+                        if second else ()),
+                       "Both clips in, from the side, all the way."),
             Scene("pack", "drive", show=("drive", "box", "blocks"),
                   moves=(("box", 0.0, 45.0, 0.0),), marks=(r"[LR]\.b6",))),
         ModuleStep(

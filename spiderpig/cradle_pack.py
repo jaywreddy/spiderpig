@@ -1121,13 +1121,14 @@ def part_words(name: str) -> str:
     return (whose or "the ") + stem.replace("_", " ")
 
 
-def box_steps(layout: dict) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """Into the box and out of it, the guide's steps (each a title and its text) from a pack
+def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str, list[str]]]]:
+    """Into the box and out of it, the guide's steps (each a title and its items) from a pack
     payload: each piece in its turn (:func:`in_order`), the spacers that go in before it
-    first (each on what it stands on: a support where the piece it carries comes down, its
-    lips round what it bears on; a restraint against the side of the piece it holds), the
-    piece its face down and where its plan puts it (the step's ``why`` to its first colon);
-    out, the other way round, each piece and the spacers under it."""
+    first, an item each (on what it stands on: a support where the piece it carries comes
+    down, its lips round what it bears on; a restraint against the side of the piece it
+    holds), then the piece, its face down and where its plan puts it (the step's ``why`` to
+    its first colon); out, the other way round, each piece and then the spacers that went in
+    before it."""
     plan = PACK_PLANS.get(layout.get("linkage", ""))
     labels = {m["key"]: _the(m.get("label", m["key"])) for m in layout["modules"]}
     labels.update({d["key"]: d.get("label", d["key"]) for d in layout.get("spacers") or []})
@@ -1136,7 +1137,7 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, str]], list[tuple[str, str]
         return _join([labels.get(o, part_words(o)) if o != "floor" else "the carton's floor"
                       for o in names])
 
-    into: list[tuple[str, str]] = []
+    into: list[tuple[str, list[str]]] = []
     waiting: list[dict] = []
     for kind, d in in_order(layout):
         if kind == "spacer":
@@ -1147,11 +1148,11 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, str]], list[tuple[str, str]
             if sp.get("why", "support").startswith("restraint"):
                 said.append(f"{sp['label']} on {on(sp['on'])}, against "
                             f"{labels.get(sp['under'], part_words(sp['under']))}'s side "
-                            "(where it goes, if it isn't in yet)")
+                            "(where it goes, if it isn't in yet).")
             else:
                 bears = _join([part_words(n) for n in sp.get("bears", ())])
                 said.append(f"{sp['label']} on {on(sp['on'])}, under where {labels[d['key']]} "
-                            f"comes down ({bears}): its lips seat round them")
+                            f"comes down ({bears}): its lips seat round them.")
         waiting = []
         face = {"bottom": "standing as in use", "outer": "its outer plate down",
                 "bay": "its bay face down"}.get(d.get("down", "")
@@ -1160,27 +1161,24 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, str]], list[tuple[str, str]
         step = plan.step(d["key"]) if plan is not None else None
         where = (step.why.split(":")[0].split(" (")[0] if step is not None and step.why
                  else "")
-        text = (("First " + "; ".join(said) + ". Then " if said else "")
-                + labels[d["key"]] + (f", {where}" if where else f", {face}" if face else "")
+        text = (("Then " if said else "") + labels[d["key"]]
+                + (f", {where}" if where else f", {face}" if face else "")
                 + (f", on {on(d.get('on', []))}" if d.get("on") and not where else "") + ".")
-        into.append((d.get("label", d["key"]), text[0].upper() + text[1:]))
+        into.append((d.get("label", d["key"]), [*said, text[0].upper() + text[1:]]))
     if waiting:
-        into.append(("The last spacers", _join([sp["label"] for sp in waiting]) + "."))
-    out: list[tuple[str, str]] = []
+        into.append(("The last spacers", [_join([sp["label"] for sp in waiting]) + "."]))
+    out: list[tuple[str, list[str]]] = []
     after: list[str] = []
     for kind, d in reversed(in_order(layout)):     # (a piece, then the spacers before it)
         if kind == "spacer":
             after.append(d["label"])
             continue
         if out and after:
-            title, text = out[-1]
-            out[-1] = (title, text[:-1] + f"; then {_join(after)}.")
+            out[-1][1].append(f"Then {_join(after)}.")
         after = []
-        out.append((d.get("label", d["key"]),
-                    f"Lift {labels[d['key']]} straight up and out."))
+        out.append((d.get("label", d["key"]), [f"Lift {labels[d['key']]} straight up and out."]))
     if after and out:
-        title, text = out[-1]
-        out[-1] = (title, text[:-1] + f"; then {_join(after)}.")
+        out[-1][1].append(f"Then {_join(after)}.")
     return into, out
 
 

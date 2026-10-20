@@ -1578,8 +1578,11 @@ def test_the_cradle_has_an_assembly_order(key):
         assert clips.scene.lay == "drive"
         assert passive.scene is not None
         assert passive.scene.lay == "drive"
-        brackets = next(s for s in steps if "foot_bracket_FfR" in s.adds)
-        assert steps.index(brackets) < steps.index(clips)
+        # its studs and knobs on its outer plate before it goes on (pack turn 2: its brackets
+        # bolted to the board, with the board)
+        studs = next(s for s in steps if "foot_bracket_FfR_knob0" in s.adds)
+        assert steps.index(studs) < steps.index(clips)
+        assert {"foot_bracket_FfR", "foot_bracket_FrR"} <= set(base.adds)
         ctext = " ".join(clips.text)
         assert "holding its weight until both pins" in ctext
         assert "pin's tip" in ctext
@@ -2495,15 +2498,18 @@ def test_the_guide_puts_the_pieces_and_their_spacers_in_the_box(monkeypatch):
                      "on": ["floor"], "why": "restraint +x", "rank": -0.75, "pads": []}]}
     into, out = cp.box_steps(layout)
     assert [t for t, _ in into] == ["Base board", "Cradle box", "Drive side panel"]
-    assert "Spacer box_px on the carton's floor, against the cradle box's side" in into[0][1]
-    assert "Spacer 3a on the base board, under where the drive side panel comes" in into[2][1]
-    assert "the drive side's gearbox" in into[2][1]
-    assert "its outer plate down" in into[2][1]
-    assert out == [("Drive side panel", "Lift the drive side panel straight up and out; then "
-                                        "Spacer 3a."),
-                   ("Cradle box", "Lift the cradle box straight up and out."),
-                   ("Base board", "Lift the base board straight up and out; then Spacer "
-                                  "box_px.")]
+    assert into[0][1][0].startswith("Spacer box_px on the carton's floor, against the cradle "
+                                    "box's side")
+    assert into[0][1][-1] == "Then the base board, on the carton's floor."
+    assert into[2][1][0].startswith("Spacer 3a on the base board, under where the drive side "
+                                    "panel comes")
+    assert "the drive side's gearbox" in into[2][1][0]
+    assert "its outer plate down" in into[2][1][-1]
+    assert out == [("Drive side panel", ["Lift the drive side panel straight up and out.",
+                                         "Then Spacer 3a."]),
+                   ("Cradle box", ["Lift the cradle box straight up and out."]),
+                   ("Base board", ["Lift the base board straight up and out.",
+                                   "Then Spacer box_px."])]
 
     def step(n: int, title: str) -> Step:
         return Step(n, title, "use", "Using it", None, [], [], [], ["..."], "robot")
@@ -2912,6 +2918,10 @@ chords, the passive panel turned end for end over the drive panel): 740 x 337 x 
 pack turn 2 (its brackets on the board, the hand crank in the cradle box's bay, printed
 spacers): 739 x 318 x 600, 141 L. Read off the board, so a larger board moves the bound with
 it."""
+SPACER_SLIVER = 10.0
+"""mm^3: the most a printed spacer may share with a part the pack test tessellates afresh
+(:func:`test_the_cradle_packs_in_one_box`): the chords of a curved part's mesh lie a
+little off the pack's, which the spacer is shaped to (1 mm^3 seen, B's hand crank's grip)."""
 PACK_SLIDE = {"decanter_rcm": 3.0, "decanter_hinge": 6.0}
 """The most a piece or a spacer slides in a cradle's pack (mm, ``voxpack.free_travel`` on
 3 mm cells, the printed spacers in it; pack turn 2): B every one a cell (the 3 mm the foam
@@ -2986,7 +2996,11 @@ def test_the_cradle_packs_in_one_box(key):
         pieces.append(vp.Packed(m["key"], m["label"], meshes, 1.0,
                                 np.concatenate([q for q, _ in meshes]).mean(axis=0), 0.0))
     judged = vp.metrics(pieces, (lo, hi))
-    assert judged["overlaps"] == [], judged["overlaps"]
+    # (a spacer is shaped to the pack's meshes; the parts tessellated again here, a curve's
+    # chords lie a little otherwise: a sliver of its TPU, under SPACER_SLIVER mm^3, gives)
+    assert [o for o in judged["overlaps"] if (not o["a"].startswith("spacer_")
+            and not o["b"].startswith("spacer_")) or o["volume_mm3"] > SPACER_SLIVER] == [], \
+        judged["overlaps"]
     assert judged["order_faults"] == [], judged["order_faults"]
     assert p["unsupported"] == [], p["unsupported"]
     assert all(m["rests"] in ("direct", "padded") for m in p["modules"])

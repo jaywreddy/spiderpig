@@ -374,7 +374,7 @@ def with_box_steps(steps: list, config, mech, store) -> list:
     def made(rows, head, like) -> list:
         n = len(rows)
         return [Step(0, f"{head} {i}/{n}: {title}", like.stage, like.stage_title, None, [],
-                     [], [], [text], like.where) for i, (title, text) in enumerate(rows, 1)]
+                     [], [], list(items), like.where) for i, (title, items) in enumerate(rows, 1)]
 
     a, b = apart[-1] + 1, back[0]
     got = (steps[:a] + made(into, "Into its box", steps[a - 1]) + steps[a:b]
