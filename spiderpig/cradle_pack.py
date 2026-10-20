@@ -70,7 +70,8 @@ solid on :data:`CELL` voxels, :data:`CLEAR` of foam between two pieces):
   triangles or bay, and the order they drop in is an order they can be put in; each takes
   the orientation and slot that raise the box least, then the lowest, the one nearest a
   corner, where it rests on what is under it (its centre of mass over its contacts, or
-  over foam pads under it: ``voxpack.support``);
+  over pads under it: ``voxpack.support``, each pad a block measured to the real gap,
+  ``voxpack.measure_pads``);
 * the order and the orientations follow the cradle's plan (:data:`PACK_PLANS`), what it
   leaves free picked as above (the panels first, in every order, the rest largest first).
 
@@ -799,7 +800,8 @@ def _pieces_of(inp: dict, lk=None
     return pcs, steps, []
 
 
-def pack_items(inp: dict, splits: dict[str, Sequence[str]] | None = None
+def pack_items(inp: dict, splits: dict[str, Sequence[str]] | None = None,
+               relevel: Sequence[str] = ()
                ) -> tuple[list[Piece], list[tuple[str, list[str]]], list[vp.Item],
                           dict[str, np.ndarray]]:
     """The pieces of :func:`gather`'s input ``inp``, the steps that free them, each as a
@@ -808,10 +810,24 @@ def pack_items(inp: dict, splits: dict[str, Sequence[str]] | None = None
     ``cradle box``'s where the piece carries it: its bay's), and each
     moved part's own 4 x 4 within its piece. ``splits``: a what-if (``spiderpig
     pack-inspect --split``), a new piece's key -> the patterns (``fnmatch``) of the parts it
-    takes from theirs."""
+    takes from theirs. A split changes no piece's orientation: each piece keeps the one it
+    had whole, a new piece its parent's (the piece most of its mass came from: a plan's
+    ``down`` names the same face, B's cradle box less its base stop still stands as in use),
+    but the pieces ``relevel`` names (keys), levelled afresh."""
     pcs, steps, _ = _pieces_of(inp)
-    if splits:
-        pcs = _split(pcs, splits)
+    if not splits:
+        return (pcs, steps, *_items(inp, pcs))
+    whole = {it.key: it.pre for it in _items(inp, _pieces_of(inp)[0])[0]}
+    pcs, parent = _split(pcs, splits, {n: p["mass"] for n, p in inp["parts"].items()})
+    pres = {pc.key: whole[parent.get(pc.key, pc.key)] for pc in pcs
+            if pc.key not in relevel and parent.get(pc.key, pc.key) in whole}
+    return (pcs, steps, *_items(inp, pcs, pres))
+
+
+def _items(inp: dict, pcs: list[Piece], pres: dict[str, np.ndarray] | None = None
+           ) -> tuple[list[vp.Item], dict[str, np.ndarray]]:
+    """:func:`pack_items`' items of pieces ``pcs`` (each fill piece levelled, but those
+    ``pres`` turns as it says) and the moved parts' own 4 x 4s."""
     mesh = {n: (np.asarray(p, float), np.asarray(t)) for n, (p, t) in inp["meshes"].items()}
     com = {n: np.asarray(p["com"], float) for n, p in inp["parts"].items()}
     rigid = {n: p["rigid_with"] for n, p in inp["parts"].items()}
@@ -839,7 +855,9 @@ def pack_items(inp: dict, splits: dict[str, Sequence[str]] | None = None
         c = (sum(inp["parts"][n]["mass"] * com[n] for n in pc.parts) / mass if mass > 0
              else np.concatenate([p for p, _ in ms]).mean(axis=0))
         pre = np.eye(3)
-        if pc.role == "fill":
+        if pres is not None and pc.key in pres:
+            pre = pres[pc.key]
+        elif pc.role == "fill":
             pre = vp.rot_about("z", level([p for p, _ in ms], inp["tilt"]))
         faces = {}
         sides = [_side(n)[0] for n in pc.parts if _side(n)[0]]
@@ -858,8 +876,8 @@ def pack_items(inp: dict, splits: dict[str, Sequence[str]] | None = None
                 faces["cradle box"] = faces["bay"]
         items.append(vp.Item(pc.key, pc.label, pc.role, ms, float(mass), np.asarray(c, float),
                              float(sum(inp["parts"][n]["volume"] for n in pc.parts)), pre,
-                             faces))
-    return pcs, steps, items, moved
+                             faces, [n for n in pc.parts if len(mesh[n][1])]))
+    return items, moved
 
 
 def packed_meshes(items: Sequence[vp.Item], layout: vp.Layout) -> dict[str, list[vp.Mesh]]:
@@ -871,56 +889,74 @@ def packed_meshes(items: Sequence[vp.Item], layout: vp.Layout) -> dict[str, list
     return out
 
 
-def _split(pcs: list[Piece], splits: dict[str, Sequence[str]]) -> list[Piece]:
+def _split(pcs: list[Piece], splits: dict[str, Sequence[str]], mass: dict[str, float]
+           ) -> tuple[list[Piece], dict[str, str]]:
     """``pcs`` with each split's parts (by pattern) moved into a piece of its own (a
-    what-if: no step frees it); a piece left empty goes."""
+    what-if: no step frees it); a piece left empty goes. And each new piece's parent: the
+    piece the most of its ``mass`` (each part's, kg) came from."""
     import fnmatch
 
     out = []
     new = {k: Piece(k, f"What if: {k}", "fill", how="(a what-if)") for k in splits}
+    took: dict[str, dict[str, float]] = {k: {} for k in splits}
     for pc in pcs:
         keep = []
         for n in pc.parts:
             k = next((k for k, pats in splits.items()
                       if any(fnmatch.fnmatchcase(n, p) for p in pats)), None)
             (new[k].parts if k is not None else keep).append(n)
+            if k is not None:
+                took[k][pc.key] = took[k].get(pc.key, 0.0) + mass.get(n, 0.0)
         pc.parts = keep
         pc.hanging = [(b, j) for b, j in pc.hanging if b in keep]
         if keep:
             out.append(pc)
-    return out + [pc for pc in new.values() if pc.parts]
+    parent = {k: max(sorted(t), key=t.__getitem__) for k, t in took.items() if t}
+    return out + [pc for pc in new.values() if pc.parts], parent
 
 
 def pack_input(inp: dict, plan: vp.Plan | None | str = "default", cell: float = CELL,
                seq: Sequence[vp.Choice] | None = None,
-               splits: dict[str, Sequence[str]] | None = None) -> dict:
+               splits: dict[str, Sequence[str]] | None = None,
+               relevel: Sequence[str] = ()) -> dict:
     """:func:`flat_pack`'s answer from :func:`gather`'s input ``inp``: packed by ``plan``
     (``"default"``: :data:`PACK_PLANS`' for the linkage; None: automatic), or by an explicit
     sequence of choices ``seq`` (``spiderpig pack-inspect --search``'s); ``splits`` a
-    what-if (:func:`pack_items`)."""
+    what-if, ``relevel`` the pieces it levels afresh (:func:`pack_items`)."""
     if plan == "default":
         plan = PACK_PLANS.get(inp["linkage"])
     assert plan is None or isinstance(plan, vp.Plan)
-    pcs, steps, items, _ = pack_items(inp, splits)
+    pcs, steps, items, _ = pack_items(inp, splits, relevel)
     layout, packer = vp.pack(items, plan, cell, seq)
     return layout_payload(inp, pcs, steps, items, layout, packer.plan)
 
 
 def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
                    layout: vp.Layout, plan: vp.Plan) -> dict:
-    """The payload (:func:`flat_pack`'s) of ``layout``."""
+    """The payload (:func:`flat_pack`'s) of ``layout``: a piece's ``pads`` measured on the
+    real meshes (``voxpack.measure_pads``); a layout its plan stopped (a step with no room)
+    says so (``missing``: the pieces it didn't place, ``warnings``: why; its ``score`` is
+    None), and is judged as what it is, part of a packing."""
     by = {pc.key: pc for pc in pcs}
+    item = {it.key: it for it in items}
     faces = {it.key: it.faces for it in items}
     placed = packed_meshes(items, layout)
     allp = np.concatenate([pos for ms in placed.values() for pos, _ in ms])
     lo, hi = allp.min(axis=0) - CLEAR, allp.max(axis=0) + CLEAR
     inside = [float(v) for v in hi - lo]
+    packed = [vp.Packed(p.key, by[p.key].label, placed[p.key], parts=item[p.key].parts)
+              for p in layout.placed]
+    rays = vp.Rays(packed) if any(p.rest.pads for p in layout.placed) else None
     mods = []
-    for p in layout.placed:
+    for i, p in enumerate(layout.placed):
         pc = by[p.key]
+        pads = vp.measure_pads(packed, i, p.rest.pads, float(lo[1]), rays) if p.rest.pads \
+            else []
+        for n, q in enumerate(pads):
+            q["id"] = vp.pad_id(i + 1, n)
         mod = {"key": p.key, "label": pc.label, "how": pc.how, "parts": sorted(pc.parts),
                "matrix": np.round(p.matrix(), 6).tolist(), "rests": p.rest.how,
-               "on": list(p.rest.on), "pads": [list(q) for q in p.rest.pads]}
+               "on": list(p.rest.on), "pads": pads}
         mod["down"], mod["spin"] = vp.describe(p.shape.ri, faces[p.key])
         if pc.moved:
             mod["part_matrix"] = {n: np.round(p.matrix() @ m, 6).tolist()
@@ -932,6 +968,7 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
                  for it in items for p in layout.placed if p.key == it.key) / mass
              if mass > 0 else float("nan"))
     t = inp["t"]
+    by_placed = {p.key for p in layout.placed}
     out = {
         "linkage": inp["linkage"],
         "modules": mods,
@@ -946,6 +983,10 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
         "fill": round(vol / math.prod(inside), 4),
         "mass_centre_mm": round(com_y - float(lo[1]), 1),
         "unsupported": [p.key for p in layout.placed if not p.supported],
+        "missing": list(dict.fromkeys([*layout.missing, *(it.key for it in items
+                                                          if it.key not in by_placed)])),
+        "warnings": list(layout.warnings),
+        "score": round(layout.score, 2) if math.isfinite(layout.score) else None,
         "mode": "flat" if inp["turns"] is None else "modules",
         "pose": {"crank_t": round(t, 6), "clip_fraction": round(t / (2.0 * math.pi), 6),
                  "tilt_deg": round(inp["tilt"], 2), "turns_from_rest": inp["turns"]},
@@ -967,11 +1008,14 @@ def flat_pack(mech, lk, t: float = 0.0, config=None, plan: vp.Plan | None | str 
     comes off, parts, ``matrix``: the 4 x 4 row-major transform from the assembled pose to
     the packed one, in the cradle's own frame: x along the linkage, y up, z across the bay;
     ``part_matrix``, a part's own where it moves within its piece: a hanging link swung in;
-    ``rests``: on what, ``on``, directly or on foam ``pads``, or not; ``down`` and ``spin``:
-    the face it lies on and its turn), the box (its inside and
+    ``rests``: on what, ``on``, directly or on ``pads`` (``voxpack.measure_pads``: each a
+    block to the real gap, a cut list), or not; ``down`` and ``spin``: the face it lies on
+    and its turn), the box (its inside and
     outside sizes, mm, and its inside's lower corner, ``floor``), the steps that take it
     apart, the ``plan``'s name, the true ``fill`` (the parts' own volumes over the box's
-    inside), the mass centre's height over the floor, the ``unsupported`` pieces, ``mode``
+    inside), the mass centre's height over the floor, the ``unsupported`` pieces, the
+    ``missing`` ones (a plan's step with no room stops it: ``warnings`` say why, ``score``
+    None), ``mode``
     (``"flat"`` or ``"modules"``), the ``pose`` the transforms start from (its crank angle,
     its clip fraction ``t / 2 pi``, the bottle's tilt, the handle turns from rest) and, for
     modules, ``reassembly`` (the steps back together) and ``slide_off``: what the passive

@@ -30,23 +30,27 @@ piece may take (all, or what its plan's step allows), the one that grows the box
 then its centre of mass lowest, then nearest the corner it is told (or any), where it rests
 (:func:`support`): its centre of mass over the convex hull of the columns where it touches
 what is under it, or the floor (within :data:`SETTLE`: dropped straight, a piece meets one
-point first and tips onto the next ones), else over foam pads filling gaps up to
-:data:`PAD_MAX` under it (named: where, how tall), else not at all (flagged; it would tip).
+point first and tips onto the next ones), else over pads (blocks cut or printed to fit)
+filling gaps up to :data:`PAD_MAX` under it (:class:`Pad`: where, how large, how tall),
+else not at all (flagged; it would tip).
 
 **Plans and search** (:class:`Plan`, :func:`pack`, :func:`search`): a plan says per piece
 its orientation (a named face down, a turn about the vertical, or any), where it goes (a
 corner, on or into another piece, a region) and what goes in first; what it leaves free
 the packer picks greedily (:class:`Packer`). :func:`search` anneals the order, the
-orientations and the corners against :func:`score` (the box's volume, the pieces that tip
-or need pads, the mass centre's height, the box's height) within a time budget, in worker
-processes.
+orientations and the corners against :func:`score` (the box's volume, the pieces that tip,
+the pads: each, their volume and the tallest, the mass centre's height, the box's height)
+within a time budget, from as many seeds as asked, in worker processes (:func:`spread`:
+how far the seeds' answers lie apart).
 
 **Metrics** (:func:`metrics`): any layout, its pieces voxelized afresh on one grid over the
 box (:func:`occupancy`), whoever packed it: the box, the true fill (the parts' own volumes
-over the box's), the air per layer, how each piece rests (:func:`support`), the real-shape
-overlaps (cells two pieces share, then measured on :data:`FINE` cells whose centres are
-inside both), the order's faults (a piece over another that goes in after it), the mass
-centre's height, the order.
+over the box's), the air per layer, how each piece rests (:func:`support`), its pads
+measured on the real meshes (:func:`measure_pads`: a cut list), how far it slides before it
+meets a neighbour or the wall (:func:`free_travel`), the real-shape overlaps (cells two
+pieces share, then measured on :data:`FINE` cells whose centres are inside both), the
+order's faults (a piece over another that goes in after it), the mass centre's height, the
+order.
 
 Not MuJoCo: settling the layout under gravity would need each piece's collision shape, and
 convex hulls of the parts fill a truss's triangles and a panel's bay (every nested piece
@@ -364,9 +368,9 @@ class Item:
     """A piece to pack: ``key``, ``label``, ``role`` (``"base"``: the floor, as it is;
     ``"panel"``: lies flat, its own frame as given; ``"fill"``: turned first by ``pre``),
     its parts' meshes (the assembled pose), their mass (kg), centre of mass and volume (mm,
-    mm^3: the parts' own), ``pre`` (its own frame's turn from the assembled pose) and its
+    mm^3: the parts' own), ``pre`` (its own frame's turn from the assembled pose), its
     named ``faces`` (a name -> the axis, in the turned frame, that faces that way: a side
-    panel's ``outer``, ``bay``)."""
+    panel's ``outer``, ``bay``) and its ``parts``' names (one per mesh, when known)."""
 
     key: str
     label: str
@@ -377,6 +381,7 @@ class Item:
     volume: float = 0.0
     pre: np.ndarray = field(default_factory=lambda: np.eye(3))
     faces: dict[str, np.ndarray] = field(default_factory=dict)
+    parts: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -787,19 +792,44 @@ def over_hull(cols: np.ndarray, point) -> bool:
 
 
 PAD_MAX = 60.0
-"""mm: the deepest gap under a piece a foam pad fills (a block cut to fit)."""
+"""mm: the deepest gap under a piece a pad fills (a block cut or printed to fit)."""
+PAD_SIDE = 15.0
+"""mm: a pad's footprint, square, before it is cut to the piece over it (:func:`measure_pads`)."""
+PAD_MERGE = 8
+"""cells: the support's hull corners this near the first of a group share its pad."""
+
+
+@dataclass(frozen=True)
+class Pad:
+    """A pad under a piece, a block cut or printed to fit the gap at a corner of what the
+    piece rests on: its footprint ``x0`` .. ``x1`` by ``z0`` .. ``z1`` (mm, the box's frame:
+    :data:`PAD_SIDE` square), its ``height`` (mm: the least gap of the piece's padded columns
+    over the footprint, on the voxels; :func:`measure_pads` measures the real one) and what
+    it stands on (``on``: a piece's key, or ``"floor"``)."""
+
+    x0: float
+    z0: float
+    x1: float
+    z1: float
+    height: float
+    on: str = "floor"
+
+    @property
+    def volume(self) -> float:
+        """mm^3."""
+        return (self.x1 - self.x0) * (self.z1 - self.z0) * self.height
 
 
 @dataclass(frozen=True)
 class Support:
     """How a piece rests: ``how`` (``"direct"``: its centre of mass over the convex hull of
-    its contacts; ``"padded"``: over it once foam pads fill gaps of up to :data:`PAD_MAX`
-    under it; ``"none"``: neither, it would tip), on what (piece keys, ``"floor"``) and the
-    ``pads`` (x, z, height: mm, the box's frame)."""
+    its contacts; ``"padded"``: over it once pads fill gaps of up to :data:`PAD_MAX` under
+    it; ``"none"``: neither, it would tip), on what (piece keys, ``"floor"``) and the
+    ``pads`` (:class:`Pad`)."""
 
     how: str
     on: tuple[str, ...] = ()
-    pads: tuple[tuple[float, float, float], ...] = ()
+    pads: tuple[Pad, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -812,8 +842,10 @@ def support(xz: np.ndarray, gap: np.ndarray, owner: np.ndarray, names: Sequence[
     (cells) down to what is under it, whose that is (``owner``: an index into ``names``,
     -1 the floor), its centre of mass (x z, cells). A column within :data:`SETTLE` touches
     (dropped straight a piece meets one point, then tips onto the next ones as it settles);
-    one within :data:`PAD_MAX` takes a pad. The pads are the padded columns at the corners of
-    the support's hull, those within 8 cells of each other one pad, as tall as the deepest."""
+    one within :data:`PAD_MAX` takes a pad. A pad goes at each group of the support hull's
+    padded corners (those within :data:`PAD_MERGE` cells of the group's first): a
+    :data:`PAD_SIDE` square centred on them, as tall as the least gap of the padded columns
+    under it (a block fits under the lowest), standing on what is under the tightest."""
     settle = round(SETTLE / cell)
     padmax = PAD_MAX / cell
 
@@ -836,21 +868,30 @@ def support(xz: np.ndarray, gap: np.ndarray, owner: np.ndarray, names: Sequence[
     except QhullError:
         corners = idx
     corners = corners[padable[corners]]
-    pads: list[list] = []
-    for i in corners:
-        x, z = xz[i]
-        for p in pads:
-            if abs(p[0] - x) <= 8 and abs(p[1] - z) <= 8:
-                p[2] = max(p[2], gap[i])
-                break
+    groups: list[list[int]] = []
+    for i in corners.tolist():
+        first = next((g for g in groups if abs(xz[g[0], 0] - xz[i, 0]) <= PAD_MERGE
+                      and abs(xz[g[0], 1] - xz[i, 1]) <= PAD_MERGE), None)
+        if first is None:
+            groups.append([i])
         else:
-            pads.append([x, z, gap[i]])
+            first.append(i)
+    half = PAD_SIDE / 2.0
+    mid = np.stack([org[0] + (xz[:, 0] + 0.5) * cell, org[1] + (xz[:, 1] + 0.5) * cell], 1)
+    pads = []
+    for g in groups:
+        c = np.array([org[0] + (xz[g, 0].mean() + 0.5) * cell,
+                      org[1] + (xz[g, 1].mean() + 0.5) * cell])
+        under = padable & (np.abs(mid - c) <= half).all(axis=1)
+        under[g] = True
+        tight = np.flatnonzero(under)[int(np.argmin(gap[under]))]
+        pads.append(Pad(round(float(c[0] - half), 1), round(float(c[1] - half), 1),
+                        round(float(c[0] + half), 1), round(float(c[1] + half), 1),
+                        round(float(gap[tight] * cell), 1),
+                        "floor" if owner[tight] < 0 else names[int(owner[tight])]))
     used = direct.copy()
     used[corners] = True
-    return Support("padded", on(used),
-                   tuple((round(float(org[0] + (x + 0.5) * cell), 1),
-                          round(float(org[1] + (z + 0.5) * cell), 1),
-                          round(float(g * cell), 1)) for x, z, g in pads))
+    return Support("padded", on(used), tuple(pads))
 
 
 # -- plans -----------------------------------------------------------------------------------
@@ -934,37 +975,79 @@ class Choice:
 @dataclass
 class Layout:
     """:func:`pack`'s answer: ``placed`` in the order they go in, the :class:`Bin` they are
-    in, the choices that made it (``seq``) and its :func:`score`."""
+    in, the choices that made it (``seq``) and its :func:`score`. A piece with no room (its
+    plan's step can't be met) stops it: what is placed so far, an infinite score, the
+    ``warnings`` and the pieces not placed (``missing``: it, and those after it). ``runs``:
+    :func:`search`'s, one per seed (and its greedy start)."""
 
     placed: list[Placed]
     bin: Bin
     seq: list[Choice]
     score: float = math.inf
     warnings: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)
+    runs: list[dict] = field(default_factory=list)
 
     def by_key(self) -> dict[str, Placed]:
         return {p.key: p for p in self.placed}
 
 
 W_UNSUPPORTED = 25.0    # litres a piece whose centre of mass overhangs what it rests on costs
-W_PADDED = 2.0          # litres a piece resting on foam pads costs (they're cut to fit)
+W_PAD = 0.4             # litres a pad costs (one more block cut or printed, then set blind):
+#                         a piece on five, the old mean, costs the 2 L a padded piece once did
+W_PAD_VOLUME = 10.0     # litres a litre of pads costs (their material)
+W_PAD_TALL = 5.0        # litres a metre of the tallest pad costs (a tall pad is a column)
 W_HIGH = 10.0           # litres for the mass centre at the box's top (0 at its floor)
 W_TALL = 10.0           # litres a metre of box height costs (a tall box tips, stacks badly)
 WALL = 5.0              # the box's corrugated wall, mm
 
 
-def score(bin_: Bin, masses: dict[str, float] | None = None) -> float:
-    """A layout's cost: its box's outside volume (litres, from the grid's cells, the walls
-    on), :data:`W_UNSUPPORTED` per piece that tips, :data:`W_PADDED` per piece on pads,
-    :data:`W_HIGH` times the mass centre's height over the box's, :data:`W_TALL` per metre
-    of height. ``masses``: each piece's (kg)."""
+def box_litres(bin_: Bin) -> float:
+    """The box's outside volume (litres) round what is in ``bin_``: its cells' extent,
+    :data:`CLEAR` and :data:`WALL` each side."""
     c = bin_.cell
     dx = max(bin_.xr[1] - bin_.xr[0], 0) * c + 2 * (CLEAR + WALL)
     dz = max(bin_.zr[1] - bin_.zr[0], 0) * c + 2 * (CLEAR + WALL)
     dy = bin_.height * c + 2 * (CLEAR + WALL)
-    s = dx * dy * dz / 1e6
+    return dx * dy * dz / 1e6
+
+
+def outside_litres(items: Sequence[Item], layout: Layout) -> float:
+    """The box's outside volume (litres) round ``layout``'s pieces' real meshes, not their
+    cells: their bounds, :data:`CLEAR` and :data:`WALL` each side (the box
+    ``cradle_pack.layout_payload`` and :func:`metrics` give it)."""
+    by = {it.key: it for it in items}
+    lo, hi = np.full(3, np.inf), np.full(3, -np.inf)
+    for p in layout.placed:
+        for pos, tri in by[p.key].meshes:
+            if len(tri):
+                q = np.asarray(pos, float) @ p.rot.T + p.shift
+                lo, hi = np.minimum(lo, q.min(axis=0)), np.maximum(hi, q.max(axis=0))
+    if not np.isfinite(lo).all():
+        return 0.0
+    return float(np.prod(hi - lo + 2 * (CLEAR + WALL))) / 1e6
+
+
+def pad_cost(pads: Sequence[Pad]) -> float:
+    """What ``pads`` cost a layout (litres of box): :data:`W_PAD` each,
+    :data:`W_PAD_VOLUME` per litre of them, :data:`W_PAD_TALL` per metre of the tallest:
+    of two layouts in one box, the one on fewer and smaller pads wins."""
+    if not pads:
+        return 0.0
+    return (W_PAD * len(pads) + W_PAD_VOLUME * sum(p.volume for p in pads) / 1e6
+            + W_PAD_TALL * max(p.height for p in pads) / 1000.0)
+
+
+def score(bin_: Bin, masses: dict[str, float] | None = None) -> float:
+    """A layout's cost: its box's outside volume (:func:`box_litres`),
+    :data:`W_UNSUPPORTED` per piece that tips, its pads' :func:`pad_cost`, :data:`W_HIGH`
+    times the mass centre's height over the box's, :data:`W_TALL` per metre of height.
+    ``masses``: each piece's (kg)."""
+    c = bin_.cell
+    dy = bin_.height * c + 2 * (CLEAR + WALL)
+    s = box_litres(bin_)
     s += W_UNSUPPORTED * sum(not p.supported for p in bin_.placed)
-    s += W_PADDED * sum(p.rest.how == "padded" for p in bin_.placed)
+    s += pad_cost([q for p in bin_.placed for q in p.rest.pads])
     if masses and bin_.height:
         m = sum(masses[p.key] for p in bin_.placed if p.key in masses)
         if m > 0:
@@ -1165,31 +1248,34 @@ class Packer:
         """Pack ``seq`` (each piece in its orientation, toward its corner) after ``start``
         (default: the base alone); ``prefix``, when given, gets the box after each one."""
         b = (start or self.fresh()).copy()
-        done = []
-        warn = []
-        for ch in seq:
+        for n, ch in enumerate(seq):
             _, p = self.drop(b, ch.key, [ch.ri], [ch.corner])
             if p is None:
-                warn.append(f"{ch.key}: no room")
-                return Layout(b.placed, b, list(seq), math.inf, warn)
-            done.append(ch)
+                return Layout(b.placed, b, list(seq), math.inf, [self._no_room(ch.key)],
+                              [c.key for c in seq[n:]])
             if prefix is not None:
                 prefix.append(b.copy())
-        return Layout(b.placed, b, list(seq), score(b, self.masses), warn)
+        return Layout(b.placed, b, list(seq), score(b, self.masses))
 
     def greedy(self, order: Sequence[str] | None = None) -> Layout:
         """Each piece in turn (``order``, default :meth:`order`), its best orientation and
         corner (:meth:`drop`)."""
         b = self.fresh()
         seq = []
-        warn = []
-        for key in order or self.order():
+        keys = list(order or self.order())
+        for n, key in enumerate(keys):
             got, p = self.drop(b, key, self.allowed(key), self.corners(key))
             if p is None:
-                warn.append(f"{key}: no room")
-                return Layout(b.placed, b, seq, math.inf, warn)
+                return Layout(b.placed, b, seq, math.inf, [self._no_room(key)], keys[n:])
             seq.append(got[1])
-        return Layout(b.placed, b, seq, score(b, self.masses), warn)
+        return Layout(b.placed, b, seq, score(b, self.masses))
+
+    def _no_room(self, key: str) -> str:
+        """Why ``key`` stopped a packing: no room where its step puts it."""
+        st = self.plan.step(key)
+        where = [f"{k} {v}" for k, v in (("on", st.on), ("into", st.into), ("region", st.region),
+                                          ("down", st.down)) if v is not None] if st else []
+        return f"{key}: no room" + (f" ({', '.join(where)})" if where else "")
 
     def best_greedy(self) -> Layout:
         """:meth:`greedy` from each order of the panels the plan leaves free (the rest after
@@ -1313,31 +1399,66 @@ def anneal(items: Sequence[Item], plan: Plan | None, seq0: Sequence[Choice], sec
 
 def search(items: Sequence[Item], plan: Plan | None = None, seconds: float = 60.0,
            processes: int = 4, seed: int = 0, cell: float = CELL,
-           log: Callable[[str], None] | None = None) -> Layout:
+           log: Callable[[str], None] | None = None, seeds: int | None = None) -> Layout:
     """The best packing :func:`anneal` finds round ``plan`` (from its greedy packing,
-    :meth:`Packer.best_greedy`) in ``processes`` worker processes at once (at most 6; each
-    its own seed), each for ``seconds``; packed again here. ``SPIDERPIG_WORKERS=0``: one,
-    in this process."""
+    :meth:`Packer.best_greedy`) from ``seeds`` seeds (``seed``, ``seed + 1``, ..; default
+    one per process), each for ``seconds``, ``processes`` worker processes at once (at most
+    6; ``SPIDERPIG_WORKERS=0``: one after another, in this process); packed again here. Its
+    ``runs``: each seed's best (``score``, its box's ``litres``: :func:`outside_litres`, its
+    ``pads``, the sequences ``tried``) and the greedy start's (seed None), so a caller can
+    say how far another seed or more time might move it (:func:`spread`)."""
     from spiderpig import workers
 
     processes = max(1, min(6, processes))
+    n = max(1, seeds if seeds is not None else processes)
     pk = Packer(items, plan, cell)
     start = pk.best_greedy()
     if log:
         log(f"greedy: score {start.score:.1f}")
     seq0 = list(start.seq)
-    jobs = []
+    got: list[tuple[int | None, tuple[float, list[Choice], int]]] = []
     if workers.enabled() and processes > 1:
-        jobs = [workers.submit(anneal, list(items), plan, seq0, seconds, seed + i, cell)
-                for i in range(processes)]
-        got = [j.result() for j in jobs]
+        for wave in range(0, n, processes):         # (``processes`` at a time)
+            jobs = [(seed + i, workers.submit(anneal, list(items), plan, seq0, seconds,
+                                              seed + i, cell))
+                    for i in range(wave, min(n, wave + processes))]
+            got += [(s, j.result()) for s, j in jobs]
     else:
-        got = [anneal(items, plan, seq0, seconds, seed, cell)]
-    got.append((start.score, seq0, 1))
-    _, seq, _ = min(got, key=lambda g: g[0])
+        got = [(seed + i, anneal(items, plan, seq0, seconds, seed + i, cell)) for i in range(n)]
+    got.append((None, (start.score, seq0, 1)))
+    runs = []
+    for s, (sc, seq, tried) in got:
+        lay = pk.run(seq)
+        runs.append({"seed": s, "score": round(sc, 2) if math.isfinite(sc) else None,
+                     "litres": round(outside_litres(items, lay), 1) if not lay.missing
+                     else None,
+                     "pads": sum(len(p.rest.pads) for p in lay.placed), "tried": tried})
+    _, (_, seq, _) = min(got, key=lambda g: g[1][0])
     if log:
-        log("anneal: " + ", ".join(f"{g[0]:.1f} ({g[2]} tried)" for g in got[:-1]))
-    return pk.run(seq)
+        log("anneal: " + ", ".join(f"seed {r['seed']} {r['score']} ({r['tried']} tried)"
+                                   for r in runs[:-1]))
+    out = pk.run(seq)
+    out.runs = runs
+    return out
+
+
+def spread(runs: Sequence[dict], near: float = 0.5) -> dict:
+    """How robust a :func:`search` is, from its ``runs`` (the seeds', not its greedy
+    start): how many seeds, the best, the median and the worst of their scores and box
+    litres, the litres' spread (worst less best) and how many seeds came within ``near``
+    litres of the best box."""
+    seeds = [r for r in runs if r["seed"] is not None]
+    out: dict = {"seeds": len(seeds)}
+    for k in ("score", "litres"):
+        v = sorted(r[k] for r in seeds if r[k] is not None)
+        if v:
+            out[k] = {"best": v[0], "median": round(float(np.median(v)), 2), "worst": v[-1]}
+    if "litres" in out:
+        lit = out["litres"]
+        lit["spread"] = round(lit["worst"] - lit["best"], 1)
+        out["at_best"] = sum(r["litres"] is not None and r["litres"] <= lit["best"] + near
+                             for r in seeds)
+    return out
 
 
 # -- judging a packing -----------------------------------------------------------------------
@@ -1346,7 +1467,8 @@ def search(items: Sequence[Item], plan: Plan | None = None, seconds: float = 60.
 @dataclass
 class Packed:
     """A piece where a packing put it, whoever packed it: its parts' meshes in the box's
-    frame, its mass (kg), centre of mass (mm, that frame) and volume (mm^3, its parts')."""
+    frame, its mass (kg), centre of mass (mm, that frame), volume (mm^3, its parts') and
+    its ``parts``' names (one per mesh, when known)."""
 
     key: str
     label: str
@@ -1354,6 +1476,131 @@ class Packed:
     mass: float = 0.0
     com: np.ndarray = field(default_factory=lambda: np.zeros(3))
     volume: float = 0.0
+    parts: list[str] = field(default_factory=list)
+
+
+class Rays:
+    """Vertical rays through packed pieces' real meshes (no voxels): every part's
+    triangles at once, each one's part and piece (:func:`measure_pads`)."""
+
+    def __init__(self, pieces: Sequence[Packed]):
+        pos, tri, part = [], [], []
+        self.names: list[str] = []          # each part's
+        self.piece: list[int] = []          # each part's piece (an index into ``pieces``)
+        base = 0
+        for i, pc in enumerate(pieces):
+            for m, (p, t) in enumerate(pc.meshes):
+                t = np.asarray(t, np.int64).reshape(-1, 3)
+                if not len(t):
+                    continue
+                part.append(np.full(len(t), len(self.names), np.int64))
+                self.names.append(pc.parts[m] if m < len(pc.parts) else f"{pc.key}#{m}")
+                self.piece.append(i)
+                pos.append(np.asarray(p, float))
+                tri.append(t + base)
+                base += len(p)
+        self.pos = np.concatenate(pos) if pos else np.zeros((0, 3))
+        self.tri = np.concatenate(tri) if tri else np.zeros((0, 3), np.int64)
+        self.part = np.concatenate(part) if part else np.zeros(0, np.int64)
+        xs, zs = self.pos[self.tri, 0], self.pos[self.tri, 2]
+        self.lo = np.stack([xs.min(axis=1), zs.min(axis=1)], 1)     # (each triangle's x z)
+        self.hi = np.stack([xs.max(axis=1), zs.max(axis=1)], 1)
+
+    def cast(self, x0: float, z0: float, side: float, n: int
+             ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Where ``n`` x ``n`` rays up through the square ``side`` mm from ``(x0, z0)``
+        (each through its cell's centre) cross the parts: ``(ray, part, y)``, ray ``i * n +
+        k``."""
+        sel = np.flatnonzero((self.hi[:, 0] >= x0) & (self.lo[:, 0] <= x0 + side)
+                             & (self.hi[:, 1] >= z0) & (self.lo[:, 1] <= z0 + side))
+        if not len(sel):
+            return np.zeros(0, np.int64), np.zeros(0, np.int64), np.zeros(0)
+        key, y = _column_crossings(self.pos, self.tri[sel], self.part[sel],
+                                   np.array([x0, 0.0, z0]), side / n, n, n)
+        return key % (n * n), key // (n * n), y
+
+
+PAD_TRIES = (9.0, 3.0)
+"""mm: the smaller squares :func:`measure_pads` tries where a pad's block doesn't fit."""
+
+
+def measure_pads(pieces: Sequence[Packed], i: int, pads: Sequence[Pad], floor: float,
+                 rays: Rays | None = None, step: float = 1.0) -> list[dict]:
+    """Piece ``i``'s ``pads`` (:class:`Pad`, from the voxels) measured on the real meshes,
+    each a rectangular block that fits where it stands: rays every ``step`` mm through its
+    square; its footprint the rays' that meet the piece (the square cut to the piece over
+    it), its top the piece's lowest underside over that footprint (the part it bears up
+    against), its base the highest top of what is under it there (another piece's part, or
+    the box's ``floor``: y, mm). So its height is the real gap, not rounded to the voxels,
+    and the least over its footprint (a block, not a shaped one). A square whose block
+    meets something (what is under it reaches past the piece's lowest underside, or a part
+    of another piece runs through the block) is tried smaller (:data:`PAD_TRIES`); where
+    none fits, the smallest that meets the piece, ``fits`` false and its height 0. Each a
+    dict: ``footprint`` (x0, z0, x1, z1: mm, the box's frame), ``size_mm``, ``height_mm``
+    (the real gap), ``voxel_mm`` (the voxels'), ``base_mm`` (the y it stands at), ``under``
+    (the piece's part over it), ``on`` (the piece under it, or ``"floor"``), ``on_part``
+    and ``fits`` (None, and the voxels' footprint and height, where no ray meets the piece:
+    unmeasured)."""
+    rays = rays or Rays(pieces)
+    own = np.flatnonzero(np.asarray(rays.piece) == i)
+    nparts = max(len(rays.names), 1)
+    out = []
+    for pad in pads:
+        cx, cz = (pad.x0 + pad.x1) / 2, (pad.z0 + pad.z1) / 2
+        row = None
+        sides = [pad.x1 - pad.x0] + [s for s in PAD_TRIES if s < pad.x1 - pad.x0]
+        for side in sides:
+            n = max(1, round(side / step))
+            c = side / n
+            ray, part, y = rays.cast(cx - side / 2, cz - side / 2, side, n)
+            mine = np.isin(part, own)
+            bottom = np.full(n * n, np.inf)
+            np.minimum.at(bottom, ray[mine], y[mine])
+            hit = np.isfinite(bottom)
+            if not hit.any():
+                continue
+            ii, kk = np.divmod(np.flatnonzero(hit), n)
+            ri, rk = np.divmod(ray, n)
+            inside = ((ri >= ii.min()) & (ri <= ii.max()) & (rk >= kk.min())
+                      & (rk <= kk.max()))          # (the footprint's rays, the piece's or not)
+            low = float(bottom[hit].min())
+            below = inside & ~mine & (y <= low + 1e-6)
+            top = float(y[below].max()) if below.any() else floor
+            # a part across the block's top: in below it, out above (on a closed mesh, an odd
+            # count of its crossings below; an open one's, any crossing either side)
+            pair = ray * nparts + part
+            sel = inside & ~mine
+            keys, total = np.unique(pair[sel], return_counts=True)
+            under_n = np.zeros(len(keys), np.int64)
+            if below.any():
+                k_below, n_below = np.unique(pair[below], return_counts=True)
+                under_n[np.searchsorted(keys, k_below)] = n_below
+            across = np.where(total % 2 == 0, under_n % 2 == 1,
+                              (under_n > 0) & (under_n < total))
+            fits = top < low - 0.05 and not across.any()
+            k = int(np.argmin(np.where(mine, y, np.inf)))
+            on, on_part = "floor", "floor"
+            if below.any():
+                q = int(part[below][np.argmax(y[below])])
+                on, on_part = pieces[rays.piece[q]].key, rays.names[q]
+            x0, z0 = cx - side / 2, cz - side / 2
+            fp = (x0 + ii.min() * c, z0 + kk.min() * c,
+                  x0 + (ii.max() + 1) * c, z0 + (kk.max() + 1) * c)
+            row = {"footprint": [round(float(v), 1) for v in fp],
+                   "size_mm": [round(float(fp[2] - fp[0]), 1), round(float(fp[3] - fp[1]), 1)],
+                   "height_mm": round(low - top, 1) if fits else 0.0,
+                   "voxel_mm": pad.height, "base_mm": round(top, 1),
+                   "under": rays.names[int(part[k])], "on": on, "on_part": on_part,
+                   "fits": bool(fits)}
+            if fits:
+                break
+        if row is None:                     # (no ray met the piece: the voxels' word)
+            row = {"footprint": [pad.x0, pad.z0, pad.x1, pad.z1],
+                   "size_mm": [round(pad.x1 - pad.x0, 1), round(pad.z1 - pad.z0, 1)],
+                   "height_mm": pad.height, "voxel_mm": pad.height, "base_mm": None,
+                   "under": None, "on": pad.on, "on_part": None, "fits": None}
+        out.append(row)
+    return out
 
 
 FINE = 1.0          # mm: the overlap check's cells
@@ -1428,6 +1675,65 @@ def column_ranges(occ: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return lo, hi
 
 
+TRAVEL = {"+x": (0, 1), "-x": (0, -1), "+z": (2, 1), "-z": (2, -1), "+y": (1, 1)}
+"""The ways :func:`free_travel` slides a piece: along the box's floor (x, z) and up."""
+
+
+def free_travel(g: Grid, i: int, owner: np.ndarray | None = None
+                ) -> dict[str, tuple[float, int]]:
+    """How far (mm) piece ``i`` of grid ``g`` slides each way of :data:`TRAVEL`, rigid,
+    before a cell of it meets another piece's or the box's inside wall (``-1``): the empty
+    cells between, a cell each. The cells are the parts' conservative fill (every cell
+    their surface touches), so the real travel is that or up to two cells more. Each way:
+    (mm, whose cell it meets: an index into the grid's pieces, -1 the wall)."""
+    owner = g.owner() if owner is None else owner
+    mine = g.occ[i]
+    if not mine.any():
+        return {}
+    idx = np.nonzero(mine)
+    lo_b = [int(v.min()) for v in idx]
+    hi_b = [int(v.max()) + 1 for v in idx]
+    out = {}
+    for way, (a, sgn) in TRAVEL.items():
+        # (only the rows through the piece: its bounds across ``a``, the whole box along it)
+        sl = tuple(slice(None) if k == a else slice(lo_b[k], hi_b[k]) for k in range(3))
+        others = (g.count[sl] - mine[sl]) > 0
+        m = mine[sl]
+        n = others.shape[a]
+        shape = [1, 1, 1]
+        shape[a] = n
+        at = np.arange(n).reshape(shape)
+        if sgn > 0:      # the nearest other cell at or past each one (n: the wall)
+            nxt = np.flip(np.minimum.accumulate(np.flip(np.where(others, at, n), a), axis=a),
+                          a)
+            gap = nxt - at - 1
+        else:
+            nxt = np.maximum.accumulate(np.where(others, at, -1), axis=a)
+            gap = at - nxt - 1
+        t = np.where(m, gap, np.iinfo(np.int64).max)
+        j = np.unravel_index(int(np.argmin(t)), t.shape)
+        cells = max(int(t[j]), 0)
+        hit = list(j)
+        hit[a] = j[a] + sgn * (int(t[j]) + 1)
+        who = -1
+        if 0 <= hit[a] < n:
+            hit_g = tuple(hit[k] + (0 if k == a else lo_b[k]) for k in range(3))
+            who = int(owner[hit_g])
+        out[way] = (cells * g.cell, who)
+    return out
+
+
+def pad_id(order: int, n: int) -> str:
+    """Pad ``n`` (from 0) of the piece that goes in ``order``-th (from 1): ``4a``, ``4b``
+    .. ``4z``, ``4aa`` .."""
+    letters = ""
+    n += 1
+    while n:
+        n, r = divmod(n - 1, 26)
+        letters = "abcdefghijklmnopqrstuvwxyz"[r] + letters
+    return f"{order}{letters}"
+
+
 def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | None = None,
             cell: float = CELL, fine: float = FINE, bands: int = 12,
             grid: Grid | None = None) -> dict:
@@ -1435,11 +1741,16 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
     in): the box (``inside``, default :func:`box_of`; its outside with :data:`WALL`), the
     true fill (the parts' own volumes over the box's inside), its cells' fill, the air per
     layer (``bands`` of the inside's height, bottom up), each piece's mass, centre of mass
-    height, how it rests (:func:`support`: on what, directly or on foam pads, or not: each
-    of its columns' gap down to another piece's nearest cell or the floor, a cell of foam
-    off it), the real-shape overlaps (pieces that share cells, then the volume
-    they share at ``fine`` mm), the order's faults (a piece over another that goes in after
-    it), the mass centre's height."""
+    height, how it rests (:func:`support`: on what, directly or on pads, or not: each of
+    its columns' gap down to another piece's nearest cell or the floor, a cell of foam off
+    it), its pads measured on the real meshes (:func:`measure_pads`; ``pads``: their count,
+    volume, the tallest and the cut list, each named by its piece's number and a letter),
+    how far it slides before it meets a neighbour or the wall (:func:`free_travel`:
+    ``free_mm`` each way, ``slide_mm`` the most along the floor; ``restraint``: the pieces
+    that slide more than :data:`CLEAR`, the foam's width, and the most any does), the
+    real-shape overlaps (pieces that share cells, then the volume they share at ``fine``
+    mm), the order's faults (a piece over another that goes in after it), the mass centre's
+    height."""
     g = grid or occupancy(pieces, inside, cell)
     lo, hi = g.lo, g.hi
     size = hi - lo
@@ -1462,6 +1773,7 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
     depth = math.ceil((PAD_MAX + 2 * CLEAR) / g.cell) + 2
     names = [p.key for p in pieces]
     rows = []
+    rays: Rays | None = None
     for i, pc in enumerate(pieces):
         blo, _ = ranges[i]
         ii, kk = np.nonzero(blo < BIG)
@@ -1483,11 +1795,28 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
         com_c = (np.asarray(pc.com, float) - lo) / cell
         rest = support(np.stack([ii, kk], axis=1), gap, who, names, com_c[[0, 2]], cell,
                        lo[[0, 2]])
+        pads = []
+        if rest.pads:
+            rays = rays or Rays(pieces)
+            pads = measure_pads(pieces, i, rest.pads, float(lo[1]), rays)
+            for n, p in enumerate(pads):
+                p["id"] = pad_id(i + 1, n)
+                p["piece"] = pc.key
+                p["centre_mm"] = [round((p["footprint"][0] + p["footprint"][2]) / 2
+                                        - float(lo[0]), 1),
+                                  round((p["footprint"][1] + p["footprint"][3]) / 2
+                                        - float(lo[2]), 1)]
+        free = free_travel(g, i, owner)
         rows.append({"key": pc.key, "label": pc.label, "order": i + 1,
                      "mass_kg": round(pc.mass, 3), "volume_l": round(pc.volume / 1e6, 3),
                      "com_height_mm": round(float(pc.com[1] - lo[1]), 1),
                      "supported": rest.ok, "rests": rest.how, "on": list(rest.on),
-                     "pads": [list(p) for p in rest.pads], "cells": int(g.occ[i].sum())})
+                     "pads": pads, "cells": int(g.occ[i].sum()),
+                     "free_mm": {k: round(v[0], 1) for k, v in free.items()},
+                     "meets": {k: "wall" if v[1] < 0 else names[v[1]]
+                               for k, v in free.items()},
+                     "slide_mm": max((v[0] for k, v in free.items() if k != "+y"),
+                                     default=0.0)})
     # overlaps: cells two pieces claim, then measured finer
     overlaps = []
     if (g.count > 1).any():
@@ -1507,6 +1836,7 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
             both = (lo_i < BIG) & (lo_j < BIG)
             if (both & (hi_i - 1 > lo_j)).any():     # a cell of i over one of j
                 faults.append({"over": pieces[i].key, "under": pieces[j].key})
+    cut = [p for r in rows for p in r["pads"]]
     return {
         "box": {"inside_mm": [round(float(v), 1) for v in size],
                 "outside_mm": [round(float(v), 1) for v in out_size],
@@ -1524,6 +1854,13 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
         "mass_centre_frac": round((com_y - float(lo[1])) / float(size[1]), 3),
         "unsupported": [r["key"] for r in rows if not r["supported"]],
         "padded": [r["key"] for r in rows if r["rests"] == "padded"],
+        "pads": {"count": len(cut), "volume_cm3": round(sum(
+                     p["size_mm"][0] * p["size_mm"][1] * p["height_mm"] for p in cut) / 1e3, 1),
+                 "tallest_mm": max((p["height_mm"] for p in cut), default=0.0),
+                 "cut_list": cut},
+        "restraint": {"held_mm": CLEAR,
+                      "max_slide_mm": max((r["slide_mm"] for r in rows), default=0.0),
+                      "loose": [r["key"] for r in rows if r["slide_mm"] > CLEAR + 1e-6]},
         "overlaps": [o for o in overlaps if o["volume_mm3"] > 0],
         "touching": [o for o in overlaps if o["volume_mm3"] <= 0],
         "order_faults": faults,
