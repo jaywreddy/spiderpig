@@ -30,9 +30,11 @@ one side at a time like any mechanism. The bottle lies between two sides, the **
   its head under the shoulder (the sommelier's candle; its head twists it on).
 * **The stand** (:data:`STANDS`, :class:`CradleStand`): each side's frame plates are the
   stand's members, not arms from O. The outer plate carries the hinge, the gearbox and the
-  legs down to a rail. The inner plate holds the pillars and stiffens the side (A: a block
-  round the hinge and a leg down the front, four columns; B: the bar O1-O2), so the tie
-  rods pass it in the open.
+  legs down to a rail. The inner plate holds the pillars and stiffens the side, its posts
+  off one line so it holds their ends (A: a block round the hinge and a leg down the front
+  to a column on the rail, six columns; B: the bar O1-O2, a triangle and a leg off it and a
+  bottom chord to two columns on the rail, four columns), so the tie rods pass it in the
+  open.
 * **The base board** (:func:`_base_plate`): both sides' rails bolted onto it with printed
   brackets (:func:`_bracket`: thumb knobs, no tool), each rail between two birch cleats
   glued to it (:func:`_cleats`), the decanter's printed riser (:func:`riser_pieces`: a fixed
@@ -417,7 +419,21 @@ BRACKET = (36.0, 30.0, 5.0)     # a foot's printed bracket: its length, legs' he
 """A stand foot is a printed L-bracket outside each outer plate, an M5 button head through
 it and the plate (its nut in the layer over the plate) and a carriage bolt up through the
 base board and its foot's oversize hole, an 18-8 fender washer and a printed thumb knob (an
-18-8 nut pressed in it) on it (:func:`_bracket`)."""
+18-8 nut pressed in it) on it (:func:`_bracket`). A rail raised over :data:`_FOOT_Y`
+(:func:`rail_y`) raises its feet' screws with it and their brackets' uprights as much."""
+
+
+def rail_y(rail_r: float) -> float:
+    """The y of a rail ``rail_r`` wide each side of its line (and of its feet, the screws on
+    that line), from the mouth: its bottom edge where a 24 mm rail's is, 0.5 mm over the base
+    board, between its cleats (:data:`CLEAT`). A wider rail (the cradle side frames' redesign,
+    2026-10-20) stands higher on the same bottom edge: its columns' bodies and heads then
+    clear the cleats' tops (:data:`BASE_T` over the board)."""
+    return _FOOT_Y + rail_r - 12.0
+
+
+_RAIL_B = 22.0          # B's rail: 44 mm (its columns E1 and E2 on it)
+_RAIL_A = 17.0          # A's rail: 34 mm (its column E1 on it)
 
 STANDS: dict[str, Stand] = {
     # A: the hinge G at the mouth, the crank O 173 behind and 202 under it. The outer plate
@@ -429,27 +445,37 @@ STANDS: dict[str, Stand] = {
     "decanter_hinge": Stand(
         # (2026-10-10, the user's −50° rest: O 300 under the mouth and 65 behind it; the
         # mouth 460 over the table) the feet: in front of the decanter, under O, at the rear
-        nodes={"Ff": (-150.0, _FOOT_Y), "Fm": (140.0, _FOOT_Y), "Fr": (380.0, _FOOT_Y),
+        nodes={"Ff": (-150.0, rail_y(_RAIL_A)), "Fm": (140.0, rail_y(_RAIL_A)),
+               "Fr": (380.0, rail_y(_RAIL_A)),
                "C1": (-24.0, 20.0), "C2": (-24.0, -22.0),
                # on the front leg G-Ff, the inner plate's leg over it down to about 200 mm
                # over the table: its lowest column D3 halves the outer leg's free length (design
                # review round 1, 2026-10-14: the leg takes 2 kN jammed, and from D2 to the
                # foot it buckled out of the plate at 0.6)
-               **{n: (-150.0 * f, (_FOOT_Y - 0.0) * f) for n, f in (("D1", 0.175),
-                                                                     ("D2", 0.36),
-                                                                     ("D3", 0.68))}},
+               **{n: (-150.0 * f, rail_y(_RAIL_A) * f) for n, f in (("D1", 0.175),
+                                                                    ("D2", 0.36),
+                                                                    ("D3", 0.68))},
+               # (the side frames' redesign, 2026-10-20) a column on the rail under D3, the
+               # inner plate's leg down to it: the posts no longer stand on one line, so the
+               # inner plate holds their ends across it (DECANTER.md, "The side frames")
+               "E1": (-80.0, rail_y(_RAIL_A))},
         outer=(("G", "Ff"), ("G", "O"), ("Ff", "O"), ("O", "Fm"), ("O", "Fr"),
                ("Ff", "Fm"), ("Fm", "Fr"), ("G", "C1"), ("G", "C2"), ("C1", "C2"),
                ("C2", "D1")),
         inner=(("G", "C1"), ("G", "C2"), ("C1", "C2"), ("C2", "D1"), ("D1", "D2"),
-               ("G", "D1"), ("D2", "D3")),
-        columns=("C1", "C2", "D1", "D2", "D3"),
+               ("G", "D1"), ("D2", "D3"), ("D3", "E1")),
+        columns=("C1", "C2", "D1", "D2", "D3", "E1"),
         feet=("Ff", "Fm", "Fr"),
-        # the strut from the hinge back to the gearbox, 48 mm wide: the gearbox's node O
-        # leans on it across the plate (the legs from O buckled sideways at walking SF 3.0);
-        # the inner plate's G-D1 23.6 mm, so the 12 mm front tie rod Tf1 passes it by the
-        # plan's margin (design review round 2's M1, 2026-10-15: at 24 it came 6.9 mm from it)
-        wide={("G", "O"): 24.0, ("G", "D1"): 11.8},
+        # the strut from the hinge back to the gearbox: the gearbox's node O leans on it
+        # across the plate (the legs from O buckled sideways at walking SF 3.0), and with the
+        # legs from O it takes the gearbox's turn out of the plate there: 96 mm wide and the
+        # legs 40 (the side frames' redesign, 2026-10-20: at 48 and 24 the strut held the
+        # clutch's cap at 0.63 at O on the side as one frame); the rail 34 mm; the inner
+        # plate's G-D1 23.6 mm, so the 12 mm front tie rod Tf1 passes it by the plan's margin
+        # (design review round 2's M1, 2026-10-15: at 24 it came 6.9 mm from it)
+        wide={("G", "O"): 48.0, ("Ff", "O"): 20.0, ("O", "Fm"): 20.0, ("O", "Fr"): 20.0,
+              ("Ff", "Fm"): _RAIL_A, ("Fm", "Fr"): _RAIL_A, ("G", "D1"): 11.8,
+              ("D3", "E1"): 20.0},
         column_d=12.0,
         base=(-200.0, 482.0),
     ),
@@ -467,19 +493,31 @@ STANDS: dict[str, Stand] = {
     # the bar at 90.5°, the triangle and the leg in front of it) and the front ones above
     # it. Nothing crosses the bay: the decanter stands under the mouth, between the bars.
     "decanter_rcm": Stand(
-        nodes={"Ff": (-110.0, _FOOT_Y), "Fr": (386.0, _FOOT_Y),
-               # on the front leg O2-Ff, 60 and 150 mm down it from O2 (O2 is (-2.7, -307))
-               **{n: (-2.7 + (-110.0 + 2.7) * f, -307.0 + (_FOOT_Y + 307.0) * f)
-                  for n, f in (("D1", 0.25), ("D2", 0.6))}},
+        nodes={"Ff": (-110.0, rail_y(_RAIL_B)), "Fr": (386.0, rail_y(_RAIL_B)),
+               # on the front leg O2-Ff, a quarter and 0.6 of the way down it from O2 (O2 is
+               # (-2.7, -307))
+               **{n: (-2.7 + (-110.0 + 2.7) * f, -307.0 + (rail_y(_RAIL_B) + 307.0) * f)
+                  for n, f in (("D1", 0.25), ("D2", 0.6))},
+               # (the side frames' redesign, 2026-10-20) two columns on the rail toward the
+               # rear, the inner plate's bottom chord from D2 to them: a box toward the rear,
+               # so the posts no longer stand on one line and the inner plate holds their ends
+               # across it (DECANTER.md, "The side frames")
+               "E1": (220.0, rail_y(_RAIL_B)), "E2": (280.0, rail_y(_RAIL_B))},
         outer=(("O1", "O2"), ("O2", "Ff"), ("O2", "O"), ("O1", "O"), ("O", "Fr"),
                ("Ff", "Fr"), ("O2", "Fr")),
-        inner=(("O1", "O2"), ("O2", "D1"), ("O1", "D1"), ("D1", "D2")),
-        columns=("D1", "D2"),
+        inner=(("O1", "O2"), ("O2", "D1"), ("O1", "D1"), ("D1", "D2"), ("D2", "E1"),
+               ("E1", "E2")),
+        columns=("D1", "D2", "E1", "E2"),
         feet=("Ff", "Fr"),
         # (design review round 2's B1, 2026-10-15: the front leg 40 mm wide, O2 to the foot;
         # at 24 its strip at the columns' holes and down to the foot held the clutch's cap
-        # out of its plane at 0.44-0.8; layer 0 only: cradle_report.structure)
-        wide={("O2", "O"): 32.0, ("O2", "Ff"): 20.0},
+        # out of its plane at 0.44-0.8; layer 0 only: cradle_report.structure) The side
+        # frames' redesign (2026-10-20): the rail 44 mm (the rear column's foot), the rear
+        # leg 56 and O1-O 40 (the gearbox's turn at O), O2-Fr 32 (its buckling), the inner
+        # chord 40 and its leg D1-D2 32
+        wide={("O2", "O"): 32.0, ("O2", "Ff"): 20.0, ("Ff", "Fr"): _RAIL_B, ("O", "Fr"): 28.0,
+              ("O1", "O"): 20.0, ("O2", "Fr"): 16.0, ("D2", "E1"): 20.0, ("E1", "E2"): 20.0,
+              ("D1", "D2"): 16.0},
         column_d=12.0,
         # (round 1, 2026-10-14: with the corrected centre of mass and the board 40 mm
         # toward the drive side, BASE_Z, the rear edge binds: 682 mm is the least board
@@ -630,7 +668,7 @@ class CradleStand(Group):
             nodes = [np.asarray(xy(n), float) for pr in stand.outer for n in pr]
             x0 = min(p[0] for p in nodes) - 100.0
             x1 = max(p[0] for p in nodes) + 100.0
-            board = min(p[1] for p in feet) - (_FOOT_Y - BASE_TOP)
+            board = float(build.xy(_point_of(topo, lk, mouth_name(lk)))[1]) + BASE_TOP
             out.cut(FRAME_OUTER, Rect(((x0 + x1) / 2, board - 50.0), (x1 - x0, 100.0)))
         frame = topo.frame_bodies[0]
         hole = TIE_HOLE
@@ -2010,11 +2048,13 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     tool; the bolt's head in the feet's clearance, :data:`BOLT_OUT` off the plate so the knob
     clears the upright's screw head). (The bracket; its screws, nuts, washer and knob, each
     with its catalog key (the knob's ``None``: printed) and its name's suffix; the base
-    board's hole (x, z).)"""
+    board's hole (x, z). A foot on a raised rail, :func:`rail_y`, raises its upright as much
+    over its screw.)"""
     length, height, wall = BRACKET
     fx, fy = xy
+    tall = height + max(0.0, fy - (y_top + _FOOT_Y - BASE_TOP))
     zs = sorted((face, face + sign * wall))
-    up = Box(length, height, wall).moved(Location((fx, y_top + height / 2, sum(zs) / 2)))
+    up = Box(length, tall, wall).moved(Location((fx, y_top + tall / 2, sum(zs) / 2)))
     zf = sorted((face, face + sign * height))
     foot = Box(length, wall, height).moved(Location((fx, y_top + wall / 2, sum(zf) / 2)))
     zb = face + sign * BOLT_OUT                      # the foot leg's bolt
@@ -3173,6 +3213,8 @@ def _blocks_words(key: str) -> str:
             words.append("one under the rear leg just over its foot's bracket")
         elif n.startswith("O"):
             words.append(f"one under pillar {n}'s screw head (its relief over the head)")
+        elif n.startswith("E"):
+            words.append(f"one under column {n}'s screw head on the rail")
         else:
             words.append(f"one under column {n}'s screw head on the front leg")
     return ", ".join(words)
@@ -3357,7 +3399,7 @@ and 2.5 N), and its box "as it was, on its other cradle link", on two tie screws
 (10.0°, 2.8 N; its "41 mm margin" was to the link's outline, which it never sat on)."""
 
 LAY_BLOCKS: dict[str, tuple[str | tuple[float, float], ...]] = {
-    "decanter_rcm": ("O1", "D2"),
+    "decanter_rcm": ("O1", "E1"),
     "decanter_hinge": ("C1", (306.0, -462.0)),
 }
 """Where the riser's two blocks (:data:`RISER_BLOCK`) stand under the drive side's outer plate
@@ -3365,9 +3407,11 @@ when the cradle lies on its drive side: each centred on a post's screw head on t
 outer face (a pillar's or a stand column's, by its node; the head in the relief in the
 block's boss, :data:`RISER_RELIEF`), or at a point (x, y from the mouth), the block's length
 along x. With the gearbox at O they make a triangle round the centre of mass
-(:data:`REST_POSES`). B's: under pillar O1 (the plate's top front) and the front leg's lower
-column D2. A's (its first build only: the board's finish curing): under column C1 by the
-hinge and under the rear leg O-Fr just over its foot's bracket."""
+(:data:`REST_POSES`). B's: under pillar O1 (the plate's top front) and the rail's front
+column E1 (since the side frames' redesign, 2026-10-20: under the front leg's column D2 the
+drive panel alone, heavier low on the rail, tipped at 25.3°; under E1 at 39.7°). A's (its first
+build only: the board's finish curing): under column C1 by the hinge and under the rear leg
+O-Fr just over its foot's bracket."""
 RISER_RELIEF = (12.0, 3.6)      # the blocks' bosses' relief over a screw head: across, deep
 
 

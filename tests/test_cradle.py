@@ -875,13 +875,14 @@ def test_b_packs_at_a_mark_inside_its_clear_range():
     assert not any("spacer" in m.words for m in breakdown)    # (the keepers stay on the pins)
     assert "arm down" in breakdown[0].text
     assert "about 5½ turns" in breakdown[0].text
-    # design review round 2: laid on the riser's blocks (O1's and D2's screw heads in their
-    # reliefs), the box set on its links' edges, each piece's weight held until both its
-    # pins are in, the passive side snugged at level, a measure for the empty grip
+    # design review round 2: laid on the riser's blocks (O1's and, since the side frames'
+    # redesign, the rail column E1's screw heads in their reliefs), the box set on its links'
+    # edges, each piece's weight held until both its pins are in, the passive side snugged at
+    # level, a measure for the empty grip
     lay = breakdown[tags.index("lay")].words
     assert "blocks" in lay
     assert "pillar O1" in lay
-    assert "column D2" in lay
+    assert "column E1's screw head on the rail" in lay
     assert "long edges" in breakdown[tags.index("box")].words
     words = " ".join(m.words for m in back)
     assert words.count("holding its weight until both pins are in their holes") == 2
@@ -1077,14 +1078,14 @@ def test_the_cradle_stands_turns_easily_and_holds():
     assert crank["jam_sf"] >= 1.5
     assert r["drive"]["jam_hand_force_n"] == JAM_HAND_N
     # every joint, link, column, plate and tie rod holds the jam (rated from the force
-    # vectors: the links chord by chord, the side's posts and plates as one frame) but the
-    # parts open since design review round 2 (cradle_report.OPEN_AT_CAP)
+    # vectors: the links chord by chord, the side's posts and plates as one frame), the side
+    # frames too since their redesign (2026-10-20: the column E1 under the front leg)
     _holds_the_jam(r, "decanter_hinge")
     _the_structure_is_rated(r, ("b2",), {"pillar:G"},
-                            {"column:C1", "column:C2", "column:D1", "column:D2"})
+                            {"column:C1", "column:C2", "column:D1", "column:D2", "column:D3",
+                             "column:E1"})
     _holds_the_clutchs_cap(r, "decanter_hinge")
-    grip = _the_drive_keeps_its_bars(r)
-    _the_side_frame_is_open(r, "decanter_hinge", grip)
+    _the_grip_is_open(_the_drive_keeps_its_bars(r))
 
 
 def _the_drive_keeps_its_bars(r: dict) -> list[str]:
@@ -1133,20 +1134,19 @@ def _the_drive_keeps_its_bars(r: dict) -> list[str]:
 
 
 def _holds_the_jam(r: dict, key: str) -> None:
-    """Every row of the report holds the jam at SF 1.3 or more but the parts open at the
-    clutch's cap (``cradle_report.OPEN_AT_CAP``), and nothing under it is off that list; the
-    cradle box's tie rods and their end joints among the rows (design review round 2's M1);
-    the rod as a beam-column at its far pin's offset (its minor 1); the side's stiffness
-    across (its M3: a hand's 20 N sideways on the bottle sways the pivots under 5 mm)."""
+    """Every row of the report holds the jam at SF 1.3 or more, the side frames' posts and
+    plates included (their redesign, 2026-10-20: nothing open at the clutch's cap,
+    ``cradle_report.OPEN_AT_CAP``); the cradle box's tie rods and their end joints among the
+    rows (design review round 2's M1); the rod as a beam-column at its far pin's offset (its
+    minor 1); the side's stiffness across (its M3: a hand's 20 N sideways on the bottle sways
+    the pivots under 5 mm)."""
     from spiderpig.cradle_report import OPEN_AT_CAP
 
+    assert key not in OPEN_AT_CAP
     rows = r["strength"]["rows"]
-    open_ = OPEN_AT_CAP[key]
-    held = [(x["joint"], x["jam_sf"]) for x in rows
-            if x["jam_sf"] is not None and x["joint"] not in open_]
+    held = [(x["joint"], x["jam_sf"]) for x in rows if x["jam_sf"] is not None]
     assert min(sf for _, sf in held) >= 1.3, held
-    under = {x["joint"] for x in rows if x["jam_sf"] is not None and x["jam_sf"] < 1.3}
-    assert under <= set(open_), under
+    assert {"frame:outer", "frame:inner"} <= {j for j, _ in held}
     box = {x["joint"]: x for x in rows if x["kind"] == "box"}
     assert set(box) == {"box:tie rods", "box:tie rod ends"}
     assert r["structure"]["box"]["cases"]["walk"]["gap_ratio"] >= 1.5   # closed walking
@@ -1154,21 +1154,12 @@ def _holds_the_jam(r: dict, key: str) -> None:
     assert r["structure"]["stiffness"]["sway_mm"] <= 5.0
 
 
-def _the_side_frame_is_open(r: dict, key: str, also: list[str] | None = None) -> None:
-    """The open items, said as such (design review round 2, 2026-10-15): rated as one frame
-    (``cradle_structure.side_frame``), these parts of the side frame fall under 1.3 at the
-    clutch's cap; walking they hold. The fix is a box toward the rear (DECANTER.md, "The
-    side frames at the clutch's cap"): the user's call, with the drive's gearbox mount.
-    ``also``: the test's other open items (A's grip at the bar: ``cradle_report.OPEN_GRIP``)."""
-    from spiderpig.cradle_report import OPEN_AT_CAP
-
-    rows = {x["joint"]: x for x in r["strength"]["rows"]}
-    under = sorted((rows[k]["jam_sf"], k) for k in OPEN_AT_CAP[key]
-                   if k in rows and (rows[k]["jam_sf"] or 9.9) < 1.3)
-    bits = [f"open at the clutch's cap: {under} ({OPEN_AT_CAP[key]})"] if under else []
-    bits += also or []
-    if bits:
-        pytest.xfail("; ".join(bits))
+def _the_grip_is_open(grip: list[str]) -> None:
+    """The grip open at its bar, said as such (A's: ``cradle_report.OPEN_GRIP``, the user's
+    call): the test's last check, an xfail with its reason. (The side frames, open at the
+    clutch's cap from design review round 2, hold it since their redesign of 2026-10-20.)"""
+    if grip:
+        pytest.xfail("; ".join(grip))
 
 
 def _holds_the_clutchs_cap(r: dict, key: str) -> None:
@@ -1178,12 +1169,10 @@ def _holds_the_clutchs_cap(r: dict, key: str) -> None:
     greased friction and the seats' wear drift it, and the report says the cap it would give;
     the grip's force at the clutch's top within the input shaft's radial load there; the
     output shaft's radial load at the rod's plane walking 3 x over; every part, the output
-    shaft included, holds the cap at SF 1.3 or more 30° and more from the toggles but the
-    parts open at the cap since design review round 2 (``cradle_report.OPEN_AT_CAP``; the
-    band round a toggle where any other falls under 1.3 is reported, no wider); the keyed
-    plates at the cap."""
+    shaft included, holds the cap at SF 1.3 or more 30° and more from the toggles, the side
+    frames too since their redesign (2026-10-20; the band round a toggle where any falls
+    under 1.3 is reported, no wider); the keyed plates at the cap."""
     from spiderpig.cradle_drive import OUTPUT
-    from spiderpig.cradle_report import OPEN_AT_CAP
 
     clutch = r["drive"]["clutch"]
     assert clutch["margin"] >= clutch["margin_floor"]
@@ -1193,17 +1182,15 @@ def _holds_the_clutchs_cap(r: dict, key: str) -> None:
     assert r["drive"]["output_overhung"]["sf_walk"] >= 3.0
     capped = r["jam_capped"]
     assert capped["crank_nm"] == clutch["crank_cap_nm"]
-    open_ = OPEN_AT_CAP[key]
-    away = {k: v for k, v in capped["by_band"][-1]["parts"].items() if k not in open_}
+    away = capped["by_band"][-1]["parts"]
     assert min(away.values()) >= 1.3, away          # every part 30° from the toggles,
-    assert OUTPUT in capped["parts"]                # but the open ones
+    assert OUTPUT in capped["parts"]                # the output shaft among them
     bands = [(x["band_deg"], x["worst"]) for x in capped["by_band"]]
-    held = [v["holds_1p3_outside_deg"] for k, v in capped["parts"].items() if k not in open_]
+    held = [v["holds_1p3_outside_deg"] for v in capped["parts"].values()]
     assert None not in held, bands                  # (5° steps: where the old case
     holds = max(held)                               # skipped, now rated at a bound)
     assert holds <= 30.0, bands
-    if not open_:
-        assert capped["holds_1p3_outside_deg"] == holds, bands
+    assert capped["holds_1p3_outside_deg"] == holds, bands
     assert capped["by_band"][0]["band_deg"] == 0.0              # the whole turn rated
     from spiderpig.construction.handcrank import TOGGLE_TURNS
 
@@ -1275,7 +1262,7 @@ def test_b_stands_turns_easily_and_holds():
     assert pour["rear"]["tip_deg"] > r["stand"]["edges"]["rear"]["tip_deg"]
     assert all(e["tip_deg"] >= 25.0 for e in pour.values())
     _the_structure_is_rated(r, ("b2", "b6"), {"pillar:O1", "pillar:O2"},
-                            {"column:D1", "column:D2"})
+                            {"column:D1", "column:D2", "column:E1", "column:E2"})
     # the known limits (not designed for): a block near the mouth multiplies the pins' loads;
     # where the frame starts to give, in newtons at the grip (design review round 2's M2)
     front = r["blocked"]["cases"]["front saddle"]
@@ -1285,8 +1272,7 @@ def test_b_stands_turns_easily_and_holds():
     assert first is not None
     assert 0.0 < first["grip_n"] < 27.0, first      # under the clutch's 27 N
     _holds_the_clutchs_cap(r, "decanter_rcm")
-    grip = _the_drive_keeps_its_bars(r)
-    _the_side_frame_is_open(r, "decanter_rcm", grip)
+    assert not _the_drive_keeps_its_bars(r)
 
 
 def _the_structure_is_rated(r: dict, links, pillars, columns) -> None:
@@ -1461,11 +1447,11 @@ def test_the_cradle_builds_an_order_without_a_walkers_words(tmp_path):
 @pytest.mark.api
 def test_verify_rates_a_cradles_joints_at_its_own_loads():
     """``api.verify`` rates a cradle's joints at its own statics (cradle_report.loads), as an
-    audit does: A and B fail on nothing but the side frames open at the clutch's cap since
-    design review round 2 (``cradle_report.OPEN_AT_CAP``: a joint under jam SF 1 is verify's
-    failure; the report's tests hold every other part at 1.3); then xfail on the open ones."""
+    audit does: A and B fail on nothing, their side frames included since the redesign of
+    2026-10-20 (a joint under jam SF 1 is verify's failure; the report's tests hold every
+    part at 1.3; design review round 2 had left the side frames open at the clutch's cap,
+    ``cradle_report.OPEN_AT_CAP``)."""
     from spiderpig import api
-    from spiderpig.cradle_report import OPEN_AT_CAP
 
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "decanter_hinge"}}, store=None)
     q = api.verify(d, "quick")      # the default level: a catalog floor with no servo in it
@@ -1474,19 +1460,12 @@ def test_verify_rates_a_cradles_joints_at_its_own_loads():
     assert "servo" not in floor.detail.lower()
     assert not [r for r in q.rows if r.requirement == "size.mass_g"]   # a build weighs it
     b = api.resolve({"kind": "mechanism", "linkage": {"key": "decanter_rcm"}}, store=None)
-    open_ = []
     for key, rep in (("decanter_hinge", api.verify(d, "standard")),
                      ("decanter_rcm", api.verify(b, "standard"))):
-        other = [f.message for f in rep.failures if f.code != "joint_overload"]
-        assert not other, other
-        culprits = {c["joint"] for f in rep.failures for c in f.culprits}
-        assert culprits <= set(OPEN_AT_CAP[key]), culprits
-        assert rep.ok == (not culprits)
+        assert not [f.message for f in rep.failures], key
+        assert rep.ok, key
         (joints,) = [r for r in rep.rows if r.requirement == "strength.joints"]
         assert joints.value is not None
-        open_ += [f"{key}: {sorted(culprits)}"] if culprits else []
-    if open_:
-        pytest.xfail(f"open at the clutch's cap (cradle_report.OPEN_AT_CAP): {open_}")
 
 
 @pytest.mark.slow
@@ -2585,10 +2564,12 @@ def test_every_pose_the_guide_rests_a_piece_in_is_rated(key):
     inp = cp.cached_input(key)
     rows = {r["pose"]: r for r in cp.rest_poses(inp, linkage.get(key))}
     assert set(rows) == {r.key for r in cr.REST_POSES[key]}
-    # (the drive side with the box: 14.3° since round 2's NRV050, 3.45 kg 114.7 mm off the
-    # outer plate, and the mounting round's saddles, 16.3° on the NRV040; no place on the
-    # plate for the blocks does better than 15.0°: the steps keep a hand on the box)
-    bars = {"cradle": (15.0, 9.0), "drive_box": (14.0, 7.0), "drive": (30.0, 12.0),
+    # (the drive side with the box: 14.3° from round 2's NRV050, 3.45 kg 114.7 mm off the
+    # outer plate, and the mounting round's saddles, 16.3° on the NRV040, its bar 14° then;
+    # 17.7° since the side frames' redesign of 2026-10-20 put more of the side's weight low
+    # on its rail, the bar 15° again, and the second block under the rail's column E1: the
+    # drive panel alone 39.7°, 25.3° on D2's)
+    bars = {"cradle": (15.0, 9.0), "drive_box": (15.0, 7.0), "drive": (30.0, 12.0),
             "box": (35.0, 12.0), "passive": (45.0, 9.0)}
     for pose, r in rows.items():
         tip, push = bars[pose]
@@ -2610,7 +2591,8 @@ PACK_BOX = {"decanter_hinge": (705.0, 215.0, 610.0)}
 the stand's 2026-10-14 refit, the walls round it; both panels face down on the board, the
 loose parts in their open triangles, since the real-shape packer of 2026-10-14: 185 mm tall,
 about 78 L, where the boxes' packer had 124; 212 mm and 89 L since round 2's drive, the
-NRV050's housing and riser standing 27 mm taller off the drive panel's outer plate)."""
+NRV050's housing and riser standing 27 mm taller off the drive panel's outer plate; 213 mm
+and 90 L since the side frames' redesign of 2026-10-20, the drive panel turned a quarter)."""
 MODULE_BOX = (30.0, 340.0, 600.0, 725.0, 150.0)
 """A cradle packed as modules (B): its box, outside, along the board no more than 30 mm (its
 walls and clearances take 16) over the larger of the board's length and the cradle box's
@@ -2622,8 +2604,10 @@ been 112); 2026-10-14 (round 1: the knobs and cleats on the board, the pack pose
 leg): 702 x 485 x 606 on its 684 x 584 board, 206 L; the real-shape packer's plan: 700 x 478
 x 604, 202 L; round 1's structure (the inner plate's triangle and leg, its columns, the 682
 mm board): 699 x 499 x 608, 212 L, the drive side carrying the cradle box, 441 mm across the
-bay; pack turn 1 (the cradle box on its own): 740 x 316 x 600, 141 L. Read off the board, so
-a larger board moves the bound with it."""
+bay; pack turn 1 (the cradle box on its own): 740 x 316 x 600, 141 L; round 2's structure:
+740 x 334 x 600, 148 L; the side frames' redesign of 2026-10-20 (the inner plates' bottom
+chords, the passive panel turned end for end over the drive panel): 740 x 337 x 600, 149 L.
+Read off the board, so a larger board moves the bound with it."""
 PACK_JOINTS = {"decanter_hinge": ("Pin E ", "pillar G"), "decanter_rcm": ("Pins X and Y ", None)}
 """Where each cradle link comes off its side: its pins and its pillar (the steps name them)."""
 MODULES = {"decanter_hinge": None,

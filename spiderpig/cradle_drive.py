@@ -257,12 +257,12 @@ def verdict(key: str, rep: dict) -> tuple[str, str]:
         if held:
             part = min(held, key=held.__getitem__)
             bits.append(f"at the clutch's {capped['crank_nm']:g} N·m cap (checked at set-up) "
-                        f"every other part holds jam SF {held[part]:g} or more 30° and more "
-                        f"from the toggles ({part} least)")
+                        f"every {'other ' if open_ else ''}part holds jam SF {held[part]:g} or "
+                        f"more 30° and more from the toggles ({part} least)")
         under = sorted((v, k) for k, v in parts.items() if k in open_ and v < JAM_FLOOR)
         if under:
             bits.append("open: " + ", ".join(f"{k} {v:g}" for v, k in under) + " at the cap "
-                        "(the side frames, design review round 2)")
+                        "(cradle_report.OPEN_AT_CAP)")
     if drive:
         bits.append(f"the gearbox {drive['gearbox_sf']:g} x the walking peak and "
                     f"{drive['gearbox_cap_sf']:g} x the cap on its "
