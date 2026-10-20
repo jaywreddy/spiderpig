@@ -1008,9 +1008,10 @@ of 2026-10-13; the steps rewritten in round 1 of 2026-10-14 and again in round 2
 `cradle.module_steps`, each a `cradle.ModuleStep` with its title, text and picture, the
 guide's last 19 steps and the cradle page's; the cradle box on its own since the pack's
 turn 1, the same day). The base board, the passive side panel, the cradle box, the drive
-side panel, the riser and the hand crank. No tool, no small part left loose: 740 x 316 x
-601 mm outside, 140.7 L (the real-shape packer's plan, on the planner's 16-layer stack of
-2026-10-14, with round 2's NRV050 and the riser's lifts: the riser fits its free room),
+side panel, the riser and the hand crank. No tool, no small part left loose: 740 x 334 x
+600 mm outside, 148.1 L (the real-shape packer's plan, on the planner's 16-layer stack, with
+round 2's NRV050 and the riser's lifts: the riser fits its free room; 740 x 316 x 601, 140.7
+L, before round 2's structure; the 18 mm taller pack is not yet traced to a part),
 where the drive side carrying the cradle box had packed in 699 x 498 x 608, 212 L (its
 flat pack had been 112).
 
@@ -1108,16 +1109,19 @@ pieces' real shapes, each its hull's stable face nearest the way it's set down; 
 
 | pose (B) | kg | rests on | tilt | tips at | push at its top |
 |---|---|---|---|---|---|
-| the cradle lying on its drive side on the riser's blocks | 11.19 | the gearbox and the two blocks on their lifts | 0.1° | 15.2° | 12.2 N |
-| the drive side and the box, lying, the passive panel off | 9.32 | the same | 0.1° | 14.3° | 8.7 N |
-| the drive side panel alone on its blocks (the way back starts here) | 6.09 | the same | 0.1° | 32.2° | 16.2 N |
-| the cradle box on its links' long edges, its saddles' tops down | 3.23 | both cradle links' edges and the base stop's knob | 10.9° | 44.3° | 17.2 N |
-| the passive side panel on its outer plate | 1.87 | pillar O1's screw head and its two brackets | 3.6° | 55.8° | 10.8 N |
-| A, off its board while the finish cures, on its drive side on the blocks | 10.02 | the gearbox and the two blocks on their lifts | 0.2° | 18.3° | 12.8 N |
+| the cradle lying on its drive side on the riser's blocks | 11.66 | the gearbox and the two blocks on their lifts | 0.1° | 15.4° | 13.0 N |
+| the drive side and the box, lying, the passive panel off | 9.74 | the same | 0.1° | 14.3° | 9.3 N |
+| the drive side panel alone on its blocks (the way back starts here) | 6.16 | the same | 0.1° | 31.9° | 16.1 N |
+| the cradle box on its links' long edges, its saddles' tops down | 3.58 | both cradle links' edges and the base stop's knob | 10.9° | 41.5° | 17.6 N |
+| the passive side panel on its outer plate | 1.93 | pillar O1's screw head and its two brackets | 3.4° | 57.7° | 11.9 N |
+| A, off its board while the finish cures, on its drive side on the blocks | 10.47 | the gearbox and the two blocks on their lifts | 0.2° | 17.2° | 12.7 N |
 
 On round 2's NRV050 (1.35 kg more, 27 mm further out) and with the mounting round's saddles
 the lying poses tip sooner: the cradle 15.2° (16.9 on the NRV040), the drive side with the
 box 14.3° (16.3; its test's bar 14° since, 15 before), the drive panel alone 32.2° (35.2).
+With round 2's 12 mm tie rods (the table's numbers) the box weighs 3.58 kg and stands on its
+edges to 41.5° (44.3), the drive side with it still 14.3°, the cradle 15.4°, A's 17.2°
+(18.3).
 The binding edge runs from the O1 block to the gearbox; moved or turned on the plate, the
 block does no better than 15.0° (`cradle_pack.lay_blocks` tried under every stand node and
 pillar pair, and the O1 block turned every 15°), and moved up off O1 it leaves the plate.
@@ -1875,9 +1879,10 @@ Things to know before cutting and on the bench:
     x0.78, 0.250 in x0.76, 6061 x0.72, the birch x0.75. It had been a flat 0.72.
   - Every quoted file is within 11 % (`tests/test_cradle.py` holds it). B comes to USD
     760.28 against 758.19 quoted, A to 580.03 against 573.82.
-  - Today's files: B's cutting USD 768.44 (5052 0.187 in 279.92, 7075 177.42, the birch
-    237.46, 6061 50.91, 0.250 in 22.73), the whole build USD 1,190.54. A's cutting is USD
-    580.35, the whole build 920.93.
+  - Today's files, with round 2's drive merged: B's cutting USD 797.23 (5052 0.187 in 284.24, 7075 177.42, the
+    birch 237.84, 6061 75.00, 0.250 in 22.73), the whole build USD 1,307.24 (purchases
+    510.01). A's cutting is USD 605.39, the whole build 1,005.50 (purchases 400.11). (Before
+    the merge: B 768.44 and 1,190.54, A 580.35 and 920.93.)
   - Until round 2 the BOM printed B's cutting at USD 301.58. That left out a "USD 68-136"
     7075 band and an unpriced birch line: about USD 457 short.
   - Each file's estimate is in ORDER.md's upload table, and which files arrive as cut (under

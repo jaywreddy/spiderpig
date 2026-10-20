@@ -2246,7 +2246,8 @@ their numbers.
   - Every quoted file is within 11 %. B's total is USD 760.28 against 758.19 live, A's
     580.03 against 573.82. Nothing is left unpriced.
   - Today's files: B's cutting USD 768.44 (the BOM had printed 301.58), its whole build
-    1,190.54. A's cutting is USD 580.35, its whole build 920.93.
+    1,190.54. A's cutting is USD 580.35, its whole build 920.93. On the merged drive: B's
+    cutting 797.23, its build 1,307.24; A's 605.39 and 1,005.50.
   - `MadeRow` carries each part's cut length, pierces and blank. ORDER.md's upload table
     gives each file's estimate and whether it arrives deburred.
 - **Cut rules (parts M3, minor 5).** SendCutSend's pages fetched 2026-10-15 give:
