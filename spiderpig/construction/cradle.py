@@ -820,7 +820,7 @@ class CradlePlates(FramePlates):
             keep_out = ()
             if key == FRAME_INNER:
                 _tips_clear_the_inner_plate(build, done)
-                keep_out = _tie_paths(build) + _tip_paths(build)
+                keep_out = _keep_out(build)
             part = plate_part(pads, cuts, z0, z1, web, fillet, keep_out)
             out.bodies.append(hardware(name, part, frame, fab="laser", color=FRAME_COLOR,
                                        sheet=build.ctx.sheet("frame")))
@@ -832,11 +832,12 @@ def plate_part(pads, cuts, z0: float, z1: float, web: float, fillet: float = 0.0
     """A cradle frame plate: its members (pills), a boss round every round hole, the inside
     corners rounded ``fillet`` (a closing: the outline grown and shrunk back, so the joints
     read as one shape), clear of ``keep_out`` (solids: what passes the plate's layer), less
-    the holes. Memoized."""
-    memo = (tuple(pads), tuple(cuts), z0, z1, web, fillet, len(keep_out))
-    part = _PLATE_MEMO.get(memo)
-    if part is not None:
-        return part
+    the holes. Memoized (the keep-outs by identity: :func:`_keep_out` gives the same solid for
+    the same paths; each entry holds its keep-outs, so their ids stay theirs)."""
+    memo = (tuple(pads), tuple(cuts), z0, z1, web, fillet, tuple(map(id, keep_out)))
+    hit = _PLATE_MEMO.get(memo)
+    if hit is not None:
+        return hit[0]
     parts = [pill(a, b, r, z0, z1) for a, b, r in pads]
     parts += [disc(c.xy, c.d / 2 + web, z0, z1) for c in cuts if isinstance(c, Cut) and web > 0]
     part = union(parts)
@@ -847,7 +848,7 @@ def plate_part(pads, cuts, z0: float, z1: float, web: float, fillet: float = 0.0
     part = cut_holes(part, cuts, z0, z1)
     if len(_PLATE_MEMO) > 16:
         _PLATE_MEMO.clear()
-    _PLATE_MEMO[memo] = part
+    _PLATE_MEMO[memo] = (part, tuple(keep_out))
     return part
 
 
@@ -865,9 +866,31 @@ def _closed(part: Shape3D, z0: float, z1: float, r: float) -> Shape3D:
     return union([extrude(f, amount=-(z1 - z0)) for f in faces])
 
 
-def _tie_paths(build: Build) -> list[Shape3D]:
-    """What the inner plate's layer must stay clear of: each tie rod's path over the turn
-    (its radius and the plan's margin), as solids through the layer."""
+_KEEP_OUT_MEMO: dict = {}
+
+
+def _keep_out(build: Build) -> tuple[Shape3D, ...]:
+    """The inner plate's keep-outs (:func:`_tie_paths`, :func:`_tip_paths`) fused into one
+    tool (none: ``()``). That one boolean of a few hundred pills is most of a cradle's
+    fabrication (62 of B's 95 s, measured 2026-10-20) and the same at every crank angle (the
+    paths are over the whole turn, the layer the plan's): memoized by every pill's exact
+    ends, radius and z extent, so a process's next fabrication of the design (another
+    angle, a report's clash angles) fuses nothing. The fused tool is what
+    :func:`plate_part` fused itself."""
+    specs = tuple(_tie_specs(build) + _tip_specs(build))
+    if not specs:
+        return ()
+    hit = _KEEP_OUT_MEMO.get(specs)
+    if hit is None:
+        hit = union([pill(*s) for s in specs])
+        if len(_KEEP_OUT_MEMO) > 8:
+            _KEEP_OUT_MEMO.clear()
+        _KEEP_OUT_MEMO[specs] = hit
+    return (hit,)
+
+
+def _tie_specs(build: Build) -> list[tuple]:
+    """:func:`_tie_paths`' pills as :func:`pill`'s arguments."""
     ties = tie_points(build.plan.topo, build.ctx.config.lk)
     z0, z1 = build.z(build.top)
     r = TIE_D / 2 + build.plan.spec.margin
@@ -876,9 +899,15 @@ def _tie_paths(build: Build) -> list[Shape3D]:
         path = np.asarray(build.plan.topo.geometry.points[name], float).reshape(-1, 2)
         step = max(1, len(path) // 48)
         pts = [*path[::step], path[0]]
-        out += [pill(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0)
+        out += [(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0)
                 for a, b in itertools.pairwise(pts)]
     return out
+
+
+def _tie_paths(build: Build) -> list[Shape3D]:
+    """What the inner plate's layer must stay clear of: each tie rod's path over the turn
+    (its radius and the plan's margin), as solids through the layer."""
+    return [pill(*s) for s in _tie_specs(build)]
 
 
 def _tips(build: Build) -> list[Placed]:
@@ -888,9 +917,8 @@ def _tips(build: Build) -> list[Placed]:
             if p.seat and p.label.endswith(" tip") and isinstance(p.shape, Disc)]
 
 
-def _tip_paths(build: Build) -> list[Shape3D]:
-    """The inner plate's keep-outs for :func:`_tips`: each one's path over the turn (its
-    radius and the plan's margin), as solids through the layer."""
+def _tip_specs(build: Build) -> list[tuple]:
+    """:func:`_tip_paths`' pills as :func:`pill`'s arguments."""
     z0, z1 = build.z(build.top)
     out = []
     for p in _tips(build):
@@ -899,9 +927,15 @@ def _tip_paths(build: Build) -> list[Shape3D]:
         step = max(1, len(path) // 48)
         pts = [*path[::step], path[0]]
         r = p.shape.r + build.plan.spec.margin
-        out += [pill(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0)
+        out += [(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0)
                 for a, b in itertools.pairwise(pts)]
     return out
+
+
+def _tip_paths(build: Build) -> list[Shape3D]:
+    """The inner plate's keep-outs for :func:`_tips`: each one's path over the turn (its
+    radius and the plan's margin), as solids through the layer."""
+    return [pill(*s) for s in _tip_specs(build)]
 
 
 def _tips_clear_the_inner_plate(build: Build, done: Realized):

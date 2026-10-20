@@ -13,6 +13,7 @@ the module packages (PLAN P1-P6) build on; `tests/cache.py`, `tests/_modules.py`
 |---|---|---|
 | `mise run test-<module>` | `-m "<module> and not slow and not e2e" -n 4 --dist worksteal` | iterating on one area |
 | `mise run test-quick` | `-m "not slow and not e2e" -n 4` (every module's fast tier) | before handing back |
+| `mise run test-cradle` | `tests/test_cradle.py -m "not slow and not e2e" -n 4` (about a minute) | iterating on the cradles; the slow ones in chunks (below) |
 | full: `mise run remote-test`, or locally `pytest -p no:warnings -m 'not e2e' -n 12 --dist worksteal` | everything but the browser tests | before a merge |
 | `mise run test-fixtures` | the currency tests (`-m fixture_regen`) with `--regen` | after an intended engine change |
 | `mise run test-viewer` | `npm run typecheck && npm test` (vitest) | viewer edits |
@@ -25,6 +26,28 @@ the module packages (PLAN P1-P6) build on; `tests/cache.py`, `tests/_modules.py`
 `sim`, `server`. Pytest args go after `--` (`mise run test-planner -- -k route -x`);
 `SPIDERPIG_TIER_WORKERS` changes `-n`. A module with no fast test yet passes and says so
 (`tests/tiers.py`'s runner turns pytest's "no tests" into success).
+
+### Chunks
+
+An agent's step (a foreground command, or the wait for a background one) should end within
+5 minutes: past that the model's prompt cache expires, and the next call re-reads the
+whole context uncached. A job longer than that runs in the background and in chunks, each
+one's end a notification. `tests/test_cradle.py`'s slow tests (each a fabrication of a
+whole cradle or more, a minute or two, from `cached_product` when it holds this code's)
+in five chunks at `-n 4`, each 3-4 min on a cold cache at load 5:
+
+```bash
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "clash_free and decanter_rcm"
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "clash_free and decanter_hinge"
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "verify_rates or stands_turns"
+R="not clash_free and not verify_rates and not stands_turns"
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "$R and decanter_rcm"
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "$R and not decanter_rcm"
+```
+
+The clash test is one test per crank angle and the verify test one per cradle (each under
+5 min, the checks as before). The identity gate likewise: `compare DIR --designs
+strider_quad`, then the other five.
 
 ## The scorecard, CI, the doc check
 
@@ -116,6 +139,7 @@ cache.CACHE_DIR         # CACHE_ROOT / "<engine_version>-<env tag>"
 cache.cached_design(cfg) -> (tmpl, SideDesign)               # design_side, plan seeded from disk
 cache.cached_side(cfg, t=1.0, *, fresh=False) -> Mechanism   # fabricate_side, BREP-cached
 cache.cached_robot(cfg, t=1.0, *, fresh=False) -> Mechanism  # fabricate (robot=True), BREP-cached
+cache.cached_product(cfg, t=1.0, *, fresh=False) -> Mechanism  # fabricate (robot=False): a cradle
 cache.seed_plan(cfg) -> bool       # seed fabricate._LAYOUTS only (a later design_side re-makes it)
 cache.prebuilt_store(cfg, tmp_path, t=1.0) -> Store          # a copy of a resolved+planned+built store
 cache.recorded(module, name, make) -> data                   # tests/fixtures/<module>/<name>.json
@@ -124,7 +148,10 @@ cache.assert_current(module, name, make) -> data             # that fixture's cu
 
 - `cfg` is a `spiderpig.config.BuildConfig`; `robot` is ignored by `cached_design` /
   `cached_side` (always the side) and forced by `cached_robot` (a mechanism has no robot:
-  `ParamError`). The template is `fabricate.template_for(cfg)`.
+  `ParamError`). The template is `fabricate.template_for(cfg)`. `cached_product` is what
+  `fabricate` makes with `robot` off: a decanting cradle whole (both sides, the box, the
+  stand), a minute or two fresh, a tenth of a second loaded; `tests/test_cradle.py` takes
+  its fabrications there but the ones it meshes (the flat pack) or builds files from.
 - The conftest factories are wrappers with their old signatures: `design(module, servo,
   linkage="klann", **build)`, `side(module, t, servo, **build)`, `robot(module, t,
   **build)`. Every existing test uses the cache through them.

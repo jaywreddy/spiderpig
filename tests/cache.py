@@ -9,6 +9,7 @@ The contract the module packages code against (``docs/agentlib/TESTING.md``)::
     cached_design(cfg) -> (tmpl, SideDesign)              # design_side, plan seeded from disk
     cached_side(cfg, t=1.0, *, fresh=False) -> Mechanism  # fabricate_side, BREP-cached
     cached_robot(cfg, t=1.0, *, fresh=False) -> Mechanism # fabricate(robot=True), BREP-cached
+    cached_product(cfg, t=1.0, *, fresh=False) -> Mechanism  # fabricate(robot=False): a cradle
     recorded(module, name, make) -> data                  # tests/fixtures/<module>/<name>.json
     assert_current(module, name, make) -> data            # the slow currency test of a fixture
     prebuilt_store(cfg, tmp_path, t=1.0) -> Store         # a copy of a planned + built store
@@ -397,7 +398,8 @@ def _fabrication_key() -> str:
     from spiderpig.keys import function_key
 
     return function_key(Path(__file__),
-                        ("cached_side", "cached_robot", "_mechanism", "cached_design"),
+                        ("cached_side", "cached_robot", "cached_product", "_mechanism",
+                         "cached_design"),
                         "testcache")
 
 
@@ -430,6 +432,24 @@ def cached_robot(cfg, t: float = 1.0, *, fresh: bool = False):
         return fabricate(tmpl, cfg, t)
 
     return _mechanism("robot", cfg, t, build, fresh)
+
+
+def cached_product(cfg, t: float = 1.0, *, fresh: bool = False):
+    """What :func:`spiderpig.fabricate.fabricate` makes of ``cfg`` with ``robot`` false at
+    crank angle ``t``: a mechanism's side, or a decanting cradle (both sides, the box and the
+    stand: :func:`spiderpig.fabricate.product`), from ``FAB_DIR`` when there. A cradle's
+    fabrication is a minute or two; loaded, a tenth of a second (both cradles' part tables,
+    meta, BOM, clashes, bottle hits, hand sweep and cut rules the same loaded as fresh,
+    measured 2026-10-20). ``fresh``: built now, nothing read or written."""
+    from spiderpig.fabricate import fabricate
+
+    cfg = replace(cfg, robot=False)
+
+    def build():
+        tmpl, _ = cached_design(cfg)
+        return fabricate(tmpl, cfg, t)
+
+    return _mechanism("product", cfg, t, build, fresh)
 
 
 # ---------------------------------------------------------------------------
