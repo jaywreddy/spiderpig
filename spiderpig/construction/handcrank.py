@@ -395,13 +395,14 @@ HANDLES: dict[str, HandleSpec] = {
                                  (8.0, 90.0, 22.0, 5.3, "m8_hex_bolt_90"), "light"),
 }
 """Per linkage, the hand crank's arm (``""``: the default, B's). B's is MIL-STD-1472H's
-longest light-load crank, 125 mm, a 60 x 16 grip (a full 6 L's worst start 21.3 N run in).
+longest light-load crank, 125 mm, a 60 x 16 grip (a full 6 L's worst start 21.7 N run in).
 A's (design review round 2's M-3) is 130 mm on a 230 mm reach: the reach puts its arm and a
 hand on its grip behind A's cradle link b2 and its rear tie Tr2 over the whole turn (round
 1's 85 mm crank on a 100 mm reach had the hand through them for 64.5° of crank) and in
 front of the base stop's rails behind the cradle (``cradle_report.hand_sweep``). A full 6
-L's worst start is 21.5 N at 130 mm run in, under the 22 N bar; at Figure 13's light-load
-maximum, 125 mm, it is 22.4 N, and a heavy-load crank (190 mm or more) meets A's bottle and
+L's worst start is 21.97 N at 130 mm run in, at the 22 N bar since design review round 2's
+12 mm tie rods (21.5 before; open: ``cradle_report.OPEN_GRIP``); at Figure 13's light-load
+maximum, 125 mm, it is 22.8 N, and a heavy-load crank (190 mm or more) meets A's bottle and
 the base stop's rails at every reach to 300 mm: so 5 mm over the light row's radius
 (:data:`HANDLE_OVER_RADIUS`). Its tube is long, so its hub prints in two pieces
 (:data:`HUB_PRINT_MAX`)."""
@@ -593,7 +594,7 @@ def clutch(start_nm: float, grip_r: float, box: WormBox) -> dict:
             "plunger_n": sorted(f_at)}
 
 
-DESIGN_START_NM: dict[str, float] = {"decanter_rcm": 2.68, "decanter_hinge": 2.817}
+DESIGN_START_NM: dict[str, float] = {"decanter_rcm": 2.712, "decanter_hinge": 2.856}
 """Per cradle, a sealed full 6 L's worst starting turn at the input (N·m) at the catalogue's
 static efficiency (:data:`NRV050`): ``cradle_report``'s ``handle_torque_nm``, which a test
 holds these to. The clutch is set on the user's own measurement; these draw it (the guide's

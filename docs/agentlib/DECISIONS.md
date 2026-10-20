@@ -2118,3 +2118,200 @@ a first-time user with the generated guide. What changed:
   wider stance for the lying cradle is the stand's to weigh.
 - **Where:** `spiderpig/construction/handcrank.py`, `spiderpig/config.py`,
   `spiderpig/hardware/bom.py`, `spiderpig/hardware/fasteners.py`, `tests/test_cradle.py`.
+
+### 2026-10-15: the cradles' structure and laser-cut parts (design review round 2, structure and parts)
+
+The round's linkage and laser-cut-parts reviews (`/root/scratch/decant/review5/r2/linkage.md`,
+`lc_parts.md` on the development box). The user's rule for this round: "Let's optimize the
+manufacturing method in later spins, not this one". Correctness, strength and honest numbers
+are in. Vendors and materials chosen to save money are out, and are listed at the end with
+their numbers.
+
+- **A side as one frame (B1's rule, and what it found).** Each side's posts and both frame
+  plates are now solved together (`cradle_structure.side_frame`). Each plate is a grillage out
+  of its plane, the outer one standing on its feet, the inner one held by nothing but the
+  posts. The posts are stiff along their axes. The gearbox's shaft turns the outer plate at the
+  crank by the rod's force times its height over the plate.
+  - The springs it replaces (`plate_spring`, each post's end on its plate's strips clamped at
+    their far nodes) held no plate's own equilibrium out of its plane. They also missed the
+    gearbox's turn and the inner plate twisting as a whole.
+  - An independent 3D frame of 12-dof beams agrees within about 10 %. A portal case is a
+    unit test.
+  - The review's own probes had applied each post's moment 90° off: the slopes' generalized
+    moment as the turn. Its "196 MPa at D1's column hole" is 145 MPa turned right.
+  - **Rated this way, neither cradle holds the clutch's 61.3 N·m cap everywhere.** B: the
+    outer plate's front leg from D2 to the foot 0.62, pillar O2 0.75, column D2 1.0, the rear
+    leg at the flag's screws 0.89. A: its front leg 0.45, column D3 0.9, the strut G-O 0.69,
+    the inner plate 1.19.
+  - Walking, both hold: B 2.86, A 3.74.
+  - **On the merged drive** (round 2's drive, `decanting-cradle` at d25b7b4, merged into this
+    round: the NRV050, its clutch's cap re-rated on this round's heavier cradle box, 63.7
+    N·m on B and 67.1 on A). B: the front leg 0.60, pillar O2 0.73, column D2 0.97; its
+    rear leg O-Fr 0.99 at O, no longer under 1.3: the toggle flag's screw holes went with
+    the flag. A: its front leg 0.41, column D3 0.83, the strut G-O 0.63, the inner plate
+    1.09, and pillar G 1.25 (1.38 at 61.3), on the list now. Walking: B 2.83, A 3.71.
+  - Two causes, which the springs couldn't see:
+    - Each side's posts stand nearly on one line, while the drive's force runs across it.
+      The floating inner plate can't turn their ends back, so the box sways and pillar O2
+      bends as a near cantilever: 47.9 N·m against 26.7.
+    - The gearbox turns the outer plate at O while the pillars carry the force 54 mm up.
+  - **Open item: the side frames at the cap** (`cradle_report.OPEN_AT_CAP`). The fix is a box
+    toward the rear, modelled on B and not built:
+    - 12 mm columns stand along the rail at 60, 180 and 290 mm behind the mouth;
+    - the inner plate runs a bottom chord from D2 to them.
+
+    That takes B's pillars O1 and O2 and column D2 to 1.43, 1.58 and 2.55. Three parts stay
+    under 1.3 and want one more iteration: the inner plate's leg D1-D2 in its plane (0.86),
+    the outer plate's O2-Fr (1.08) and the last rail column (1.17).
+  - **It is not built**, for three reasons. It redesigns the stand round the gearbox's mount,
+    which the round's drive is changing (NRV050). The pack and the guide change with it. And
+    it is a cost the user should see first.
+  - The parts open at the cap are listed in `cradle_report.OPEN_AT_CAP`. The report's verdict
+    names them, and the tests hold every other part at 1.3, then xfail on them.
+- **Re-rated on the merged drive** (the drive round's own way, its merge with the mounting
+  round). This round's cradle box is 0.3 kg heavier, all of it the 12 mm tie rods
+  (3.61 kg; 3.2 before). So a full 6 L's drawn start is 2.712 N·m at B's input and 2.856 at
+  A's (`handcrank.DESIGN_START_NM`; 2.68 and 2.817), and the clutch's cap 63.7 and 67.1 N·m
+  (`config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`; 63.0 and 66.2).
+  - The gearbox: 1.33 and 1.27 x under its 85 N·m maximum (floor 1.25), 2.37 and 2.25 x
+    over the walking peaks of 35.8 and 37.7 N·m.
+  - The grip run in: 21.7 N on B. **A's is 21.97 N at its 130 mm crank, at MIL-STD-1472H's
+    22 N bar to the report's tenth** (21.7 before). That is open, the user's call
+    (`cradle_report.OPEN_GRIP`; its test holds it no worse and xfails). The drive round had
+    judged 127.5 mm's 21.9 N too near. 132.5 mm gives 21.6 N with 12.2 mm of hand room
+    (14.7 at 130, 9.7 at 135; `hand_sweep` at 1°). But that is 7.5 mm over Figure 13's
+    125 mm, and 5 mm over is what the user accepted.
+  - B's stand: 25.5° (rear), 28.9° to the drive side; A's 24.5° to its drive side.
+  - Every other part holds the cap at 1.3 or more 30° from the toggles: B 1.31 (the inner
+    plate), A 1.38 (the tie rods).
+  - The cradle box 3.6 kg in the guide's lift step and the keepers' bench check (30 N, 1.7 x
+    half the box).
+- **Two clashes the slow tests found**, there since this round's first commit, before the
+  merge:
+  - The front thumbscrew (`cradle.FRONT_JACK`) stood at x 63, its tip in the carrier's floor
+    touching a 10 mm Tf1 and 1 mm into the 12 mm one. It moves to 65, midway between the
+    front rods, 1 mm from each; the V block's tab is 2 mm longer for its nut (`FRONT_TAB`).
+  - B's 40 mm front leg's round end dipped 7.5 mm into the base board at its foot. The
+    outer plate is cut off at the board's top (`cradle.CradleStand`); the leg's section
+    through the foot stays whole.
+  - The recorded room under the cradle box (`tests/fixtures/cradle/riser_reference.json`) is
+    up to 2 mm less with the 12 mm rods: the Zalto Burgundy's riser by the rule is 73 mm
+    (78), its stack unchanged.
+- **B1's widening.** B's outer front leg is 40 mm from O2 to the foot (`STANDS`' `wide`,
+  layer 0 only: the plan is the same). On the side as one frame, that leg went from 0.44 to
+  0.62, and the side's stiffness across at O1 from 2.0 to 2.67 N/mm.
+- **The plate rows (B1's rule).** Every member end is rated out of its plane on the cut plate
+  (`cradle_structure.plate_rows`):
+  - on a straight run, the net section through its hole;
+  - at a junction, at its strip's root.
+
+  They replace the rows that spread a post's moment over the summed sections at the node. A
+  frame row's `governs` names that member. Members' sway at an untied node uses the side's own
+  stiffness there (B's O: 12.4 N/mm, not 2.9: minor 3).
+- **The cradle box (M1).**
+  - The tie rods are NETRF12 on M6 x 16 A2-70 button heads, tightened to 6 N·m
+    (`cradle.TIE_D`, `TIE_M`, `TIE_ROD_SCREW`, `TIE_TIGHTEN_NM`), in 6.4 mm holes.
+  - The box's racking is rated (`cradle_report.box_racking`): the passive half's moment about
+    the mouth crosses in the rods, fixed at both ends.
+    - Walking, B's rods are at SF 7.4 and the joint stays closed (1.97 x its end moment).
+    - Jammed (half the couple), the rods hold 1.75 and their screws' prying 2.63 (A: 1.51 and
+      2.28).
+  - The rods sit 0.95 mm lower (`decanters.TIES`) so the V blocks still sit on their tops.
+  - Prices, NETRF12-274.9 from MISUMI's page, rendered 2026-10-15: USD 21.07 at 1-4, 15.33
+    at 5-9, 7.73 at 10-19 (NETRF10's 15.30, 11.08, 5.57).
+  - The extra M6 heads' height under the cradle link adds 0.6 mm to B's stack (84.65 mm, 16
+    layers): the plan's one change. A's inner plate's G-D1 is 23.6 mm so the 12 mm front rod
+    passes it by the plan's margin.
+- **The blocked cradle (M2).** `blocked`'s `threshold` gives, by superposition, the first part
+  to fall to 1.3 and to 1, and at how much more force at the grip.
+  - B, against the front tie: its outer plate reaches 1.3 at +4.2 N and 1 at +5.8 N (577 N at
+    the tie).
+  - A: +6.7 N and +9.3 N.
+  - A 6 L's base against a shelf is a third case.
+  - "The glass breaks first" is gone: nothing supports it.
+- **The rod (minor 1)** as a beam-column at its far pin's offset (`rod_secant_sf`): B 2.05,
+  A 2.65 jammed.
+- **The posts' end joints (minor 2).** M6 x 16 A2-70 button heads (Fastenal, ISO 3506-1,
+  pages rendered 2026-10-15: USD 0.37 each) with DIN 125 washers, in 6.4 mm holes (ISO 273
+  fine), on the pillars and the columns. Bolt Depot's 18-8 names no class; its grade chart's
+  A-2 minimum yield is 210 MPa, A2-50's.
+- **Minor 5.** b2's P end passes 1.93 mm from b3. That is over the planner's 1.0 mm margin,
+  so it is left as it is.
+- **Honest cutting prices (parts B1).** `bom.CRADLE_CUT_FITS` is refitted per sheet on the
+  review's 40 live SendCutSend quotes of 2026-10-14.
+  - Aluminium: `k x area^0.249 x cut^0.229 x blank^0.326`. 7075 runs 1.87 x 5052 one-off,
+    2.16 x at two.
+  - The birch is fitted on its blank's sides.
+  - Each sheet keeps its own quantity discount (x0.67-0.78 at two).
+  - Every quoted file is within 11 %. B's total is USD 760.28 against 758.19 live, A's
+    580.03 against 573.82. Nothing is left unpriced.
+  - Today's files: B's cutting USD 768.44 (the BOM had printed 301.58), its whole build
+    1,190.54. A's cutting is USD 580.35, its whole build 920.93. On the merged drive: B's
+    cutting 797.23, its build 1,307.24; A's 605.39 and 1,005.50.
+  - `MadeRow` carries each part's cut length, pierces and blank. ORDER.md's upload table
+    gives each file's estimate and whether it arrives deburred.
+- **Cut rules (parts M3, minor 5).** SendCutSend's pages fetched 2026-10-15 give:
+  - the thick sheets' minimum part (12.7 x 19.05 mm);
+  - each sheet's thickness tolerance (`thickness_tol`);
+  - deburring 1 x 3 in to 36 x 46 in, anodizing to 23 x 23 in, flatness ±0.030 in a foot.
+
+  A part under the deburring minimum is a warning (`manufacture.deburr_issue`), on the
+  cradles' sheets only: the walkers' crank plates would gain warnings and the gate stays
+  identical. The 0.8 mm inside corner stays the joinery plan's: no page gives one.
+- **Fit-up (parts M3, M5, minor 9).**
+  - The guide's first stage (`assembly.CRADLE_ARRIVAL`): deburr the as-cut links by hand,
+    caliper every link at its pin holes.
+  - ORDER.md: order the MISUMI pins after the parts arrive (the stack + 0.3 mm).
+  - The pins' ring and clip steps: sand a printed spacer by the excess.
+  - The board on the flat table first, its concave face down.
+  - `cradle_report.take_up` rates each pin's play against the sheets' tolerances: B's P is
+    -0.49 mm at worst, its Y -0.06; A's E -0.52.
+- **The BOM's laser size** is the flat blank for a product (minor 8).
+- **The links' shapes (parts M3, M4, minor 1, minor 4).**
+  - The rods b1 are 26 mm wide (`config.PRODUCT_CHORD_R`): SendCutSend's free deburr.
+  - **Fillets.** Each product link's chords and bosses are closed: grown by a radius and
+    shrunk back (`plates.product_outline`). So every inside corner, elbow, boss cusp and
+    window corner is rounded to that radius, and a window narrower than twice it is filled.
+    - The radius is R15 (`plates.PRODUCT_FILLET_R`). B's cradle link b6 and A's b2 are R18
+      (`plates.PRODUCT_FILLETS`).
+    - b6's sliver window is gone and its elbows are rounded (the review's priced shape). A's
+      b2 loses both its windows. B's b2 keeps its window, its three corners rounded R15.
+    - What the closing adds is claimed as pills on points fixed to the link
+      (`stack.Topology.add_link_points`, `plates.Outline`), standing at most 1 mm off the
+      outline into the air (3 mm into a window the link keeps). `Build.xy` places those
+      points, and `verify_plan` re-samples them. So the planner checks the fillets against
+      everything over the turn, as it checks a chord.
+  - **Bosses** (`config.PRODUCT_BOSS_R`), each a disc claimed as one. They bring the cut
+    rules' hole-to-edge warnings up to SendCutSend's 2 t for 7075:
+    - b1 at M, r 15.8 (9.6 mm of web, 1.5 t of 0.250 in);
+    - B's b2 at O2 and b3 at O1, and A's b2 at G, r 17 (10.8 mm, 2.2 t).
+  - **Checked on the design, 7,200 samples of the turn**, each link's cut outline against
+    every other claim in its layer:
+    - Nothing comes within the planner's 1 mm margin.
+    - A's b2 passes a stand column at 5.3 mm.
+    - B's b2 P end passes b3 at 1.93 mm, the same as before the change (minor 5).
+    - B's b6 passes 2.8 mm outside pillar O1's head claim, in plan (minor 3). O1 ends at b3:
+      its 18 mm printed ring is two layers under b6, and its M6 head and washer stop 3.5 mm
+      under b6, 5.0 mm away at rest as fabricated. The review's 0.73 mm was in plan, to the
+      ring.
+    - Each link lies inside its claims (`construction.contract`).
+  - The board's notch points, the locator's ears and the cleats' ends are rounded.
+  - Products only. The walkers' identity gate against `planner-f667d6b` is identical.
+- **Where:** `spiderpig/cradle_structure.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/cradle_drive.py`, `spiderpig/strength.py`, `spiderpig/construction/cradle.py`,
+  `spiderpig/construction/pivots/standoff.py`, `spiderpig/construction/plates.py`,
+  `spiderpig/stack/topology.py`, `spiderpig/hardware/` (`bom.py`, `order.py`,
+  `sheet_catalog.py`, `cradle_catalog.py`), `spiderpig/manufacture.py`,
+  `spiderpig/linkages/decanters.py`, `spiderpig/config.py`, `tests/test_cradle.py`.
+
+**Deferred: the manufacturing method's savings** (the user's rule; the lc_parts review's live
+quotes of 2026-10-14):
+
+| change | USD | note |
+|---|---:|---|
+| b2 and b4 from 7075 to 0.187 in 5052 | -67.74 | b2 85.62 -> 40.00, b4 43.72 -> 21.60; the linkage review's strength check: b2 5.6, b4's buckling 1.52, the rear block 1.07 |
+| the birch cut at home from one 24 x 48 in panel (Online Metals, USD 44.45) | -191.64 + shipping | the board, four cleats, the locator; a drilling template printed |
+| or only the board routed, the locator printed, the cleats from offcuts | -95.70 | |
+| OSH Cut instead of SendCutSend | +124.18 on the aluminium | its 5052 arrives undeburred |
+| anodizing | +118 or more | A's 683.6 mm frames over the 23 in maximum; the 24 mm links can't be |
+| frames in 0.250 in (2.37 x stiffer across) | +32.26 | not a saving: an option for the sway |

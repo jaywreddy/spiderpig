@@ -17,8 +17,15 @@ below), min part .187 x .375 in (4.75 x 9.53 mm), kerf compensated by the servic
   non-circular cut-out (a pocket, a relief, a slot inside the outline) to the part's edge,
   a hole or another cut-out (since the assembly audit of 2026-10-04: a relief beside a
   hole or another relief was never measured);
-* **part size**: at least ``min_part`` (SendCutSend aluminium 6.35 x 9.5 mm, acrylic
-  4.75 x 9.53 mm; Ponoko 6 mm);
+* **part size**: at least ``min_part`` (SendCutSend aluminium 6.35 x 9.5 mm up to .125 in,
+  12.7 x 19.05 mm in 5052 at .187 and .250 in, 12.7 x 12.7 mm in 7075 .190 in: its spec
+  tables, 2026-10-15; acrylic 4.75 x 9.53 mm; Ponoko 6 mm);
+* **deburring** (``deburr``, a warning): SendCutSend deburrs a part only from 1 x 3 in
+  (25.4 x 76.2 mm: its spec tables and https://sendcutsend.com/services/deburring-services/,
+  2026-10-15), measured on the part's blank as its per-part DXF lies (:func:`blank_of`);
+  a smaller one arrives as cut, the dross of the laser's exit face on it: deburr it by
+  hand. Checked on the sheets whose item carries ``deburr_mm``
+  (:data:`hardware.sheet_catalog.DEBURR_CHECKED`: a decanting cradle's);
 * **inside corners**: a pocket's corners come out ``corner_r`` round (SendCutSend in
   aluminium: 0.8 mm), so a pocket that must take a square corner (a hex pocket for a nut or
   a bolt head) needs corner reliefs at least that round: a pocket of straight edges only,
@@ -70,6 +77,47 @@ DXF_AREA_REL = 1e-3                  # the emitted area off the section's, at mo
 
 def _profile(body):
     return section_of(body)
+
+
+def blank_of(body, sketch=None) -> tuple[float, float]:
+    """``body``'s blank, ``(short, long)`` side in mm: its section's outline turned as its
+    per-part DXF lies (:func:`layout.save_parts`: a link along its first outline segment,
+    another part along its principal axis), what the service measures an upload by."""
+    from build123d import Axis
+
+    from spiderpig.layout import _long_axis_degrees
+
+    sketch = _profile(body) if sketch is None else sketch
+    turned = sketch.rotate(Axis.Z, -_long_axis_degrees(body))
+    bb = turned.bounding_box()
+    w, h = sorted((bb.max.X - bb.min.X, bb.max.Y - bb.min.Y))
+    return w, h
+
+
+def deburr_issue(body, key: str, sketch=None) -> dict | None:
+    """The ``deburr`` rule: a part on a sheet whose item names the service's deburring
+    minimum (``deburr_mm``) under it arrives as cut (a warning: deburr it by hand);
+    ``None``: deburred, or not checked on that sheet."""
+    from spiderpig.hardware.catalog import get
+
+    least = get(key).dims.get("deburr_mm")
+    if not least:
+        return None
+    w, h = blank_of(body, sketch)
+    lo, hi = sorted(float(v) for v in least)
+    if w >= lo - TOL and h >= hi - TOL:
+        return None
+    sh = sheet(key)
+    return {"rule": "deburr", "part": body.name, "level": "warning",
+            "value": [rounded(w, 2), rounded(h, 2)], "limit": [rounded(lo, 2), rounded(hi, 2)],
+            "detail": f"{fixed(w, 1)} x {fixed(h, 1)} mm, under {sh.service}'s "
+                      f"{lo:g} x {hi:g} mm deburring minimum",
+            "why": f"{sh.service} deburrs only a part of at least {lo / 25.4:g} x "
+                   f"{hi / 25.4:g} in: this one arrives as cut, the dross of the laser's "
+                   "exit face on it (on a link that slides on its neighbour or a printed "
+                   "spacer, it scores them)",
+            "fix": "arrives as cut: deburr it by hand (both faces, each hole's edges) "
+                   "before it goes on, or widen it past the minimum"}
 
 
 def _pocket_web(outer, holes, pockets) -> tuple[float, str] | None:
@@ -146,6 +194,8 @@ def part_issues(body, key: str, sketch=None) -> list[dict]:
                            f"({lo:g} x {hi:g} mm in {sh.material})",
                     "fix": "print it, or grow it (or merge it with a neighbour) past the "
                            "service's smallest part"})
+    if (rough := deburr_issue(body, key, sketch)) is not None:
+        out.append(rough)
     holes, pockets = [], []
     for wire in wires:
         if wire is outer:
@@ -283,7 +333,8 @@ def check(mech, default: str, dxf: bool = True) -> dict:
 
 RULES = {"min_hole": "minimum hole", "edge": "hole-to-edge distance",
          "web": "web round a cut-out", "dxf": "DXF matches the solid",
-         "min_part": "minimum part size", "corner": "inside corner radius"}
+         "min_part": "minimum part size", "corner": "inside corner radius",
+         "deburr": "deburring size (a part that arrives as cut)"}
 """Each cut rule's name in a message."""
 
 

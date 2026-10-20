@@ -56,7 +56,7 @@ from spiderpig.construction.handcrank import (
     drawn_clutch,
     handle_spec,
 )
-from spiderpig.cradle_drive import clutch_case, drive_limits, verdict
+from spiderpig.cradle_drive import JAM_FLOOR, clutch_case, drive_limits, verdict
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware import mass as mass_mod
 from spiderpig.hardware.cradle_catalog import (
@@ -387,16 +387,27 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     rod_len = float(np.linalg.norm(pts[lk.crank[1]][0] - pts[
         next(j for j in lk.links[rider][0] if j != lk.crank[1])][0]))
     t_rod = design.ctx.sheet_t("link", rider)
-    w = 2 * design.ctx.params.link_radius
+    far = next(j for j in lk.links[rider][0] if j != lk.crank[1])
+    from spiderpig.config import chord_r
+    from spiderpig.materials import link_sheets, sheet
+
+    w = 2 * chord_r(config, rider, lk.crank[1], far)
     inertia = w * t_rod ** 3 / 12.0
     p_cr = math.pi ** 2 * E_ALU * inertia / rod_len ** 2
     rod_jk = next(jk for jk, (j, b1, b2) in enumerate(joints) if j == lk.crank[1])
     f_rod = float(forces[:, rod_jk].max())
     f_rod_jam = float(jam_f[:, rod_jk].max())
+    # its far pin's span: the force comes in half of it off the rod's mid-plane
+    span = float(((mech.meta.get("wobble") or {}).get(f"pin:{far}") or {}).get("span_mm", 0.0))
     out["rod"] = {"length_mm": round(rod_len, 1), "section_mm": [round(w, 2), round(t_rod, 3)],
                   "euler_n": round(p_cr, 1), "bottle_n": round(f_rod, 1),
                   "jam_n": round(f_rod_jam, 1), "sf_bottle": round(p_cr / max(f_rod, 1e-9), 2),
-                  "sf_jam": round(p_cr / max(f_rod_jam, 1e-9), 2)}
+                  "sf_jam": round(p_cr / max(f_rod_jam, 1e-9), 2),
+                  "eccentricity_mm": round(span / 2, 2),
+                  "yield_mpa": sheet(link_sheets(config).get(rider, config.sheet)).yield_mpa}
+    for tag, f in (("bottle", f_rod), ("jam", f_rod_jam)):
+        out["rod"][f"sf_secant_{tag}"] = round(float(rod_secant_sf(np.array([f]),
+                                                                    out["rod"])[0]), 2)
     # the gearbox's output shaft: the rod's force at its plane, walking (the toggles' at the
     # cap: jam_capped's rows)
     outp = out["drive"]["output_overhung"]
@@ -427,7 +438,8 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     out["jam_capped"] = clutch_case(config, mech, ts, tilt, cap, out["rod"], out["crankpin"],
                                     out["drive"]["jam_push_nm"],
                                     out["drive"]["output_overhung"]["allowed_n"])
-    out["blocked_capped"] = blocked(config, mech, ts=ts, crank_nm=cap)
+    out["blocked_capped"] = blocked(config, mech, ts=ts, crank_nm=cap, thresholds=True,
+                                    rod_euler_n=out["rod"]["euler_n"])
     out["verdict"] = verdict(lk.key, out)
     moving = {*cr.REAR_MOVES, *cr.STOP_MOVES}
     out["saddles"] = saddles(float(tilt.min()), float(tilt.max()), sum(
@@ -435,6 +447,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     got = keepers(config, mech)
     if got:
         out["keepers"] = got
+    out["take_up"] = take_up(config, mech)
     if clash_angles:
         from spiderpig.construction.contract import clashes
 
@@ -446,6 +459,23 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
             found.extend(dict(c, crank_deg=round(math.degrees(t), 1)) for c in wheel_sweep(m))
         out["clashes"] = found
     return out
+
+
+def rod_secant_sf(f: np.ndarray, rod: dict) -> np.ndarray:
+    """The rod's safety factor as a beam-column out of its plane (design review round 2's
+    minor 1): its far pin spans two layers, so its force ``f`` (N, per case) comes in
+    ``rod["eccentricity_mm"]`` off its mid-plane there, an end moment ``M0 = f e``; pinned at
+    the crankpin, its largest moment is ``M0 / sin(k L)`` (``k L = pi sqrt(f / P_cr)``, past
+    a quarter wave; else ``M0`` at the end), on its weak axis with its axial stress, against
+    its sheet's yield (0 at or past Euler)."""
+    w, t = rod["section_mm"]
+    e, y, pcr = rod["eccentricity_mm"], rod["yield_mpa"], rod["euler_n"]
+    f = np.maximum(np.asarray(f, float), 1e-9)
+    ratio = np.minimum(f / pcr, 0.999999)
+    kl = math.pi * np.sqrt(ratio)
+    amp = np.where(kl > math.pi / 2, 1.0 / np.sin(kl), 1.0)
+    sig = f / (w * t) + amp * f * e / (w * t * t / 6.0)
+    return np.where(f >= pcr, 0.0, y / sig)
 
 
 def _setting_row(size: cr.BottleSize) -> list[float]:
@@ -711,6 +741,51 @@ def keepers(config: BuildConfig, mech) -> dict:
             "load_ratio": round(cr.KEEPER_PUSH_N / load, 2), "load_bar": KEEPER_LOAD_RATIO,
             "least_over_load": round(min(r["grip_least_n"] for r in rows) / load, 2),
             "push_on_bar_n": KEEPER_PUSH_MAX_N}
+
+
+def take_up(config: BuildConfig, mech) -> dict:
+    """Each pin's axial take-up against its links' sheets as they may arrive (design review
+    round 2's M5): a pin (``mech.meta["wobble"]``'s ``pin:`` notes: its links and its
+    play, the barrel or the length between the rings less the stack as drawn, the printed
+    parts' tolerance already in) takes its links' thickness over the nominal; each link's
+    sheet is over by up to its published tolerance (``thickness_tol``, SendCutSend's spec
+    tables: 0.250 in 5052 +0.027 in, 0.187 in +0.009 in, 7075 0.190 in +0.007 in). Per pin:
+    the play, the links and their sheets, the growth worst case (every link at its most)
+    and root-sum-square, and the margins (the play less each). A negative worst-case margin
+    is a ring that may not go into its groove or a clip whose hole is covered, with no
+    adjustment in the part: the guide calipers the links on arrival (and sands the pin's
+    printed ring or spacer by the excess) and ORDER.md orders the made-to-length pins from
+    the measured stack (``hardware.order.MEASURED_PINS``). A rating, not a bar."""
+    from spiderpig.hardware.catalog import get
+    from spiderpig.materials import sheet_of
+
+    rows = []
+    for name, note in sorted((mech.meta.get("wobble") or {}).items()):
+        if not name.startswith("pin:") or not note.get("links"):
+            continue
+        links, overs = [], []
+        for ln in note["links"]:
+            key = sheet_of(config, "link", ln["link"])
+            over = float((get(key).dims.get("thickness_tol") or (0.0, 0.0))[0])
+            overs.append(over)
+            links.append({"link": ln["link"], "sheet": key, "over_mm": over})
+        play = float(note.get("play_mm") or 0.0)
+        worst, rss = sum(overs), math.sqrt(sum(o * o for o in overs))
+        rows.append({"pin": name[4:], "kind": str((note.get("section") or {}).get("name", "")),
+                     "play_mm": round(play, 3), "links": links,
+                     "growth_worst_mm": round(worst, 3), "growth_rss_mm": round(rss, 3),
+                     "margin_worst_mm": round(play - worst, 3),
+                     "margin_rss_mm": round(play - rss, 3)})
+    short = [r["pin"] for r in rows if r["margin_worst_mm"] < 0]
+    return {"rows": rows, "short_worst": short,
+            "short_rss": [r["pin"] for r in rows if r["margin_rss_mm"] < 0],
+            "least_margin_mm": min((r["margin_worst_mm"] for r in rows), default=None),
+            "basis": "SendCutSend's published thickness tolerances (spec tables, 2026-10-15) "
+                     "over each pin's play as drawn",
+            "fix": "the guide calipers each link at its pin holes on arrival and sands a "
+                   "pin's printed ring or spacer by its excess; ORDER.md orders the "
+                   "made-to-length pins after, at the measured stack + 0.3 mm"
+                   if short else ""}
 
 
 def balance(rest_deg: float = -50.0, full_deg: float = 30.0) -> dict:
@@ -1370,12 +1445,16 @@ def column_section(stand: cr.Stand) -> tuple[float, float, float]:
     (the tap drill's, as a pillar's: a NETRF10's M5 4.2, a NETRF12's M6 5.0) and their
     depth (:func:`construction.cradle.column_parts`)."""
     col = cr.column_parts(stand)
-    return col.d, (NETRF12_ID if col.d > cr.TIE_D else NETRF10_ID), col.thread
-BLOCKS = {"front saddle": (55.0, -47.0), "rear saddle": (317.5, -149.0)}
+    return col.d, (NETRF12_ID if col.d > 10.0 else NETRF10_ID), col.thread
+
+
+BLOCKS = {"front saddle": (55.0, -47.95), "rear saddle": (317.5, -149.0),
+          "bottle's base": (560.0, 60.0)}
 """Where a blocked cradle is held in the known-limit cases (:func:`blocked`), in the cradle's
 frame (mm): the front tie Tf1 (what the front saddle, the light and the front ties would
-bring down on a raised decanter's rim) and the rear saddle's underside, midway along it
-(the base stop's rails, a bottle's base, anything on the board)."""
+bring down on a raised decanter's rim), the rear saddle's underside, midway along it (the
+base stop's rails, anything on the board), and a 6 L's base at its top edge (a shelf or a
+cabinet's front over it: design review round 2's M2)."""
 
 
 def _holes(config: BuildConfig, notes: dict) -> dict[str, float]:
@@ -1395,7 +1474,7 @@ def _holes(config: BuildConfig, notes: dict) -> dict[str, float]:
     out[config.lk.crank[1]] = strength.rider_hole(config)
     from spiderpig.linkages.decanters import TIES
 
-    out.update(dict.fromkeys(TIES, cr.TIE_HOLE))
+    out.update(dict.fromkeys(TIES, cr.TIE_ROD_HOLE))
     return out
 
 
@@ -1403,7 +1482,8 @@ def _stand_xy(config: BuildConfig, pts) -> dict[str, np.ndarray]:
     """Every node of the cradle's stand (its plates' members' ends, its columns), world XY."""
     stand = cr.stand_of(config.lk)
     mouth = pts[cr.mouth_name(config.lk)][0]
-    names = {p for pair in (*stand.outer, *stand.inner) for p in pair} | set(stand.columns)
+    names = ({p for pair in (*stand.outer, *stand.inner) for p in pair} | set(stand.columns)
+             | {*stand.feet, *stand.base_ties, *stand.bay_ties})
     return {n: (mouth + np.asarray(stand.nodes[n], float)) if n in stand.nodes
             else np.asarray(pts[n][0], float) for n in names}
 
@@ -1504,18 +1584,25 @@ def _post_row(name: str, kind: str, got: dict[str, dict], d: float, bore: float,
 
 def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=None,
               skip=None, bottle: cr.BottleSize | None = cr.DESIGN,
-              block: tuple[float, float] | None = None) -> dict:
+              block: tuple[float, float] | None = None,
+              jam: tuple[np.ndarray, np.ndarray] | None = None) -> dict:
     """The cradle's structure from the statics' force vectors (:mod:`cradle_structure`):
     "walk" ``bottle`` sealed and full, "jam" ``crank_nm`` at the crank (default the jam
     case's, :func:`jam_nm`) on a blocked cradle (a couple; with ``block``, a force at that
-    point of the cradle, :func:`statics`), over ``ts`` (default 360 crank angles) less
-    ``skip`` in the jam (default the toggles' :func:`_toggles`; pass an empty mask, and a
-    clutch's cap as ``crank_nm``, to rate them). ``mech``: the cradle fabricated (its
-    masses, its wobble notes: the plan's z). Returns the links in bending, the posts, the
-    frame plates' members, and the strength rows they add (``rated``: the columns, a row
-    per frame plate) and the pillars' moments (``pillars``) for :func:`loads_doc`."""
+    point of the cradle, :func:`statics`; with ``jam``, these crank torques and joint force
+    vectors per angle instead, :func:`blocked`'s superposition), over ``ts`` (default 360
+    crank angles) less ``skip`` in the jam (default the toggles' :func:`_toggles`; pass an
+    empty mask, and a clutch's cap as ``crank_nm``, to rate them). ``mech``: the cradle
+    fabricated (its masses, its wobble notes: the plan's z). Returns the links in bending,
+    the posts and both frame plates as one frame (:func:`cradle_structure.side_frame`,
+    design review round 2: each plate out of its plane as it is, the gearbox's shaft
+    turning the outer plate at the crank), the frame plates' members in their plane and out
+    of it, the side's stiffness across (``stiffness``), the cradle box across the bay
+    (``box``), and the strength rows they add (``rated``: the columns, a row per frame plate,
+    the tie rods and their end joints) and the pillars' moments (``pillars``) for
+    :func:`loads_doc`."""
     from spiderpig import cradle_structure as cs
-    from spiderpig.materials import link_sheets, sheet, sheet_of, thickness
+    from spiderpig.materials import link_sheets, sheet, thickness
 
     lk = config.lk
     if ts is None:
@@ -1529,9 +1616,13 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
     rigid, joints = planar_model(config, mech, 1.0, bottle)
     pts = _world_joints(config, ts)
     walk_t, _, walk_v = statics_vectors(config, rigid, joints, ts)
-    _, _, jam_v = statics_vectors(config, rigid, joints, ts, jam_nm=crank_nm, block=block)
+    if jam is None:
+        _, _, jam_v = statics_vectors(config, rigid, joints, ts, jam_nm=crank_nm, block=block)
+        jam_torque = np.full(len(ts), crank_nm)
+    else:
+        jam_torque, jam_v = jam
     cases = {"walk": (walk_v, np.zeros(len(ts), bool), walk_t),
-             "jam": (jam_v, skip, np.full(len(ts), crank_nm))}
+             "jam": (jam_v, skip, jam_torque)}
     notes = mech.meta.get("wobble") or {}
     holes = _holes(config, notes)
     w = 2 * config.params.link_radius
@@ -1556,17 +1647,31 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
     frames = {tag: cs.link_bending(lk, pts, joints, v, sections, holes, {link: on[tag]}, sk,
                                    width) for tag, (v, sk, _) in cases.items()}
     side, length = _side_posts(config, notes, joints, pts)
-    got = {tag: cs.posts(side, length, v, sk) for tag, (v, sk, _) in cases.items()}
-
-    # the frame plates: the outer pinned at its feet, the posts' feet and the gearbox on it;
-    # the inner floating on its posts' ends
-    stand = cr.stand_of(lk)
-    xy = _stand_xy(config, pts)
-    t_frame = thickness(config, sheet_of(config, "frame"))
-    y_frame = sheet(config.frame_sheet).yield_mpa
-    widths = _stand_widths(stand)
+    plates_ = side_plates(config, pts)
     o_joint = next(jk for jk, (j, b1, b2) in enumerate(joints)
                    if j == lk.crank[0] and b2 == "ground")
+    z_rod = rod_height(config, notes, mech.meta.get("hand_crank"))
+
+    def turns(v: np.ndarray) -> dict[str, np.ndarray]:
+        """The gearbox's turn on the outer plate at the crank: its shaft carries the rod's
+        force from the crankpin, the rod's mid-plane over the plate (``z_rod``)."""
+        f = -v[:, o_joint]
+        return {lk.crank[0]: z_rod * np.stack([-f[:, 1], f[:, 0]], -1)}
+
+    got: dict[str, dict] = {}
+    grills: dict[str, dict] = {}
+    for tag, (v, sk, _) in cases.items():
+        got[tag], grills[tag] = cs.side_frame(side, length, v, plates_, sk, turns=turns(v))
+    stiff = side_stiffness(config, side, length, plates_, len(joints))
+
+    # the frame plates in their plane: the outer pinned at its feet, the posts' feet and the
+    # gearbox on it; the inner floating on its posts' ends
+    stand = cr.stand_of(lk)
+    xy = plates_.xy
+    t_frame = plates_.t
+    y_frame = sheet(config.frame_sheet).yield_mpa
+    widths = _stand_widths(stand)
+    post_nodes = [p.name.split(":", 1)[-1] for p in side]
     plates: dict[str, dict] = {}
     for tag, (v, sk, torque) in cases.items():
         keep = ~sk
@@ -1575,16 +1680,16 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
                     for p in side}
             ld_o[lk.crank[0]] = ld_o.get(lk.crank[0], 0.0) - v[keep, o_joint]
             outer = cs.members({k: xy[k] for k in {*(q for pr in stand.outer for q in pr),
-                                                   *ld_o}},
+                                                   *ld_o, *_on_members(stand, "outer")}},
                                stand.outer, widths, t_frame, y_frame, ld_o, stand.feet,
                                (lk.crank[0], -torque[keep] * 1000.0),
-                               tied=[*stand.feet, *(p.name.split(":", 1)[-1] for p in side)])
+                               tied=[*stand.feet, *post_nodes], across_k=stiff["across_n_mm"])
             ld_i = {(p.name.split(":", 1)[-1]): -got[tag][p.name]["forces"][fix]["end"]
                     for p in side}
             inner = cs.members({k: xy[k] for k in {*(q for pr in stand.inner for q in pr),
-                                                   *ld_i}},
+                                                   *ld_i, *_on_members(stand, "inner")}},
                                stand.inner, widths, t_frame, y_frame, ld_i, (),
-                               tied=[p.name.split(":", 1)[-1] for p in side])
+                               tied=post_nodes)
             for plate, res in (("outer", outer), ("inner", inner)):
                 into = plates.setdefault(plate, {}).setdefault(tag, {})
                 for m_ in res["members"]:
@@ -1597,9 +1702,17 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
                     if m_["buckling"] is not None and (have["buckling"] is None
                                                        or m_["buckling"] < have["buckling"]):
                         have.update({k: m_[k] for k in ("compression_n", "buckling")})
+        # each plate out of its plane (design review round 2's B1: a post's end moment
+        # shared by stiffness, not spread over the sections; every member end, the cut
+        # plate's section there)
+        web = _frame_web(config)
+        for plate, segs in (("outer", plates_.outer), ("inner", plates_.inner)):
+            into = plates.setdefault(plate, {}).setdefault(tag, {})
+            into.update(cs.plate_rows(grills[tag][plate], segs, xy, t_frame, y_frame,
+                                      plate_holes(config, plate), web))
 
     # the strength rows: the columns, each frame plate (its worst member), the pillars'
-    # moments for strength.joint_strength
+    # moments for strength.joint_strength, the tie rods across the bay
     rated = []
     d, bore, _ = column_section(stand)
     for p in side:
@@ -1609,31 +1722,13 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
                                d, bore, NETRF10_YIELD,
                                f"{d:g} mm steel standoff column (NETRF{d:g}, as a {d:g} x "
                                f"{bore:g} tube at its tapped ends)"))
-    # each plate where a post's end turns it out of its plane: the members there in bending
-    # across their weak axis, the moment shared by their sections
-    for plate, pairs, key in (("outer", stand.outer, "foot_nm"), ("inner", stand.inner,
-                                                                    "tip_nm")):
-        segs = [(s, widths.get((pr[0], pr[1]), widths.get((pr[1], pr[0]), 2 * stand.member_r)))
-                for pr in pairs for s in cs._split(list(xy), xy, [pr], tol=1.0)]
-        for p in side:
-            n = p.name.split(":", 1)[-1]
-            z = sum(w * t_frame ** 2 / 6 for s, w in segs if n in s)
-            if z <= 0:
-                continue
-            for tag in got:
-                m_ = got[tag][p.name][key] * 1000.0 / z
-                into = plates.setdefault(plate, {}).setdefault(tag, {})
-                into[f"at {n}"] = {"member": f"the plate at {p.name}'s "
-                                             f"{'foot' if plate == 'outer' else 'end'}",
-                                   "stress_mpa": round(m_, 1),
-                                   "safety": round(y_frame / max(m_, 1e-9), 2),
-                                   "compression_n": 0.0, "buckling": None}
     for plate, by in plates.items():
         row = {"joint": f"frame:{plate}", "kind": "frame", "links": [],
                "sheet": config.frame_sheet, "thickness_mm": t_frame,
                "section": f"{plate} frame plate's members", "what":
-               f"the {plate} frame plate's members (in-plane stress, and Euler out of the "
-               "plane between their nodes)"}
+               f"the {plate} frame plate's members (in-plane stress, Euler out of the plane "
+               "between their nodes, and out of the plane at every member's ends: "
+               "cradle_structure.plate_rows)"}
         for tag, ms in by.items():
             worst = min(ms.values(), key=lambda m_: min(m_["safety"], m_["buckling"] or
                                                         math.inf))
@@ -1641,6 +1736,8 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
             row[tag] = {"safety": round(sf, 2), "governs": worst["member"],
                         "load_n": worst["compression_n"], "stress_mpa": worst["stress_mpa"]}
         rated.append(row)
+    box = box_racking(config, joints, pts, cases, float(mech.meta["tie_mm"]))
+    rated += box["rows"]
     pillars = {}
     for p in side:
         if p.name.startswith("column:"):
@@ -1655,11 +1752,236 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
     strip = {tag: {name: {k: v for k, v in g.items() if k != "forces"}
                    for name, g in by.items()} for tag, by in got.items()}
     return {"crank_nm": crank_nm, "skipped_deg": round(float(skip.sum()) * 360.0 / len(ts), 1),
-            "plates_gap_mm": round(length, 2),
+            "plates_gap_mm": round(length, 2), "rod_over_plate_mm": round(z_rod, 2),
             "link_frames": frames, "posts": strip,
             "plates": {plate: {tag: list(ms.values()) for tag, ms in by.items()}
                        for plate, by in plates.items()},
+            "stiffness": {k: v for k, v in stiff.items() if k != "across_n_mm"},
+            "box": {k: v for k, v in box.items() if k != "rows"},
             "rated": rated, "pillars": pillars}
+
+
+def _on_members(stand: cr.Stand, plate: str) -> list[str]:
+    """The stand's screw points on a plate's members (the feet's on the outer, a bay tie's on
+    the inner): nodes there, so a member is rated at their holes."""
+    if plate == "outer":
+        return [*stand.feet, *stand.base_ties]
+    return list(stand.bay_ties)
+
+
+def _frame_web(config: BuildConfig) -> float:
+    from spiderpig.construction.plates import boss_web
+
+    return boss_web(config.frame_sheet)
+
+
+def side_plates(config: BuildConfig, pts):
+    """The drive side's two frame plates out of their plane for
+    :func:`cradle_structure.side_frame`: each plate's members split at every node on them
+    (posts, feet, screws), their widths, the frame sheet's thickness, the outer plate's
+    feet."""
+    from spiderpig import cradle_structure as cs
+    from spiderpig.materials import sheet_of, thickness
+
+    stand = cr.stand_of(config.lk)
+    xy = _stand_xy(config, pts)
+    widths = _stand_widths(stand)
+
+    def segs(pairs) -> list:
+        out = []
+        for pr in pairs:
+            w = widths.get(pr, widths.get(pr[::-1], 2 * stand.member_r))
+            out += [(s, w) for s in cs._split(list(xy), xy, [pr], tol=1.0)]
+        return out
+
+    return cs.SidePlates(xy, segs(stand.outer), segs(stand.inner),
+                         thickness(config, sheet_of(config, "frame")), stand.feet)
+
+
+def plate_holes(config: BuildConfig, plate: str) -> dict[str, float]:
+    """The holes a frame plate has at the stand's nodes (mm): the posts' end screws' (a
+    pillar's, a column's), the feet's screws (the outer), a bay tie's (the inner)."""
+    from spiderpig.construction.pivots.standoff import StandoffAxle
+
+    lk = config.lk
+    stand = cr.stand_of(lk)
+    out = dict.fromkeys((j for j in lk.frame if j != lk.crank[0]),
+                        StandoffAxle().cradle_shaft().end_hole)
+    out.update(dict.fromkeys(stand.columns, cr.column_parts(stand).hole))
+    out.update(dict.fromkeys(_on_members(stand, plate), cr.TIE_HOLE))
+    return out
+
+
+def rod_height(config: BuildConfig, notes: dict, hand: dict | None = None) -> float:
+    """The connecting rod's mid-plane over the outer plate's inner face (mm): where the
+    gearbox's shaft takes the rod's force from the crankpin, so the shaft turns the outer
+    plate at the crank by the force times this. From the hand crank's own notes where given
+    (``hand``: the gearbox on its riser under the plate, the crank block over it, the rod's
+    mid-plane, ``rod_mid_z_mm``, over ``plate_inner_z_mm``), else the plan's z from the pins'
+    wobble notes (``notes``)."""
+    from spiderpig.materials import sheet_of, thickness
+
+    if hand and "rod_mid_z_mm" in hand and "plate_inner_z_mm" in hand:
+        return float(hand["rod_mid_z_mm"]) - float(hand["plate_inner_z_mm"])
+    lk = config.lk
+    rider = next(b for b, (js, _) in lk.links.items() if lk.crank[1] in js)
+    face = None
+    mid = None
+    for note in notes.values():
+        lz = note.get("layer_z") or {}
+        if face is None and "0" in lz:
+            face = float(lz["0"][1])
+        k = (note.get("layers") or {}).get(rider)
+        if k is not None and str(k) in lz:
+            mid = float(lz[str(k)][0]) + thickness(config, sheet_of(config, "link", rider)) / 2
+    if face is None or mid is None:
+        raise ValueError(f"{lk.key}: no wobble note gives the rod's or the plates' z")
+    return mid - face
+
+
+SWAY_PUSH_N = 20.0      # a hand's sideways push on the bottle (the side's stiffness across)
+
+
+def side_stiffness(config: BuildConfig, side, length: float, plates, n_joints: int) -> dict:
+    """The drive side's stiffness across its plates (design review round 2's M3: the frames
+    soft out of their plane): a push across at each pillar's node (the pivots, where the
+    cradle box's sideways load comes in through the links) and at every untied node of the
+    outer plate (the crank's O: what holds its members' sway, for
+    :func:`cradle_structure.members`), the posts, both plates and the feet as
+    :func:`cradle_structure.side_frame` takes them (N/mm); the pivots' sway under
+    :data:`SWAY_PUSH_N` at the bottle, both sides sharing it (mm)."""
+    from spiderpig import cradle_structure as cs
+
+    lk = config.lk
+    memo = (lk.key, round(length, 6), n_joints, plates.t, tuple(plates.feet),
+            tuple((ab, w) for ab, w in (*plates.outer, *plates.inner)),
+            tuple((n, tuple(np.round(np.asarray(p, float), 6))) for n, p in
+                  sorted(plates.xy.items())),
+            tuple((p.name, tuple(np.round(p.xy, 6)), p.ei, p.ea) for p in side))
+    hit = _STIFF_MEMO.get(memo)
+    if hit is not None:
+        return {k: (dict(v) if isinstance(v, dict) else v) for k, v in hit.items()}
+    stand = cr.stand_of(lk)
+    zero = np.zeros((1, n_joints, 2))
+    outer_nodes = {q for (a, b), _ in plates.outer for q in (a, b)}
+    tied = {*stand.feet, *(p.name.split(":", 1)[-1] for p in side)}
+    pivots = [j for j in lk.frame if j != lk.crank[0]]
+    out: dict = {"across_n_mm": {}, "pivots_n_mm": {}}
+    for n in sorted(outer_nodes - set(stand.feet)):
+        if n not in pivots and n in tied:
+            continue
+        _, gr = cs.side_frame(side, length, zero, plates, push={n: 1.0})
+        k = 1.0 / max(abs(float(gr["outer"].nodes[n][0, 0])), 1e-12)
+        if n in pivots:
+            out["pivots_n_mm"][n] = round(k, 2)
+        else:
+            out["across_n_mm"][n] = k
+    least = min(out["pivots_n_mm"].values())
+    out["least_n_mm"] = least
+    out["push_n"] = SWAY_PUSH_N
+    out["sway_mm"] = round(SWAY_PUSH_N / (2 * least), 2)
+    out["crank_n_mm"] = {n: round(k, 2) for n, k in out["across_n_mm"].items()}
+    out["basis"] = ("a push across the plates at the node, the side's posts and both plates "
+                    "out of their plane (cradle_structure.side_frame), the outer plate's feet "
+                    "held by their cleats; the sway: the push at the bottle shared by both "
+                    "sides, at the least stiff pivot")
+    if len(_STIFF_MEMO) > 16:
+        _STIFF_MEMO.clear()
+    _STIFF_MEMO[memo] = out
+    return {k: (dict(v) if isinstance(v, dict) else v) for k, v in out.items()}
+
+
+_STIFF_MEMO: dict = {}      # side_stiffness by every input (it doesn't move with the loads)
+
+
+PASSIVE_SHARE = 0.5     # the passive half's share of what the cradle box carries: the bottle
+#                         and the box straddle the bay's middle, and a block on a saddle or on
+#                         the bottle comes in there (a decanter's rim under the mouth)
+TIE_PROOF_N = 20.1 * 450.0     # an M6 A2-70 screw's proof load (stress area 20.1 mm^2, ISO
+#                                3506-1's 450 MPa): the tie rods' and the posts' button heads
+
+
+def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) -> dict:
+    """The cradle box across the bay (design review round 2's M1, 2026-10-15). The passive
+    side holds its cradle link in place but lets it turn about the mouth (B's double
+    parallelogram, A's hinge at G), so what the passive half of the box carries about the
+    mouth (:data:`PASSIVE_SHARE` of what the drive side's pins put on the cradle: half the
+    bottle's and the box's weight walking, half the jam's couple or block) crosses the bay
+    in the four tie rods racking: the two cradle links turn against each other about the
+    mouth's axis, each rod a steel beam fixed at both ends (``12 E I / L^3`` across at its
+    radius from the mouth, ``G J / L`` in twist). Per case: the moment crossing, each rod's
+    shear, end moment and twist, its tapped end's stress (the tube its tap leaves, 1018 at
+    its least yield), the end joint's gapping moment (its preload, ``TIE_TIGHTEN_NM`` on the
+    screw, over the end face's kern) and, gapped, the screw's prying tension against its
+    proof load; the strength rows (``"rows"``: the rods, their end joints)."""
+    from spiderpig import cradle_structure as cs
+    from spiderpig.linkages.decanters import TIES
+
+    lk = config.lk
+    link = cr.cradle_link(lk)
+    mouth = pts[cr.mouth_name(lk)]
+    d, L = cr.TIE_D, tie_mm
+    bore = NETRF12_ID if d > 10.0 else NETRF10_ID
+    ei = cs.E_STEEL * math.pi * d ** 4 / 64
+    gj = cs.E_STEEL / 2.6 * math.pi * d ** 4 / 32
+    k_s, k_t = 12 * ei / L ** 3, gj / L
+    r = {n: math.hypot(*TIES[n]) for n in TIES}
+    k_rot = sum(k_s * ri * ri + k_t for ri in r.values())
+    z_tube = math.pi * (d ** 4 - bore ** 4) / (32 * d)
+    screw_d = cr.TIE_M.d
+    preload = cr.TIE_TIGHTEN_NM * 1000.0 / (NUT_FACTOR * screw_d)
+    kern = (d * d + cr.TIE_ROD_HOLE ** 2) / (8 * d)
+    gap_nm = preload * kern / 1000.0
+    out: dict = {"rod": f"NETRF{d:g} x {L:g} mm, M{screw_d:g} ends", "share": PASSIVE_SHARE,
+                 "radii_mm": {n: round(v, 1) for n, v in r.items()},
+                 "gap_moment_nm": round(gap_nm, 2), "preload_n": round(preload),
+                 "screw_proof_n": round(TIE_PROOF_N), "cases": {}, "rows": []}
+    rod_row: dict = {"joint": "box:tie rods", "kind": "box", "links": [],
+                     "section": f"{d:g} mm steel standoff tie rods across the bay (NETRF{d:g}, "
+                                f"as a {d:g} x {bore:g} tube at their tapped ends)",
+                     "what": "the cradle box's tie rods racking across the bay (the passive "
+                             "half's moment about the mouth)"}
+    joint_row: dict = {"joint": "box:tie rod ends", "kind": "box", "links": [],
+                       "section": f"the tie rods' M{screw_d:g} end screws (A2-70) prying a "
+                                  "gapped end joint", "what": "the tie rods' end joints",
+                       "walk": None}
+    for tag, (v, sk, _) in cases.items():
+        keep = ~np.asarray(sk, bool)
+        m = np.zeros(len(v))
+        for jk, (j, b1, b2) in enumerate(joints):
+            if link not in (b1, b2):
+                continue
+            f = v[:, jk] if b1 == link else -v[:, jk]
+            q = pts[j] - mouth
+            m += q[:, 0] * f[:, 1] - q[:, 1] * f[:, 0]
+        cross = PASSIVE_SHARE * np.abs(m[keep]) / 1000.0        # N·m
+        mc = float(cross.max()) if len(cross) else 0.0
+        theta = mc * 1000.0 / k_rot
+        rows = {}
+        worst = math.inf
+        for n, ri in r.items():
+            shear = k_s * ri * theta
+            end = shear * L / 2
+            twist = k_t * theta
+            vm = math.hypot(end / z_tube, math.sqrt(3) * twist / (2 * z_tube))
+            sf = NETRF10_YIELD / max(vm, 1e-9)
+            worst = min(worst, sf)
+            rows[n] = {"shear_n": round(shear, 1), "end_nm": round(end / 1000, 2),
+                       "twist_nm": round(twist / 1000, 2), "stress_mpa": round(vm, 1),
+                       "safety": round(sf, 2)}
+        top = max(rows.values(), key=lambda x: x["end_nm"])
+        prying = top["end_nm"] * 1000.0 / (d / 2)            # pivoting on its face's edge
+        out["cases"][tag] = {"crossing_nm": round(mc, 2), "rods": rows,
+                             "gap_ratio": round(gap_nm / max(top["end_nm"], 1e-9), 2),
+                             "prying_n": round(prying),
+                             "all_on_passive_safety": round(worst / 2, 2)}
+        rod_row[tag] = {"load_n": max(x["shear_n"] for x in rows.values()),
+                        "moment_nm": top["end_nm"], "safety": round(worst, 2)}
+        if tag == "jam":
+            joint_row["jam"] = {"load_n": round(prying), "moment_nm": top["end_nm"],
+                                "safety": round(TIE_PROOF_N / max(prying, 1e-9), 2)}
+    out["rows"] = [rod_row, joint_row]
+    return out
 
 
 def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float,
@@ -1682,14 +2004,20 @@ def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float,
             "worst": st["worst"], "findings": st["findings"]}
 
 
-def blocked(config: BuildConfig, mech, *, ts=None, crank_nm: float | None = None) -> dict:
+def blocked(config: BuildConfig, mech, *, ts=None, crank_nm: float | None = None,
+            thresholds: bool = False, rod_euler_n: float | None = None) -> dict:
     """The known limits: the jam's push (``crank_nm``, default :func:`jam_nm`) against a
     cradle blocked at a point (:data:`BLOCKS`) rather than as a couple, outside the
     toggles: per case, the force there, each joint's largest force, and every joint's,
-    link's, column's and plate's jam safety factor (:func:`spiderpig.strength.check` on
-    those loads). Not designed for (nothing near the mouth keeps a block's lever long): the
-    use limits keep the decanter out of the cradle box's path, and a torque limiter at the
-    hand is the cure."""
+    link's, column's, plate's and tie rod's jam safety factor (:func:`spiderpig.strength.check`
+    on those loads). With ``thresholds`` (design review round 2's M2, 2026-10-15), per case
+    where the frame starts to give: the walking loads plus the push beyond what turning the
+    cradle takes, ``dT = T - T_walk(angle) >= 0`` (a block can only push back), superposed
+    (:func:`_block_threshold`): the first part to fall to SF 1.3 and to 1, at how much more
+    torque at the crank and force at the grip, and the block's force then (``rod_euler_n``:
+    the rod's Euler load, its buckling rated too). Not designed for: a clutch can't help
+    with a block 72 mm from the mouth, the use limits keep the decanter's rim under the
+    cradle box (a fixed riser, round 2's stand)."""
     from spiderpig import strength
 
     if ts is None:
@@ -1700,7 +2028,7 @@ def blocked(config: BuildConfig, mech, *, ts=None, crank_nm: float | None = None
     near = _toggles(config, ts)
     torque, forces = statics(config, rigid, joints, ts)
     rider = next(b for b, (js, _) in config.lk.links.items() if config.lk.crank[1] in js)
-    out = {"crank_nm": crank_nm, "cases": {}}
+    out: dict = {"crank_nm": crank_nm, "cases": {}}
     for name, at in BLOCKS.items():
         held, jam_f = statics(config, rigid, joints, ts, jam_nm=crank_nm, block=at)
         jam_f = np.where(near[:, None], 0.0, jam_f)
@@ -1716,6 +2044,83 @@ def blocked(config: BuildConfig, mech, *, ts=None, crank_nm: float | None = None
             "jam_sf": {k: v for k, v in sorted(sfs.items(), key=lambda kv: kv[1] or math.inf)
                        if v is not None},
             "worst": min((v, k) for k, v in sfs.items() if v is not None)}
+        if thresholds:
+            out["cases"][name]["threshold"] = _block_threshold(
+                config, mech, ts, near, rigid, joints, at, crank_nm, rod_euler_n)
+    return out
+
+
+THRESHOLD_STEPS = (0.15, 0.4, 1.0)
+"""Where :func:`_block_threshold` rates the push beyond turning: these fractions of the most
+the clutch lets past the walking torque (the safety factors' inverses are near linear in it:
+the stresses are, but for the walking loads' offset and the worst angle moving)."""
+
+
+def _block_threshold(config: BuildConfig, mech, ts, near, rigid, joints, at, cap: float,
+                     rod_euler_n: float | None) -> dict:
+    """:func:`blocked`'s threshold for a block at ``at``: the loads at a push ``x`` beyond
+    turning are the walking ones plus ``x`` times each angle's increment per N·m (the
+    statics are linear in the crank's torque), rated by :func:`structure` and
+    :func:`spiderpig.strength.check` at :data:`THRESHOLD_STEPS` of the clutch's most; each
+    part's ``1 / SF`` interpolated (and extrapolated from the first two below them) to where
+    it reaches ``1 / 1.3`` and ``1``. Returns the first part each way, the push (N·m at the
+    crank, N at the grip through the worm at a hand's speed) and the block's force."""
+    from spiderpig import strength
+
+    walk_t, _, walk_v = statics_vectors(config, rigid, joints, ts)
+    held, _, bv = statics_vectors(config, rigid, joints, ts, jam_nm=cap, block=at)
+    keep = ~near
+    d_t = np.maximum(cap - walk_t, 1e-6)
+    inc = (bv - walk_v) / d_t[:, None, None]
+    per_nm = np.abs(held) / d_t                       # the block's force per N·m pushed
+    most = float(d_t[keep].min())                     # the push every angle can take
+    rider = next(b for b, (js, _) in config.lk.links.items() if config.lk.crank[1] in js)
+    rod_jk = next(jk for jk, (j, *_) in enumerate(joints) if j == config.lk.crank[1])
+    walk_f = np.linalg.norm(walk_v, axis=-1)
+    peak = float(np.abs(walk_t).max())
+    inv: dict[str, list[float]] = {}
+    xs = [most * s for s in THRESHOLD_STEPS]
+    for x in xs:
+        v = walk_v + x * inc
+        f = np.where(near[:, None], 0.0, np.linalg.norm(v, axis=-1))
+        rows = joint_rows(config, rider, joints, walk_f, f)
+        st = structure(config, mech, ts=ts, skip=near, jam=(walk_t + x, v))
+        chk = strength.check(mech.meta.get("wobble") or {}, mech.meta, config,
+                             loads_doc(config, rows, peak, st))
+        sfs = {r["joint"]: (r.get("jam") or {}).get("safety") for r in chk["rows"]}
+        if rod_euler_n:
+            sfs["rod (buckling)"] = rod_euler_n / max(float(f[keep, rod_jk].max()), 1e-9)
+        for k, sf in sfs.items():
+            if sf is not None:
+                inv.setdefault(k, []).append(1.0 / max(float(sf), 1e-9))
+
+    def reach(ys: list[float], level: float) -> float | None:
+        """Where the piecewise-linear ``ys`` over ``xs`` (extended back to 0 and on past the
+        last) first reaches ``1 / level``."""
+        target = 1.0 / level
+        pts = list(zip(xs, ys, strict=True))
+        (x0, y0), (x1, y1) = pts[0], pts[1]
+        if y0 >= target:            # already there at the first step: back along its slope
+            slope = (y1 - y0) / (x1 - x0)
+            return max(0.0, x0 - (y0 - target) / slope) if slope > 1e-12 else 0.0
+        for (xa, ya), (xb, yb) in itertools.pairwise(pts):
+            if yb >= target:
+                return xa + (target - ya) * (xb - xa) / (yb - ya)
+        return None
+
+    box = HandCrank().box               # N·m at the crank per N at the grip, at a hand's speed
+    grip = box.ratio * box.eta_at(HAND_RPM) * handle_spec(config).throw / 1000.0
+    out: dict = {"steps_nm": [round(x, 2) for x in xs], "basis": (
+        "the walking loads plus the push beyond turning the cradle, superposed (the statics "
+        "are linear in the crank's torque), every part rated as the report rates it")}
+    for level, tag in ((JAM_FLOOR, "sf_1p3"), (1.0, "sf_1")):
+        hits = [(x, k) for k, ys in inv.items() if (x := reach(ys, level)) is not None]
+        if not hits:
+            out[tag] = None
+            continue
+        x, part = min(hits)
+        out[tag] = {"part": part, "crank_nm": round(x, 2), "grip_n": round(x / grip, 1),
+                    "block_n": round(float(x * per_nm[keep].max()))}
     return out
 
 
@@ -1729,9 +2134,11 @@ VERDICT = {
                      "set on the bench and checked at each set-up, caps the crank's torque "
                      "however hard the push, every joint holds that cap at SF 1.3 or more away "
                      "from the ends of the swing (in the first and last two and a half handle "
-                     "turns it doesn't: the gearbox's marks, the use limits), the gearbox "
-                     "carries the bottle and the cap within its maximum, its light-load crank "
-                     "turns under 22 N once the gearbox is run in, the stand tips past 25°."),
+                     "turns it doesn't: the gearbox's marks, the use limits), though at that "
+                     "cap its side frames don't all hold 1.3 (open since design review round "
+                     "2: OPEN_AT_CAP), the gearbox carries the bottle and the cap within its "
+                     "maximum, its light-load crank turns under 22 N once the gearbox is run "
+                     "in, the stand tips past 25°."),
     "decanter_hinge": ("build", "Builds too (B is the main design): a four-bar crank-rocker "
                        "whose rocker is the cradle, hinged at the bottle's mouth. From 50° "
                        "neck up (an opened full bottle goes in) to 30° neck down, a 750 ml to "
@@ -1739,15 +2146,54 @@ VERDICT = {
                        "bench and checked at each set-up, caps the crank's torque however hard "
                        "the push, every joint holds that cap at SF 1.3 or more away from the "
                        "ends of the swing (in the first and last two and a half handle turns "
-                       "it doesn't: the gearbox's marks, the use limits), the gearbox carries "
-                       "the bottle and the cap within its maximum, its 130 mm crank turns "
-                       "under 22 N once the gearbox is run in, the stand tips past 15° (its "
-                       "bar)."),
+                       "it doesn't: the gearbox's marks, the use limits), though at that cap "
+                       "its side frames don't all hold 1.3 (open since design review round 2: "
+                       "OPEN_AT_CAP), the gearbox carries the bottle and the cap within its "
+                       "maximum, its 130 mm crank turns at the 22 N bar once the gearbox is run "
+                       "in (open since design review round 2's structure: OPEN_GRIP), the "
+                       "stand tips past 15° (its bar)."),
 }
 """Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why: the
 bars ``tests/test_cradle.py`` holds, not a copied number; :func:`report`'s ``verdict`` adds its
 own numbers (:func:`cradle_drive.verdict`). In the cradle page's order: B, the user's main
 design, first (design review round 2's M5: the page had opened on A, "the one to build")."""
+
+OPEN_AT_CAP: dict[str, dict[str, str]] = {
+    "decanter_rcm": {
+        "frame:outer": "its front leg from column D2 to the foot twists as the side's box "
+                       "turns out of its plane (0.6); its rear leg O-Fr carries the "
+                       "gearbox's turn down to the foot (0.99)",
+        "pillar:O2": "the inner plate can't hold its posts' ends across the line they stand "
+                     "on, so the box sways in the drive's direction and O2 bends nearly as a "
+                     "cantilever off the outer plate (0.73)",
+        "column:D2": "the same sway (0.97)"},
+    "decanter_hinge": {
+        "frame:outer": "its front leg from column D3 to the foot twists (0.41); the strut G-O "
+                       "and the leg Ff-O at the gearbox carry its turn out of their plane "
+                       "(0.63, 0.77)",
+        "frame:inner": "its leg D2-D3 out of its plane (1.09)",
+        "column:D3": "the side's sway (0.83)",
+        "pillar:G": "the hinge's pillar in the same swaying box (1.25; 1.38 at round 1's "
+                    "61.3 N·m, under 1.3 since the merged drive's cap, 67.1)"},
+}
+"""Per cradle, the parts that fall under the jam floor (``cradle_drive.JAM_FLOOR``) at the
+hand crank's clutch's cap since design review round 2 (2026-10-15) rated each side's posts
+and both frame plates as one frame (``cradle_structure.side_frame``), and why: an open item,
+the user's call (``docs/agentlib/DECANTER.md``, "The side frames at the clutch's cap": a box
+toward the rear, with the drive's gearbox mount). The jam SFs at the caps of round 2's
+drive on the merged cradle (63.7 N·m on B, 67.1 on A). Walking they hold (B at SF 2.83 or
+more, A at 3.71). The tests hold every other part at 1.3 and nothing else under it, then
+xfail on these; the report's verdict names them."""
+
+OPEN_GRIP: dict[str, str] = {
+    "decanter_hinge": "a full 6 L's worst start at A's 130 mm grip, run in, is 21.97 N: at "
+                      "the 22 N bar to the report's tenth since round 2's structure (the 12 mm "
+                      "tie rods, 0.3 kg on the cradle box) met round 2's drive; 132.5 mm gives "
+                      "21.6 N and 12.2 mm of hand room, 7.5 mm over Figure 13's 125 (the 5 mm "
+                      "over is the user's call of 2026-10-15)"}
+"""Per cradle, a grip open at MIL-STD-1472H's light-load bar (``handcrank.LIGHT_LOAD_N``):
+the user's call (``docs/agentlib/DECANTER.md``, "The drive"). The tests hold it no worse
+than the bar, then xfail on it."""
 
 
 def motion(config: BuildConfig, n: int = 360) -> dict:

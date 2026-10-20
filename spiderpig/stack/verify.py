@@ -43,6 +43,7 @@ def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e
             topo.geometry = Geometry({**topo.geometry.points, **fixed})
         for name, (r, ang) in plan.topo.crank_points.items():
             topo.add_crank_point(name, r, ang)
+        topo.add_link_points(plan.topo.link_points)
     geo, sp, layout = topo.geometry, plan.spec, plan.layout
     bad: list[str] = []
     made_: list[Placed] = []

@@ -45,7 +45,17 @@ M6_BHCS_BD = {8: ("6642", 0.17, 11.27), 10: ("6643", 0.18, 12.06), 12: ("6644", 
               40: ("6650", 0.41, 27.44), 45: ("6651", 0.46, 30.62)}
 """Bolt Depot's 18-8 M6 button heads (the list page rendered 2026-10-10; the 20 and 25 mm
 pages 2026-10-10, each price only; the 8, 10 and 12 mm from the list page rendered
-2026-10-13)."""
+2026-10-13). Their pages name no property class ("Grade 18-8 / Also known as A-2"; the 6644
+and 6645 pages rendered 2026-10-15), and Bolt Depot's grade chart gives A-2's yield as "210
+Min.": A2-50's. The cradle's posts and tie rods take :data:`M6_BHCS_A270` instead."""
+M6_BHCS_A270 = {12: ("MB2550012A20000", 0.29), 16: ("MB2550016A20000", 0.37),
+                20: ("MB2550020A20000", 0.40)}
+"""Fastenal's A2-70 M6 button heads (each page rendered 2026-10-15: "Grade A2-70",
+"Standards ISO 7380-1, ISO 3506-1", head 10.07-10.50 x 3.00-3.30 mm, 4 mm drive; USD each):
+the class the posts' and the tie rods' end joints need once a jam gaps them (design review
+round 2's m2: prying at 4-6 kN, A2-70's proof 9.0 kN; an unclassed 18-8's 210 MPa would yield).
+Their M6 lengths in the cradle (12, 16, 20) buy here; the others stay Bolt Depot's."""
+FASTENAL = "https://www.fastenal.com/product/details/"
 M5_BHCS_BD = {8: ("6631", 0.12, 7.76), 10: ("6632", 0.12, 8.03), 12: ("6633", 0.13, 8.60),
               16: ("6634", 0.14, 9.60)}
 """Bolt Depot's 18-8 M5 button heads (pages rendered 2026-10-10: head 9.14-9.50 x 2.50-2.75,
@@ -81,16 +91,25 @@ NETRF12_THREAD = 12.0       # its M6 taps' depth (M x 2)
 NETRF12_TIERS: tuple[tuple[float, tuple[tuple[int, float], ...]], ...] = (
     (50.0, ((1, 15.62), (5, 11.37), (10, 5.74))),
     (100.0, ((1, 16.30), (5, 11.86), (10, 5.99))),
-    (130.0, ((1, 16.98), (5, 12.36), (10, 6.24), (20, 6.08))),
+    (150.0, ((1, 16.98), (5, 12.36), (10, 6.24), (20, 6.08))),
+    (200.4, ((1, 18.00), (5, 13.11), (10, 6.62))),
+    (300.0, ((1, 21.07), (5, 15.33), (10, 7.73), (20, 7.54), (51, 7.08))),
 )
 """USD each by quantity of one length, per length band: NETRF12-30 and NETRF12-65 pages
 rendered 2026-10-13 with their quantity tables (the sourcing study
 ``/root/scratch/decant/six/sourcing.md``); NETRF12-125, -128 and -130 the same day (the rear
-saddle's post: :data:`NETRF12_POST_MAX`)."""
-NETRF12_SEEN: tuple[float, ...] = (30.0, 65.0, 125.0, 128.0, 130.0)
+saddle's post: :data:`NETRF12_POST_MAX`); the 100.1-150, 150.1-200.4 and 200.5-300 bands
+from the NETRF12-129.9, -130, -150, -150.1, -200, -200.5, -274.9 and -300 pages rendered
+2026-10-15 (the tie rods, design review round 2's M1: NETRF12-274.9 USD 21.07 at 1-4, 15.33
+at 5-9, 7.73 at 10-19, against NETRF10-274.9's 15.30, 11.08 and 5.57; the band edges at 100
+and 200.4 from MISUMI's price API)."""
+NETRF12_SEEN: tuple[float, ...] = (30.0, 65.0, 125.0, 128.0, 129.9, 130.0, 150.0, 150.1, 200.0,
+                                   200.5, 274.9, 300.0)
 NETRF12_POST_MAX = 130.0
-"""The longest NETRF12 priced: the rear saddle's post (the pillars stay within
+"""The rear saddle's post's longest NETRF12 (the pillars stay within
 :data:`NETRF12_LENGTHS`)."""
+NETRF12_PRICED_MAX = 300.0
+"""The longest NETRF12 priced (:data:`NETRF12_TIERS`): the tie rods' 274.9 mm."""
 
 
 def netrf12(length: float) -> str:
@@ -114,7 +133,8 @@ def _netrf12_item(L: float) -> Item:
         dims={"d": 6.0, "od": 12.0, "length": L, "thread_depth": NETRF12_THREAD,
               "id": NETRF12_ID, "yield_mpa": NETRF10_YIELD},
         notes="A decanting cradle's pivot pillars and crankpin since it carries a 6 L bottle "
-              "(2026-10-13): the strength check takes it as a 12 x 5.0 tube of 1018 at 220 "
+              "(2026-10-13), its cradle box's tie rods since design review round 2 "
+              "(2026-10-15): the strength check takes it as a 12 x 5.0 tube of 1018 at 220 "
               "MPa, 1.73 x the NETRF10's bending section.")
 
 
@@ -124,7 +144,7 @@ def _netrf12_of(key: str) -> Item | None:
     except ValueError:
         return None
     L = n / 10
-    if not 250 <= n <= round(NETRF12_POST_MAX * 10) or f"pillar_shaft_12_m6_{L:g}" != key:
+    if not 250 <= n <= round(NETRF12_PRICED_MAX * 10) or f"pillar_shaft_12_m6_{L:g}" != key:
         return None
     return _netrf12_item(L)
 
@@ -274,11 +294,20 @@ register(
                 tiers=((1, 0.10), (100, 0.0641)), verified=True,
                 note="18-8 hex jam nut, 10 AF x 3.2; page rendered 2026-10-10"),),
          dims={"af": 10.0, "h": 3.2}),
-    *(Item(f"m6_bhcs_{n}", f"M6 x {n} button head socket screw (ISO 7380)", "fastener",
-           (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
-                  tiers=((1, each),) + (((100, per100 / 100),) if per100 else ()),
-                  note=BD_NOTE),),
-           dims={"d": 6.0, "length": float(n), "head_d": 10.5, "head_h": 3.3})
+    *(Item(f"m6_bhcs_{n}", f"M6 x {n} button head socket screw (ISO 7380)"
+           + (", A2-70" if n in M6_BHCS_A270 else ""), "fastener",
+           ((Offer("Fastenal", FASTENAL + M6_BHCS_A270[n][0], M6_BHCS_A270[n][0],
+                   price_usd=M6_BHCS_A270[n][1], verified=True,
+                   note="A2-70 stainless (ISO 3506-1), ISO 7380-1; page rendered 2026-10-15; "
+                        "sold singly"),) if n in M6_BHCS_A270 else ())
+           + (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
+                    tiers=((1, each),) + (((100, per100 / 100),) if per100 else ()),
+                    note=BD_NOTE + ("; no property class stated (A2-50's 210 MPa yield "
+                                    "at least): not for the posts' and tie rods' joints"
+                                    if n in M6_BHCS_A270 else "")),),
+           dims={"d": 6.0, "length": float(n), "head_d": 10.5, "head_h": 3.3,
+                 **({"property_class": "A2-70", "proof_n": 9045.0}
+                    if n in M6_BHCS_A270 else {})})
       for n, (pn, each, per100) in M6_BHCS_BD.items()),
     *(Item(f"m5_bhcs_{n}", f"M5 x {n} button head socket screw (ISO 7380)", "fastener",
            (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,

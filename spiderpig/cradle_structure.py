@@ -29,14 +29,25 @@ Here, from the vectors:
   two posts in a line (B's bar O1-O2, before round 1) turns about one of them and holds a
   pillar across the line hardly at all: there the pillar is a cantilever off the outer
   plate. Three or more posts not in a line hold it both ways.
+* **A side as one frame** (:func:`side_frame`, design review round 2, 2026-10-15): the
+  posts and both frame plates together, each plate a grillage out of its plane
+  (:class:`Grillage`: its members' weak-axis bending and twist), the outer one on its feet,
+  the inner one on nothing but the posts, the posts stiff along their axes and turning
+  with their plates at their ends. What the springs above (:func:`plate_spring`, each
+  member clamped at its far node) can't hold: each plate's own equilibrium out of its
+  plane, the inner plate twisting as a whole about a line of posts, and the gearbox's
+  turn of the outer plate at the crank (``turns``). Each member end then rated out of the
+  plane on the plate as cut (:func:`plate_rows`). (The round's review had shared each
+  post's moment among the members at its node with the moment vector 90° off: a post bent
+  along x turns its foot about y, ``test_a_posts_foot_turns_square_to_its_load``.)
 * **The frame plates' members** (:func:`members`): each plate a plane frame of its members
   (the stand's pills, split where a post stands on one), loaded by the posts' feet (the
   outer plate: and by the gearbox at the crank, its bearing force and its torque) or their
   ends (the inner plate); the outer plate standing on its feet. Each member's in-plane
   stress and, in compression, its Euler load out of the plane between its nodes (pinned
   ends, the nodes held across by the box: :data:`MEMBER_K`), or its tilt where a node isn't
-  (the gearbox's O: the other members there as cantilevers, ``k L``). The report adds each
-  plate where a post's end turns it out of its plane (``cradle_report.structure``).
+  (the gearbox's O: the side's own stiffness across there, or the other members there as
+  cantilevers, ``k L``).
 
 Everything takes the cases' force vectors, so a caller rates any crank torque (a clutch's
 cap) or any angles (the toggles the jam case leaves out: :func:`cradle_report.structure`).
@@ -308,6 +319,8 @@ class Post:
     foot_k: np.ndarray = field(default_factory=lambda: np.zeros((2, 2)))
     end_k: np.ndarray = field(default_factory=lambda: np.zeros((2, 2)))
     thread: float = 0.0
+    ea: float = 0.0             # its stiffness along its axis (N; 0: a solid round bar's of
+    #                             its ``ei``), plate to plate (:class:`SidePlates`)
 
 
 def _beam_k(ei: float, h: float) -> np.ndarray:
@@ -320,39 +333,108 @@ def _beam_k(ei: float, h: float) -> np.ndarray:
 _TURN = np.array([[0.0, -1.0], [1.0, 0.0]])   # a post's end's slopes (dx/dz, dy/dz) -> its turn
 
 
-def posts(side: Sequence[Post], length: float, vecs: np.ndarray,
-          skip: np.ndarray | None = None) -> dict[str, dict]:
+@dataclass
+class SidePlates:
+    """A side's two frame plates out of their plane, for :func:`posts` (design review round
+    2's B1, 2026-10-15): each plate's members split at its nodes (``((a, b), width)``,
+    nodes at ``xy``), ``t`` thick; the outer plate's ``feet`` on the base board, held across
+    and against turning by their cleats; each post stiff along its axis (``Post.ea``). With
+    them a post's ends are held by its plates as they are, and every member's share of
+    every post's end moment is its stiffness's (:class:`Grillage`)."""
+
+    xy: Mapping[str, np.ndarray]
+    outer: Sequence[tuple[tuple[str, str], float]]
+    inner: Sequence[tuple[tuple[str, str], float]]
+    t: float
+    feet: Sequence[str] = ()
+
+
+def _post_node(p: Post) -> str:
+    return p.name.split(":", 1)[-1]
+
+
+def _posts(side: Sequence[Post], length: float, vecs: np.ndarray,
+           skip: np.ndarray | None = None, plates: SidePlates | None = None,
+           push: Mapping[str, float] | None = None,
+           turns: Mapping[str, np.ndarray] | None = None
+           ) -> tuple[dict[str, dict], dict[str, Grillage]]:
     """The posts of one side on the box (the module doc) under one case's joint force
-    vectors ``vecs``, over the angles not in ``skip``: one plane-frame solve of every post
-    (a beam, its foot fixed in the outer plate's plane and its end moving with the inner
-    plate, a rigid body in its plane), each end held against turning by its plate
-    (``foot_k``, ``end_k``). Per post: its worst bending moment and shear, its foot's moment
-    (into the outer plate) and the force its end puts on the inner plate; and per angle its
-    force on the outer plate (``forces["box"]["foot"]``) and the inner plate's on its end
-    (``["end"]``), for :func:`members`. ``length``: between the plates' faces (mm)."""
+    vectors ``vecs``, over the angles not in ``skip``: one frame solve of every post (a
+    beam, its foot fixed in the outer plate's plane and its end moving with the inner plate,
+    a rigid body in its plane), each end held against turning by its plate: by
+    ``foot_k``/``end_k`` (:func:`plate_spring`: each member there held at its far node), or
+    with ``plates`` by the two plates themselves out of their plane (:class:`SidePlates`:
+    each a grillage, the outer standing on its feet, the inner held by nothing but the
+    posts, which are stiff along their axes; ``push``: a force across the plates at a
+    post's node, N, the side's stiffness across). Per post: its worst bending moment and
+    shear, its foot's moment (into the outer plate) and the force its end puts on the inner
+    plate; and per angle its force on the outer plate (``forces["box"]["foot"]``) and the
+    inner plate's on its end (``["end"]``), for :func:`members`; with ``plates``, each
+    plate's grillage (``["grillage"]``: its members' end forces, :class:`Grillage`).
+    ``length``: between the plates' faces (mm)."""
     keep = np.ones(len(vecs), bool) if skip is None else ~np.asarray(skip, bool)
     v = vecs[keep]
     m = len(v)
     L = length
     xy = np.array([p.xy for p in side], float)
     rho = xy - xy.mean(axis=0)
-    # the global unknowns: the inner plate's (tx, ty, turn), then each post's own
+    # the global unknowns: the inner plate's (tx, ty, turn), with plates each plate's
+    # grillage nodes' (w, rx, ry), then each post's own
     n_glob = 3
+    gnodes: dict[str, dict[str, int]] = {}
+    if plates is not None:
+        for plate, segs in (("outer", plates.outer), ("inner", plates.inner)):
+            gnodes[plate] = {}
+            for p in sorted({q for (a, b), _ in segs for q in (a, b)}):
+                gnodes[plate][p] = n_glob
+                n_glob += 3
+        for p in side:
+            for plate in ("outer", "inner"):
+                if _post_node(p) not in gnodes[plate]:
+                    raise ValueError(f"post {p.name}: no node of the {plate} plate's members")
     plans = []
     for p in side:
         zs = sorted({0.0, L, *(a for _, _, a in p.loads if 0.0 < a < L)})
         nn = len(zs)
-        # each node: ux, uy, sx, sy; the foot's u fixed, the end's u the plate's
+        # each node: ux, uy, sx, sy; the foot's u fixed, the end's u the plate's (with
+        # plates, the ends' slopes are the plates' turns there)
         free = {}
         for k in range(nn):
             for d in range(4):
                 if (k == 0 and d < 2) or (k == nn - 1 and d < 2):
+                    continue
+                if plates is not None and k in (0, nn - 1):
                     continue
                 free[(k, d)] = n_glob
                 n_glob += 1
         plans.append((zs, free))
     K = np.zeros((n_glob, n_glob))
     F = np.zeros((m, n_glob))
+    els: dict[str, list] = {}
+    fixed: list[int] = []
+    if plates is not None:
+        for plate, segs in (("outer", plates.outer), ("inner", plates.inner)):
+            g0 = gnodes[plate]
+            els[plate] = []
+            for (a, b), w in segs:
+                kg, kl, T, Le = _grillage_k(np.asarray(plates.xy[a], float),
+                                            np.asarray(plates.xy[b], float), w, plates.t)
+                dofs = [g0[a], g0[a] + 1, g0[a] + 2, g0[b], g0[b] + 1, g0[b] + 2]
+                K[np.ix_(dofs, dofs)] += kg
+                els[plate].append(((a, b), w, Le, dofs, kl, T))
+        for f in plates.feet:           # on the board, its cleats either side of the rail
+            g = gnodes["outer"].get(f)
+            if g is not None:
+                fixed += [g, g + 1, g + 2]
+        for p in side:                  # each post along its axis, plate to plate
+            ea = p.ea or math.sqrt(4 * math.pi * E_STEEL * p.ei)
+            wo, wi = gnodes["outer"][_post_node(p)], gnodes["inner"][_post_node(p)]
+            K[np.ix_([wo, wi], [wo, wi])] += ea / L * np.array([[1.0, -1.0], [-1.0, 1.0]])
+        for name, f in (push or {}).items():
+            F[:, gnodes["outer"][name]] += f
+        for name, mv in (turns or {}).items():     # (all angles: kept here)
+            g = gnodes["outer"][name]
+            F[:, g + 1:g + 3] += np.asarray(mv, float)[keep]
     maps = []
     for i, (p, (zs, free)) in enumerate(zip(side, plans, strict=True)):
         nn = len(zs)
@@ -362,6 +444,11 @@ def posts(side: Sequence[Post], length: float, vecs: np.ndarray,
         r = rho[i]
         A[4 * (nn - 1), :3] = [1.0, 0.0, -r[1]]
         A[4 * (nn - 1) + 1, :3] = [0.0, 1.0, r[0]]
+        if plates is not None:          # the slopes (sx, sy) = (ry, -rx) of its plate's turn
+            for k, plate in ((0, "outer"), (nn - 1, "inner")):
+                g = gnodes[plate][_post_node(p)]
+                A[4 * k + 2, g + 2] = 1.0
+                A[4 * k + 3, g + 1] = -1.0
         Kl = np.zeros((4 * nn, 4 * nn))
         for e in range(nn - 1):
             ke = _beam_k(p.ei, zs[e + 1] - zs[e])
@@ -369,10 +456,11 @@ def posts(side: Sequence[Post], length: float, vecs: np.ndarray,
                 idx = [4 * e + plane, 4 * e + 2 + plane, 4 * (e + 1) + plane,
                        4 * (e + 1) + 2 + plane]
                 Kl[np.ix_(idx, idx)] += ke
-        for k, spring in ((0, p.foot_k), (nn - 1, p.end_k)):
-            ks = _TURN.T @ spring @ _TURN
-            idx = [4 * k + 2, 4 * k + 3]
-            Kl[np.ix_(idx, idx)] += ks
+        if plates is None:
+            for k, spring in ((0, p.foot_k), (nn - 1, p.end_k)):
+                ks = _TURN.T @ spring @ _TURN
+                idx = [4 * k + 2, 4 * k + 3]
+                Kl[np.ix_(idx, idx)] += ks
         fl = np.zeros((m, 4 * nn))
         for jk, sign, a in p.loads:
             k = int(np.argmin([abs(z - a) for z in zs]))
@@ -381,7 +469,11 @@ def posts(side: Sequence[Post], length: float, vecs: np.ndarray,
         K += A.T @ Kl @ A
         F += fl @ A
         maps.append((A, Kl, fl))
-    U = np.linalg.solve(K + np.eye(n_glob) * 1e-9 * np.abs(K).max(), F.T).T
+    free_g = [g for g in range(n_glob) if g not in set(fixed)]
+    Kf = K[np.ix_(free_g, free_g)]
+    U = np.zeros((m, n_glob))
+    U[:, free_g] = np.linalg.solve(Kf + np.eye(len(free_g)) * 1e-12 * np.abs(Kf).max(),
+                                   F[:, free_g].T).T
     out: dict[str, dict] = {}
     for p, (zs, _), (A, Kl, fl) in zip(side, plans, maps, strict=True):
         nn = len(zs)
@@ -423,8 +515,14 @@ def posts(side: Sequence[Post], length: float, vecs: np.ndarray,
         res = ul @ Kl.T - fl
         foot_f = res[:, 0:2]                     # the outer plate's on its foot
         end_f = res[:, 4 * (nn - 1):4 * (nn - 1) + 2]
-        foot_m = ul[:, 2:4] @ (_TURN.T @ p.foot_k @ _TURN).T     # its springs' moments
-        tip_m = ul[:, 4 * (nn - 1) + 2:4 * nn] @ (_TURN.T @ p.end_k @ _TURN).T
+        # the moments its ends put on its plates, as moment vectors in the plates' plane
+        # (the turn's space: the slopes' generalized moments turned by _TURN), N·mm per angle
+        if plates is None:
+            foot_m = ul[:, 2:4] @ (p.foot_k @ _TURN).T
+            tip_m = ul[:, 4 * (nn - 1) + 2:4 * nn] @ (p.end_k @ _TURN).T
+        else:
+            foot_m = -res[:, 2:4] @ _TURN.T
+            tip_m = -res[:, 4 * (nn - 1) + 2:4 * nn] @ _TURN.T
         out[p.name] = {"moment_nm": round(float(M.max()) / 1000.0, 2),
                        "ends_nm": round(float(ends.max()) / 1000.0, 2),
                        "mid_nm": round(float(mid.max()) / 1000.0, 2),
@@ -432,7 +530,182 @@ def posts(side: Sequence[Post], length: float, vecs: np.ndarray,
                        "foot_nm": round(float(np.hypot(*foot_m.T).max()) / 1000.0, 2),
                        "tip_nm": round(float(np.hypot(*tip_m.T).max()) / 1000.0, 2),
                        "end_n": round(float(np.hypot(*end_f.T).max()), 1),
-                       "forces": {"box": {"foot": -foot_f, "end": end_f}}}
+                       "forces": {"box": {"foot": -foot_f, "end": end_f},
+                                  "turn": {"foot": foot_m, "end": tip_m}}}
+    grills: dict[str, Grillage] = {}
+    if plates is not None:
+        for plate in ("outer", "inner"):
+            members = {}
+            for (a, b), w, Le, dofs, kl, T in els[plate]:
+                members[(a, b)] = (w, Le, (U[:, dofs] @ T.T) @ kl.T)
+            grills[plate] = Grillage(members, {q: U[:, g:g + 3]
+                                               for q, g in gnodes[plate].items()})
+    return out, grills
+
+
+def posts(side: Sequence[Post], length: float, vecs: np.ndarray,
+          skip: np.ndarray | None = None) -> dict[str, dict]:
+    """The posts of one side on the box, each end held by its plate's springs
+    (``Post.foot_k``, ``end_k``: :func:`plate_spring`); :func:`side_frame` holds them by the
+    plates themselves."""
+    return _posts(side, length, vecs, skip)[0]
+
+
+def side_frame(side: Sequence[Post], length: float, vecs: np.ndarray, plates: SidePlates,
+               skip: np.ndarray | None = None, push: Mapping[str, float] | None = None,
+               turns: Mapping[str, np.ndarray] | None = None
+               ) -> tuple[dict[str, dict], dict[str, Grillage]]:
+    """A side's posts on its two plates as one frame (:func:`_posts` with ``plates``): the
+    posts' rows and each plate's grillage (``"outer"``, ``"inner"``). ``turns``: moment
+    vectors in the outer plate's plane at its nodes, per angle (N·mm, every angle: ``skip``
+    applies), what else turns it: the gearbox at the crank, its shaft carrying the rod's
+    force at the rod's height."""
+    return _posts(side, length, vecs, skip, plates, push, turns)
+
+
+# -- a frame plate out of its plane ------------------------------------------------------
+
+
+def _grillage_k(pa: np.ndarray, pb: np.ndarray, w: float, t: float
+                ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """A plate member as a grillage element (out of the plate's plane), dofs ``(w, rx, ry)``
+    at each end (``w`` across the plate, ``r`` the turn's vector in the plane): its weak
+    axis bending (``E w t^3 / 12``) and its twist (``G w t^3 / 3``). Returns the global
+    stiffness, the local one and the transform (local ``(w, twist, slope)`` per end), and
+    the length."""
+    d = pb - pa
+    L = float(np.hypot(*d))
+    c, s = d / L
+    EI = E_ALU * w * t ** 3 / 12
+    GJ = G_ALU * w * t ** 3 / 3
+    kl = np.zeros((6, 6))
+    kl[np.ix_([0, 2, 3, 5], [0, 2, 3, 5])] = _beam_k(EI, L)
+    kl[np.ix_([1, 4], [1, 4])] = GJ / L * np.array([[1.0, -1.0], [-1.0, 1.0]])
+    T = np.zeros((6, 6))
+    for o in (0, 3):            # twist = r . e; the slope dw/dx along e = r . (s, -c)
+        T[o, o] = 1.0
+        T[o + 1, o + 1:o + 3] = [c, s]
+        T[o + 2, o + 1:o + 3] = [s, -c]
+    return T.T @ kl @ T, kl, T, L
+
+
+@dataclass
+class Grillage:
+    """A frame plate's members as a grillage (:func:`grillage`): per member ``(a, b)``, its
+    width, length, and per case its end forces in its own frame, ``(cases, 6)``: the shear
+    ``V``, the twist ``T`` and the bending moment ``M`` at ``a`` then at ``b`` (N, N·mm,
+    the element's end forces: the moment along it is ``-M_a + V_a s``); per node, its
+    displacement across the plate and its turn, ``(cases, 3)``."""
+
+    members: dict[tuple[str, str], tuple[float, float, np.ndarray]]
+    nodes: dict[str, np.ndarray]
+
+    def moment_at(self, a: str, b: str, s: float) -> np.ndarray:
+        """The bending moment's size across member ``a``-``b`` ``s`` mm from ``a``, per
+        case (N·mm)."""
+        if (a, b) in self.members:
+            _, _, f = self.members[(a, b)]
+            return np.abs(-f[:, 2] + f[:, 0] * s)
+        _, L, f = self.members[(b, a)]
+        return np.abs(-f[:, 2] + f[:, 0] * (L - s))
+
+    def twist(self, a: str, b: str) -> np.ndarray:
+        """The member's torque per case (N·mm; the same along it)."""
+        _, _, f = self.members[(a, b)] if (a, b) in self.members else self.members[(b, a)]
+        return np.abs(f[:, 1])
+
+
+def out_of_plane_sf(M: np.ndarray, T: np.ndarray, w: float, t: float, hole: float,
+                    yield_mpa: float) -> tuple[np.ndarray, np.ndarray]:
+    """A plate strip ``w`` wide with a hole ``hole`` across it, bent across its weak axis
+    by ``M`` and twisted by ``T`` (N·mm, per case): the von Mises stress on the net section
+    (``6 M / (w_n t^2)``, ``3 T / (w_n t^2)``) and the safety factor."""
+    wn = max(w - hole, 1e-9)
+    sig = 6.0 * M / (wn * t * t)
+    tau = 3.0 * T / (wn * t * t)
+    vm = np.sqrt(sig ** 2 + 3.0 * tau ** 2)
+    return vm, yield_mpa / np.maximum(vm, 1e-9)
+
+
+def strip_root(n: str, far: str, w: float, others: Sequence[tuple[str, float]],
+               xy: Mapping[str, np.ndarray], boss: float = 0.0) -> float:
+    """How far from node ``n`` member ``n``-``far`` (``w`` wide) leaves the plate's material
+    round ``n``: where both its edges come out of the other members there (``others``: each
+    member's far node and width, a pill round its axis) and of the boss (``boss`` its
+    radius), so its own strip is all that carries it on (mm)."""
+    p0 = np.asarray(xy[n], float)
+    d = np.asarray(xy[far], float) - p0
+    L = float(np.hypot(*d))
+    e = d / L
+    nrm = np.array([-e[1], e[0]])
+    h = w / 2
+
+    def inside(q: np.ndarray) -> bool:
+        if float(np.hypot(*(q - p0))) < boss - 1e-9:
+            return True
+        for o, wo in others:
+            b = np.asarray(xy[o], float) - p0
+            u = float(np.clip(((q - p0) @ b) / max(float(b @ b), 1e-18), 0.0, 1.0))
+            if float(np.hypot(*(q - p0 - u * b))) < wo / 2 - 1e-9:
+                return True
+        return False
+
+    s_out = 0.0
+    for s in np.linspace(0.0, L, 401):
+        if any(inside(p0 + s * e + sign * h * nrm) for sign in (-1.0, 1.0)):
+            s_out = float(s)
+    return min(s_out, L)
+
+
+_ROOTS: dict = {}       # strip_root by its inputs (the plate's shape: the same every call)
+
+
+def plate_rows(g: Grillage, segs: Sequence[tuple[tuple[str, str], float]],
+               xy: Mapping[str, np.ndarray], t: float, yield_mpa: float,
+               holes: Mapping[str, float], web: float) -> dict[str, dict]:
+    """Each member end of a frame plate rated out of its plane from its grillage ``g``
+    (:func:`side_frame`): its bending across its weak axis and its twist (von Mises,
+    :func:`out_of_plane_sf`) where it is weakest near the end, on the cut plate: at a node on
+    a straight run (a column's on a leg, a foot's screw) the net section through the hole
+    (``holes`` by node; the boss round it, ``web`` past the hole, where wider than the
+    strip); at a node where members meet, at its strip's root (:func:`strip_root`: where it
+    leaves the others and the boss), on the strip, at the moment there. Per member end
+    (``"a-b at n"``): the worst over the cases, its stress, safety factor, moment and twist
+    (N·m) and the section."""
+    out: dict[str, dict] = {}
+    for (a, b), (w, L, _) in g.members.items():
+        for n, far in ((a, b), (b, a)):
+            others = [((q if o == n else o), wo) for (o, q), wo in segs
+                      if n in (o, q) and {o, q} != {a, b}]
+            hole = float(holes.get(n, 0.0))
+            boss = hole / 2 + web if hole else 0.0
+            e = (np.asarray(xy[far], float) - xy[n]) / L
+            straight = all(abs(abs(float(e @ ((np.asarray(xy[o], float) - xy[n])
+                                              / float(np.hypot(*(np.asarray(xy[o], float)
+                                                                 - xy[n])))))) - 1.0) < 1e-3
+                           for o, _ in others)
+            T = g.twist(n, far)
+            if straight:
+                s, ww, h = 0.0, max(w, 2 * boss), hole
+                where = f"the net section through its {hole:g} mm hole" if hole else "the strip"
+            else:
+                key = (n, far, w, boss, tuple(others),
+                       *(tuple(np.round(np.asarray(xy[q], float), 6))
+                         for q in (n, far, *(o for o, _ in others))))
+                if key not in _ROOTS:
+                    if len(_ROOTS) > 4096:
+                        _ROOTS.clear()
+                    _ROOTS[key] = strip_root(n, far, w, others, xy, boss)
+                s, ww, h = _ROOTS[key], w, 0.0
+                where = "its strip's root"
+            M = g.moment_at(n, far, s)
+            vm, sf = out_of_plane_sf(M, T, ww, t, h, yield_mpa)
+            i = int(np.argmin(sf))
+            out[f"{a}-{b} at {n}"] = {
+                "member": f"{a}-{b} at {n} (out of the plate)", "width_mm": round(ww, 1),
+                "at_mm": round(s, 1), "section": where, "moment_nm": round(float(M[i]) / 1000, 2),
+                "twist_nm": round(float(T[i]) / 1000, 2), "stress_mpa": round(float(vm[i]), 1),
+                "safety": round(float(sf[i]), 2), "compression_n": 0.0, "buckling": None}
     return out
 
 
@@ -443,7 +716,7 @@ def members(xy: Mapping[str, np.ndarray], pairs: Sequence[tuple[str, str]],
             widths: Mapping[tuple[str, str], float], t: float, yield_mpa: float,
             loads: Mapping[str, np.ndarray], held: Sequence[str],
             moment_at: tuple[str, np.ndarray] | None = None,
-            tied: Sequence[str] = ()) -> dict:
+            tied: Sequence[str] = (), across_k: Mapping[str, float] | None = None) -> dict:
     """One frame plate's members (``pairs`` of node names at ``xy``, each ``widths[pair]``
     wide, ``t`` thick) as a plane frame under ``loads`` (node -> (cases, 2) N; ``moment_at``
     a node and its (cases,) moment, N·mm), standing on ``held`` (its feet: the first
@@ -453,7 +726,9 @@ def members(xy: Mapping[str, np.ndarray], pairs: Sequence[tuple[str, str]],
     Euler between its nodes (:data:`MEMBER_K`) where both are ``tied`` (held across the
     plate: a post's, a foot's), else the lesser of that and its tilt on what holds an untied
     node across, the other members there as cantilevers from their far nodes (``k L``; two
-    untied nodes, their springs in series)."""
+    untied nodes, their springs in series), or the stiffness across ``across_k`` gives a node
+    (N/mm: the whole side's, :func:`side_frame` pushed there; design review round 2's minor 3:
+    the cantilevers' 2.9 N/mm at B's O had ranked O-Fr's sway first, the side holds O at 11)."""
     names = list(xy)
     segs = _split(names, xy, pairs, tol=1.0)
     used = sorted({p for s in segs for p in s})
@@ -500,7 +775,7 @@ def members(xy: Mapping[str, np.ndarray], pairs: Sequence[tuple[str, str]],
         free = [n for n in (a, b) if n not in tied]
         sway = None
         if free:
-            ks = [across(n, (a, b)) for n in free]
+            ks = [(across_k or {}).get(n) or across(n, (a, b)) for n in free]
             k = ks[0] if len(ks) == 1 else (ks[0] * ks[1] / max(ks[0] + ks[1], 1e-12))
             sway = k * L
             pcr = min(pcr, sway)

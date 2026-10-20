@@ -215,8 +215,11 @@ class PivotPinAxle(ChicagoAxle):
               "goes on with the pin standing in it.")
         ring_on = ("Each pivot pin's other E-ring into its upper groove once its highest link "
                    "is on (E-ring pliers, or pushed on sideways with a flat screwdriver): the "
-                   "links must turn freely and lift their play (0.25-0.35 mm; the worm can't "
-                   "be turned from the links: turn the gearbox's input shaft).")
+                   "links must turn freely and lift their play (a few tenths of a mm; the "
+                   "worm can't be turned from the links: turn the gearbox's input shaft). If "
+                   "the groove stays covered, the stack is over the pin (a thick sheet: the "
+                   "calipered figures): sand the printed ring between its links by the "
+                   "excess.")
         return [Op(STACK, (k_lo, 0, 1), (Piece(pin, "pin", (z0, cut)),), "", on, "layer"),
                 Op(STACK, (k_hi, 2), (Piece(pin, "ring", (cut, z1)),), "", ring_on, "layer",
                    count=False)]

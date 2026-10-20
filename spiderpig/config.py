@@ -283,8 +283,8 @@ arm X-Tr1 passes right over J (the planner finds no plan). Two pin types, no Chi
 screw, nothing threadlocked."""
 
 PRODUCT_CHORD_R: dict[str, dict[str, dict[tuple[str, str], float]]] = {
-    "decanter_rcm": {"b6": {("X", "Tr1"): 20.0, ("X", "Y"): 16.0}},
-    "decanter_hinge": {"b2": {("E", "Tr1"): 16.0}},
+    "decanter_rcm": {"b1": {("M", "P"): 13.0}, "b6": {("X", "Tr1"): 20.0, ("X", "Y"): 16.0}},
+    "decanter_hinge": {"b1": {("M", "E"): 13.0}, "b2": {("E", "Tr1"): 16.0}},
 }
 """Per product linkage, per link: a chord (a pair of its joints, either way round) cut wider
 than ``Params.link_radius``, its own half-width (mm), each from the cradle's links rated
@@ -294,7 +294,33 @@ in bending (design review round 1, 2026-10-14; ``cradle_report.structure``):
   compression under the jam, 32 mm wide against buckling out of its plane.
 - A's cradle link b2: its chord E-Tr1, in compression from the rod's pin to the rear tie
   under the jam, 32 mm wide against buckling.
+- Each rod b1 (0.250 in), 26 mm wide (design review round 2, 2026-10-15, laser-cut parts
+  M3): SendCutSend deburrs a part of at least 1 x 3 in; at 25.2 mm (24 and its crank
+  bore's boss) it came as cut, its exit face's dross on its crankpin's spacer.
 The planner claims each at its width (:class:`construction.plates.LinkPlates`)."""
+
+PRODUCT_BOSS_R: dict[str, dict[str, dict[str, float]]] = {
+    "decanter_rcm": {"b1": {"M": 15.8}, "b2": {"O2": 17.0}, "b3": {"O1": 17.0}},
+    "decanter_hinge": {"b1": {"M": 15.8}, "b2": {"G": 17.0}},
+}
+"""Per product linkage, per link: a boss (a disc, its radius in mm) round the hole at a
+joint, where the link's width left the hole's edge in the cut rules' warning band (design
+review round 2, 2026-10-15, laser-cut parts minor 1; SendCutSend: two thicknesses of
+material from a hole to an edge, in 7075 "to prevent microcracks"):
+- each rod b1 at its crank bore M (12.35 mm): 9.6 mm of web, 1.5 x its 0.250 in (6.45 at
+  26 mm wide);
+- B's arms b2 at O2 and b3 at O1, A's cradle link b2 at G, each a pillar's 12.35 mm bore
+  in 0.187-0.190 in: 10.8 mm, 2.2 x (5.8 at 24 mm).
+Each outline is closed round its boss and the planner claims the boss as a disc
+(:func:`construction.plates.product_bosses`)."""
+
+
+def boss_r(config, link: str) -> dict[str, float]:
+    """The bosses ``config`` grows on link ``link``: joint -> radius (mm)
+    (:data:`PRODUCT_BOSS_R`; none for a walker)."""
+    from spiderpig.stack import body_class
+
+    return dict(PRODUCT_BOSS_R.get(config.linkage, {}).get(body_class(link), {}))
 
 
 def chord_r(config, link: str, a: str, b: str) -> float:
@@ -316,14 +342,14 @@ PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 material) when the config names the default (:data:`SHEET`): a decanting cradle is all
 aluminium, its links' 0.125 in 5052 (:data:`materials.CRADLE_LINK_SHEET`)."""
 
-PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 66.2, "decanter_rcm": 63.0}
+PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 67.1, "decanter_rcm": 63.7}
 """Per product linkage: the crank torque its joints are rated at in a jam, in place of a
 servo's firmware limit (:func:`torque_limit_nm`): a decanting cradle's, the most its hand
 crank's slip clutch lets through, however hard the push (:data:`PRODUCT_CLUTCH_NM`, since
 design review round 1; a firm 40 N push at the grip had been the case:
 :func:`spiderpig.cradle_report.jam_nm`, which a test holds these to)."""
 
-PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 66.2, "decanter_rcm": 63.0}
+PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 67.1, "decanter_rcm": 63.7}
 """Per product linkage: the most its hand crank's slip clutch lets onto the crank, however
 hard the push (design review round 2's B-1, 2026-10-14): set on the bench to slip at
 ``construction.handcrank.CLUTCH_SET`` x the start the user measures (a full 6 L's, drawn:

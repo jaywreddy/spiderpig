@@ -396,8 +396,8 @@ def _board_part(name: str) -> bool:
 
 
 _SIDE_EXTRAS = ("foot_bracket",)
-"""A side's own parts the cradle adds by name (a foot's bracket and its screws, B's toggle
-flag on the drive side's rear leg): each travels with the side it's screwed to (its host)."""
+"""A side's own parts the cradle adds by name (a foot's bracket and its screws): each
+travels with the side it's screwed to (its host)."""
 RISER = "decanter_riser"
 RISER_LABEL = "Riser (its blocks and plates)"
 """The decanter's printed riser (``construction.cradle.riser_pieces``): it travels as one
