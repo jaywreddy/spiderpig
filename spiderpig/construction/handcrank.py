@@ -77,6 +77,7 @@ from spiderpig.construction.base import (
     Realized,
     hardware,
 )
+from spiderpig.construction.plates import arm_fills, arm_plate
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get
 from spiderpig.hardware.cradle_catalog import NETRF12_THREAD, netrf12
@@ -90,7 +91,6 @@ from spiderpig.shapes import (
     disc,
     intersection,
     moved,
-    plate,
     ring,
     union,
 )
@@ -740,9 +740,12 @@ class HandCrank(Group):
         return float(np.linalg.norm(g[HandCrank.pin(ctx)][0] - g["O"][0]))
 
     def hub_r(self, ctx: Context) -> float:
-        """The arm's hub round O: the key's notch (the key stands 2 mm proud of the shaft)
-        and two thicknesses of plate past it (the cut rules' web)."""
-        return self.box.shaft_d / 2 + self.box.key_proud + 0.3 + 2 * ctx.sheet_t("crank")
+        """The arm's hub round O: two thicknesses of plate (the cut rules' web) past the key
+        slot's outer corners, the clear plates' (design review round 3, laser-cut parts
+        minor 1: two past the slot's end left 1.52 at its corners)."""
+        end = self.box.shaft_d / 2 + self.box.key_proud + 1.3     # the slot's end
+        return math.hypot(end, (self.box.shaft_key[0] + KEY_CLEAR) / 2) + 2 * ctx.sheet_t(
+            "crank")
 
     def web_r(self, ctx: Context) -> float:
         """The arm's half-width at the crankpin: the standoff's hole and two thicknesses."""
@@ -783,6 +786,7 @@ class HandCrank(Group):
         geo.__dict__.pop("step", None)      # cached per point; recompute with the new ones
         m = ctx.params.margin
         hub, web = self.hub_r(ctx), self.web_r(ctx)
+        fills = arm_fills(ctx, hub, web, pin, self.throw(ctx))     # (its neck's R10)
         t = ctx.sheet_t("crank")
         head_r = RISER_HEAD_R + 0.3                         # the riser's thin nuts
         end_r = end_screw(self.box).head_d / 2 + 0.3        # the shaft's end screw's head
@@ -875,6 +879,7 @@ class HandCrank(Group):
                                   sheet=KEYED_PLATES * t if k == ARM_LAYER else 0.0))
                 out.append(Placed(k, Disc("O", hub), GROUP, "crank block hub", gap=True))
                 out += both(k, Pill("O", pin, web), "crank block")
+                out += [c for p, q, w in fills for c in both(k, Pill(p, q, w), "crank block")]
             # over it: the end screw's head at O, the tie bolt's head, the crankpin's spacer
             # (the rod rides over these)
             for k in hs:
@@ -1053,8 +1058,8 @@ class HandCrank(Group):
                 at_o = [Cut(tuple(o), es.d + 0.6)]
             else:                                   # round the end screw's head
                 at_o = [Cut(tuple(o), es.head_d + 1.5)]
-            part = plate([(tuple(o), tuple(mxy), self.web_r(ctx))], z_lo, z_lo + t,
-                         [*at_o, *pins], discs=[(tuple(o), self.hub_r(ctx))])
+            part = arm_plate(self.hub_r(ctx), self.web_r(ctx), self.throw(ctx), o, mxy, z_lo,
+                             z_lo + t, [*at_o, *pins])
             name = crank if i == 0 else f"{crank}_plate{i}"
             out.bodies.append(hardware(name, part, crank, fab="laser", sheet=ctx.sheet("crank"),
                                        color="#9aa3ad"))
