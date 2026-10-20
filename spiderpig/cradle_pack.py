@@ -438,8 +438,9 @@ def module_pieces(parts: dict[str, PartInfo], connections, link: str, lk, fasten
             put("hand_crank", "Hand crank", "fill", n)
         elif s:
             put(*(box if stem == link else passive if s == other else drive), n)
-        elif _board_part(n) or (n.startswith("foot_bracket") and _on_board(p, through)):
-            put("base", "Base board", "base", n)
+        elif _board_part(n) or (n.startswith("foot_bracket") and _on_board(p, through)) or (
+                lk.key in cr.BOARD_BRACKETS and re.fullmatch(r"foot_bracket_[A-Za-z0-9]+", n)):
+            put("base", "Base board", "base", n)       # (a bracket bolted to the board)
         elif n.startswith(_SIDE_EXTRAS):
             host = _side(p.rigid_with or "")[0] or crank_side
             put(*(passive if host == other else drive), n)
@@ -582,36 +583,42 @@ def level(points: Sequence[np.ndarray], tilt: float = 0.0) -> float:
 
 PACK_PLANS: dict[str, vp.Plan] = {
     "decanter_rcm": vp.Plan(
-        "B: the cradle box on the board as it stands, the drive panel over it, the passive "
-        "panel on top",
+        "B: the cradle box on the board as it stands, the hand crank in its bay, the drive "
+        "panel over it, the passive panel on top",
         steps=(
             vp.Step("box", down="bottom", spin=0, corner="-x-z",
                     why="in first, standing as in use (its axis level, its saddles' open "
                         "tops up), on the board along its length, toward its -z side: 723 "
                         "mm from its cradle links' front pins to its rails' end, the box's "
                         "length"),
-            vp.Step("hand_crank", after=("box",),
-                    why="on the board beside the cradle box, under where the drive panel's "
-                        "plates go"),
+            vp.Step("hand_crank", into="box", region=(0.0, 0.03, 0.5, 0.48), after=("box",),
+                    why="in the cradle box's bay, on the board between its two cradle "
+                        "links, in front of the front saddle: caged by the box (the packing "
+                        "review's m3; it had lain loose on the board beside the box, 134 mm "
+                        "free to slide)"),
             vp.Step("drive", down="outer", spin=0, after=("box", "hand_crank"),
                     why="as it lay when the box came off, its outer plate down: its plates "
-                        "over the box, the gearbox down beside it onto the board, on foam "
-                        "pads (the heaviest module low)"),
+                        "over the box, the gearbox down beside it onto the board, on printed "
+                        "spacers (the heaviest module low)"),
             vp.Step("passive", down="bay", spin=180, corner="+x+z", after=("drive",),
                     why="last, its bay face down over the drive panel's, turned end for end, "
-                        "its links between the drive panel's, on foam pads (a quarter turn "
-                        "until the side frames' redesign of 2026-10-20: its inner plate's "
-                        "bottom chord then lands on the drive panel's b2 and b3, 171 L)"),
+                        "its links between the drive panel's, on printed spacers (a quarter "
+                        "turn until the side frames' redesign of 2026-10-20: its inner "
+                        "plate's bottom chord then lands on the drive panel's b2 and b3, "
+                        "171 L)"),
         ),
-        note="B's pieces since pack turn 1 (2026-10-14): the board, the passive side panel, "
-             "the cradle box, the drive side panel, the hand crank. The box's length is the "
-             "cradle box's (723 mm levelled, 41 mm longer than the board) and its height the "
-             "board, the cradle box standing (178 mm) and the two panels nested over it. "
-             "Before turn 1 the drive side carried the cradle box, 441 mm across the bay "
-             "whichever way it lay: the box was the board's footprint times that, about "
-             "211 L. (The other orders tried: the passive panel on the board, the drive "
-             "panel bay to bay over it and the box on top, 182 L; the drive panel on the "
-             "board under the passive, the box on top, 186 L.)"),
+        note="B's pieces since pack turn 1 (2026-10-14): the board (its four brackets on it "
+             "since turn 2), the passive side panel, the cradle box, the drive side panel, "
+             "the hand crank, the riser; the printed spacers where the pads were and beside "
+             "what would slide (voxpack.spacers, turn 2). The box's length is the cradle "
+             "box's (723 mm levelled, 41 mm longer than the board) and its height the board, "
+             "the cradle box standing (178 mm) and the two panels nested over it. Before turn "
+             "1 the drive side carried the cradle box, 441 mm across the bay whichever way it "
+             "lay: the box was the board's footprint times that, about 211 L. (The other "
+             "orders tried: the passive panel on the board, the drive panel bay to bay over "
+             "it and the box on top, 182 L; the drive panel on the board under the passive, "
+             "the box on top, 186 L; turn 2: the riser in the box's bay too, 158.5 L, the "
+             "drive panel then over it.)"),
     "decanter_hinge": vp.Plan(
         "A: both side panels face down on the board, end to end, the loose parts in their "
         "open triangles",
@@ -932,40 +939,41 @@ def pack_input(inp: dict, plan: vp.Plan | None | str = "default", cell: float = 
     assert plan is None or isinstance(plan, vp.Plan)
     pcs, steps, items, _ = pack_items(inp, splits, relevel)
     layout, packer = vp.pack(items, plan, cell, seq)
-    return layout_payload(inp, pcs, steps, items, layout, packer.plan)
+    return layout_payload(inp, pcs, steps, items, layout, packer.plan, cell)
 
 
 def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
-                   layout: vp.Layout, plan: vp.Plan) -> dict:
+                   layout: vp.Layout, plan: vp.Plan, cell: float = CELL) -> dict:
     """The payload (:func:`flat_pack`'s) of ``layout``: a piece's ``pads`` measured on the
     real meshes (``voxpack.measure_pads``); a layout its plan stopped (a step with no room)
     says so (``missing``: the pieces it didn't place, ``warnings``: why; its ``score`` is
     None), and is judged as what it is, part of a packing."""
     by = {pc.key: pc for pc in pcs}
-    item = {it.key: it for it in items}
     faces = {it.key: it.faces for it in items}
-    placed = packed_meshes(items, layout)
-    allp = np.concatenate([pos for ms in placed.values() for pos, _ in ms])
-    lo, hi = allp.min(axis=0) - CLEAR, allp.max(axis=0) + CLEAR
-    inside = [float(v) for v in hi - lo]
-    packed = [vp.Packed(p.key, by[p.key].label, placed[p.key], parts=item[p.key].parts)
-              for p in layout.placed]
-    rays = vp.Rays(packed) if any(p.rest.pads for p in layout.placed) else None
     mods = []
-    for i, p in enumerate(layout.placed):
+    for p in layout.placed:
         pc = by[p.key]
-        pads = vp.measure_pads(packed, i, p.rest.pads, float(lo[1]), rays) if p.rest.pads \
-            else []
-        for n, q in enumerate(pads):
-            q["id"] = vp.pad_id(i + 1, n)
         mod = {"key": p.key, "label": pc.label, "how": pc.how, "parts": sorted(pc.parts),
                "matrix": np.round(p.matrix(), 6).tolist(), "rests": p.rest.how,
-               "on": list(p.rest.on), "pads": pads}
+               "on": list(p.rest.on)}
         mod["down"], mod["spin"] = vp.describe(p.shape.ri, faces[p.key])
         if pc.moved:
             mod["part_matrix"] = {n: np.round(p.matrix() @ m, 6).tolist()
                                   for n, m in sorted(pc.moved.items())}
         mods.append(mod)
+    # the pieces as a judge moves them (by the payload's own matrices: the same box to the
+    # last bit), their pads as it sees them, and the printed spacers in their place
+    packed = [module_packed(inp, mod) for mod in mods]
+    lo, hi = vp.box_of(packed)
+    inside = [float(v) for v in hi - lo]
+    grid = vp.occupancy(packed, (lo, hi), cell)       # (the judge's grid: its cells)
+    judged = {r["key"]: r for r in vp.metrics(packed, (lo, hi), cell, grid=grid)["pieces"]}
+    kit = (vp.spacers(grid, [judged[m["key"]] for m in mods]) if not layout.missing
+           else [])                     # (a packing its plan stopped: no spacers for it)
+    _number(kit, len(mods))
+    for mod in mods:
+        mod["pads"] = [{k: v for k, v in q.items() if k != "piece"}
+                       for q in judged[mod["key"]]["pads"]]
     vol = sum(it.volume for it in items)
     mass = sum(it.mass for it in items)
     com_y = (sum(it.mass * (p.rot @ it.com + p.shift)[1]
@@ -987,6 +995,9 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
         "fill": round(vol / math.prod(inside), 4),
         "mass_centre_mm": round(com_y - float(lo[1]), 1),
         "unsupported": [p.key for p in layout.placed if not p.supported],
+        "spacers": [spacer_json(sp, by[sp.under].label if sp.under in by else
+                                "Spacer " + sp.under.removeprefix("spacer_").lstrip("0"))
+                    for sp in kit],
         "missing": list(dict.fromkeys([*layout.missing, *(it.key for it in items
                                                           if it.key not in by_placed)])),
         "warnings": list(layout.warnings),
@@ -1000,6 +1011,199 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
     if inp.get("slide_off") is not None:
         out["slide_off"] = inp["slide_off"]
     return out
+
+
+def _number(kit: list[vp.Spacer], n_pieces: int) -> None:
+    """Spacers keyed ``spacer_01`` .. in the order they go in (their ranks among the
+    pieces'), what they stand on or hold renamed with them."""
+    order = sorted(range(len(kit)), key=lambda i: (kit[i].rank, i))
+    names = {kit[i].key: f"spacer_{n:02d}" for n, i in enumerate(order, 1)}
+    for sp in kit:
+        sp.key = names[sp.key]
+        sp.under = names.get(sp.under, sp.under)
+        sp.on = tuple(names.get(o, o) for o in sp.on)
+    kit.sort(key=lambda sp: sp.key)
+    _ = n_pieces
+
+
+def module_packed(inp: dict, mod: dict) -> vp.Packed:
+    """A payload's piece ``mod`` where it put it (:class:`voxpack.Packed`): each part's mesh
+    (of :func:`gather`'s input ``inp``) moved by the piece's matrix or its own, its mass,
+    centre of mass and volume."""
+    meshes, names, mass, mom, vol = [], [], 0.0, np.zeros(3), 0.0
+    for n in mod["parts"]:
+        m = np.asarray(mod.get("part_matrix", {}).get(n, mod["matrix"]), float)
+        pos, tri = inp["meshes"][n]
+        if len(tri):
+            meshes.append((np.asarray(pos, float) @ m[:3, :3].T + m[:3, 3],
+                           np.asarray(tri, np.int64)))
+            names.append(n)
+        p = inp["parts"][n]
+        c = m[:3, :3] @ np.asarray(p["com"], float) + m[:3, 3]
+        mass += p["mass"]
+        mom += p["mass"] * c
+        vol += p["volume"]
+    com = mom / mass if mass > 0 else np.concatenate([q for q, _ in meshes]).mean(axis=0)
+    return vp.Packed(mod["key"], mod.get("label", mod["key"]), meshes, mass, com, vol, names)
+
+
+SPACER_FILAMENT = "tpu95a_filament"
+SPACER_FILL = 0.25
+"""A printed spacer's filament (TPU 95A: it gives under a knock and grips what it holds)
+and how much of its solid a print fills (two walls, 15 % gyroid): its mass."""
+
+
+def spacer_json(sp: vp.Spacer, carries: str) -> dict:
+    """A spacer in a pack's payload (``spacers``): :meth:`voxpack.Spacer.to_json`, its label
+    (``Spacer 4a``) and words (what it carries and stands on, the pads it replaces) and its
+    mass (kg, at :data:`SPACER_FILL`)."""
+    from spiderpig.hardware.mass import filament_density
+
+    d = sp.to_json()
+    on = ", ".join(sp.on)
+    d["label"] = "Spacer " + sp.key.removeprefix("spacer_").lstrip("0")
+    d["words"] = (f"under the {carries.lower()} ({', '.join(sp.bears)}), on {on}; in place of "
+                  f"pad{'s' if len(sp.pads) > 1 else ''} {', '.join(sp.pads)}")
+    d["mass_kg"] = round(sp.volume / 1000.0 * filament_density(SPACER_FILAMENT) * SPACER_FILL
+                         / 1000.0, 4)
+    return d
+
+
+def pack_kit(config, store=None) -> dict | None:
+    """The pack of cradle ``config`` (:func:`pack_input` by its plan, from
+    :func:`cached_input`): its payload, whose ``spacers`` the build prints and the guide
+    places (:func:`box_steps`); None for a design with no pack plan."""
+    if config.linkage not in PACK_PLANS:
+        return None
+    return pack_input(cached_input(config.linkage, store, config=config))
+
+
+SPACER_STL_TURN = ((1.0, 0.0, 0.0), (0.0, 0.0, -1.0), (0.0, 1.0, 0.0))
+"""A spacer's print pose (:func:`spacer_stl`): as it goes in the box, the box's up (y) the
+bed's (z)."""
+
+
+def spacer_stl(d: dict, path: Path) -> list[float]:
+    """A payload's spacer as a binary STL at ``path``, lying as it goes in the box, on the bed
+    (its lowest at z 0, its corner at the origin); its size (x, y, z mm)."""
+    from spiderpig.mesh import write_stl
+
+    pos, tri = vp.Spacer.from_json(d).mesh()
+    q = pos @ np.asarray(SPACER_STL_TURN).T
+    q -= q.min(axis=0)
+    write_stl(path, q, tri)
+    return [round(float(v), 1) for v in q.max(axis=0)]
+
+
+PART_WORDS = {"base_plate": "the board", "gearbox": "the gearbox", "frame_outer": "outer plate",
+              "torso": "inner plate", "front_saddle_gauge": "the lip gauge",
+              "base_stop_rail1_liner": "the base stop's rail", "risers": "the riser",
+              "hand_crank": "the hand crank", "box": "the cradle box", "base": "the board",
+              "drive": "the drive side panel", "passive": "the passive side panel"}
+"""How :func:`part_words` names some parts and pieces."""
+
+
+def part_words(name: str) -> str:
+    """A part's or piece's name as the guide says it: ``L.gearbox`` -> ``the drive side's
+    gearbox``, ``R.b6`` -> ``the passive side's link b6``, ``L.pin_X_clip`` -> ``the drive
+    side's pin X's clip``."""
+    side, stem = _side(name)
+    whose = {"L": "the drive side's ", "R": "the passive side's ", "": ""}[side]
+    if stem in PART_WORDS:
+        w = PART_WORDS[stem]
+        return (whose + w.removeprefix("the ")) if side else w
+    if re.fullmatch(r"b\d+", stem):
+        return f"{whose}link {stem}"
+    if m := re.fullmatch(r"pin_([A-Za-z0-9]+)_(pin|clip)", stem):
+        return f"{whose}pin {m.group(1)}" + ("'s clip" if m.group(2) == "clip" else "")
+    if stem.startswith("spacer_"):
+        return "spacer " + stem.removeprefix("spacer_")
+    return (whose or "the ") + stem.replace("_", " ")
+
+
+def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str, list[str]]]]:
+    """Into the box and out of it, the guide's steps (each a title and its items) from a pack
+    payload: each piece in its turn (:func:`in_order`), the spacers that go in before it
+    first, an item each (on what it stands on: a support where the piece it carries comes
+    down, its lips round what it bears on; a restraint against the side of the piece it
+    holds), then the piece, its face down and where its plan puts it (the step's ``why`` to
+    its first colon); out, the other way round, each piece and then the spacers that went in
+    before it."""
+    plan = PACK_PLANS.get(layout.get("linkage", ""))
+    labels = {m["key"]: _the(m.get("label", m["key"])) for m in layout["modules"]}
+    labels.update({d["key"]: d.get("label", d["key"]) for d in layout.get("spacers") or []})
+
+    def on(names) -> str:
+        return _join([labels.get(o, part_words(o)) if o != "floor" else "the carton's floor"
+                      for o in names])
+
+    into: list[tuple[str, list[str]]] = []
+    waiting: list[dict] = []
+    for kind, d in in_order(layout):
+        if kind == "spacer":
+            waiting.append(d)
+            continue
+        said = []
+        for sp in waiting:
+            if sp.get("why", "support").startswith("restraint"):
+                said.append(f"{sp['label']} on {on(sp['on'])}, against "
+                            f"{labels.get(sp['under'], part_words(sp['under']))}'s side "
+                            "(where it goes, if it isn't in yet).")
+            else:
+                bears = _join([part_words(n) for n in sp.get("bears", ())])
+                said.append(f"{sp['label']} on {on(sp['on'])}, under where {labels[d['key']]} "
+                            f"comes down ({bears}): its lips seat round them.")
+        waiting = []
+        face = {"bottom": "standing as in use", "outer": "its outer plate down",
+                "bay": "its bay face down"}.get(d.get("down", "")
+                                                if d["key"] in ("box", "drive", "passive")
+                                                else "", "")
+        step = plan.step(d["key"]) if plan is not None else None
+        where = (step.why.split(":")[0].split(" (")[0] if step is not None and step.why
+                 else "")
+        text = (("Then " if said else "") + labels[d["key"]]
+                + (f", {where}" if where else f", {face}" if face else "")
+                + (f", on {on(d.get('on', []))}" if d.get("on") and not where else "") + ".")
+        into.append((d.get("label", d["key"]), [*said, text[0].upper() + text[1:]]))
+    if waiting:
+        into.append(("The last spacers", [_join([sp["label"] for sp in waiting]) + "."]))
+    out: list[tuple[str, list[str]]] = []
+    after: list[str] = []
+    for kind, d in reversed(in_order(layout)):     # (a piece, then the spacers before it)
+        if kind == "spacer":
+            after.append(d["label"])
+            continue
+        if out and after:
+            out[-1][1].append(f"Then {_join(after)}.")
+        after = []
+        out.append((d.get("label", d["key"]), [f"Lift {labels[d['key']]} straight up and out."]))
+    if after and out:
+        out[-1][1].append(f"Then {_join(after)}.")
+    return into, out
+
+
+def _the(label: str) -> str:
+    """``Drive side panel`` -> ``the drive side panel``."""
+    return "the " + label[0].lower() + label[1:]
+
+
+def spacer_packed(d: dict) -> vp.Packed:
+    """A payload's spacer (``spacers``) as a packed piece (:class:`voxpack.Packed`: its cells'
+    surface, its mass at :data:`SPACER_FILL`)."""
+    sp = vp.Spacer.from_json(d)
+    pos, tri = sp.mesh()
+    vol, cen = vp.mesh_volume(pos, tri)
+    return vp.Packed(sp.key, d.get("label", sp.key), [(pos, tri)],
+                     float(d.get("mass_kg", 0.0)), cen, vol, [sp.key])
+
+
+def in_order(layout: dict) -> list[tuple[str, dict]]:
+    """A payload's pieces and spacers in the order they go in (``("piece", module)`` or
+    ``("spacer", spacer)``): each spacer by its ``rank`` among the pieces' places."""
+    seq = [(float(i), 0, ("piece", m)) for i, m in enumerate(layout["modules"])]
+    seq += [(float(d.get("rank", 0.0)), 1, ("spacer", d))
+            for d in layout.get("spacers") or []]
+    return [x for _, _, x in sorted(seq, key=lambda t: (t[0], t[1]))]
 
 
 def flat_pack(mech, lk, t: float = 0.0, config=None, plan: vp.Plan | None | str = "default"
@@ -1079,19 +1283,20 @@ def _load_input(path: Path) -> dict:
     return inp
 
 
-def cached_input(linkage: str, store=None, reuse_plan: bool = True) -> dict:
+def cached_input(linkage: str, store=None, reuse_plan: bool = True, config=None) -> dict:
     """:func:`gather`'s input of ``linkage``'s cradle at its pack pose (:func:`pack_t`),
     from ``store``'s ``pack/`` when there (:func:`input_path`), else fabricated (through the
     store's fabrication cache) and kept: seconds once kept. ``reuse_plan``: plan the design
     through the store (:func:`spiderpig.stages.planning.plan_config`: its plan re-made, not
-    searched for again; the design recorded there), not afresh."""
+    searched for again; the design recorded there), not afresh. ``config``: the design (a
+    ``BuildConfig`` of the cradle; default the linkage's own)."""
     import logging
 
     from spiderpig.config import BuildConfig
     from spiderpig.fabricate import fabricate, template_for
     from spiderpig.store import Store
 
-    cfg = BuildConfig(linkage=linkage, robot=False)
+    cfg = config or BuildConfig(linkage=linkage, robot=False)
     t = pack_t(cfg)
     at = Store.of(store) if store is not None else None
     if at is not None and reuse_plan:

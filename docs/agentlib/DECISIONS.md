@@ -2410,3 +2410,94 @@ plate at O. Both are fixed; `OPEN_AT_CAP` is empty and the tests assert again (A
   (`OPEN_AT_CAP`, `VERDICT`), `spiderpig/cradle_drive.py` (`verdict`),
   `spiderpig/cradle_pack.py` (`PACK_PLANS`), `tests/test_cradle.py`,
   `docs/agentlib/DECANTER.md` ("The side frames at the clutch's cap").
+
+### 2026-10-20: cradle B's pack, turn 2: its brackets on the board, printed spacers in the foam's place, pin X first (packing review 1's L1, M1, M2 and minors)
+
+- **What:** B's pack is now parts, not a convention, and smaller: 739 x 318 x 600 mm, 141.0 L
+  (740 x 337 x 600, 149.4 L before; -5.6 %), every piece held to within 3 mm of its place
+  (up to 357 mm before), the mass centre 41 % up. A packs as before, 700 x 213 x 601 mm,
+  89.6 L, now held too ([DECANTER.md](DECANTER.md), "Flat pack").
+  - **L1, the brackets on the board** (`cradle.BOARD_BRACKETS`, `_bracket`'s `board`):
+    each outer plate's foot M5 is a stud (an M5 x 16 button head from the plate's inside, in
+    the claim and the space the nut had; a jam nut on the outer face, threadlocked once),
+    the bracket's upright slotted from it to its top (`STUD_SLOT`, 12 mm), and a printed
+    knob on the stud (`STUD_KNOB`, an M5 nut pressed in) clamps the upright by hand. The
+    foot is held by a plain M6 nut, snugged once at the build: the knob there is gone,
+    and with it the four knobs and washers taken off and put back on the board's bolts at
+    every trip (the review's m2). The passive panel, on top in the box, had stood 30 mm
+    taller on its brackets' foot legs; its studs stand 11.2 mm: 141.1 L. The studs' knob
+    had to sit between the upright and the foot's fastener, 5.5 mm thick, which the thumb
+    knob's 24 mm left no room for: hence the plain nut (the review's "printed knob on the
+    M5" with the upright slotted open at the top, otherwise as it asked). The stock 30 x 24
+    x 12 in carton (Uline S-4417) then takes the pack's parts with 2.8 mm over them, not the
+    review's 25: the side frames' redesign had added 21 mm since it measured.
+    A tapped plate (a captive knob-bolt in the bracket, nothing proud of the plate) would
+    have saved 8.5 mm more of height (about 3.8 L) but takes a tap the user hasn't or a
+    tapping service the BOM doesn't price: not made. A keeps its brackets (on its board its
+    panels couldn't lie flat: 100.7 L).
+  - **M1, printed spacers** (`voxpack.spacers`, `cradle_pack.spacer_json`, `pack_kit`,
+    `box_steps`): every pad becomes a support spacer and every piece that would still slide
+    gets a restraint, each a block of the judged 3 mm grid's empty cells shaped to what it
+    holds (lips round it), grown until it doesn't slide itself, numbered in the order the
+    pack goes together. B has 14 (2.1 L of solid; about 640 g printed at 15 % gyroid, TPU
+    95A on hand: no cost), A 25 (1.6 L, about 500 g). The build writes them
+    (`print/pack_spacer_*.stl`) and the BOM lists them (`bom_from_mechanism`'s `extra`); the
+    guide puts them in the box (B's "Into its box" and "Out of its box",
+    `guide.make.with_box_steps`); `pack-inspect` judges each as a piece and reports them
+    (`spacers`).
+    The hand crank packs in the cradle box's bay (`PACK_PLANS`; m3), held there by one.
+    No hold-down part: the carton's lid is 2.8 mm over the pack's top in the stock box and
+    3 mm in a box cut to it, so nothing lifts more.
+    - Why spacers shaped from the pack, not a few standard feet: the pads are where B's
+      panels rest on edges, pins and gauges, 15-65 mm apart in height and none the same, and
+      a foot must also stop the slide; a block shaped to both pieces does both, and the
+      search can't make a layout needing a part nobody prints. TPU, not PLA: the spacers are
+      also the pack's cushion (where foam had been assumed). They are 2.1 L because the
+      drive panel stands 35-60 mm off the board and the box.
+    - Why not a carrier's 2 in of cushioning (UPS's guide): 842 x 420 x 702 mm, 248 L,
+      Oversized at USPS ($242.30 at zone 5, against $158.15 for the snug box): $84 a
+      shipment more. The snug carton with the TPU spacers is the cheapest honest pack; for a
+      carrier, insure it.
+  - **M2, pin Y pushed out** (`cradle_report.keepers`' `second_tip_n`, `module_steps`): the
+    cradle box's centre of mass lies 56 mm past pin X from Y and 105 mm off the line, so
+    with X in its hole the box's weight turns it off Y's tip (-7 N): the review's 15 N on
+    Y's tip doesn't arise in the order the step gives. The other order would put 42 N on
+    X's tip, more than the box's weight. The step now says "pin X first, always" and why,
+    and the way back starts by pressing each drive-side pin's tip with a thumb (about 3 kg):
+    a keeper that has relaxed since the build's 30 N bench check shows before the box goes
+    on, not under it. The passive panel's pins hang by their heads as it goes on (a tip
+    that meets its link lifts its pin, never out). Round 2 had already made the bore 7.4
+    (least grip 12.2 N, from 6.1) and held each piece's weight in the steps.
+    Turning the drive side and box over the other way round (the box under) tips: 0.2°.
+  - **m1:** the keeper's push on at the tight end (the bore printed 0.15 mm under, the pin
+    at its 7.99 mm most, 0.74 mm) is 116 N, under the 120 N bar (`push_on_tight_n`,
+    tested); the guide's "one that won't go on by hand, 0.1 mm looser" stands.
+    **m2:** per trip only the four R-clips (back in their pins' holes for the trip, as
+    before) and the four stud knobs (turned down onto their jam nuts) are handled; the
+    board's knobs and washers are gone. No lanyards (the review's about $1 a clip, not in
+    the catalog: the clips go back through their pins' holes). **m3:** the hand
+    crank in the box's bay. **m4:** the passive panel rests on its outer plate's O1 head
+    and its two studs, 0.9° tilted, tipping at 64.1° (it rocked on its brackets at 3.4°).
+- **Not made, measured:** L2, the base stop off as a fifth piece: 702 x 333 x 600, 140.2 L
+  (3 seeds of 60 s: 140.2-141.7), -0.6 %, for a fifth piece, 4 thumb screws and two steps
+  each way. A's gearbox off its panel (its riser's four M6 nuts): 698 x 205 x 601, 86.0 L
+  (3 seeds of 60 s: 86.0-93.4), -4 % (the review's -12 % was on round 1's A), for a loose
+  2.1 kg piece and the worm's alignment to check again: not made.
+- **Costs:** B's BOM USD 1,373.94 to 1,374.22 (+0.28: four M5 nuts, the studs' jam nuts; the
+  knobs, brackets and spacers print in filament on hand); A's unchanged, USD 1,056.74. B's
+  TPU at 100 % infill is 2.7 kg in the BOM's on-hand line (about 0.7 kg as printed). USPS
+  Ground Advantage retail at zone 5: $160.20 to $158.15 a shipment (DIM 73 to 68 lb), in a
+  box cut to the pack; $165.70 in the stock S-4417 (its 31 in length).
+- **Tests:** `test_the_cradle_packs_in_one_box` (`MODULE_BOX` 340 mm and 150 L to 325 and
+  143; `PACK_SLIDE` B 3 mm, A 6), `test_printed_spacers_hold_what_the_pads_held`,
+  `test_the_guide_puts_the_pieces_and_their_spacers_in_the_box`,
+  `test_a_board_bracket_takes_a_stud_and_a_knob`, the keepers' (`second_tip_n`,
+  `push_on_tight_n`) and the steps' words.
+- **Where:** `spiderpig/construction/cradle.py` (`BOARD_BRACKETS`, `STUD_SLOT`, `STUD_KNOB`,
+  `_bracket`, `_stud_slot`, `_stud_knob`, `module_steps`, the first build's texts),
+  `spiderpig/voxpack.py` (`Spacer`, `spacers`, `vox_mesh`), `spiderpig/cradle_pack.py`
+  (`PACK_PLANS`, `layout_payload`, `pack_kit`, `box_steps`, `spacer_stl`, `in_order`),
+  `spiderpig/cradle_report.py` (`keepers`), `spiderpig/build.py` (`_pack_spacers`),
+  `spiderpig/hardware/bom.py` (`extra`), `spiderpig/mesh.py` (`write_stl`),
+  `spiderpig/guide/make.py` (`with_box_steps`), `spiderpig/tools/pack_inspect.py`,
+  `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`, `docs/agentlib/TESTING.md`.

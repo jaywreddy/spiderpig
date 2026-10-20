@@ -38,7 +38,8 @@ PICTURE = (1200, 900)
 THUMB = (300, 300)
 COVER = (1600, 1200)
 EXPLODE = 20.0          # mm the parts a stack step adds are drawn lifted
-GUIDE_ROOTS = ("spiderpig.guide.make:build_guide",)
+GUIDE_ROOTS = ("spiderpig.guide.make:build_guide", "spiderpig.cradle_pack:pack_kit",
+               "spiderpig.cradle_pack:box_steps")
 RENDER_ROOTS = ("spiderpig.guide.render:render_jobs",)
 
 
@@ -129,7 +130,7 @@ def build_guide(config, store, out: Path, *, jobs: int = 4, max_steps: int | Non
         t = lap("fabricate", t)
         try:
             report = _make(config, design, mech, cache, done, out, jobs, max_steps, force,
-                           times, t)
+                           times, t, store)
         except BaseException:       # no half-made guide left behind
             for d in cache.glob(f".work-{os.getpid()}-*"):
                 shutil.rmtree(d, ignore_errors=True)
@@ -174,7 +175,8 @@ def _meshes(mech, cache: Path) -> Path:
 
 
 def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
-          max_steps: int | None, force: bool, times: dict, t: float) -> GuideReport:
+          max_steps: int | None, force: bool, times: dict, t: float,
+          store=None) -> GuideReport:
     from spiderpig import keys, workers
     from spiderpig.construction.assembly import assembly_steps, body_of
     from spiderpig.guide import pdf
@@ -197,7 +199,7 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
         log.info("%-14s %6.2f s", key, now - since)
         return now
 
-    all_steps = assembly_steps(mech, design)
+    all_steps = with_box_steps(assembly_steps(mech, design), config, mech, store)
     chosen = all_steps[:max_steps] if max_steps else all_steps
     mesh_path = _meshes(mech, cache)
     t = lap("meshes", t)
@@ -344,6 +346,40 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
     except OSError:     # another run published it first
         shutil.rmtree(work, ignore_errors=True)
     return GuideReport(out / "ASSEMBLY.pdf", pages, len(chosen), False, n_drawn, times)
+
+
+def with_box_steps(steps: list, config, mech, store) -> list:
+    """A cradle that packs as modules (``construction.cradle.PACK_POSES``): its steps with
+    the box's (``cradle_pack.box_steps`` of ``cradle_pack.pack_kit``: each piece and the
+    printed spacers into the box after taking it apart, out of it before putting it back
+    together), numbered on; any other design's as they are."""
+    from dataclasses import replace
+
+    from spiderpig.construction import cradle as cr
+
+    if not mech.meta.get("cradle") or config.linkage not in cr.PACK_POSES:
+        return steps
+    from spiderpig.construction.assembly import Step
+    from spiderpig.cradle_pack import box_steps, pack_kit
+
+    kit = pack_kit(config, store)
+    if not kit:
+        return steps
+    into, out = box_steps(kit)
+    apart = [i for i, s in enumerate(steps) if s.title.startswith("Taking it apart")]
+    back = [i for i, s in enumerate(steps) if s.title.startswith("Back together")]
+    if not apart or not back:
+        return steps
+
+    def made(rows, head, like) -> list:
+        n = len(rows)
+        return [Step(0, f"{head} {i}/{n}: {title}", like.stage, like.stage_title, None, [],
+                     [], [], list(items), like.where) for i, (title, items) in enumerate(rows, 1)]
+
+    a, b = apart[-1] + 1, back[0]
+    got = (steps[:a] + made(into, "Into its box", steps[a - 1]) + steps[a:b]
+           + made(out, "Out of its box", steps[b]) + steps[b:])
+    return [replace(s, number=i) for i, s in enumerate(got, 1)]
 
 
 def _batches(jobs_all: list[dict], n: int) -> list[list[dict]]:

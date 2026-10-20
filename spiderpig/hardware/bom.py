@@ -45,7 +45,7 @@ import itertools
 import json
 import math
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, cast
@@ -1120,8 +1120,8 @@ takes a press with less creep and cracking than PLA (``construction.printed`` pr
 snap axles in PETG for the same strain); ``None`` here leaves it in the build's filament."""
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
-CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer, the feet and (B) "
-                                      "the quick-release pins' keepers",
+CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer, the feet, the "
+                                      "pack's spacers and (B) the quick-release pins' keepers",
                        PRESS_FILAMENT: "the saddles' carriers and V blocks, the rear knob and "
                                        "its hub, the base stop's rails and gate and the lip "
                                        "gauge, solid; the hand crank's hub, arm, cap and grip "
@@ -1137,9 +1137,11 @@ CRADLE_PRINT_NOTE = (
     "crank in PETG too, its hub solid and its arm, cap and grip at 40 % (its clutch's "
     "plungers push on them always; check the clutch after a hot trip: the guide). The rest "
     "in PLA: the brackets at 20 % infill with 4 walls, the other knobs (the base board's "
-    "thumb knobs too) and the light's clip (on its tube's foot, a brim) at 40 %; the TPU "
-    "parts at 15-20 %. Each STL is posed as it should print. For a cradle that travels in a "
-    "car in summer, print the brackets and the thumb knobs in PETG too.")
+    "thumb knobs, or B's studs' knobs, too) and the light's clip (on its tube's foot, a brim) "
+    "at 40 %; the TPU parts at 15-20 %, the pack's spacers (pack_spacer_*.stl, each lying "
+    "as it goes in the box) at 15 % gyroid with two walls. Each STL is posed as it should "
+    "print. For a cradle that travels in a car in summer, print the brackets and the knobs "
+    "in PETG too.")
 """A decanting cradle's (:mod:`construction.cradle`; review round 2, N6 and m9; the drive's
 m7)."""
 CRADLE_GREASE_NOTE = (
@@ -1498,12 +1500,15 @@ def line_body(line: BomLine, names) -> str | None:
 
 def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                        group: bool = True,
-                       groups: dict[str, list[MadeGroup]] | None = None) -> Bom:
+                       groups: dict[str, list[MadeGroup]] | None = None,
+                       extra: Sequence[tuple[MadeRow, str]] = ()) -> Bom:
     """Collect purchases and made parts from a fabricated mechanism.
 
     ``group=False`` lists every made part on its own row (faster: no shape
     comparison); ``groups`` passes :func:`group_made` results already computed
-    (method -> groups).
+    (method -> groups). ``extra``: printed parts that aren't the mechanism's bodies (a
+    decanting cradle's pack spacers, ``cradle_pack.pack_kit``), each a row and its filament
+    (catalog key): listed, and their filament counted.
     """
     lines: list[BomLine] = []
     made: list[MadeRow] = []
@@ -1551,6 +1556,9 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
             if method == "printed":
                 grams[fil] = grams.get(fil, 0.0) + (made[-1].volume_cm3 * g.qty
                                                     * filament_density(fil))
+    for row, fil in extra:              # (printed, not bodies: a cradle's pack spacers)
+        made.append(row)
+        grams[fil] = grams.get(fil, 0.0) + row.volume_cm3 * row.qty * filament_density(fil)
     total = sum(grams.values())
     for fil, g in grams.items():
         if not fil or g <= 0:

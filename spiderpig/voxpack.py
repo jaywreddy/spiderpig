@@ -67,6 +67,7 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from itertools import permutations
+from typing import cast
 
 import numpy as np
 
@@ -1721,6 +1722,735 @@ def free_travel(g: Grid, i: int, owner: np.ndarray | None = None
             who = int(owner[hit_g])
         out[way] = (cells * g.cell, who)
     return out
+
+
+# -- spacers: printed blocks where the pads were ---------------------------------------------
+
+SPACER_GROW = 4     # cells: a spacer's footprint past the pads it takes the place of, each way
+SPACER_LIP = 3      # cells: how far it rises past the underside it carries (sinks past the
+#                     top it stands on) beside them, where nothing is over (under) it: its
+#                     lips, which hold the piece over it (and it) from sliding
+SPACER_JOIN = 30.0  # mm: one piece's pads this near each other share a spacer
+
+
+@dataclass
+class Spacer:
+    """A printed spacer (:func:`spacers`), the block a support's pads become: ``key``
+    (``spacer_4a``, the first pad it takes the place of), the piece it carries (``under``)
+    and what it stands on (``on``: pieces' keys, ``"floor"``), the pads it replaces
+    (``pads``: their ids), the parts over and under it there (``bears``) and its cells on
+    the judged grid (``org``, ``cell``), one run per column (``cols``: i, k, j0, j1, the run
+    j0 .. j1 - 1), each from what is under it to what it carries, or to its lips."""
+
+    key: str
+    under: str
+    on: tuple[str, ...]
+    pads: tuple[str, ...]
+    cols: np.ndarray
+    org: np.ndarray
+    cell: float
+    bears: tuple[str, ...] = ()
+    rank: float = 0.0
+    """Where it goes in the order: after the pieces (their indices) under it, before those
+    over it (a support just before what it carries; a restraint as soon as what is under
+    it is in)."""
+    why: str = "support"
+    """``"support"`` (in place of pads) or ``"restraint +x"`` .. (beside a piece, the way it
+    would slide)."""
+
+    @property
+    def volume(self) -> float:
+        """mm^3."""
+        return float((self.cols[:, 3] - self.cols[:, 2]).sum()) * self.cell ** 3
+
+    def vox(self) -> Vox:
+        """Its cells as a grid of their own (its bounds)."""
+        i, k, j0, j1 = (self.cols[:, n] for n in range(4))
+        lo = np.array([i.min(), j0.min(), k.min()])
+        occ = np.zeros((int(i.max()) + 1 - lo[0], int(j1.max()) - lo[1],
+                        int(k.max()) + 1 - lo[2]), bool)
+        ys = np.arange(occ.shape[1]) + lo[1]
+        col = (ys[None, :] >= j0[:, None]) & (ys[None, :] < j1[:, None])
+        occ[i - lo[0], :, k - lo[2]] = col
+        return Vox(occ, np.asarray(self.org, float) + lo * self.cell, self.cell)
+
+    def mesh(self) -> Mesh:
+        """Its closed surface (:func:`vox_mesh`), the box's frame."""
+        return vox_mesh(self.vox())
+
+    def size_mm(self) -> list[float]:
+        v = self.vox()
+        return [round(float(n * self.cell), 1) for n in v.occ.shape]
+
+    def to_json(self) -> dict:
+        return {"key": self.key, "under": self.under, "on": list(self.on),
+                "pads": list(self.pads), "bears": list(self.bears),
+                "org": [float(v) for v in self.org], "cell": self.cell,
+                "cols": self.cols.astype(int).tolist(),
+                "volume_cm3": round(self.volume / 1000.0, 1), "size_mm": self.size_mm(),
+                "rank": self.rank, "why": self.why}
+
+    @classmethod
+    def from_json(cls, d: dict) -> Spacer:
+        return cls(d["key"], d["under"], tuple(d["on"]), tuple(d["pads"]),
+                   np.asarray(d["cols"], np.int64).reshape(-1, 4),
+                   np.asarray(d["org"], float), float(d["cell"]), tuple(d.get("bears", ())),
+                   float(d.get("rank", 0.0)), d.get("why", "support"))
+
+
+def vox_mesh(v: Vox) -> Mesh:
+    """A voxel grid's closed surface: each face between a full cell and an empty one (or the
+    grid's edge), two triangles, outward."""
+    pad = np.pad(v.occ, 1)
+    verts, tris = [], []
+    base = 0
+    for ax in range(3):
+        u, w = (a for a in range(3) if a != ax)
+        for sgn in (1, -1):
+            face = pad & ~np.roll(pad, -sgn, axis=ax)
+            idx = np.argwhere(face[1:-1, 1:-1, 1:-1]).astype(float)
+            if not len(idx):
+                continue
+            if sgn > 0:
+                idx[:, ax] += 1.0
+            q = np.repeat(idx[:, None, :], 4, axis=1)
+            q[:, 1, u] += 1.0
+            q[:, 2, u] += 1.0
+            q[:, 2, w] += 1.0
+            q[:, 3, w] += 1.0
+            m = len(idx)
+            b = base + 4 * np.arange(m)
+            # (u, w) in increasing order: their cross product is +ax but for ax = y
+            if (sgn > 0) == (ax != 1):
+                t = np.concatenate([np.stack([b, b + 1, b + 2], 1), np.stack([b, b + 2, b + 3], 1)])
+            else:
+                t = np.concatenate([np.stack([b, b + 2, b + 1], 1), np.stack([b, b + 3, b + 2], 1)])
+            verts.append(q.reshape(-1, 3) * v.cell + v.org)
+            tris.append(t)
+            base += 4 * m
+    if not verts:
+        return np.zeros((0, 3)), np.zeros((0, 3), np.int64)
+    return np.concatenate(verts), np.concatenate(tris)
+
+
+def _pad_clusters(pads: Sequence[dict], join: float) -> list[list[dict]]:
+    """``pads`` (measured: :func:`measure_pads`) grouped: two whose footprints come within
+    ``join`` mm share a group (single linkage)."""
+    n = len(pads)
+    parent = list(range(n))
+
+    def root(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for a, b in itertools.combinations(range(n), 2):
+        fa, fb = pads[a]["footprint"], pads[b]["footprint"]
+        gap = max(fa[0] - fb[2], fb[0] - fa[2], fa[1] - fb[3], fb[1] - fa[3], 0.0)
+        if gap <= join:
+            parent[root(a)] = root(b)
+    groups: dict[int, list[dict]] = {}
+    for i in range(n):
+        groups.setdefault(root(i), []).append(pads[i])
+    return list(groups.values())
+
+
+SPACER_STEP = 3     # cells: a loose spacer's footprint grows this far a step
+SPACER_SPAN = 60    # cells: the most a spacer's footprint spans either way (180 mm: a print bed)
+SPACER_REACH = 20   # cells: how far a restraint reaches down to stand on something
+SPACER_HOLD = 1     # cells: the most a piece or a spacer may slide (one cell: up to 3 mm)
+SPACER_MAX = 400.0  # cm^3: a spacer grows no bigger (its solid)
+WAYS = {"+x": (0, 1), "-x": (0, -1), "+z": (2, 1), "-z": (2, -1)}
+"""The ways a spacer is grown for and a piece restrained: along the box's floor."""
+
+
+@dataclass
+class _Spec:
+    """A spacer being made: its footprint (rectangles of columns ``i0 i1 k0 k1``, ends one
+    past), each column's seed (``seed``: its cell, the lowest and the one past the highest it
+    may fill, -1 none), its rank in the order (it goes in after the pieces ranked under it
+    and before those over), the piece it carries or holds, the pads it replaces, the parts
+    it bears on, how it grows when it slides (``"away"``: its far side, to wrap what it
+    carries; ``"toward"``: its near side, to meet what would stop it) and its pads' seeds."""
+
+    rects: list[tuple[int, int, int, int]]
+    seed: np.ndarray
+    rank: float | None
+    under: str
+    pads: tuple[str, ...]
+    bears: tuple[str, ...]
+    grow: str = "away"
+    pad_seeds: list[tuple[float, float, int, int, int]] = field(default_factory=list)
+    why: str = "support"
+
+
+class _Spacers:
+    """The judged grid ``g`` with every spacer made so far in it (:func:`spacers`)."""
+
+    def __init__(self, g: Grid, keys: Sequence[str]):
+        self.g = g
+        self.occ = g.count > 0
+        self.owner = g.owner().astype(np.int32)
+        self.keys = list(keys)
+        self.ranks = [float(i) for i in range(len(keys))]      # by owner (-2 - n: spacers)
+        self.names = list(keys)
+        self.made: list[Spacer] = []
+        self.shape = self.occ.shape
+        # the cells a spacer may take: inside the pieces' bounds (the box's clearance, a
+        # cell all round, stays the box's), each axis's past the last
+        self.end = tuple(math.floor((float(g.hi[a]) - CLEAR - float(g.lo[a])) / g.cell
+                                    + 1e-6) for a in range(3))
+
+    def ids(self, name: str) -> list[int]:
+        """The grid owners named ``name``: a piece's index, or a spacer's (-2 - n)."""
+        return ([o for o, k in enumerate(self.keys) if k == name]
+                + [-2 - n for n, sp in enumerate(self.made) if sp.key == name])
+
+    def rank(self, o: int) -> float:
+        return self.ranks[o] if o >= 0 else self.ranks[len(self.keys) - 2 - o]
+
+    def name(self, o: int) -> str:
+        return self.names[o] if o >= 0 else self.names[len(self.keys) - 2 - o]
+
+    def pad_seed(self, seeds: Sequence[tuple[float, float, int, int, int]]) -> np.ndarray:
+        """Each column's seed from pads' seeds (x, z mm; cell, lowest, one past highest):
+        the nearest pad's."""
+        nx, _, nz = self.shape
+        g = self.g
+        cx = g.lo[0] + (np.arange(nx) + 0.5) * g.cell
+        cz = g.lo[2] + (np.arange(nz) + 0.5) * g.cell
+        s = np.asarray(seeds, float)
+        d = ((cx[:, None, None] - s[None, None, :, 0]) ** 2
+             + (cz[None, :, None] - s[None, None, :, 1]) ** 2)
+        near = np.argmin(d, axis=2)
+        return s[near][..., 2:].astype(np.int64)
+
+    def ranks_of(self, own: np.ndarray) -> np.ndarray:
+        """The order's rank of each grid owner in ``own`` (pieces' indices, spacers' -2 - n;
+        an empty cell's -1: nan)."""
+        m = len(self.made)
+        lut = np.full(m + 1 + len(self.keys), np.nan)
+        lut[m + 1:] = self.ranks[:len(self.keys)]
+        if m:
+            lut[:m] = self.ranks[len(self.keys):][::-1]     # (-2 - n at m - 1 - n)
+        return lut[own + m + 1]
+
+    def columns(self, sp: _Spec) -> np.ndarray:
+        """The spacer's runs (i, k, j0, j1): each footprint column's empty run round its
+        seed (a restraint's: its seed or the first empty cell over it), within its seed's
+        bounds; not a column under a piece that goes in before it, nor over one that goes in
+        after it (a restraint goes in as soon as what is under it is); the 6-connected
+        parts of them that touch what it carries or holds, or hold one of its pads' seeds."""
+        from scipy import ndimage
+
+        nx, ny, nz = self.shape
+        cols = np.zeros((nx, nz), bool)
+        for i0, i1, k0, k1 in sp.rects:
+            cols[max(i0, 1):min(i1, self.end[0]), max(k0, 1):min(k1, self.end[2])] = True
+        ii, kk = np.nonzero(cols)
+        empty = np.zeros((0, 4), np.int64)
+        if not len(ii):
+            return empty
+        j, cap0, cap1 = (sp.seed[ii, kk, n].astype(np.int64) for n in range(3))
+        prof = self.occ[ii, :, kk]
+        at = np.arange(ny)[None, :]
+        if sp.rank is None:             # (a restraint: the first empty cell from its seed)
+            free = ~prof & (at >= np.maximum(j, 1)[:, None]) & (at < np.minimum(cap1, ny - 1)
+                                                                  [:, None])
+            j = np.where(free.any(axis=1), free.argmax(axis=1), -1)
+        jj = np.clip(j, 0, ny - 1)
+        ok = (j >= 1) & (j < ny - 1) & ~prof[np.arange(len(ii)), jj]
+        a = np.where(prof & (at < jj[:, None]), at, -1).max(axis=1) + 1
+        b = np.where(prof & (at >= jj[:, None]), at, ny).min(axis=1)
+        j0 = np.maximum(np.maximum(a, cap0), 1)
+        j1 = np.minimum(np.minimum(b, cap1), self.end[1])
+        ok &= j1 > j0
+        rk = self.ranks_of(self.owner[ii, :, kk])
+        over = np.where(prof & (at >= j1[:, None]), rk, np.inf).min(axis=1)
+        under = np.where(prof & (at < j0[:, None]), rk, -1.0).max(axis=1)
+        rank = sp.rank
+        if rank is None:                # in as soon as what is under it is
+            rank = float(under[ok].max(initial=-1.0)) + 0.25
+        ok &= (over > rank) & (under < rank)
+        if not ok.any():                # (it couldn't go in under the one, or over the other)
+            return empty
+        runs = np.stack([ii[ok], kk[ok], j0[ok], j1[ok]], axis=1)
+        lo = np.array([runs[:, 0].min() - 1, runs[:, 2].min() - 1, runs[:, 1].min() - 1])
+        hi = np.array([runs[:, 0].max() + 2, runs[:, 3].max() + 1, runs[:, 1].max() + 2])
+        lo, hi = np.maximum(lo, 0), np.minimum(hi, self.shape)
+        box = tuple(slice(int(u), int(v)) for u, v in zip(lo, hi, strict=True))
+        mask = np.zeros(tuple(int(v) for v in hi - lo), bool)
+        ys = np.arange(lo[1], hi[1])[None, :]
+        mask[runs[:, 0] - lo[0], :, runs[:, 1] - lo[2]] = ((ys >= runs[:, 2:3])
+                                                          & (ys < runs[:, 3:4]))
+        lab, _ = _label(mask)
+        carried = np.isin(self.owner[box], self.ids(sp.under))
+        holds = set(np.unique(lab[ndimage.binary_dilation(carried) & mask]).tolist())
+        for x, z, js, _, _ in sp.pad_seeds:
+            i = int((x - self.g.lo[0]) / self.g.cell) - lo[0]
+            k = int((z - self.g.lo[2]) / self.g.cell) - lo[2]
+            q = js - lo[1]
+            if 0 <= i < mask.shape[0] and 0 <= k < mask.shape[2] and 0 <= q < mask.shape[1]:
+                holds.add(int(lab[i, q, k]))
+        holds.discard(0)
+        col = lab[runs[:, 0] - lo[0], runs[:, 2] - lo[1], runs[:, 1] - lo[2]]
+        return runs[np.isin(col, sorted(holds))]
+
+    def mask(self, cols: np.ndarray) -> np.ndarray:
+        """Runs (i, k, j0, j1) as the grid's cells."""
+        m = np.zeros(self.shape, bool)
+        if len(cols):
+            ys = np.arange(self.shape[1])[None, :]
+            m[cols[:, 0], :, cols[:, 1]] = (ys >= cols[:, 2:3]) & (ys < cols[:, 3:4])
+        return m
+
+    def slide_runs(self, cols: np.ndarray) -> dict[str, int]:
+        """:meth:`slide` of a spacer's runs (i, k, j0, j1), on the slabs through them."""
+        if not len(cols):
+            return dict.fromkeys(WAYS, 0)
+        lo = [int(cols[:, 0].min()), int(cols[:, 2].min()), int(cols[:, 1].min())]
+        hi = [int(cols[:, 0].max()) + 1, int(cols[:, 3].max()), int(cols[:, 1].max()) + 1]
+        return self.slide(cols, (lo, hi))
+
+    def slide(self, mine, bounds=None) -> dict[str, int]:
+        """How many cells the cells ``mine`` slide each way of :data:`WAYS` before one meets
+        a full cell (another's: the grid's and the spacers' made so far) or the box's
+        wall. ``mine``: a mask of the grid, or runs (i, k, j0, j1) with their ``bounds``."""
+        if bounds is None:
+            idx = np.nonzero(mine)
+            if not len(idx[0]):
+                return dict.fromkeys(WAYS, 0)
+            lo_b = [int(v.min()) for v in idx]
+            hi_b = [int(v.max()) + 1 for v in idx]
+        else:
+            lo_b, hi_b = bounds
+        out = {}
+        for way, (a, sgn) in WAYS.items():
+            sl = tuple(slice(None) if k == a else slice(lo_b[k], hi_b[k]) for k in range(3))
+            if bounds is None:
+                m = mine[sl]
+            else:                       # (the runs' cells in the slab)
+                m = np.zeros(self.occ[sl].shape, bool)
+                ys = np.arange(lo_b[1], hi_b[1])[None, :]
+                ci = mine[:, 0] - (0 if a == 0 else lo_b[0])
+                ck = mine[:, 1] - (0 if a == 2 else lo_b[2])
+                m[ci, :, ck] = (ys >= mine[:, 2:3]) & (ys < mine[:, 3:4])
+            o = self.occ[sl] & ~m
+            n = o.shape[a]
+            at = np.arange(n).reshape([n if k == a else 1 for k in range(3)])
+            if sgn > 0:
+                nxt = np.flip(np.minimum.accumulate(np.flip(np.where(o, at, n), a), axis=a), a)
+                gap = nxt - at - 1
+            else:
+                nxt = np.maximum.accumulate(np.where(o, at, -1), axis=a)
+                gap = at - nxt - 1
+            out[way] = int(np.where(m, gap, np.iinfo(np.int64).max).min())
+        return out
+
+    def commit(self, sp: _Spec, cols: np.ndarray, key: str) -> Spacer:
+        """The spacer made: its cells full in the grid from now on (a piece for the next).
+        A restraint's rank is then fixed: just after the most of what is under it. A key
+        already made gets ``_2``, ``_3`` .."""
+        idx = -2 - len(self.made)
+        taken = {sp.key for sp in self.made}
+        n, base = 2, key
+        while key in taken:
+            key, n = f"{base}_{n}", n + 1
+        if sp.rank is None:
+            sp.rank = max((self.rank(int(self.owner[i, j0 - 1, k]))
+                           for i, k, j0, _ in cols.tolist()
+                           if j0 >= 1 and self.occ[i, j0 - 1, k]), default=-1.0) + 0.25
+        under = {int(self.owner[i, j0 - 1, k]) for i, k, j0, _ in cols.tolist()
+                 if j0 >= 1 and self.occ[i, j0 - 1, k]}
+        floor = any(j0 <= 1 for _, _, j0, _ in cols.tolist())
+        on = sorted({self.name(o) for o in under}) + (["floor"] if floor else [])
+        out = Spacer(key, sp.under, tuple(on), sp.pads, cols, self.g.lo.copy(), self.g.cell,
+                     sp.bears, float(sp.rank), sp.why)
+        for i, k, j0, j1 in cols:
+            self.occ[i, j0:j1, k] = True
+            self.owner[i, j0:j1, k] = idx
+        self.ranks.append(sp.rank)
+        self.names.append(key)
+        self.made.append(out)
+        return out
+
+    def merge(self, n: int, cols: np.ndarray) -> None:
+        """Spacer ``n`` (made) with the cells ``cols`` too: one print (a restraint of it)."""
+        sp = self.made[n]
+        both = _runs(self.mask(sp.cols) | self.mask(cols))
+        for i, k, j0, j1 in cols:
+            self.occ[i, j0:j1, k] = True
+            self.owner[i, j0:j1, k] = -2 - n
+        sp.cols = both
+
+    def grow(self, sp: _Spec) -> np.ndarray:
+        """The spacer's runs, its footprint grown :data:`SPACER_STEP` cells a step for each
+        way it slides more than :data:`SPACER_HOLD` (its far side, to wrap round what it
+        carries, or its near side, to meet what would stop it: :class:`_Spec`'s ``grow``;
+        the other when a step frees nothing), until it is held or it can't grow
+        (:data:`SPACER_SPAN`, :data:`SPACER_MAX`); the best of its steps (the least it
+        slides past :data:`SPACER_HOLD`, then the fewest cells) kept, ``sp.rects`` its."""
+        def excess(free: dict[str, int]) -> int:
+            return sum(max(0, d - SPACER_HOLD) for d in free.values())
+
+        cols = self.columns(sp)
+        if not len(cols):
+            return cols
+        free = self.slide_runs(cols)
+        best = (excess(free), len(cols), list(sp.rects), cols)
+        side = dict.fromkeys(WAYS, sp.grow)
+        for _ in range(40):
+            loose = [w for w, d in free.items() if d > SPACER_HOLD and side[w]]
+            vol = float((cols[:, 3] - cols[:, 2]).sum()) * self.g.cell ** 3 / 1000.0
+            if not loose or vol > SPACER_MAX:
+                break
+            rects = list(sp.rects)
+            for w in loose:
+                a, sgn = WAYS[w]
+                far = (side[w] == "away") == (sgn > 0)       # (the side at -way: low)
+                lo = min(r[0 if a == 0 else 2] for r in rects)
+                hi = max(r[1 if a == 0 else 3] for r in rects)
+                if hi - lo + SPACER_STEP > SPACER_SPAN:
+                    side[w] = ""
+                    continue
+                new = []
+                for r in rects:
+                    i0, i1, k0, k1 = r
+                    if a == 0 and far and i0 == lo:
+                        r = (i0 - SPACER_STEP, i1, k0, k1)
+                    elif a == 0 and not far and i1 == hi:
+                        r = (i0, i1 + SPACER_STEP, k0, k1)
+                    elif a == 2 and far and k0 == lo:
+                        r = (i0, i1, k0 - SPACER_STEP, k1)
+                    elif a == 2 and not far and k1 == hi:
+                        r = (i0, i1, k0, k1 + SPACER_STEP)
+                    new.append(r)
+                rects = new
+            if rects == sp.rects:
+                break
+            sp.rects = rects
+            more = self.columns(sp)
+            if not len(more):
+                break
+            now = self.slide_runs(more)
+            for w in loose:             # a step that freed nothing: the other side, then none
+                if now[w] >= free[w]:
+                    side[w] = {"away": "toward", "toward": ""}.get(side[w], "")
+            cols, free = more, now
+            if (excess(free), len(cols)) < best[:2]:
+                best = (excess(free), len(cols), list(sp.rects), cols)
+        sp.rects = best[2]
+        return best[3]
+
+
+def spacers(g: Grid, rows: Sequence[dict]) -> list[Spacer]:
+    """The printed spacers of a judged packing (:func:`metrics`' ``pieces`` rows, in the order
+    the pieces go in, on its grid ``g``): each a block of the grid's empty cells, one run a
+    column, inside the pieces' bounds, that goes in at its place in the order (its
+    ``rank``), never under a piece that goes in before it nor over one that goes in after.
+
+    *Supports*, where the pads were: each piece's pads within :data:`SPACER_JOIN` of one
+    another make one spacer, its footprint their footprints grown :data:`SPACER_GROW` cells
+    each way; in each column the empty run round the nearest pad's gap, from what is under
+    it (another piece's top, the floor) to the piece's underside, but no more than
+    :data:`SPACER_LIP` cells past the pad's own ends: beside a part it carries (or stands
+    on) it rises (sinks) past it, a lip round it. It goes in just before the piece it
+    carries. One that slides more than :data:`SPACER_HOLD` cells a way grows
+    (:meth:`_Spacers.grow`): its far side wraps round what it carries, else its near side
+    meets what stops it; two of one piece that meet become one; one in parts is a spacer
+    each, grown again; one that would tip (:func:`_steady`) reaches deeper for more to
+    stand on, else loses its overhang (:func:`_trimmed`).
+
+    *Restraints*, then, for every piece but the board (whose walls hold it) and every
+    spacer that still slides more than :data:`SPACER_HOLD` cells a way, the most first: a
+    block beside it that way where the gap is least (:func:`_bar`: low on it first), from it
+    (round its end) to what it would meet or the box's wall, standing on what is under it,
+    grown as a support is; in as soon as what is under it is (a spacer's restraint is one
+    print with it, and goes in with it). Rounds of them until nothing slides or a round adds
+    none.
+
+    The grid's cells are the parts' conservative fill, so a spacer meets each part with up
+    to a cell's gap: a piece it holds slides up to 3 mm (:data:`CELL`)."""
+    keys = [r["key"] for r in rows]
+    st = _Spacers(g, keys)
+    for u, r in enumerate(rows):
+        pads = [p for p in r["pads"] if p.get("fits") and p.get("base_mm") is not None
+                and p["height_mm"] > 0]
+        specs = []
+        for group in _pad_clusters(pads, SPACER_JOIN):
+            rects, seeds = [], []
+            for p in group:
+                x0, z0, x1, z1 = p["footprint"]
+                rects.append((math.floor((x0 - g.lo[0]) / g.cell) - SPACER_GROW,
+                              math.ceil((x1 - g.lo[0]) / g.cell) + SPACER_GROW,
+                              math.floor((z0 - g.lo[2]) / g.cell) - SPACER_GROW,
+                              math.ceil((z1 - g.lo[2]) / g.cell) + SPACER_GROW))
+                b = (p["base_mm"] - g.lo[1]) / g.cell
+                t = (p["base_mm"] + p["height_mm"] - g.lo[1]) / g.cell
+                seeds.append(((x0 + x1) / 2, (z0 + z1) / 2, int((b + t) / 2),
+                              math.floor(b) - SPACER_LIP, math.ceil(t) + SPACER_LIP))
+            bears = sorted({p["under"] for p in group if p.get("under")}
+                           | {p["on_part"] for p in group if p.get("on_part")})
+            specs.append(_Spec(rects, st.pad_seed(seeds), u - 0.5, r["key"],
+                               tuple(p["id"] for p in group), tuple(bears),
+                               pad_seeds=seeds))
+        for sp, cols in _grow_merged(st, specs):
+            parts = _split(st, sp, cols)
+            if len(parts) > 1:              # (apart: each grown again on its own)
+                parts = [q for sub, c in _grow_merged(st, [s for s, _ in parts])
+                         for q in _split(st, sub, c)]
+            for sub, c in parts:
+                if len(c) and not _steady(st, c):       # (it would tip: down to more)
+                    deeper = _Spec(list(sub.rects), sub.seed.copy(), sub.rank, sub.under,
+                                   sub.pads, sub.bears, sub.grow, sub.pad_seeds)
+                    deeper.seed[..., 1] -= SPACER_REACH
+                    more = _split(st, deeper, st.grow(deeper))
+                    if more and _steady(st, more[0][1]):
+                        sub, c = more[0]
+                    else:
+                        c = _trimmed(st, c)
+                if len(c) and _stands(st, c):
+                    st.commit(sub, c, f"spacer_{sub.pads[0]}" if sub.pads
+                              else f"spacer_{r['key']}")
+    for _ in range(6):                      # restraints for what still slides
+        more = False
+        owners = [p for p in range(len(keys)) if p or len(keys) == 1]   # (not the base)
+        for p in owners + [-2 - n for n in range(len(st.made))]:
+            key = st.name(p)
+            mine = st.owner == p
+            if not mine.any():
+                continue
+            free = st.slide(mine)
+            for way in sorted(WAYS, key=lambda w: -free[w]):
+                if free[way] <= SPACER_HOLD:
+                    break
+                for sp in _bar(st, p, mine, way):
+                    cols = st.grow(sp)
+                    if len(cols):
+                        cols = _split(st, sp, cols)[0][1]
+                    if len(cols) and not _steady(st, cols):
+                        cols = _trimmed(st, cols)
+                    if not len(cols) or not _steady(st, cols):
+                        continue
+                    if p < 0:               # (a spacer's: one print with it)
+                        st.merge(-2 - p, cols)
+                    else:
+                        st.commit(sp, cols, f"spacer_{key}_{'pm'[WAYS[way][1] < 0]}"
+                                            f"{'xyz'[WAYS[way][0]]}")
+                    more = True
+                    mine = st.owner == p
+                    free = st.slide(mine)
+                    break
+        if not more:
+            break
+    return st.made
+
+
+def _split(st: _Spacers, sp: _Spec, cols: np.ndarray) -> list[tuple[_Spec, np.ndarray]]:
+    """A spacer's runs by its 6-connected parts (largest first), each with the pads whose
+    seeds it holds and its own footprint (its bounds)."""
+
+    if not len(cols):
+        return []
+    lab, n = _label(st.mask(cols))
+    if n <= 1:
+        return [(sp, cols)]
+    out = []
+    for m in sorted(range(1, n + 1), key=lambda m: -int((lab == m).sum())):
+        part = lab == m
+        mine = _runs(part)
+        held = [(pid, q) for pid, q in zip(sp.pads, sp.pad_seeds, strict=False)
+                if _holds_seed(st, part, q)]
+        seeds = [q for _, q in held] or sp.pad_seeds
+        rect = (int(mine[:, 0].min()), int(mine[:, 0].max()) + 1,
+                int(mine[:, 1].min()), int(mine[:, 1].max()) + 1)
+        sub = _Spec([rect], st.pad_seed(seeds) if seeds else sp.seed, sp.rank, sp.under,
+                    tuple(pid for pid, _ in held), sp.bears, sp.grow, seeds)
+        out.append((sub, mine))
+    return out
+
+
+def _next_full(full: np.ndarray, a: int, sgn: int) -> np.ndarray:
+    """For each cell, the index along axis ``a`` of the next full cell past it going ``sgn``
+    (the grid's size, or -1, past its edge)."""
+    n = full.shape[a]
+    at = np.arange(n).reshape([n if k == a else 1 for k in range(3)])
+    edge = [1 if k == a else s for k, s in enumerate(full.shape)]
+    if sgn > 0:
+        sm = np.flip(np.minimum.accumulate(np.flip(np.where(full, at, n), a), axis=a), a)
+        return np.concatenate([np.take(sm, np.arange(1, n), axis=a), np.full(edge, n)], axis=a)
+    pm = np.maximum.accumulate(np.where(full, at, -1), axis=a)
+    return np.concatenate([np.full(edge, -1), np.take(pm, np.arange(n - 1), axis=a)], axis=a)
+
+
+def _least_gap(mine: np.ndarray, others: np.ndarray, a: int, sgn: int
+               ) -> tuple[int, np.ndarray, int] | None:
+    """Where cells ``mine`` come nearest a full cell of ``others`` (or the grid's edge) going
+    ``sgn`` along axis ``a``, not across one of its own: (the gap in cells, its cell, the
+    index along ``a`` where it meets: the grid's size, or -1, past its edge); None when it
+    meets itself first everywhere."""
+    n = mine.shape[a]
+    nxt = _next_full(others | mine, a, sgn)
+    at = np.arange(n).reshape([n if k == a else 1 for k in range(3)])
+    gap = np.abs(nxt - at) - 1
+    inside = (nxt >= 0) & (nxt < n)
+    own = np.take_along_axis(mine, np.clip(nxt, 0, n - 1), axis=a) & inside
+    sel = mine & ~own & (gap > 0)
+    if not sel.any():
+        return None
+    g = np.where(sel, gap, np.iinfo(np.int64).max)
+    c = np.unravel_index(int(np.argmin(g)), g.shape)
+    return int(g[c]), np.array(c), int(nxt[c])
+
+
+def _least_gaps(mine: np.ndarray, others: np.ndarray, a: int, sgn: int, k: int = 4
+                ) -> list[tuple[int, np.ndarray, int]]:
+    """:func:`_least_gap`'s ``k`` least, each at least two footprints (:data:`SPACER_GROW`)
+    across from those before it."""
+    out = []
+    left = mine.copy()
+    other = 2 if a == 0 else 0
+    for _ in range(k):
+        got = _least_gap(left, others, a, sgn)
+        if got is None:
+            break
+        out.append(got)
+        c = got[1]
+        sl = [slice(None)] * 3
+        sl[other] = slice(max(int(c[other]) - 4 * SPACER_GROW, 0), int(c[other]) + 4 * SPACER_GROW)
+        left[tuple(sl)] = False
+    return out
+
+
+def _bar(st: _Spacers, p: int, mine: np.ndarray, way: str) -> list[_Spec]:
+    """A restraint for piece ``p`` sliding ``way`` (:func:`spacers`): a block in the gap beside
+    its foot that way, where the gap is least, from the piece (its end's sides too, a lip
+    round it) to what it would meet (or the box's wall), standing on what is under it; in
+    after both."""
+    a, sgn = WAYS[way]
+    js = np.flatnonzero(mine.any(axis=(0, 2)))
+    foot = mine.copy()
+    foot[:, int(js[0]) + 4:, :] = False         # (its lowest four layers, else all of it)
+    n_a = st.shape[a]
+    other = 2 if a == 0 else 0
+    out = []
+    for cells in (foot, mine):
+        for _, c, end in _least_gaps(cells, st.occ & ~mine, a, sgn):
+            last = (end - sgn if 0 <= end < n_a else st.end[a] - 1 if sgn > 0 else 1)
+            lo_a, hi_a = sorted((int(c[a]) - sgn * SPACER_LIP, last))
+            if hi_a - lo_a + 1 > SPACER_SPAN:
+                continue                # (too long a print: nothing near enough)
+            w0, w1 = int(c[other]) - SPACER_GROW, int(c[other]) + SPACER_GROW + 1
+            rect = (lo_a, hi_a + 1, w0, w1) if a == 0 else (w0, w1, lo_a, hi_a + 1)
+            j = int(c[1])
+            seed = np.empty((st.shape[0], st.shape[2], 3), np.int64)
+            seed[...] = (j, j - SPACER_REACH, j + SPACER_LIP)
+            out.append(_Spec([rect], seed, st.rank(p) if p < 0 else None, st.name(p), (),
+                             (st.name(p),), "toward", why=f"restraint {way}"))
+    return out          # (a spacer's restraint goes in with it: its rank)
+
+
+def _grow_merged(st: _Spacers, specs: list[_Spec]) -> list[tuple[_Spec, np.ndarray]]:
+    """Each spec grown (:meth:`_Spacers.grow`); two of one piece whose cells meet merged and
+    grown again, until none meet."""
+    while True:
+        got = [(sp, st.grow(sp)) for sp in specs]
+        pair = next(((a, b) for a, b in itertools.combinations(range(len(got)), 2)
+                     if _meet(st, got[a][1], got[b][1])), None)
+        if pair is None:
+            return got
+        a, b = pair
+        sa, sb = specs[a], specs[b]
+        seeds = sa.pad_seeds + sb.pad_seeds
+        merged = _Spec(sa.rects + sb.rects, st.pad_seed(seeds), sa.rank, sa.under,
+                       sa.pads + sb.pads, tuple(sorted(set(sa.bears) | set(sb.bears))),
+                       sa.grow, seeds)
+        specs = [s for n, s in enumerate(specs) if n not in pair] + [merged]
+
+
+def _label(mask: np.ndarray) -> tuple[np.ndarray, int]:
+    """``scipy.ndimage.label``: a mask's 6-connected parts, numbered from 1, and how many."""
+    from scipy import ndimage
+
+    return cast(tuple[np.ndarray, int], ndimage.label(mask))
+
+
+def _runs(mask: np.ndarray) -> np.ndarray:
+    """A mask's cells as one run a column (i, k, j0, j1): its lowest to past its highest."""
+    ii, kk = np.nonzero(mask.any(axis=1))
+    out = []
+    for i, k in zip(ii.tolist(), kk.tolist(), strict=True):
+        js = np.flatnonzero(mask[i, :, k])
+        out.append((i, k, int(js[0]), int(js[-1]) + 1))
+    return np.asarray(out, np.int64).reshape(-1, 4)
+
+
+def _holds_seed(st: _Spacers, mask: np.ndarray, q: tuple) -> bool:
+    x, z, j = q[0], q[1], int(q[2])
+    i, k = int((x - st.g.lo[0]) / st.g.cell), int((z - st.g.lo[2]) / st.g.cell)
+    nx, ny, nz = st.shape
+    return 0 <= i < nx and 0 <= k < nz and 0 <= j < ny and bool(mask[i, j, k])
+
+
+def _steady(st: _Spacers, cols: np.ndarray) -> bool:
+    """Whether a spacer stands by itself before what it carries is on it (:func:`support`):
+    its cells' centre over the columns where it stands on something (or the floor)."""
+    on = [(i, k) for i, k, j0, _ in cols.tolist() if j0 <= 1 or st.occ[i, j0 - 1, k]]
+    if not on:
+        return False
+    n = (cols[:, 3] - cols[:, 2]).astype(float)
+    com = ((cols[:, 0] + 0.5) * n).sum() / n.sum(), ((cols[:, 1] + 0.5) * n).sum() / n.sum()
+    return over_hull(np.asarray(on, np.int64), com)
+
+
+def _trimmed(st: _Spacers, cols: np.ndarray) -> np.ndarray:
+    """A spacer that would tip with its overhang off: the columns it doesn't stand on,
+    farthest from those it does first, until it stands (:func:`_steady`), but as it was if
+    it can't, or if what is left falls apart."""
+
+    on = np.array([j0 <= 1 or st.occ[i, j0 - 1, k] for i, k, j0, _ in cols.tolist()])
+    if not on.any():
+        return cols
+    mid = cols[on][:, :2].mean(axis=0)
+    far = np.argsort(-np.hypot(*(cols[:, :2] - mid).T))
+    keep = np.ones(len(cols), bool)
+    for n in far:
+        if on[n]:
+            continue
+        keep[n] = False
+        if _steady(st, cols[keep]):
+            if _label(st.mask(cols[keep]))[1] == 1:
+                return cols[keep]
+            break
+    return cols
+
+
+def _meet(st: _Spacers, a: np.ndarray, b: np.ndarray) -> bool:
+    """Whether two spacers' runs share a face (or a cell)."""
+    from scipy import ndimage
+
+    if not len(a) or not len(b):
+        return False
+    lo = np.minimum(a[:, [0, 2, 1]].min(axis=0), b[:, [0, 2, 1]].min(axis=0)) - 1
+    hi = np.maximum(a[:, [0, 3, 1]].max(axis=0), b[:, [0, 3, 1]].max(axis=0)) + 2
+    for x, y in ((a, b), (b, a)):           # (their bounds, a cell apart at most: else no)
+        if (x[:, [0, 2, 1]].min(axis=0) > y[:, [0, 3, 1]].max(axis=0) + 1).any():
+            return False
+    lo = np.maximum(lo, 0)
+
+    def local(c: np.ndarray) -> np.ndarray:
+        m = np.zeros(tuple(int(v) for v in hi - lo), bool)
+        ys = np.arange(lo[1], hi[1])[None, :]
+        m[c[:, 0] - lo[0], :, c[:, 1] - lo[2]] = (ys >= c[:, 2:3]) & (ys < c[:, 3:4])
+        return m
+
+    return bool((ndimage.binary_dilation(local(a)) & local(b)).any())
+
+
+def _stands(st: _Spacers, cols: np.ndarray) -> bool:
+    """Whether a spacer's runs stand on something: a full cell under one, or the floor."""
+    return any(j0 <= 1 or st.occ[i, j0 - 1, k] for i, k, j0, _ in cols.tolist())
 
 
 def pad_id(order: int, n: int) -> str:

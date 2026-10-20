@@ -480,6 +480,29 @@ stops there:
     - All the bolts go in with the board. On A the passive side is set down 7-15 mm out from
       its place, inside its bolts, and pushed home; on B the whole cradle is set on the
       board, its passive panel built and lowered lying down ("Building one").
+    - **B's brackets stay on the board** (`cradle.BOARD_BRACKETS`, the pack's turn 2,
+      2026-10-20; the packing review's L1). Each outer plate's foot M5 is a stud: an M5 x 16
+      button head from the plate's inside (its head where the nut was, in the layer over
+      the plate: the same claim, the plan unchanged), its jam nut on the plate's outer face
+      (threadlocker, once: an 8 mm wrench and a 3 mm hex key at the build). The bracket's
+      upright is slotted from the stud to its top, 12 mm wide (`cradle.STUD_SLOT`: the jam
+      nut's corners and 1.3 mm of play either side, the float the foot's oversize hole had
+      given), and a printed knob on the stud (`cradle.STUD_KNOB`, 26 mm across, an 18-8 M5
+      nut pressed in) bears on the upright either side of the slot and clamps it to the
+      plate by hand. The foot is held down by its carriage bolt, washer and a plain M6 nut
+      (a 10 mm wrench at the first build, snugged once the cradle has set the brackets where
+      its sides want them): no knob turns at the board again. The knob, 5.5 mm thick,
+      sits between the upright and the foot's nut, 5.7 mm clear of its corners; it couldn't
+      beside the thumb knob that was there (that knob's edge was 5 mm off the upright, and the board's
+      edge 3.5 mm past it on the passive side). So the cradle lifts straight off the board
+      with its four knobs loosened a few turns (its studs, jam nuts and knobs with it), and
+      goes back with each stud dropping into its slot; the brackets, their bolts and nuts
+      stay on the board. The passive panel lying on its outer plate rests on pillar O1's
+      screw head and its two studs (0.9° tilted, it tips at 64.1° and 19.8 N, where its
+      30 mm brackets had rocked it at 3.4°: the review's m4). Per bracket an M5 nut more
+      (the jam nut, $0.07: $0.28 for B) and the printed thumb knob traded for a printed
+      stud knob. A keeps its brackets with its panels (with the brackets on its board its
+      panels can't lie flat: 100.7 L, 89.6 now).
   - **The riser locator** (`cradle._riser_locator`, the parts `riser_locator_0` and
     `riser_locator_1`; round 1's jack locator): two layers of the board's birch glued face to
     face. At 18 mm it meets the board's whole edge (the board stands 8 mm up on its feet).
@@ -1013,13 +1036,27 @@ they go in (`/api/cradle/{key}/pack`). B packs as modules, A flat.
 **B: four pieces, the riser and the hand crank** (`cradle_pack.module_pieces`, the user's
 of 2026-10-13; the steps rewritten in round 1 of 2026-10-14 and again in round 2:
 `cradle.module_steps`, each a `cradle.ModuleStep` with its title, text and picture, the
-guide's last 19 steps and the cradle page's; the cradle box on its own since the pack's
-turn 1, the same day). The base board, the passive side panel, the cradle box, the drive
-side panel, the riser and the hand crank. No tool, no small part left loose: 740 x 337 x
-600 mm outside, 149.4 L (the real-shape packer's plan, on the planner's 16-layer stack, with
-round 2's NRV050, the riser's lifts and the side frames' redesign of 2026-10-20: the riser
-fits its free room), where the drive side carrying the cradle box had packed in 699 x 498 x
+guide's last 19 steps and the cradle page's, and since the pack's turn 2 the guide's six
+"Into its box" and six "Out of its box" steps between them, `cradle_pack.box_steps`; the
+cradle box on its own since the pack's turn 1, the same day). The base board (its four brackets on it since the pack's turn 2), the
+passive side panel, the cradle box, the drive side panel, the riser and the hand crank, and
+14 printed spacers that hold them. No tool, no small part left loose: 739 x 318 x 600 mm
+outside, 141.0 L (the real-shape packer's plan, on the planner's 16-layer stack, with round
+2's NRV050, the riser's lifts, the side frames' redesign of 2026-10-20 and the pack's turn 2
+of the same day), where the drive side carrying the cradle box had packed in 699 x 498 x
 608, 212 L (its flat pack had been 112).
+- **Pack turn 2** (2026-10-20, the packing review's L1, M1, M2 and minors): 740 x 337 x 600,
+  149.4 L before.
+  - The brackets stay on the board (L1, "The brackets" under "The base board"): the
+    passive panel, on top, had been 30 mm taller with its two brackets' foot legs standing
+    off its outer plate. Now its studs and knobs stand 11.2 mm off it: 739 x 318 x 600,
+    141.1 L (-5.6 %).
+  - The hand crank packs in the cradle box's bay, between its two cradle links in front of
+    the front saddle (m3), caged by the box: it had lain loose on the board, free to slide
+    134 mm. The box doesn't grow (141.0 L).
+  - Printed spacers replace the foam pads (M1, "The spacers" below): every piece held to
+    within a cell (3 mm) of its place, where it had been free to slide up to 357 mm (the
+    riser). The pads had been a voxel convention: no part, no order line, no step.
 - Before round 2's structure it was 740 x 316 x 601, 140.7 L, and round 2's took it to 740 x
   334 x 600, 148.1 L. The 18 mm is the passive panel's (`pack-inspect`, traced 2026-10-20):
   round 2's 40 mm front leg (B1) made its outer plate 9.6 mm longer at its front foot, so the
@@ -1057,10 +1094,15 @@ fits its free room), where the drive side carrying the cradle box had packed in 
    thumb screws stay in their brass inserts and the input key is glued in: nothing small
    comes loose. A stow clip on the drive side's outer face was tried in round 1's drive
    review: B's plan lays that face on the passive panel, so the clipped crank lifted the
-   drive side 54 mm, over the box's bound.)
-3. Undo the four thumb knobs on the base board's bolts by hand and lift the cradle off the
-   board by its two outer plates' top members (never by the cradle box: only the worm holds
-   it). The bolts stay in the board, the washers and knobs back on them.
+   drive side 54 mm, over the box's bound. It packs in the cradle box's bay since the
+   pack's turn 2.)
+3. Loosen the four knobs on the outer plates' studs by hand, a few turns each, and lift the
+   cradle straight up off the board by its two outer plates' top members (never by the
+   cradle box: only the worm holds it): each stud and its jam nut rise out of its bracket's
+   open slot, the rails out of their cleats. The brackets stay bolted to the board (pack
+   turn 2); each knob is turned back down onto its jam nut for the trip, so nothing on the
+   board or the plates comes loose. (Until turn 2: the four thumb knobs undone off the
+   board's bolts and put back on them.)
 4. Stand the riser's two blocks, each on its lift, on a folded towel and lay the cradle on
    its drive side on them and the gearbox (`cradle.LAY_BLOCKS`): one under pillar O1's screw head (the head in
    its boss's relief), one under column E1's on the rail (D2's on the front leg until the
@@ -1104,14 +1146,23 @@ fits its free room), where the drive side carrying the cradle box had packed in 
      pin's 0.11 N (the bar 10); at its nominal 0.6 mm, 67 MPa and dry friction it goes on
      with a push of about 78 N, a short tube over the pin (the bar 120).
    - **The keepers' real load** (round 2's M3 and the pack's review 1's M2): the pin's own
-     weight is not what they meet. Lowering the box (3.16 kg) on pin X and turning it until
-     Y lines up rests up to half its weight, 15.5 N, on a pin's tip, which pushes the pin
-     head-first out of its link through a keeper at its least grip (12.2 N; 6.1 N at the old
-     7.6 mm bore). Two answers: the way back now holds each piece's weight until both its
-     pins are in their holes, never on a pin's tip (and says how to push a slid pin home);
-     and the guide's bench check pushes each pin's tip with 30 N (`cradle.KEEPER_PUSH_N`,
-     1.94 x the 15.5 N: `keepers`' `load_ratio`, the bar 1.5), so a keeper that would let go
-     is reprinted before it ever does.
+     weight is not what they meet. Lowering the box (3.6 kg) on pin X and turning it until
+     Y lines up was taken to rest up to half its weight, 17.6 N, on Y's tip, which would
+     push the pin head-first out of its link through a keeper at its least grip (12.2 N;
+     6.1 N at the old 7.6 mm bore). Its statics (pack turn 2, `keepers`' `second_tip_n`):
+     the box's centre of mass lies 56 mm past pin X from Y (and 105 mm off the line X-Y), so
+     with X in its hole the box's weight turns it about X off Y's tip (-7 N: none on it);
+     the other way round, Y first, it would rest 42 N on X's tip, more than its whole
+     weight. So the step says "pin X first, always", and why. Three more answers: the way
+     back holds each piece's weight until both its pins are in their holes, never on a
+     pin's tip (and says how to push a slid pin home); its first step presses each pin's
+     tip with a thumb, about 3 kg, before the box goes on (a keeper that has relaxed shows
+     there, not under the box); and the guide's bench check at the build pushes each with
+     30 N (`cradle.KEEPER_PUSH_N`, 1.7 x the 17.6 N: `keepers`' `load_ratio`, the bar 1.5).
+     The passive panel's pins hang by their heads as it goes on: a tip that meets the link
+     lifts its pin, head proud, never out. And the keeper's push on at its tight end (the
+     bore 0.15 mm under, the pin at its 7.99 mm most: 0.74 mm) is 116 N, under the 120 N bar
+     (`push_on_tight_n`, the packing review's m1): still by hand, a tube over the pin.
    - Turning the drive module over onto its cradle box instead (the box under, the drive
      side up, its pins' heads up) was weighed and dropped: on its box the module stands with
      its centre of mass 18 mm inside the tie rods' heads, 274 mm up (it tips at 3.8°; 26 mm
@@ -1131,7 +1182,7 @@ pieces' real shapes, each its hull's stable face nearest the way it's set down; 
 | the drive side and the box, lying, the passive panel off | 10.35 | the same | 0.1° | 17.7° | 12.3 N |
 | the drive side panel alone on its blocks (the way back starts here) | 6.77 | the same | 0.1° | 39.7° | 25.2 N |
 | the cradle box on its links' long edges, its saddles' tops down | 3.58 | both cradle links' edges and the base stop's knob | 10.9° | 41.5° | 17.6 N |
-| the passive side panel on its outer plate | 2.54 | pillar O1's screw head and its two brackets | 3.4° | 58.2° | 16.8 N |
+| the passive side panel on its outer plate | 2.52 | pillar O1's screw head and its two studs | 0.9° | 64.1° | 19.8 N |
 | A, off its board while the finish cures, on its drive side on the blocks | 11.57 | the gearbox and the two blocks on their lifts | 0.2° | 17.6° | 15.0 N |
 
 The side frames' redesign (2026-10-20) put about 0.6 kg more on each side panel, most of it
@@ -1164,10 +1215,12 @@ the steps keep a hand on the box.
 **Back together** (the payload's `reassembly`, the guide's "Back together" steps):
 1. The riser's two blocks, each on its lift, on a folded towel, the drive side panel laid
    on them and its gearbox, outer plate down; its pins X and Y standing in their links on
-   their keepers, the clips out, each pushed fully home by its head.
+   their keepers, the clips out, each pushed fully home by its head, then each one's tip
+   pressed hard with a thumb (about 3 kg): it mustn't slide.
 2. The cradle box lowered onto it, level, its knobs' side up, its weight held until both
-   pins are in their holes: pin X into its hole first, then the box turned about it and b5
-   swung until Y lines up. Never on a pin's tip. Both clips in from the side.
+   pins are in their holes: pin X into its hole first, always, then the box turned about it
+   and b5 swung until Y lines up (with X in, the box's weight lifts it off Y's tip: "The
+   keepers' real load"). Never on a pin's tip. Both clips in from the side.
 3. The passive panel on its outer plate, its pins held by their clips; its links set to the
    pack pose by the paint marks, a strip of masking tape across b3 and its inner bar (not
    b5: it is the one nudged into place, round 2's m5).
@@ -1176,9 +1229,10 @@ the steps keep a hand on the box.
    its hole first, then b5 nudged until Y lines up. The tape off.
 6. Both clips in from under the cradle link: a pin without its clip is held by its keeper's
    grip alone.
-7. Stood up and set on the board: each rail between its cleats (their lead-ins guide it),
-   the brackets' feet over their bolts; the washers and knobs on, the passive side's only
-   started.
+7. Stood up and lowered onto the board: each rail between its cleats, each stud's jam nut
+   down into its bracket's slot (the lead-ins and the slots guide it); each knob backed off
+   its jam nut a turn and snugged, the passive side's only started. (Until turn 2: each
+   bracket's foot found its bolt blind, 9.5 kg held, and the washers and knobs went on.)
 8. The riser back in its locator.
 9. The hand crank on.
 10. Turned to level (about 8½ turns from rest) with the passive knobs loose, then snugged
@@ -1188,19 +1242,19 @@ the steps keep a hand on the box.
     it under 0.5 kg: `cradle.EMPTY_GRIP_N`; the report's `empty_handle_force_n` is 3.6), and
     the rod's paper check. All four clips in.
 
-The pieces: the base board (its feet, cleats and riser locator, its bolts, washers and
-knobs), the riser (its lifts, blocks and plates, one piece: `cradle_pack.RISER`), the passive side
-panel (every part of that side but its cradle link, its
-brackets), the cradle box (both cradle links, the ties, the saddles with their V blocks,
+The pieces: the base board (its feet, cleats and riser locator, its four brackets on their
+bolts, washers and nuts), the riser (its lifts, blocks and plates, one piece:
+`cradle_pack.RISER`), the passive side panel (every part of that side but its cradle link
+and its brackets: its studs and knobs with it), the cradle box (both cradle links, the ties, the saddles with their V blocks,
 knobs, post and lip gauge, the light, the base stop), the drive side panel (the gearbox and
 every part of that side but its cradle link and the hand crank: the worm holds its links as
 cranked) and the hand crank. Each side's b5, hanging on J2, swings into its panel
 (`cradle_pack.tuck`). B's plan (`cradle_pack.PACK_PLANS`): the cradle box in first, on the
-board as it stands in use, along its length; the hand crank on the board beside it; the
-drive panel as it lay when the box came off, its outer plate down, its plates over the box
-and its gearbox down beside it, on six foam pads (54 mm at most); the passive panel last,
-its bay face down over the drive panel's, turned a quarter, on eight pads (51 mm at most);
-the mass centre 40 % up the box. The box's length is the cradle box's, 723 mm levelled
+board as it stands in use, along its length; the hand crank in its bay; the drive panel as
+it lay when the box came off, its outer plate down, its plates over the box and its
+gearbox down beside it, on five printed spacers; the passive panel last, its bay face down
+over the drive panel's, turned end for end, on six; the riser in the board's front notch;
+the mass centre 41 % up the box. The box's length is the cradle box's, 723 mm levelled
 from its links' front pins Y (122 mm in front of the mouth) to its rails' end (600 behind
 it), 41 mm longer than the board; its height the board, the box standing (178 mm) and the
 two panels nested over it. Packed the other ways a person would try: the passive panel on
@@ -1225,9 +1279,10 @@ The board stops setting the box's length once the cradle box packs on its own: t
 (723 mm) is longer than it. A shorter board or a split one pays only once the rails come
 off the box too.
 
-The steps lift the cradle off the board before a panel comes off: its brackets' feet
-sit on the bolts, between the cleats. The carriage bolts' square holes stop them turning but
-don't grip them: with the cradle off, the knobs go back on the bolts.
+The steps lift the cradle off the board before a panel comes off: its studs drop out of
+its brackets' slots, its rails out of the cleats. B's brackets stay bolted to the board,
+their carriage bolts' heads locked in its square holes (A's knobs go back on the bolts:
+the carriage bolts' square holes stop them turning but don't grip them).
 
 **A: flat.** Its cradle link rides pillar G between the side's plates, so a side can't come
 off it at pins alone. It comes apart where it is already fastened (`cradle_pack.pieces`).
@@ -1256,7 +1311,8 @@ A link left hanging on one joint once its cradle link is off swings into its pan
 **How it stacks** (`spiderpig/voxpack.py`, since 2026-10-14). It packs the parts' real
 shapes, not their bounding boxes: each part's tessellation filled solid on 3 mm voxels
 (`voxpack.voxelize`: every cell the surface passes through and every cell whose centre is
-inside), 3 mm of foam between two pieces (`CLEAR`, one cell all round).
+inside), 3 mm between two pieces (`CLEAR`, one cell all round: the play the printed
+spacers leave, the foam it stood for until the pack's turn 2).
 - **Levelled.** Every piece but the panels and the base board is turned in the mechanism's
   plane to its least bounding box (`level`). A piece then lies in any of the cube's 24
   turns of that frame (`voxpack.ROTATIONS`: the voxels transposed, exactly); a side's
@@ -1278,6 +1334,30 @@ inside), 3 mm of foam between two pieces (`CLEAR`, one cell all round).
   (the face down, a quarter turn, a corner, the piece it rests on or nests into, what goes
   in first, why). The packer honours it and picks what it leaves free; a piece it doesn't
   name goes in after, largest first (the panels first, in every order).
+- **The spacers** (`voxpack.spacers`, pack turn 2, the packing review's M1): printed in TPU
+  95A, each one shaped to the pack. On the judge's 3 mm grid of the packed pieces, a
+  spacer is empty cells, one run a column:
+  - *a support* where a piece's pads were (its pads within 30 mm of each other one
+    spacer, `SPACER_JOIN`): its footprint theirs grown 12 mm each way, in each column from
+    what is under it to the piece's underside, and up to 9 mm past them beside a part
+    (`SPACER_LIP`): lips round what it carries and stands on. One that would still slide
+    more than a cell grows away from where it slides (its far side wraps the part it
+    carries) or toward it (to meet what stops it), up to 180 mm a side; two of one piece
+    that meet are one print; one that would tip loses its overhang;
+  - *a restraint* beside a piece that still slides more than a cell: in the gap that way
+    where it is least (low on the piece first), from the piece (round its end) to what it
+    would meet or the box's wall, standing on what is under it, in as soon as that is.
+  - Each goes in at its place in the order (`rank`, `cradle_pack.in_order`), never under a
+    piece that went in before it; numbered in that order (spacer_01 ..).
+  A spacer meets each part with up to a cell's gap (the parts' cells are their
+  conservative fill), so what it holds moves 3 mm at most: on B every piece and spacer
+  slides a cell at most (`voxpack.free_travel`, from up to 357 mm on the foam pads); on A
+  one restraint slides two (6 mm, toward the carton's end; A ships once). B's 14 spacers
+  are 2.1 L of solid, about 640 g printed at 15 % gyroid and two walls
+  (`cradle_pack.SPACER_FILL` 0.25; TPU on hand: no cost): the build's
+  `print/pack_spacer_*.stl` (each lying as it goes in, its bottom on the bed) and the BOM's
+  printed rows; the guide's "Into its box" and "Out of its box" steps place them
+  (`cradle_pack.box_steps`). A's 25 are 1.6 L, about 500 g.
 
 **Judging and searching it** (`spiderpig pack-inspect`, `docs/agentlib/TESTING.md`): a
 contact sheet per candidate (the top, front, side and isometric views, each piece in its
@@ -1316,8 +1396,48 @@ the pack's turn 1, 740 x 316 x 600, 141 L by its plan (the searches of 150 and 3
 5 processes, found the same); B's gearbox off the drive side, no gain (its brackets and
 crank train stand as far out); A's stand columns off, no gain.
 
+Pack turn 2 (2026-10-20, on the side frames' redesign; `pack-inspect`, its plan; searches
+of 60 s x 3 seeds):
+
+| B | box, outside | litres | slides (most) | what it takes |
+|---|---|---|---|---|
+| before turn 2 | 740 x 337 x 600 | 149.4 | 357 mm (the riser; 18 foam pads) | |
+| **the brackets on the board (made)** | 739 x 318 x 600 | 141.1 | | four knobs on M5 studs, an M5 jam nut each, slotted uprights |
+| **and the hand crank in the box's bay (made)** | 739 x 318 x 600 | 141.0 | | a plan step |
+| **and the printed spacers (made)** | 739 x 318 x 600 | 141.0 | 3 mm (every piece and spacer) | 14 TPU prints, about 640 g |
+| and the base stop's rails off (L2) | 702 x 333 x 600 | 140.2 (140.2-141.7) | | a fifth piece, 4 thumb screws, 2 steps each way: not made (-0.6 %) |
+
+| A | box, outside | litres | slides (most) | what it takes |
+|---|---|---|---|---|
+| before turn 2 | 700 x 213 x 601 | 89.6 | 282 mm (7 foam pads) | |
+| **the printed spacers (made)** | 700 x 213 x 601 | 89.6 | 6 mm (one spacer; every piece 3) | 25 TPU prints, about 500 g |
+| and its gearbox off its panel | 698 x 205 x 601 | 86.0 (86.0-93.4) | | a loose 2.1 kg piece, its riser's 4 M6 nuts, the worm's alignment checked again: not made (-4 %) |
+
+**The carton and shipping** (pack turn 2; the packing review's 3.2). B packs in a carton
+whose inside is its box's, 729 x 308 x 590 mm (its parts' bounds and 3 mm all round). The
+nearest stock carton is Uline's S-4417, 30 x 24 x 12 in (inside 762 x 610 x 305 mm, 200 lb
+test, $6.23 in bundles of 15, fetched 2026-10-14): the pack's parts fit with 39, 26 and
+2.8 mm to spare (its top a stud's tip under the lid), the ends and sides filled with
+corrugated cut from a spare carton. 200 test is Uline's to 40 lb; the pack is 17.5 kg with
+its spacers, 41.8 lb in its carton, over that and over UPS's 31-50 lb line (250 lb burst,
+44 ECT), which the review found no stock carton of this size in. USPS Ground Advantage
+retail (Notice 123, the review's rates; zones 1 / 4 / 5 / 8):
+- before turn 2, a box to 740 x 337 x 600: DIM 73 lb (the 70 lb price), $93.50 / $128.00 /
+  $160.20 / $229.80;
+- now, a box to 739 x 318 x 600: DIM 68 lb, $92.60 / $126.70 / $158.15 / $227.25 ($2.05 less
+  at zone 5);
+- in the stock S-4417 (outside 31 in, past the 30 in fee): $99.00 / $133.50 / $165.70 /
+  $235.30;
+- cushioned to UPS's 2 in all round: 842 x 420 x 702 mm, 248 L, Oversized (length and girth
+  124 in): $147.00 / $208.35 / $242.30 / $332.75.
+
+The spacers are the pack's cushion as well as its restraint: TPU 95A at 15 % gyroid gives
+under a knock where the foam was a voxel convention. They don't make it a carrier's 2 in
+cushion, which costs $84 more a shipment at zone 5 than the snug box: for a carrier, insure
+it; for the car, the snug carton (or the stock one, filled) is the pack.
+
 The box's bounds per design are in `tests/test_cradle.py`: `PACK_BOX` (A) and
-`MODULE_BOX` (B, read off its base board's size).
+`MODULE_BOX` (B, read off its base board's size), and each one's most slide `PACK_SLIDE`.
 
 ## Loads and checks
 
@@ -1933,6 +2053,10 @@ The assembly guide's order is `construction.assembly.CRADLE_MODULE_ORDER` on B a
    - A: its cradle link onto the tie rods' free ends; its stack, from outside: the pillar
      goes up through the cradle link; what goes over the link, its inner plate, its
      brackets, its knobs only started.
+   - B's brackets (pack turn 2): all four bolted to the board with the board, finger-tight;
+     each outer plate's studs with its jam nuts on the bare plate, their knobs on; the
+     brackets' M6 nuts snugged with a 10 mm wrench once the cradle stands in them at level,
+     and never again.
 6. **The cleats and the finish** (round 2's M6): both sides on the board, each rail's cleats
    pencilled round it with a sheet of paper for the play; the cradle lifted off and laid on
    its drive side on the riser's blocks; the cleats glued to the bare board, their lead-ins
@@ -1943,7 +2067,8 @@ The assembly guide's order is `construction.assembly.CRADLE_MODULE_ORDER` on B a
    the trip apart before the setting): before you use it, setting it for a bottle, the
    decanter's riser, decanting, the use limits (a five-line card and the rest for
    reference: `cradle.use_steps`, which the cradle page shows too); on B then the trip apart
-   (8 steps) and back together (11), each a step with its picture
+   (8 steps), into its box (6) and out of it (6), and back together (11), each a step with
+   its picture (the box's steps text only)
    (`construction.assembly.Scene`, drawn by `spiderpig.guide.scenes`: the cradle at its pose,
    laid on its side, its pieces lifted off).
 
