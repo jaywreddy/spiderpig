@@ -951,6 +951,54 @@ def test_a_cradles_bom_says_what_its_total_leaves_out():
 
 
 @pytest.mark.construction
+def test_the_cradles_angle_free_parts_are_memoized_by_all_that_shapes_them(monkeypatch):
+    """``cr._part_memo`` (the cradle box's, the base board's and the feet's parts, the same
+    at every crank angle): the same arguments give the same B-rep, each caller's part its
+    own (moving one in place leaves the next where it was); a module constant set in its
+    place (a monkeypatch) is another key, as is ``-0.0`` against ``0.0``; an argument with no
+    exact key (a shape) is built afresh."""
+    from build123d import Location
+
+    foot = cr._tpu_foot(10.0, 20.0, 30.0)
+    again = cr._tpu_foot(10.0, 20.0, 30.0)
+    assert again is not foot
+    assert again.wrapped.IsPartner(foot.wrapped)
+    c = foot.center()
+    again.move(Location((5.0, 0.0, 0.0)))
+    assert cr._tpu_foot(10.0, 20.0, 30.0).center() == c
+    assert foot.center() == c
+    monkeypatch.setattr(cr, "FOOT_BORE", cr.FOOT_BORE + 2.0)
+    wider = cr._tpu_foot(10.0, 20.0, 30.0)
+    assert not wider.wrapped.IsPartner(foot.wrapped)
+    assert wider.volume < foot.volume - 1.0
+    monkeypatch.undo()
+    assert cr._tpu_foot(10.0, 20.0, 30.0).wrapped.IsPartner(foot.wrapped)
+    assert cr._exact(-0.0) != cr._exact(0.0)
+    assert cr._exact(np.float64(1.5)) == cr._exact(1.5)
+    assert cr._exact({"a": 1, "b": 2}) != cr._exact({"b": 2, "a": 1})     # (in order)
+    with pytest.raises(TypeError):
+        cr._exact(foot)
+
+
+@pytest.mark.construction
+def test_the_mouth_is_snapped_to_the_plan_at_every_crank_angle():
+    """``cr.mouth_xy``: B's mouth is still over the turn to 1e-13 mm in its frozen mechanism,
+    and exactly its design's (-366, 322 from O: the planned geometry's first sample rounded
+    to 1e-9 mm) at every angle, so the stand's members and the base board, and their memos,
+    are the same at every angle."""
+    from spiderpig.construction.base import Build
+
+    cfg = BuildConfig(linkage="decanter_rcm", robot=False)
+    tmpl, design = cache.cached_design(cfg)
+    name = cr._point_of(design.plan.topo, cfg.lk, cr.mouth_name(cfg.lk))
+    planned = np.asarray(design.plan.topo.geometry.points[name], float).reshape(-1, 2)[0]
+    for t in (1.0, 3.5, 5.2):
+        build = Build(design.ctx, design.plan, tmpl.freeze_at(t))
+        assert np.abs(build.xy(name) - planned).max() < 1e-9
+        assert cr.mouth_xy(build).tolist() == [-366.0, 322.0]
+
+
+@pytest.mark.construction
 def test_a_tie_rod_that_would_sweep_into_the_inner_plate_fails():
     """The planner checks nothing in the inner plate's layer (a frame plate's), so the ties
     check their paths over the turn against its members: one across a tie's arc fails."""
