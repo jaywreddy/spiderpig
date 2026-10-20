@@ -2147,23 +2147,28 @@ class _Spacers:
 def spacers(g: Grid, rows: Sequence[dict]) -> list[Spacer]:
     """The printed spacers of a judged packing (:func:`metrics`' ``pieces`` rows, in the order
     the pieces go in, on its grid ``g``): each a block of the grid's empty cells, one run a
-    column, that goes in at its place in the order, just before what it carries.
+    column, inside the pieces' bounds, that goes in at its place in the order (its
+    ``rank``), never under a piece that goes in before it nor over one that goes in after.
 
     *Supports*, where the pads were: each piece's pads within :data:`SPACER_JOIN` of one
     another make one spacer, its footprint their footprints grown :data:`SPACER_GROW` cells
     each way; in each column the empty run round the nearest pad's gap, from what is under
     it (another piece's top, the floor) to the piece's underside, but no more than
     :data:`SPACER_LIP` cells past the pad's own ends: beside a part it carries (or stands
-    on) it rises (sinks) past it, a lip round it. A column's run another piece closes over
-    it that goes in before it (it couldn't go in under it), or one under it that goes in
-    after, isn't the spacer's. A spacer that slides more than :data:`SPACER_HOLD` cells a
-    way grows (:meth:`_Spacers.grow`): its far side wraps round what it carries; two of one
-    piece that meet become one.
+    on) it rises (sinks) past it, a lip round it. It goes in just before the piece it
+    carries. One that slides more than :data:`SPACER_HOLD` cells a way grows
+    (:meth:`_Spacers.grow`): its far side wraps round what it carries, else its near side
+    meets what stops it; two of one piece that meet become one; one in parts is a spacer
+    each, grown again; one that would tip (:func:`_steady`) reaches deeper for more to
+    stand on, else loses its overhang (:func:`_trimmed`).
 
-    *Cradles*: a piece that still slides more than :data:`SPACER_HOLD` cells a way (but the
-    base) gets one round its foot: its footprint grown :data:`SPACER_GROW` cells, in each
-    column from what is under it up to the piece's underside (round it, :data:`SPACER_LIP`
-    cells past its lowest), grown toward where it slides until something stops it.
+    *Restraints*, then, for every piece but the board (whose walls hold it) and every
+    spacer that still slides more than :data:`SPACER_HOLD` cells a way, the most first: a
+    block beside it that way where the gap is least (:func:`_bar`: low on it first), from it
+    (round its end) to what it would meet or the box's wall, standing on what is under it,
+    grown as a support is; in as soon as what is under it is (a spacer's restraint is one
+    print with it, and goes in with it). Rounds of them until nothing slides or a round adds
+    none.
 
     The grid's cells are the parts' conservative fill, so a spacer meets each part with up
     to a cell's gap: a piece it holds slides up to 3 mm (:data:`CELL`)."""
