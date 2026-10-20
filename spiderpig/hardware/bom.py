@@ -1121,24 +1121,39 @@ snap axles in PETG for the same strain); ``None`` here leaves it in the build's 
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
 CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer, the feet and (B) "
-                                      "the quick-release pins' keepers"}
+                                      "the quick-release pins' keepers",
+                       PRESS_FILAMENT: "the saddles' carriers and V blocks, the rear knob and "
+                                       "its hub, the base stop's rails and gate and the lip "
+                                       "gauge, solid; the hand crank's hub, arm, cap and grip "
+                                       "(its clutch's plungers push on them always)"}
 CRADLE_PRINT_NOTE = (
-    "Print the saddles, their V blocks, the base stop and the brackets in PLA at 20 % infill "
-    "with 4 walls (the rear saddle's carrier stands 142 mm tall and the light's clip on its "
-    "tube's foot: a brim; support under the rear carrier's tower arm, the rear V block's "
-    "flats and bosses and the lip gauge's back knuckle), the hand crank, the knobs (the base "
-    "board's thumb knobs too), the lip gauge and the light's clip at 40 %, the crank's "
-    "sleeve solid (the crank block clamps on it), the TPU parts at 15-20 %: each STL is "
-    "posed as it should print. PLA softens at about 55 °C, as in a car in summer: for a "
-    "cradle that travels so, print the crank's sleeve, the brackets and the thumb knobs in "
-    "PETG.")
-"""A decanting cradle's (:mod:`construction.cradle`)."""
+    "Print the saddles' carriers and V blocks, the rear knob and its hub, the base stop's "
+    "rails and gate and the lip gauge in PETG at 100 % infill: they carry the bottle or hold "
+    "it where it is, and their stresses are rated solid (PETG holds its shape to 68 °C, PLA "
+    "to 55). The rails stand on their flat bottoms (their T-slot's lips then bend in their "
+    "layers), the lip gauge lies on its side (support under its bar and arm), the rear "
+    "knob's hub on its flange; a brim under the rear carrier (it stands 142 mm tall), "
+    "support under its tower's arm and under the rear V block's flats and bosses. The hand "
+    "crank in PETG too, its hub solid and its arm, cap and grip at 40 % (its clutch's "
+    "plungers push on them always; check the clutch after a hot trip: the guide). The rest "
+    "in PLA: the brackets at 20 % infill with 4 walls, the other knobs (the base board's "
+    "thumb knobs too) and the light's clip (on its tube's foot, a brim) at 40 %; the TPU "
+    "parts at 15-20 %. Each STL is posed as it should print. For a cradle that travels in a "
+    "car in summer, print the brackets and the thumb knobs in PETG too.")
+"""A decanting cradle's (:mod:`construction.cradle`; review round 2, N6 and m9; the drive's
+m7)."""
 CRADLE_GREASE_NOTE = (
-    "Grease the saddles' thumbscrews as they go in (a dab of PTFE or lithium grease, not "
-    "bought: a shop supply): the front M6 (stainless in a stainless nut galls dry) and the "
-    "rear lead screw in its bronze nut; keep it off the rear screw's collar and its TPU brake "
-    "washer, whose grip holds the coarse screw from turning back.")
-"""A decanting cradle's (:mod:`construction.cradle`; review round 1, m9)."""
+    "Grease (a dab of PTFE or lithium grease, not bought: a shop supply): the front M6 "
+    "thumbscrew as it goes in (stainless in a stainless nut galls dry) and the front V "
+    "block's sides in its box (a dry box guide binds); the rear lead screw's thread only "
+    "above its collar, once it is in (the barrel nut's travel: run the block up and down "
+    "once to spread it). Keep grease off the rear collar, its TPU brake washer and the rear "
+    "knob's teeth: the knob's teeth lock the screw, and the washer only slows it with the "
+    "knob lifted, dry. The same grease on the hand crank's clutch: its seat ring's face and "
+    "six holes and its thrust washer (the clutch is set greased; dry, it can lock), and "
+    "again at its yearly check.")
+"""A decanting cradle's (:mod:`construction.cradle`; review round 1, m9; round 2, N5 and the
+drive's B-1)."""
 # a foot's sock; a decanting cradle's liners, its collar, its lead screw's brake washer, its
 # base plate's feet
 _SOCK = re.compile(r"_sock$|_liner$|_collar$|_brake$|foot_boot_")
@@ -1164,11 +1179,19 @@ def part_filament(body, meta: dict, default: str | None) -> str | None:
     """The filament (catalog key) a printed ``body`` is printed in: TPU 95A for a foot's
     sock (and a decanting cradle's saddle liners and foot boots, and the keepers on its
     quick-release pins: ``meta["keepers"]``, ``construction.cradle.KEEPER``),
-    :data:`PRESS_FILAMENT` for a sleeve pressed on its crankpin, else ``default``."""
+    :data:`PRESS_FILAMENT` (PETG) for a sleeve pressed on its crankpin, for a decanting
+    cradle's parts that carry the bottle (``meta["petg"]``, ``construction.cradle.PETG_PARTS``)
+    and for its hand crank's parts its notes name (``meta["hand_crank"]["petg"]``: its
+    clutch's plungers push on them always), else ``default``."""
     if _SOCK.search(body.name) or body.name in (meta or {}).get("keepers", ()):
         return TPU_FILAMENT
+    petg = ((meta or {}).get("hand_crank") or {}).get("petg", ())
+    if PRESS_FILAMENT and body.name.split(".", 1)[-1] in petg:
+        return PRESS_FILAMENT
     m = _SLEEVE.search(body.name)
     if PRESS_FILAMENT and m and m.group(1) in pressed_sleeves(meta):
+        return PRESS_FILAMENT
+    if PRESS_FILAMENT and body.name in (meta or {}).get("petg", ()):
         return PRESS_FILAMENT
     return default
 

@@ -181,19 +181,22 @@ function labelMesh(radius: number, s0: number, s1: number, size = 'MAGNUM · 1,5
   return m;
 }
 
-/** The printed riser ``stack`` (``liquid.Stack``: its pieces bottom up, ``blocks`` the two
- * 100 × 49.8 mm blocks side by side, else a 100 × 100 mm plate that thick): each piece a
+/** The printed riser ``stack`` (``liquid.Stack``: its pieces bottom up, ``lifts`` and
+ * ``blocks`` the two 100 × 49.8 mm lifts or blocks side by side, else a 100 × 100 mm plate that
+ * thick): each piece a
  * rounded block, its 2 mm boss on top up into the next one's recess (``riser_pieces``, the
  * fabricated riser). */
-function riserStackMesh(stack: Stack, mat: THREE.Material, block = 85, lip = 2): THREE.Group {
+function riserStackMesh(stack: Stack, mat: THREE.Material, block = 85, lift = 27.2,
+  lip = 2): THREE.Group {
   const g = new THREE.Group();
   g.name = 'riser_stack';
   const W = 100;
   const add = (m: THREE.Mesh): void => { m.castShadow = m.receiveShadow = true; g.add(m); };
   let z = 0;
   for (const piece of stack[1]) {
-    const h = piece === 'blocks' ? block : Number(piece);
-    const parts = piece === 'blocks' ? [-W / 4 - 0.1, W / 4 + 0.1] : [0];
+    const halves = piece === 'blocks' || piece === 'lifts';
+    const h = piece === 'blocks' ? block : piece === 'lifts' ? lift : Number(piece);
+    const parts = halves ? [-W / 4 - 0.1, W / 4 + 0.1] : [0];
     for (const y of parts) {
       const m = new THREE.Mesh(new RoundedBoxGeometry(W, parts.length > 1 ? W / 2 - 0.2 : W, h, 2, 2), mat);
       m.position.set(0, y, z + h / 2);

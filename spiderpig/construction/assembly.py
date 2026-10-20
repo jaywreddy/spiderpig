@@ -263,7 +263,7 @@ CRADLE_ORDER: tuple[Stage, ...] = (
           intro="The inner plate onto its stack: the tops of the steel standoffs that reach "
                 "it into it. Once their screws are tight the cradle link must still swing "
                 "freely on the steel it rides (its printed parts stop 0.3 mm short of the "
-                "steel): turn the gearbox's 9 mm input shaft by hand (the worm can't be "
+                "steel): turn the gearbox's input shaft by hand (the worm can't be "
                 "turned from the link) and feel for a bind; if it binds, sand the spacer "
                 "under the inner plate."),
     Stage(FINISH, None, "Drive side onto the base board", where="robot",
@@ -272,7 +272,6 @@ CRADLE_ORDER: tuple[Stage, ...] = (
                 "board bare: its cleats and its finish go on once both sides stand on it."),
     Stage(FINISH, None, "Hand crank", where="robot", tags=(("handle",),), strict=True,
           intro="On now, to turn the crank for the checks to come."),
-    Stage(FINISH, None, "Toggle flag", where="robot", tags=(("flag",),), strict=True),
     Stage(CRADLE, None, "The cradle box", where="robot",
           tags=(("saddles",), ("light",), ("base_stop",)),
           intro="The tie rods stand across the bay from the drive side's cradle link."),
@@ -317,7 +316,8 @@ CRADLE_MODULE_ORDER: tuple[Stage, ...] = (
     # the bench and lowered onto its cradle link, the cradle lying on its drive side (design
     # review round 2's M1, 2026-10-14: standing, its stack had to be pushed onto two hidden
     # pins, its inner plate screwed on inside the bay, and its cleats couldn't be glued)
-    *CRADLE_ORDER[:7],
+    *CRADLE_ORDER[:next(i for i, st in enumerate(CRADLE_ORDER)       # to the cradle box
+                        if st.title == "The cradle box") + 1],
     Stage(FINISH, None, "Laid on its drive side", where="robot", tags=(("lay",),),
           strict=True),
     Stage(UNIT, "R", "Passive side: cradle link, on the cradle", where="robot",

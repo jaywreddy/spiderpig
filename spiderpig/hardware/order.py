@@ -24,7 +24,16 @@ from spiderpig.hardware.electronics import HV_SHORT, HV_WARNING
 
 LINE_WARNINGS = {"lipo_2s_450": HV_SHORT, "ip2326_charger": HV_SHORT}
 """What a cart line says beside its item (and :data:`LINE_NOTES` under "Before you order")."""
-LINE_NOTES = {"lipo_2s_450": HV_WARNING}
+LINE_NOTES = {
+    "lipo_2s_450": HV_WARNING,
+    "nrv050_30": "**Phidgets' cart** (the NRV050 gearbox and its output shaft, USD 99.35): "
+                 "made in China, so US duty is collected at checkout (UPS Global Checkout, "
+                 "phidgets.com/docs/U.S._Tariffs): 40 % on the gearbox (HTS 8483.40.50.10) and "
+                 "50 % on the shaft (8483.10.50.00), USD 40.43 (tariffs.wove.com, 2026-10-15), "
+                 "so USD 139.78 before UPS's shipping, the brokerage and the checkout's own "
+                 "fee, which show only at checkout: run the cart before ordering the rest. "
+                 "Not in the total.",
+}
 
 SERVICE_ORDER_URL = {
     "SendCutSend": "https://app.sendcutsend.com/customer#/quote",

@@ -1,7 +1,8 @@
 """Catalog data: what a decanting cradle buys beyond the walkers' hardware.
 
-The hand-cranked worm drive (:mod:`construction.handcrank`): the NRV040 gear reducer and its
-output shaft, the riser's screws, the handle; the
+The hand-cranked worm drive (:mod:`construction.handcrank`): the NRV050 gear reducer and its
+output shaft (the NRV040's kept for the record), the riser's studs and nuts, the handle and
+its clutch; the
 cradle's light (:mod:`construction.cradle`); and its standoffs: every pillar, stand column
 and tie rod is a 10 mm steel standoff made to length, MISUMI NETRF10 (M5 both ends,
 ``pillar_shaft_10_m5_<L>``, :func:`netrf10`), with M5 button heads and washers.
@@ -187,6 +188,34 @@ def _netrf10_of(key: str) -> Item | None:
 
 register_factory("pillar_shaft_10_m5_", _netrf10_of)
 register_factory("pillar_shaft_12_m6_", _netrf12_of)
+
+register(
+    Item("standoff_15_m8_nickel_150", "15 mm round steel standoff, 150 mm, tapped M8 both "
+         "ends, electroless nickel plated (MISUMI PETR15-150)", "standoff",
+         (Offer("MISUMI", "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode="
+                "PETR15-150", "PETR15-150", price_usd=19.25, verified=True,
+                tiers=((1, 19.25), (5, 14.00), (10, 7.05), (20, 6.88), (50, 6.47)),
+                note="the NETRF12's series (circular standoffs, tapped both ends), a stocked "
+                     "length: low carbon steel, electroless nickel plating, M8 both ends, "
+                     "wrench flats 13 mm across at its ends (SC 10); page rendered 2026-10-15 "
+                     "(the same day: PETRF15-130, no flats, 29.43; PETRF12-130 21.79; the bare "
+                     "NETRF12-130, round 1's post, 16.98)"),),
+        dims={"d": 8.0, "od": 15.0, "length": 150.0, "flats": 13.0, "flat_length": 10.0,
+              "yield_mpa": NETRF10_YIELD},
+        notes="The rear saddle's post (construction.cradle.POST; review round 2): the V "
+              "block's boss slides on it in a wine cradle, so plated (bare steel rusts, and "
+              "rust raises the boss's friction: m3); 15 mm, as the post now takes a hung 6 "
+              "L's roll with its share of the moving parts at 5.7 x its yield (12 mm had "
+              "been 2.99 x). Its steel taken as the NETRF12's, 1018 or equivalent at 220 "
+              "MPa."),
+    Item("m8_bhcs_12", "M8 x 12 button head socket screw (ISO 7380), 18-8", "fastener",
+         (Offer("Bolt Depot", BD + "6654", "6654", price_usd=0.40, verified=True,
+                tiers=((1, 0.40), (100, 0.2688)),
+                note="18-8 (A-2), M8-1.25 x 12, head 13.57-14.00 x 4.10-4.40, 5 mm hex; page "
+                     "rendered 2026-10-15"),),
+         dims={"d": 8.0, "length": 12.0, "head_d": 14.0, "head_h": 4.4},
+         notes="Up into the rear saddle's post's foot from under its carrier."),
+)
 
 register(
     Item("nrv030_30", "NRV030 worm gear reducer, 30:1, 9 mm input shaft, 14 mm hollow output "
@@ -574,67 +603,11 @@ register(
 
 
 # -- the drive's round 1 (design review round 1, 2026-10-14; construction.handcrank): the
-# riser's spacers, the seat's shims, the hand crank's slip clutch and grip pin. Pages rendered
+# hand crank's inserts and grip pin's nut and washers (its riser's spacers, the seat's shims and
+# the ball-detent clutch's balls, springs and set screws went in round 2). Pages rendered
 # 2026-10-14, saved under /root/.cache/spiderpig/tmp/r1drive/pages/ on the development box -----
 
-MCM_SPACERS = "https://www.mcmaster.com/products/unthreaded-spacers/screw-size~m6/" \
-              "aluminum-unthreaded-spacers-2~~/"
-M6_SPACERS_AL = {11.0: ("94669A348", 1.60, 1.36, 1.20), 12.0: ("94669A349", 1.62, 1.38, 1.22),
-                 13.0: ("94669A178", 1.21, 1.03, 0.91)}
-"""McMaster's aluminium unthreaded spacers for M6, 13 mm OD, 6.300 mm bore: length -> (part,
-USD each at 1-24, 25-99, 100 up) (the M6 aluminium listing rendered 2026-10-14)."""
-
 register(
-    *(Item(f"m6_spacer_al_{L:g}", f"Round spacer for M6, aluminium, 13 mm OD x 6.3 mm bore, "
-           f"{L:g} mm long", "spacer",
-           (Offer("McMaster-Carr", MCM + pn + "/", pn, price_usd=p1, verified=True,
-                  tiers=((1, p1), (25, p25), (100, p100)),
-                  note="aluminium unthreaded spacer for M6, 13 mm OD, ID 6.300 mm; the M6 "
-                       f"aluminium listing rendered 2026-10-14 ({MCM_SPACERS})"),),
-           dims={"od": 13.0, "id": 6.3, "length": L, "material": "aluminium"},
-           notes="The gearbox's riser (construction.handcrank.SPACER): one on each face screw, "
-                 "bearing on the machined output face outside its spigot ring. The guide's "
-                 "go/no-go swaps the drawn length for its neighbour.")
-      for L, (pn, p1, p25, p100) in M6_SPACERS_AL.items()),
-    Item("shim_din988_6x12_0p2", "DIN 988 shim ring 6 x 12 x 0.2 mm, A2 stainless, 8 pieces",
-         "washer",
-         (Offer("Accu", "https://accu-components.com/us/shim-washers/62878-HSHN-6-12-0-2-A2",
-                "HSHN-6-12-0.2-A2", pack_qty=8, price_usd=6.40, verified=True,
-                note="sold singly: 1 $1.88, 2 $1.25, 4 $0.95, 6 or more $0.80 each (eight: "
-                     "$6.40); page rendered 2026-10-14"),),
-         dims={"id": 6.0, "od": 12.0, "t": 0.2},
-         notes="Under the crank block's top plate on the output shaft's end "
-               "(construction.handcrank.SHIM): as many as the guide's go/no-go says, up to "
-               "1.6 mm."),
-    Item("steel_ball_6", "Steel ball 6 mm, 304 stainless, grade 100, 50 pieces", "misc",
-         (Offer("McMaster-Carr", MCM + "9291K77/", "9291K77", pack_qty=50, price_usd=7.89,
-                verified=True,
-                note="304 stainless, 6 mm +-0.0127, cold worked, Rockwell C25, grade 100 "
-                     "(ISO 3290); 50 a pack; the 6 mm steel balls listing rendered 2026-10-14 "
-                     "(https://www.mcmaster.com/products/steel-balls/diameter~6-mm/). Three are "
-                     "used: MISUMI sells 52100 balls singly (BLMJ6, USD 2.08 each by its price "
-                     "API, 2026-10-14; not a rendered page)"),),
-         dims={"d": 6.0, "material": "steel"},
-         notes="The hand crank's slip clutch's balls (construction.handcrank.CLUTCH)."),
-    Item("compression_spring_clutch", "Compression spring 0.24 in OD x 0.813 in, spring steel, "
-         "60 lbf/in, 5 pieces", "misc",
-         (Offer("McMaster-Carr", MCM + "9434K49/", "9434K49", pack_qty=5, price_usd=4.58,
-                verified=True,
-                note="spring steel, closed and ground ends: OD 0.24 in (6.1 mm), ID 0.156 in, "
-                     "wire 0.042 in (1.07 mm), 0.813 in (20.65 mm) long, 60 lbf/in (10.5 "
-                     "N/mm), 15 lbf (66.7 N) at 0.554 in (14.07 mm); 5 a pack; the 0.24 in OD "
-                     "compression springs listing rendered 2026-10-14 (https://www.mcmaster.com"
-                     "/products/compression-springs/od~0-24/compression-springs-1~~/)"),),
-         dims={"od": 6.1, "free": 20.65, "rate": 10.5, "wire": 1.07},
-         notes="Behind each clutch ball, set by an M8 set screw (construction.handcrank."
-               "CLUTCH_SPRING). Spring steel rusts wet: the clutch is dry inside its print."),
-    Item("m8_set_screw_8", "M8 x 8 socket set screw, cup point, 18-8", "fastener",
-         (Offer("Bolt Depot", BD + "8743", "8743", price_usd=0.21, verified=True,
-                tiers=((1, 0.21), (100, 0.1386)),
-                note="18-8 (A-2), M8 x 1.25 x 8, Allen, cup point (no 18-8 flat point listed); "
-                     "the M8 18-8 set screw list rendered 2026-10-14"),),
-         dims={"d": 8.0, "length": 8.0},
-         notes="Sets a clutch spring's preload: self-taps into a 6.9 mm printed pilot."),
     Item("m3_heat_set_insert", "M3 heat-set threaded insert for plastic, brass, 5.7 mm long",
          "insert",
          (Offer("Accu", "https://accu-components.com/us/brass-threaded-inserts/"
@@ -646,14 +619,6 @@ register(
          dims={"d": 3.0, "length": 5.7, "hole": 4.0},
          notes="The hand crank's hub (its thumb screw onto the input key) and its journal's "
                "end (the arm's cap): brass threads where the crank comes off at every pack."),
-    Item("m8_hex_bolt_85", "M8 x 85 hex bolt, partially threaded, 18-8", "fastener",
-         (Offer("Bolt Depot", BD + "5826", "5826", price_usd=1.53, verified=True,
-                tiers=((1, 1.53), (100, 0.9736)),
-                note="18-8 (A-2), M8 x 1.25 x 85, 13 mm across flats, head 5.15-5.45, thread "
-                     "at least 22 mm; page rendered 2026-10-14"),),
-         dims={"d": 8.0, "length": 85.0, "thread": 22.0, "af": 13.0, "head_h": 5.3},
-         notes="The hand crank's grip pin: the printed grip spins on its plain shank "
-               "(round 1: it replaced a NETRF10 standoff and two button heads)."),
     Item("m8_nyloc_nut", "M8 nylon-insert lock nut, 18-8", "nut",
          (Offer("Bolt Depot", BD + "4797", "4797", price_usd=0.17, verified=True,
                 tiers=((1, 0.17), (100, 0.1187)),
@@ -665,4 +630,105 @@ register(
                 tiers=((1, 0.08), (100, 0.0529)),
                 note="18-8, M8, 16 mm OD; page rendered 2026-10-14"),),
          dims={"id": 8.4, "od": 16.0, "t": 1.6}),
+)
+
+
+# -- the drive's round 2 (design review round 2, 2026-10-14; construction.handcrank): the
+# NRV050 and its shaft (the user's call: the 50 series), the riser's studs and nuts, the
+# shaft's M10 end screw, the clutch's plungers, nuts and thrust washer, the grip bolts. Pages
+# rendered 2026-10-14 and 2026-10-15, saved under /root/.cache/spiderpig/tmp/r2-fix-drive/pages/
+# on the development box -------------------------------------------------------------------
+
+PH_DUTY_NOTE = (
+    "Ships from Calgary, Canada by UPS; since 2025-05-02 Phidgets collects US duties, tariffs "
+    "and brokerage at checkout (UPS Global Checkout, a fee of its own): the duty on HTS "
+    "8483.40.50.10 from China is 40 % (2.5 % + 25 % Section 301 + 12.5 % since 2026-07; "
+    "tariffs.wove.com, 2026-10-14), on the shaft's 8483.10.50.00 50 %, no de minimis: not in "
+    "the total (ORDER.md's landed note)")
+BD_2 = "18-8 (A-2); Bolt Depot page rendered 2026-10-15"
+
+register(
+    Item("nrv050_30", "NRV050 worm gear reducer, 30:1, 14 mm input shaft, 25 mm hollow output "
+         "(Phidgets 85 N·m 50 Series)", "gearbox",
+         (Offer("Phidgets", "https://www.phidgets.com/?prodid=870", "TRM4402_0",
+                price_usd=92.50, verified=True, tiers=((1, 92.50), (5, 88.80), (10, 85.10)),
+                note="30:1 only. 14 mm input with 5 mm keyway; 25 mm bore with 8 mm keyway; "
+                     "'Maximum Strength of Gears 85 N·m'; 'Shaft Maximum Radial Load 4.8 kN'; "
+                     "backlash 1/2°; 15 in stock; country of origin China, US HTS "
+                     "8483.40.50.10 (its specification tab rendered 2026-10-14). Drawing: "
+                     "productfiles/TRM4400/TRM4400_0/Documentation/TRM4400_0Mechanical.pdf. "
+                     + PH_DUTY_NOTE),),
+         dims={"ratio": 30, "centre_distance": 50.0, "input_d": 14.0, "input_len": 30.0,
+               "input_shoulder": 64.0, "bore": 25.0, "pcd": 85.0, "face_thread": "M8x10",
+               "spigot_d": 70.0, "width": 87.0, "mass_g": 3450.0},
+         notes="Motovario's NRV050 at 30:1 (its VSF catalogue): static efficiency 0.44, under "
+               "the 0.5 of static irreversibility: a load on the cradle can't turn the handle. "
+               "Mass: Motovario's 3.3 kg dry, about 3.45 kg with its oil. The cradles' since "
+               "design review round 2 (the user's call of 2026-10-14; the NRV040's 45 N·m "
+               "maximum was under its clutch's cap)."),
+    Item("nrv050_output_shaft_25", "Single output shaft for a 50 series worm gearbox, 25 mm "
+         "keyed (keys, washers, snap ring)", "misc",
+         (Offer("Phidgets", "https://www.phidgets.com/?prodid=738", "TRM4008_0", price_usd=6.85,
+                verified=True, tiers=((1, 6.85), (5, 6.58), (10, 6.30)),
+                note="25 mm, 8 mm keyway, HTS 8483.10.50.00, China; page rendered 2026-10-14. "
+                     + PH_DUTY_NOTE),),
+         dims={"d": 25.0, "fit": "h6", "length": 153.0, "protrusion": 53.5, "collar_d": 32.0,
+               "collar_t": 3.5, "key": (8.0, 7.0, 40.0), "centre_tap": "M10x16"},
+         notes="Phidgets' drawing (TRM4004_0Mechanical.pdf, the 050 row): 25 h6 x 153, a 32 x "
+               "3.5 collar, 50 past it, the keyway 40 long ending 5 short of its end and 4 "
+               "deep, an M10 x 16 end tap; C45 quenched and tempered, HB 220-260."),
+    Item("m8_set_screw_45", "M8 x 45 socket set screw, cup point, 18-8", "fastener",
+         (Offer("Bolt Depot", BD + "8752", "8752", price_usd=1.02, verified=True,
+                tiers=((1, 1.02), (100, 0.681)),
+                note=BD_2 + " (the M8 18-8 set screw list)"),),
+         dims={"d": 8.0, "length": 45.0},
+         notes="The gearbox's riser studs (construction.handcrank.RISER_STUD): threaded into "
+               "the face's tapped holes with threadlocker."),
+    Item("m8_nut", "M8 hex nut (DIN 934), 18-8", "nut",
+         (Offer("Bolt Depot", BD + "4778", "4778", price_usd=0.17, verified=True,
+                tiers=((1, 0.17), (100, 0.1177)), note=BD_2 + ": 13 mm AF, 6.5 mm"),),
+         dims={"af": 13.0, "h": 6.5}),
+    Item("m8_thin_nut", "M8 hex jam nut, 18-8 (13 x 4 mm)", "nut",
+         (Offer("Bolt Depot", BD + "13573", "13573", price_usd=0.15, verified=True,
+                tiers=((1, 0.15), (100, 0.0979)), note=BD_2 + ": 13 mm AF, 4 mm"),),
+         dims={"af": 13.0, "h": 4.0}),
+    Item("m10_bhcs_16", "M10 x 16 button head socket screw (ISO 7380), 18-8", "fastener",
+         (Offer("Bolt Depot", BD + "13370", "13370", price_usd=1.14, verified=True,
+                tiers=((1, 1.14), (25, 19.03 / 25)),
+                note=BD_2 + " (the M10 18-8 button head list)"),),
+         dims={"d": 10.0, "length": 16.0, "head_d": 17.5, "head_h": 5.5},
+         notes="The NRV050 output shaft's end screw (construction.handcrank.END_SCREW_NM)."),
+    Item("m16_washer", "M16 flat washer (DIN 125, 17 x 30 x 3), 18-8", "washer",
+         (Offer("Bolt Depot", BD + "4522", "4522", price_usd=0.48, verified=True,
+                tiers=((1, 0.48), (25, 8.04 / 25)),
+                note=BD_2 + " (the 18-8 16 mm flat washer list); its size DIN 125's"),),
+         dims={"id": 17.0, "od": 30.0, "t": 3.0},
+         notes="The hand crank's thrust washer under the journal's cap (handcrank.THRUST)."),
+    Item("spring_plunger_half13", "Ball-nose spring plunger, 1/2\"-13, 0.281 in 440C ball, 6-12 "
+         "lbf, black-oxide steel body, hex drive", "misc",
+         (Offer("McMaster-Carr", MCM + "5901A17/", "5901A17", price_usd=4.59, verified=True,
+                note="1/2\"-13, extended nose 0.072 in, 0.281 in 440C stainless ball, 6 lbf "
+                     "extended, 12 lbf compressed, black-oxide steel body 1.05 in long, hex "
+                     "drive; the ball-nose spring plunger listing rendered 2026-10-14 "
+                     "(https://www.mcmaster.com/products/ball-nose-spring-plungers/)"),),
+         dims={"thread": "1/2-13", "ball_d": 7.14, "length": 26.67, "travel": 1.83,
+               "force_n": (26.7, 53.4)},
+         notes="The hand crank's slip clutch (construction.handcrank.PLUNGER): three in the "
+               "arm's boss, their balls on the seat ring's holes."),
+    Item("half13_nut", "1/2\"-13 hex nut, 18-8", "nut",
+         (Offer("Bolt Depot", BD + "2566", "2566", price_usd=0.43, verified=True,
+                tiers=((1, 0.43), (50, 13.56 / 50)), note=BD_2 + ": 3/4 in AF, 7/16 in"),),
+         dims={"af": 19.05, "h": 11.11}),
+    Item("half13_jam_nut", "1/2\"-13 hex jam nut, 18-8", "nut",
+         (Offer("Bolt Depot", BD + "4124", "4124", price_usd=0.43, verified=True,
+                tiers=((1, 0.43), (100, 0.3304)), note=BD_2 + ": 3/4 in AF, 5/16 in"),),
+         dims={"af": 19.05, "h": 7.94}),
+    *(Item(f"m8_hex_bolt_{L}", f"M8 x {L} hex bolt, partially threaded, 18-8", "fastener",
+           (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
+                  tiers=((1, each), (n, bag / n)),
+                  note=BD_2 + " (the M8 18-8 hex bolt list)"),),
+           dims={"d": 8.0, "length": float(L), "thread": 22.0, "af": 13.0, "head_h": 5.3},
+           notes="A hand crank's grip pin (construction.handcrank.HANDLES): the printed grip "
+                 "spins on its plain shank.")
+      for L, (pn, each, n, bag) in {90: ("5827", 1.68, 100, 109.06)}.items()),
 )

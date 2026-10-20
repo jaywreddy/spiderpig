@@ -1732,6 +1732,393 @@ a first-time user with the generated guide. What changed:
   `spiderpig/server/app.py`, `viewer/src/decant/`, `tests/test_cradle.py`,
   `tests/fixtures/cradle/riser_reference.json`.
 
+### 2026-10-15: the cradles' drive, round 2 (design review round 2; the user's gearbox call of 2026-10-14)
+
+- **What:** the fixes to round 2's drive review (`/root/scratch/decant/review5/r2/drive.md`),
+  both cradles ([DECANTER.md](DECANTER.md): "The drive", "Loads and checks", "Building
+  one"), with the user's decisions of 2026-10-14: **B gets Phidgets' 50-series worm gearbox**
+  (TRM4402_0, 30:1) instead of the 40-series NRV040, the same on A; **no counterbalance**;
+  **A is kept and fixed**, not parked.
+- **The gearbox, NRV050** (`handcrank.NRV050`, each number cited in its docstring). Phidgets'
+  product page (phidgets.com/?prodid=870, the specification tab rendered 2026-10-14): USD
+  92.50, "Maximum Strength of Gears 85 N·m", "Shaft Maximum Radial Load 4.8 kN", a 14 mm
+  input with a 5 mm keyway, a 25 mm bore with an 8 mm keyway, backlash 1/2°, China, HTS
+  8483.40.50.10. Its drawings, fetched the same day: the NRV dimension page its "Mechanical
+  Drawings" link serves (TRM4400_0Mechanical.pdf: the 050's input D1 14 j6, B 30, t1 16, an
+  M6 end tap; its shoulder G3 64, the far end G2 74, the worm I 50 off the output axis; the
+  low-speed shaft 25 h6, B1 53.5, an M10 end tap) and the output shaft TRM4008_0's
+  (TRM4004_0Mechanical.pdf: a 32 x 3.5 collar, 50 past it, the keyway 40 long ending 5
+  short, 4 deep, an M10 x 16 tap; C45, HB 220-260; USD 6.85). Where Phidgets is silent,
+  Motovario's NRV050 (VSF IEC catalogue, EN rev 0 2017; Phidgets sells a clone of the
+  pattern, so these are the pattern's): the face 4 x M8 x 10 on an 85 mm PCD, a 70 h8
+  spigot, the face's 100 mm boss, 87 mm face to face; 3.3 kg dry; the mesh at 30:1, lead
+  6°19', module 2.56, ηd 0.73 at 1400 rpm, ηs 0.44 "only valid after the unit has been run
+  in ... at 25°C"; Mn2 113 N·m at 500 rpm (0.30 kW, n2 17: efficiency 0.657), 88 at 1400,
+  and the ATEX catalogue's 84 at every speed from 1750 down; Fr1 490 N (a 129, b 114), Fr2
+  max 4840 N (a 101, b 76), "static conditions and/or ... limited operations".
+  - **Rated against Phidgets' maximum only** (`WormBox.rated_nm`, 85 N·m): walking SF 2.42
+    on B, 2.30 on A; the clutch's cap 1.36 and 1.29 x under it
+    (`cradle_drive.GEARBOX_CAP_FLOOR`, 1.25: the maximum's basis is unpublished, and the cap
+    is already taken at the bench check's top and the hand's fastest).
+  - **Round 1's "rating at a hand's speed" is withdrawn** (M-1): it took Motovario's NRV040
+    at 30:1, Mn2 62 N·m at 500 rpm in the standard catalogue, scaled by 45/48 to Phidgets'
+    45 N·m: 58.1 N·m, and allowed momentary peaks to 2 x the 45. Motovario's own ATEX
+    catalogue rates the same NRV040 30:1 at 46 N·m at 500 rpm (45-46 from 1750 down), so
+    the standard catalogue's rise to 62 is a wear and heat rating, not the gears'
+    strength; and Phidgets calls its 45 a maximum, not a nominal to scale or double.
+    `WormBox.rated_hand_nm` and `peak_factor` are gone.
+  - **Its efficiency** (M-5; `WormBox.eta_at`, `eta_new`, `handcrank.RUNIN_LOSS`): static
+    0.44 run in, 0.387 new (SEW-EURODRIVE's run-in table, "1-start approx. 12%", the
+    MOVIONE project planning's "Run-in phase", rendered 2026-10-14; its run-in lasts 48
+    hours, which a hand crank never gives a box). At a hand's speed the catalogues say
+    nothing: the 500 rpm row's 0.657 is carried down by AGMA's worm-gear friction against
+    sliding speed (engineersedge.com's "AGMA WormGear Equations", rendered 2026-10-14),
+    0.558 at 100 rpm, MIL-STD-1472H's crank rate (`handcrank.HAND_RPM`).
+- **The riser on studs** (`handcrank.riser_for`): the NRV050's face is M8, and no stock
+  metal spacer for M8 is 13 mm across or less (McMaster's are 16 mm stainless, which sits on
+  the 70 mm spigot's edge on the 85 mm PCD; its aluminium ones stop at M6; the listings
+  rendered 2026-10-14). An M8 x 45 set screw in each tapped hole (243), an M8 nut on each set
+  to one height by a printed sleeve (13 mm across, carrying nothing once clamped), the plate
+  on the nuts and a jam nut over it: the face 25.2 mm under the plate. The nuts' height is
+  set: a clone's hub prouder or lower than drawn is turned out (m2: no 13 mm spacers ordered
+  ahead), and the sleeves must sit flat on the machined face (m3, in the guide).
+- **The crank block** (`handcrank.BLOCK_PLATES`, `KEYED_PLATES`, `KEY_SLOT`): eight plates,
+  its top where round 1 had it (the rod rides where it did; the planner's plan unchanged).
+  The 050's key is 8 x 7, standing 3 mm proud, its straight flanks ending 9 under the
+  shaft's end, so three plates are keyed (one alone 49.4 N·m on the sheet's thinnest, 1.41
+  x B's walking peak; the three 2.37 x the cap); their slots cut at 7.75 and filed together
+  to the key (m4), the three over them slotted 0.4 mm clear of it, so only the three bearing
+  plates are filed (round 2's laser-cut review, minor 2: round 1 had seven slotted at the
+  key's width, counted four, and rated them on a ±0.11 mm sheet; SendCutSend's 0.125 in 6061
+  table, fetched 2026-10-15, is +0.152 / -0.127 mm, and the keyway is rated on its thinnest,
+  `handcrank.PLATE_UNDER`); the
+  seventh seats on the shaft's end, an M10 x 16 button head into its tap at 20 N·m (A2-70:
+  30 N·m at a friction of 0.1, TR Fastenings, rendered 2026-10-14; m1), the eighth rings
+  its head. The shims went with the fixed spacers: the nuts set the shaft's end under the
+  seat (0 to 0.7 mm, the go/no-go).
+- **The clutch on plungers** (B-1; `handcrank.clutch`, `clutch_slip`, `clutch_drift`):
+  three McMaster 5901A17 ball-nose spring plungers (1/2"-13, a 7.14 mm 440C ball, 6-12 lbf,
+  USD 4.59; the listing rendered 2026-10-14) through hex nuts in the arm's boss, a jam nut
+  on each, on a 0.125 in 6061 seat ring cut with the crank plates: six 3.57 mm holes on a 40
+  mm circle, each ball on its hole's edge, a 30° seat. Not the reviewer's 3408A81: a 30°
+  seat for its 4.8 mm ball is a 2.4 mm hole, under SendCutSend's least hole in 0.125 in
+  6061 (3.175), and its 55 N/mm spring makes an eighth of a turn 20 % of the slip; the 7.14
+  mm ball's 30° seat is a 3.57 mm hole, and an eighth of a turn of one of three plungers
+  about 3 % (m5). USD 13.77 for the three, against round 1's balls, springs and set screws'
+  13.10.
+  - **The slip, modelled honestly:** each ball pivots on its hole's edge as the arm turns,
+    its contact angle falling from 30° to 0 over the climb, the plunger's spring pushing
+    harder; the force on it P = F k / (1 - μ2 k), k = tan(angle + atan μ1), μ1 at the edge,
+    μ2 in the plunger's bore, the peak over the climb, plus the cap's thrust washer.
+  - **Its drift, rated:** greased (RoyMech's greasy mild steel 0.09-0.19 sliding; no greasy
+    steel-on-aluminium figure is published, Engineering ToolBox's greasy static steel 0.16
+    is inside it), set anywhere in that range and drifting anywhere in it, the slip moves
+    from 0.72 to 1.40 x its setting, 1.47 x with the holes' edges worn 0.1 mm; dry (steel on
+    aluminium 0.47-0.61, steel on steel 0.42-0.78) it locks (from μ 0.58). "±10 % once set"
+    is retired.
+  - **Set at 1.3 x a measured start** (the user's call): the heaviest full bottle, where it
+    turns hardest, a luggage scale on the grip; set on the bench at 1.3 x that reading,
+    three pulls in a row within 8 % (`CLUTCH_CHECK`), checked at every set-up and after
+    greasing (the guide's procedure). The setting doesn't depend on the efficiency: the
+    scale reads the box as it is.
+  - **The cap** (`config.PRODUCT_CLUTCH_NM`, the jam case for every rating): the check's top
+    through the worm at the hand's fastest, 1.3 x 1.08 x the 6 L's peak x 0.558/0.44:
+    **62.5 N·m on B, 65.7 on A** (61.3 before), 1.36 and 1.29 x under the 85 N·m.
+    Unchecked, the greased drift alone takes B's to 85.1 N·m (the gearbox's maximum) and
+    its slip to 0.93 x the start (it ratchets): the check is the cap's condition, and the
+    report says so (`unchecked_cap_nm`).
+- **The output shaft's radial load** (M-2; `WormBox.output_allowed`, the report's
+  `output_overhung`, and a row of `jam_capped`): the rod's force at its mid-plane, 69.4 mm
+  past the hub's end on either, against Fr2 a / (b + x) = 3363 N: walking SF 8.37 on B, 7.6
+  on A; at the cap 1.77 30° from the toggles on B (1.3 outside 25°, 1 outside 20°), 1.49 on
+  A (1.3 outside 30°, 1 outside 20°: A's least part there), rated with the other parts over
+  the whole turn. (The NRV040's had been 1.31 and 1.16 at round 1's cap, unrated.)
+- **A's hand crank** (M-3; `handcrank.HANDLES`, `HANDLE_OVER_RADIUS`, `HUB_PRINT_MAX`,
+  `cradle_report.hand_sweep`): 130 mm on a 230 mm reach, its 60 x 16 grip on an M8 x 90.
+  - **The hand's room:** a hand round the grip (the grip and 20 mm, from the arm to past
+    the bolt's head; the reviewer took 17) against every part over the whole turn at 0.5°,
+    by adaptive surface sampling: 14.1 mm clear (the base stop's rail behind the cradle),
+    the crank's own solids 17.8 (b2). B: 40.4 and 39.0 at 1°. A slow test checks both
+    cradles at 1° (`test_a_hand_on_the_grip_clears_the_cradle_over_the_whole_turn`).
+  - **The grip:** a full 6 L's worst start, 21.5 N at 130 mm run in (24.5 new), under
+    MIL-STD-1472H's 22 N. The xfail on A's grip is gone.
+  - **The options, measured** (an occupancy map of A's parts in the input's frame over the
+    turn, `/root/.cache/spiderpig/tmp/r2-fix-drive/scripts/xr_map.py`, `xr_judge.py`): at
+    Figure 13's light-load maximum, 125 mm, the hand clears from a 215 mm reach (18.8 mm)
+    but the start is 22.4 N, over the bar; 127.5 mm is 21.9 N (too near it); 130 mm 21.5 N
+    with 13.8 mm of hand room; 140 mm 3.8 mm; 150 mm meets the base stop's rails. A
+    heavy-load crank, 190 mm or more (14.7 N, a 25 mm grip), meets A's bottle and the base
+    stop's rails at every reach from 100 to 300 mm. So A's crank is 5 mm over the light
+    row's radius (`HANDLE_OVER_RADIUS`, which the test allows A alone); inside a row on A
+    takes a counterbalance (the user's no) or another ratio (Phidgets' 50 series is 30:1
+    only). Not tried: the worm under the output (the gearbox turned over), which moves the
+    input 100 mm down.
+  - **Its tube:** 230 mm past the input's end, so the hub and tube print in two PETG
+    pieces over 200 mm (`HUB_PRINT_MAX`): a 22 mm hex spigot into the head's socket, an M3
+    x 10 button head through the socket's wall into a heat-set insert. B's (100 mm) prints
+    whole. The input's radial load at A's grip: SF 5.2 at the clutch's top (156 N allowed
+    292 mm out).
+- **The toggle zones' cue** (M-4; `handcrank.TOGGLE_TURNS`): the output hub turns with the
+  crank on the gearbox's far face, in the user's view. At set-up, paint-pen lines across the
+  hub and the housing at rest, 2.5 handle turns from rest, 2.5 before full tilt and at full
+  tilt (both hold jam SF 1.3 outside 30° of crank, 2.5 turns); the use
+  limits: nothing touches the cradle or the bottle while the hub's line is between a pair
+  ("the bottle barely moves per turn there"). Free: the paint pen is the pack marks'.
+- **The minors:** the end screw's torque on its grade (m1, above); the riser's nuts for the
+  spacer variants (m2); the sleeves flat on the face (m3); the keyways cut under the key
+  (m4); the setting increment and no self-tapped M8 (m5: the plungers thread through nuts);
+  the cap keyed on the journal's flat, over a greased M16 washer (m6); the hub, arm, cap and
+  grip in PETG (`handcrank.PETG_PARTS`, `bom.part_filament`) and "check the clutch after a
+  trip in a hot car" (m7); the arm's bar 14 mm deep (m8: an out-of-plane 100 N at B's grip
+  21 MPa, at A's 32); A's verdict no longer "the one to build ... every check passes" (B is
+  the main design), ORDER.md's Phidgets cart with its duty and checkout note
+  (`order.LINE_NOTES`), threadlocker 243 throughout the drive's steps, a tools list in the
+  BOM's notes (`bom.CRADLE_TOOLS_NOTE`) (m9); the drill bypass in the guide and the use
+  limits: run the box in before it goes on, never a drill on the built cradle's input, nor
+  a hand on the hub or the clutch's flange (m10).
+- **The packs** (`spiderpig pack-inspect`, by their plans): B 740 x 316 x 601 mm, 140.7 L
+  (140.5 before), every piece supported; A 700 x 212 x 601 mm, 89.3 L (78.0 before, 185 mm
+  tall): the NRV050's housing and riser stand 27 mm taller off the drive panel's outer
+  plate, which lies face down. `PACK_BOX` (A) is 215 mm tall now.
+- **B's board is 684 mm** (`Stand.base`, 2 mm more at the rear): the NRV050 (1.45 kg more)
+  and its hand crank took the 682 mm board's rear tip from 25.1° to 24.9° (the bar 25°);
+  684 holds 25.1°.
+- **Numbers** (B, A):
+
+  | | before (round 1) | after |
+  |---|---|---|
+  | gearbox | NRV040, 1.28 / 1.22 x the walking peak on its 45 N·m maximum; the cap 1.36 x over it | NRV050: 2.42 / 2.30 x; the cap 1.36 / 1.29 x under its 85 |
+  | clutch's cap (and the jam case) | 61.3 / 61.3 N·m, "±10 % once set" | 62.5 / 65.7 N·m at the bench check's top (8 %); unchecked, greased, 0.72-1.47 x |
+  | grip at a full 6 L's worst start | 20.8 N at 125 mm / 32.2 N at 85 mm | 21.3 N run in, 24.2 new at 125 mm / 21.5, 24.5 at 130 mm |
+  | output shaft's radial load (walking; at the cap 30° off) | unrated (1.31 / 1.16 at the cap) | 8.37 / 7.6; 1.77 / 1.49 |
+  | jam SF at the cap, 30° from the toggles | pillar O2 1.36 / b2 1.80 | pillar O2 1.34 / the output shaft 1.49 (b2 1.70) |
+  | the hand on the grip, least room | B 21 mm / A -11.4 (through b2 and Tr2's screw for 64.5° of crank) | 40.4 / 14.1 mm |
+  | the clutch unchecked (greased drift, worn seats) | "±10 %" | its cap 85.1 / 89.5 N·m, its slip down to 0.93 x the start; set new and never re-checked, 71.1 / 74.7 |
+  | keyed plates | one 0.94 / 0.89 walking, the four 2.15 x the cap | one 1.41 / 1.34 walking, the three 2.37 / 2.26 x the cap (on the sheet's thinnest) |
+  | rod and crankpin at the jam | 1.71, 2.11 / 2.32, 1.81 | 1.68, 2.07 / 2.17, 1.69 |
+  | stand | 25.1° (682 mm board) / 24.0° | 25.1° (684 mm) / 24.5° (to its drive side; bar 15°) |
+  | mass (the drive side's gearbox) | 2.1 kg | 3.45 kg |
+  | BOM total | USD 723.26 / 600.52 | USD 763.94 / 642.52 |
+
+- **Cost** (the BOM's estimate; every changed purchase from a page rendered 2026-10-14 or
+  15, the cutting the BOM's fit to SendCutSend's quotes): **B USD 723.26 -> 763.94**
+  (purchases 421.68 -> 448.16, cutting 301.58 -> 315.78); **A USD 600.52 -> 642.52** (purchases 340.58 -> 368.74, cutting 259.94 -> 273.78; its tube's joint adds an insert and an M3 x 10). B's purchases:
+  the gearbox +29.60 (TRM4402_0 92.50 for TRM4401_0 62.90), its shaft +0.70 (TRM4008_0
+  6.85); the riser's studs and nuts 5.36 for the spacers and M6 x 25s' 7.60; the shims
+  -6.40; the M10 end screw 1.14 (Bolt Depot 13370); the clutch 16.83 (the plungers 13.77,
+  their 1/2"-13 nuts and jam nuts 2.58, Bolt Depot 2566 and 4124; the M16 thrust washer
+  0.48, 4522) for the balls, springs and set screws' 13.10; the grip's M8 x 90 1.68 (5827)
+  for the 85's 1.53. Cutting: the seat ring and the bigger block plates +12.61 (0.125 in
+  6061), the outer plate's wider pad +1.59.
+- **The landed cost** (`order.LINE_NOTES`, in ORDER.md's "Before you order"): Phidgets'
+  cart, the gearbox and its shaft, USD 99.35; made in China, so US duty is collected at
+  checkout through UPS Global Checkout (phidgets.com/docs/U.S._Tariffs, rendered
+  2026-10-15: since 2025-05-02 every order, no de minimis, with brokerage and a fee of the
+  checkout's own): 40 % on the gearbox (HTS 8483.40.50.10: 2.5 % + 12.5 % Section 301
+  Forced Labor since 2026-07-16 + 25 % Section 301) and 50 % on the shaft (8483.10.50.00),
+  tariffs.wove.com rendered 2026-10-15: USD 40.43, so **USD 139.78 before UPS's shipping,
+  the brokerage and the checkout's fee**, which show only at checkout (unpriced: the cart
+  wasn't run). Round 1's NRV040 cart was USD 97.29 so; the 50 series adds 42.49 landed
+  before shipping. Not in the BOM's total.
+- **Not done:** a force limiter in the rod (the only cure for the toggle zones); a guard;
+  a turn counter (the paint marks cost nothing); a counterbalance (the user's no).
+- **Where:** `spiderpig/construction/handcrank.py`, `spiderpig/cradle_drive.py`,
+  `spiderpig/cradle_report.py`, `spiderpig/config.py`, `spiderpig/construction/cradle.py`,
+  `spiderpig/hardware/cradle_catalog.py`, `spiderpig/hardware/fasteners.py`,
+  `spiderpig/hardware/bom.py`, `spiderpig/hardware/order.py`, `tests/test_cradle.py`.
+
+### 2026-10-15: round 2's drive meets the stand round (the user's calls of 2026-10-15)
+
+- **What:** the stand, use and guide round (merged at 5b0e32e) merged into round 2's drive,
+  with the user's four calls on what the two rounds disagreed about
+  ([DECANTER.md](DECANTER.md): "The base board", "The drive", "Flat pack").
+- **One toggle cue, the gearbox's paint marks:** they mark both toggles on both cradles for
+  nothing. The stand round's red toggle flag on B (`toggle_flag`, its two M5 screws and
+  nuts, the stand nodes `S1` and `S2`, their holes in the outer plate and their claims;
+  `TOGGLE_FLAG`, `TOGGLE_ZONE`, `toggle_zone`) is gone; the use limits' third line, the
+  guide and the cradle page name the marks. A render of B's crank area at rest
+  (`/root/.cache/spiderpig/tmp/r2-fix-drive/out/render/`) shows the gearbox's far face and
+  its output hub in the open from the drive side's rear corner, from above and from
+  outboard: the hand crank turns beside the gearbox, not over its far face.
+- **The riser's lifts** (`cradle.RISER_LIFT`): the drive panel's lay-flat blocks must stand
+  as far as the gearbox does off the outer plate, 114.7 mm on the NRV050 (87.5 on the
+  NRV040). The user's call was taller blocks and fewer plates, the whole riser still the
+  drawn decanter's. Built so (blocks of 112.2 mm, plates of 5 and 3), the stacks without
+  the blocks stopped at 10 mm, under the locator's walls: three listed vessels (the RIEDEL
+  Cabernet Magnum, Le Château, the Zalto Burgundy) had no stack the rule allows. So the
+  blocks stay 85 mm and stand on two 27.2 mm lifts, half plates under them in the riser
+  and under each block when the panel lies down: 114.2 with the boss. The plates are 5 and
+  4 mm, the whole set 123.2 mm (122 before), the drawn decanter's rim 31.8 mm under the
+  light's clip. Every listed vessel's stack is within 7 mm of the stand round's.
+- **A's 130 mm crank** (`handcrank.HANDLE_OVER_RADIUS`), 5 mm over MIL-STD-1472H Figure
+  13's 125 mm light-load maximum: accepted as a documented deviation, the grip under its
+  22 N bar (21.5 N run in).
+- **The use text** (`cradle.use_steps`): its clutch figures come from
+  `handcrank.drawn_clutch` and `handle_r` (the setting 1.3 x the measured start, about 28 N
+  at either grip for a full 6 L), its toggle zones from `handcrank.TOGGLE_TURNS`; the drill
+  and hub bypasses and the PETG hand crank are in its reference lines. One tools list,
+  `cradle.TOOLS` (the guide's cover): the drive's torque wrench to 20 N·m, its 13 mm and
+  3/4 in wrenches and 14 mm bit joined it; `bom.CRADLE_TOOLS_NOTE` went.
+- **B's board is 686 mm** (`Stand.base`, 2 mm more at the rear): the window under the base
+  stop and the NRV050 together took the 684 mm board's rear edge to 25.0° to the tenth; 686
+  holds 25.2° (28.4° pouring). A: 24.3° to its drive side (bar 15°).
+- **The rest poses on the NRV050** (`cradle_pack.rest_poses`): B's cradle lying on its
+  blocks tips at 15.7° (16.9 on the NRV040; bar 15°), the drive side with the box at
+  15.0°, at its bar (16.3), the drive panel alone at 32.2° (35.2); A's lying cradle 19.3°.
+  The heavier, further-out gearbox lifts the lying cradle's centre of mass; the steps keep a
+  hand on the box. Wider lay-flat points (`cradle.LAY_BLOCKS`) are the stand's to weigh.
+- **The packs:** B 740 x 316 x 601 mm, 140.7 L; A 700 x 212 x 601 mm, 89.3 L (unchanged by
+  the merge).
+- **Where:** `spiderpig/construction/cradle.py`, `spiderpig/construction/handcrank.py`,
+  `spiderpig/construction/assembly.py`, `spiderpig/cradle_pack.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/guide/scenes.py`, `spiderpig/hardware/bom.py`, `viewer/src/decant/liquid.ts`,
+  `viewer/src/decant/pour.ts`, `tests/test_cradle.py`, `tests/fixtures/cradle/riser_reference.json`.
+
+### 2026-10-15: the cradles' saddles made to hold real bottles (design review round 2, mounting)
+
+- **What:** the saddles, the lip gauge and the base stop fixed where review round 2 found
+  them failing ([DECANTER.md](DECANTER.md), "The saddles, adjustable", "Review round 2";
+  the review `/root/scratch/decant/review5/r2/mounting.md`, its probes in
+  `/root/.cache/spiderpig/tmp/r2-mounting/` on the development box).
+  - **The rear post beside the lead screw (N1, the blocker).** The rear V block was guided
+    by one post at -z, 213 mm across from the screw that pushes it up: a drawer, which
+    jammed raising it past a friction of 0.149 on the post (0.095 at a 750 ml's setting),
+    under the 0.24-0.30 measured for printed PETG on steel (Stoimenov et al., Tribology in
+    Industry 46(1), 2024). The post now stands beside the screw at +z, 27 mm in front of
+    it (`cradle.REAR_POST`): the push can't cock the block, and it jams only past
+    `engagement / 54`, 0.74 at a 750 ml's setting (40.1 mm of the boss on the post's
+    round) to 0.98. `cradle_report.drawers` rates it at every bottle's setting, and the
+    front block's box guide too (m5: 40 mm off its middle, it had bound past 0.40; its -z
+    wall 12 mm taller and a cheek up the block's -z face, `cradle.FRONT_GUIDE`, make it
+    0.56, greased); `saddles` lists them (2 x the most friction cited for the faces).
+  - **The post 15 mm, plated** (m3, and N1's own consequence). With the post on the screw's
+    side it alone takes the roll of a load at the axis, as it did; counted with what rides
+    the block at its weight (about 1 kg: the report's, not the 0.75 kg the test had used), a
+    6 L hung a hair off the rods took the 12 mm post at 2.99 x its yield (2.96 with this
+    round's PETG rails), under the 3 asked. MISUMI PETR15-150 (15 mm, M8, electroless nickel, a stocked
+    length, USD 19.25: 2.54 less than a plated 12 mm, PETRF12-130), 5.7 x; its socket 30
+    mm deep under a collar (the boss 53 mm long over it), rated in bearing (8 x); an M8 x 12
+    button head into its foot (Bolt Depot 6654, USD 0.40), the screw table's first M8
+    (`fasteners.SCREWS`).
+  - **Real bottles (N2).** The base stop's named grooves gave way to a plain length scale,
+    a groove every 5 mm (`cradle.stop_marks`), and a vernier on the gate's pointer reaching
+    forward along it (`cradle.VERNIER`: four lines 6 mm apart, the k-th meeting a groove for
+    k mm); the gate sits 2.5 mm behind the base (`cradle.STOP_GAP`, it had been 0.5: a
+    bottle 0.7 mm long put its rim under the gauge's pad), and the guide measures every
+    bottle. `cradle.SIZES` against the makers' pages rendered 2026-10-14 and -15: the
+    750 ml became Saverglass's 4427 (300.5 mm, it had been 300); the 3 L is Saverglass's
+    Jero Vignoble 7201 (470.3 x 140.8 mm, 2.9 kg: the record's figures; the review compared
+    it with their Standard 0718, 474.3 x 135.2 mm, a different bottle); the magnum and the
+    6 Ls match to 0.2 mm. The 0718 and 750s of 308 and 315 mm lie clear at their own
+    settings, as does every size against its gate.
+  - **The rails (N3).** Their tongues have crush ribs on top (`cradle.RIBS`), the socket's
+    clearance moved above them, so they sit down on the sockets' floors, flush and without
+    play (0.3 mm, 0.6° of rock, before); a 4 mm keel down each rail's outer face
+    (`cradle.RAIL_KEEL`) doubles its stiffness (61 000 mm⁴, was 30 000), and its flange,
+    keel and tongue end level at -91 mm so it prints standing. `balance` now rates the
+    flanges' sag behind the rigid V block (380 mm): the mouth lifts at most 0.89 mm (a
+    methuselah at rest), 0.23 past level (1.5-4 mm before).
+  - **The lip gauge fixed (N4, m2).** The review's simplest option: its bridge flat on the
+    post's flat top, the bolt under it, tight (`cradle.gauge_fixed`); no hinge, stop or
+    lug. A bottle is uncorked standing on the table before it goes in; one set too long
+    can't lie in under the gauge. A knock on the pad: 8.3 MPa on the post's edge, SF 5.7.
+  - **The rear knob locks (N5).** It slides on a hex hub set-screwed on the screw's top and
+    drops over a star of 12 teeth on the tower's arm (`cradle._lead_screw`,
+    `cradle.LOCK_TEETH`): a positive lock, whatever the grease (the teeth at 0.4 MPa under a
+    hung 6 L's turn back, the thread greased). Lifted 3.6 mm, it turns. The TPU brake
+    washer stays, slowing the screw with the knob lifted (4.1 x dry, 0.8 x greased: told,
+    not rated). The grease note now keeps grease to the thread above the collar, off the
+    collar, the washer and the teeth.
+  - **The print basis (N6, m9).** `cradle_report.PRINTED`: Prusament's datasheets (PLA
+    v1.1 of 2022-07-27: 51 MPa in its layers, 17 across; PETG v1.1 of 2022-02-16: 47 and
+    18; specimens printed solid); each row rated in or across its layers as the part prints,
+    a quarter of it for a load that stays, 1/2.5 for the pour's or a knock's
+    (`SUSTAINED_SF`, `TRANSIENT_SF`). `PLA_ALLOW` is now 4.25 MPa, a quarter of PLA's 17
+    across (it had been 10, "a quarter of ~40", which no datasheet gives). The parts that
+    carry the bottle print in PETG at 100 % infill (`cradle.PETG_PARTS`, `meta["petg"]`,
+    `bom.part_filament`; on hand); the rails stand (their T-slot's lips bend in their
+    layers), the gauge lies on its side; the lips are 5.5 mm (5) for a firm hand's 1 N·m.
+  - **Minor:** base first when loading (m1); the gauge's pad 0.5 mm lower (m4: 3.25 mm down
+    a 750's rim, clear of a methuselah's bore) and the guide measures the neck 80 mm from
+    the lip, the body where it lies (m4); a drain from the +z rail's T-slot's back end
+    (m6); "tug the gate" (m7); the T-slot's ends chamfered 0.5 mm at the block-to-rail
+    joint (m8).
+  - **Lighter elsewhere:** the rear V shell 7.5 mm (9), the rear carrier's -z block 15 mm
+    wide (29: it only rides the rods now), the rails' flanges 7 mm (8.5): the printed
+    mounting parts are 1220 cm³ solid (1223 before), so the 15 mm post's 90 g more steel and
+    PETG's density leave B's stand tipping past 25° (25.02° on 682 mm, 25.08 before;
+    merged with round 2's stand, 25.1° on its 684 mm board).
+- **Why:**
+  - **The post beside the screw, not a second post or PTFE bushings:** a second post near
+    the screw would have needed the tower moved; bushings (about 0.1) would still jam at a
+    750 ml's setting. A post at the -z end with the screw at +z can't be made free at any
+    plausible friction: the push is 213 mm off.
+  - **The fixed gauge, not a 50° stop or a return spring:** both keep a hinge that wine
+    can stick; uncorking in the cradle was three tasks for two hands. The cost: no
+    uncorking in the cradle (the -50° rest still takes an opened full bottle).
+  - **Teeth under a lifting knob, not a jam knob or a sprung detent:** positive (no
+    friction in it), all printed, no loose part, one hand: lift and turn.
+  - **Crush ribs, not glue or an interference fit:** a printed press fit is either loose
+    or doesn't go; ribs crush to fit across a print's tolerance, and the rail still comes
+    off its two screws.
+  - **The rated strengths by layer:** a part's weak direction is the one its print puts
+    across its layers; rating every part against the across-layer figure would have thrown
+    away the in-layer strength the rails' new pose buys.
+- **Numbers** (`cradle_report.saddles`, 2026-10-15): every row over its bar; the worst
+  printed one the rails' tongues, 4.2 x (4) at rest; the post 5.7 x its yield; both
+  guides 2.5 x or more the most friction cited. `balance`: every bottle centred 62.9 mm
+  or more inside its support, the mouth lifted 0.89 mm at most. Clash-free at rest, level
+  and full tilt on B and A, every size at its setting with the bottle at the pad and
+  against the gate, and the off-list bottles above; the finger gap 26.4 mm on B, 26.5 on
+  A, as before. The cradle 0.12 kg heavier (the post's steel): B's crank peak 35.4 N·m
+  (35.1; the gearbox 1.27 x its 45 N·m, was 1.28; 21.0 N at the grip, was 20.8), A's 37.2
+  (36.9; 1.21, was 1.22; 32.4 N, was 32.2); B's stand tips at 25.02° (25.08), A's 23.9°
+  (24.0); A's clutch clears the worst start by 1.10 (1.11; its floor 1.1). The pack
+  (`spiderpig pack-inspect`): B 741 x 316 x 600 mm, 140.7 L (140.5), A 700 x 185 x 601 mm,
+  77.9 L (78.0), every piece supported. The bought parts: USD 41.00 (38.50), the post and
+  its screw.
+- **Merged with round 2's stand** (its fixed risers, the board's window, B's 684 mm board,
+  the rated rest poses): the rear knob's arm, teeth, knob and hub sit 10 mm lower (the lead
+  screw's boss 10 mm shorter, `cradle.ARM`, `cradle.REAR_HUB`): at 19 mm the hub had become
+  the cradle box's third resting point turned over (3.8°); with the hub's top at 6 mm the
+  box rests on the base stop's knob again, 44.3° (the bar 35). The use steps carry the
+  measuring, uncorking, gate and knob lines (`cradle.use_steps`). On the merge B tips at
+  25.1° over its rear edge (40.0 front, 29.7 drive side, 28.4 passive side), A at 23.9°;
+  the base stop clears the table through the board's window by 43.4 mm (B) and 43.5 (A).
+- **Not done:** the light, the tie rods, the rails' length per bottle (as round 1); the
+  impériale's 31.5 mm bore has its top 5 mm under the pad (the first of its pour runs down
+  the pad's back into the stream: the pad must reach a 750's rim).
+- **Where:** `spiderpig/construction/cradle.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/hardware/bom.py`, `spiderpig/hardware/cradle_catalog.py`,
+  `spiderpig/hardware/fasteners.py`, `tests/test_cradle.py`.
+
+### 2026-10-15: round 2's drive meets the mounting round
+
+- **What:** the mounting round (merged at 507457e: the rear knob stack 10 mm lower, the
+  PETR15-150 post, the bottle's carriers in PETG, the use card's fourth line) merged into
+  round 2's drive; both rounds' parts kept ([DECANTER.md](DECANTER.md): "The drive",
+  "Loads and checks").
+- **Re-rated on the heavier cradle** (0.12 kg more in the saddles; B 14.75 kg, A 13.68):
+  a full 6 L's drawn start 2.68 and 2.817 N·m at the input (`handcrank.DESIGN_START_NM`),
+  the clutch's cap 63.0 and 66.2 N·m (`config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`; 62.5
+  and 65.7 before), 1.35 and 1.28 x under the NRV050's 85 N·m (floor 1.25); the crank's
+  peak 35.4 and 37.2 N·m (SF 2.40, 2.29); the grip 21.4 and 21.7 N run in (bar 22); every
+  part 1.33 (B, pillar O2) and 1.48 (A, the output shaft) or more at the cap 30° from the
+  toggles; the keyed plates 2.35 and 2.24 x the cap. The clutch's margin is not the
+  mounting round's 1.10 on A: set at 1.3 x the user's measured start, its least slip in
+  the check's window is 1.2 x the start on both, whatever the mass.
+- **B's stand:** 25.2° over its rear edge on its 686 mm board (28.8° drive side, 31.2°
+  passive side, 41.9° front; 28.3° at the rear pouring); A 24.5° to its drive side.
+- **The rest poses:** the drive side with the cradle box lying on the blocks tips at 14.3°
+  (16.3 on the NRV040; the box with the mounting round's saddles weighs 70 g more and its
+  knob stack sits lower, which steadies the box on its edges: 44.3°, but lifts nothing
+  here). No place for the blocks on the outer plate does better than 15.0° (every pair of
+  stand nodes and pillars, the O1 block turned every 15°, and moved up off O1 it leaves
+  the plate): its test's bar is 14° with the reason, the steps keep a hand on the box. A
+  wider stance for the lying cradle is the stand's to weigh.
+- **Where:** `spiderpig/construction/handcrank.py`, `spiderpig/config.py`,
+  `spiderpig/hardware/bom.py`, `spiderpig/hardware/fasteners.py`, `tests/test_cradle.py`.
+
 ### 2026-10-15: the cradles' structure and laser-cut parts (design review round 2, structure and parts)
 
 The round's linkage and laser-cut-parts reviews (`/root/scratch/decant/review5/r2/linkage.md`,
