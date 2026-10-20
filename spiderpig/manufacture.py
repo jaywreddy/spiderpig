@@ -367,9 +367,10 @@ def part_issues(body, key: str, sketch=None, kerf_corners: bool = False) -> list
                         "why": f"{why} ({sh.thickness:g} mm {sh.material})",
                         "fix": "merge the cut-outs into one cut, move or shrink one, or widen "
                                "the plate there (the limit scales with the thickness)"})
-    if sh.metal and sh.corner_r > 0:     # (a laser's kerf in acrylic: sharp enough)
-        if (corner := _corner_issue(body, sh, pockets, kerf_corners)) is not None:
-            out.append(corner)
+    # (a laser's kerf in acrylic: sharp enough)
+    if sh.metal and sh.corner_r > 0 and (
+            corner := _corner_issue(body, sh, pockets, kerf_corners)) is not None:
+        out.append(corner)
     return out
 
 

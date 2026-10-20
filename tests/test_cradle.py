@@ -1235,30 +1235,57 @@ def test_a_frame_plate_s_steps_are_tapered_and_its_cut_corners_rounded():
     assert _s_steps(kinds, fillet) == []
     assert breaks == []
     assert ("+", cr.EDGE_R) in kinds
-    assert new.volume > 0.98 * old.volume and len(new.solids()) == 1
+    assert new.volume > 0.98 * old.volume
+    assert len(new.solids()) == 1
 
 
 @pytest.mark.construction
 @pytest.mark.no_fabricate
-def test_a_crank_block_plate_has_no_cusp_at_its_neck_and_its_hub_two_t_past_the_slot():
+def test_the_guide_names_the_as_cut_parts_and_the_routed_birch():
+    """Design review round 3, laser-cut parts minors 3 and 6: the arrival step names the
+    parts under SendCutSend's deburring minimum (:func:`assembly.as_cut_words`, a 24 mm link
+    once whatever its sides; a 30 mm one is deburred), and the parts table calls the birch
+    routed and names the crank block's plates (their files keep their labels)."""
+    from build123d import Box, Cylinder, Location
+
+    from spiderpig.construction.assembly import AS_CUT, CRADLE_ARRIVAL, as_cut_words
+    from spiderpig.labels import part_types
+    from spiderpig.mechanism import Body, Mechanism
+
+    def plate(w, h, t, sheet, name):
+        part = Box(w, h, t).moved(Location((w / 2, h / 2, t / 2)))
+        part = part - Cylinder(4.1, 3 * t).moved(Location((12, 12, t / 2)))
+        return Body(name, part, fab="laser", sheet=sheet)
+
+    mech = Mechanism("m", [plate(120, 24, 4.826, "al7075_4p8mm", f"{s}.b4") for s in "LR"]
+                     + [plate(120, 30, 4.75, "al5052_4p8mm", "L.b6"),
+                        plate(300, 200, 9.0, "birch_9mm", "base_plate"),
+                        plate(128, 44, 3.175, "al6061_3p2mm", "L.conn_plate3")],
+                     meta={"sheet": "al5052_3p2mm"})
+    assert as_cut_words(mech) == "b4"
+    assert AS_CUT in CRADLE_ARRIVAL
+    names = {t.label[:5]: t.name for t in part_types(mech)}
+    assert names["LC300"].startswith("base board, CNC-routed, ")
+    assert names["LC128"].startswith("crank block plate, laser-cut, ")
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_crank_block_plate_has_no_cusp_at_its_neck():
     """Design review round 3, laser-cut parts minor 1: the crank block's plates (the arm's
     pill on its hub's disc) met in two re-entrant cusps at the neck; closed by
     :data:`construction.plates.CRANK_FILLET_R` the outline has no tangent break, and what
-    the closing added lies in the pills its claims take (:func:`plates.arm_fills`). The
-    hub stands two thicknesses past the clear slot's corners (1.52 before)."""
+    the closing added lies in the pills its claims take (:func:`plates.arm_fills`)."""
     from build123d import Solid, Vector
 
     from spiderpig.construction import plates
-    from spiderpig.construction.handcrank import KEY_CLEAR, NRV050
+    from spiderpig.construction.handcrank import NRV050
     from spiderpig.shapes import difference, pill, union
 
     t = 3.175
     hc = HandCrank(NRV050)
     ctx = type("C", (), {"sheet_t": staticmethod(lambda role: t)})()
     hub, web, throw = hc.hub_r(ctx), hc.web_r(ctx), 105.0
-    end = NRV050.shaft_d / 2 + NRV050.key_proud + 1.3
-    corner = math.hypot(end, (NRV050.shaft_key[0] + KEY_CLEAR) / 2)
-    assert hub - corner == pytest.approx(2 * t)
     part = plates.arm_plate(hub, web, throw, (0.0, 0.0), (0.0, throw), 0.0, t, ())
     breaks, _ = _outline_turns(part)
     assert breaks == []

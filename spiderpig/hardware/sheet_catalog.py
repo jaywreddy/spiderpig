@@ -67,10 +67,11 @@ Fetched 2026-10-04:
   its sheets' ``kerf_mm`` is 0.
 
 The inside-corner radius SendCutSend cuts in aluminium: the walkers' rules keep the joinery
-plan's 0.8 mm, a cradle's parts are judged on the guidelines' kerf (:data:`SCS_LASER_CORNER_R`,
-2026-10-20); the laser's in acrylic is about its kerf (0.1 mm). Prices are estimates (neither service publishes a table: a DXF upload quotes):
-a walker's per 300 x 300 mm of nested parts, a decanting cradle's cutting a fit on live
-quotes (:data:`hardware.bom.CRADLE_CUT_FITS`).
+plan's 0.8 mm, a cradle's parts are judged on the guidelines' kerf
+(:data:`SCS_LASER_CORNER_R`, 2026-10-20); the laser's in acrylic is about its kerf (0.1 mm).
+Prices are estimates (neither service publishes a table: a DXF upload quotes): a walker's
+per 300 x 300 mm of nested parts, a decanting cradle's cutting a fit on live quotes
+(:data:`hardware.bom.CRADLE_CUT_FITS`).
 
 ``shim_din988_3x6`` / ``shim_din988_6x12`` and ``ptfe_washer_3x6x0p5`` join the 4 mm ones
 (:mod:`hardware.fastener_catalog`) and the 6 mm PTFE washer (:mod:`hardware.crank_catalog`)

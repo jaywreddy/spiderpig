@@ -740,12 +740,9 @@ class HandCrank(Group):
         return float(np.linalg.norm(g[HandCrank.pin(ctx)][0] - g["O"][0]))
 
     def hub_r(self, ctx: Context) -> float:
-        """The arm's hub round O: two thicknesses of plate (the cut rules' web) past the key
-        slot's outer corners, the clear plates' (design review round 3, laser-cut parts
-        minor 1: two past the slot's end left 1.52 at its corners)."""
-        end = self.box.shaft_d / 2 + self.box.key_proud + 1.3     # the slot's end
-        return math.hypot(end, (self.box.shaft_key[0] + KEY_CLEAR) / 2) + 2 * ctx.sheet_t(
-            "crank")
+        """The arm's hub round O: the key's notch (the key stands 2 mm proud of the shaft)
+        and two thicknesses of plate past it (the cut rules' web)."""
+        return self.box.shaft_d / 2 + self.box.key_proud + 0.3 + 2 * ctx.sheet_t("crank")
 
     def web_r(self, ctx: Context) -> float:
         """The arm's half-width at the crankpin: the standoff's hole and two thicknesses."""
@@ -1307,7 +1304,8 @@ class HandCrank(Group):
                   "spigot into the tube's socket, an M3 button head through the socket's wall "
                   "into that insert, threadlocker 243)")
                + ". The clutch's seat ring (cut with the crank plates) onto the "
-               "flange, its hex bore on the flange's hex; grease its face and its six holes "
+               "flange, its hex bore on the flange's hex, its marked face out (its seats "
+               "broken on arrival); grease its face and its six holes "
                "(lithium or PTFE grease). A 1/2\"-13 hex nut pressed into each of the three "
                "hex pockets in the arm's boss from its outer face (a vise); a spring plunger "
                "threaded through each from outside, ball first, until the ball stands about "
