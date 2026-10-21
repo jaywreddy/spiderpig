@@ -198,7 +198,8 @@ WASHERS: dict[float, tuple[str, str]] = {
     6.0: ("ptfe_washer_6x12x0p5", "shim_din988_6x12"),
     8.0: ("ptfe_washer_8x14x0p5", "shim_din988_8x14"),     # a cradle's M6 Chicago barrel
     10.0: ("ptfe_washer_10x16x0p5", "shim_din988_10x16"),  # a cradle's 10 mm standoffs
-    12.0: ("ptfe_washer_12x18x0p5", "shim_din988_12x18"),  # a cradle's 12 mm pillar
+    12.0: ("ptfe_washer_12x18x0p5", "shim_din988_12x18"),  # a cradle's 12 mm crankpin
+    12.7: ("ptfe_washer_13x19x0p5", "shim_din988_13x19"),  # a cradle's 1/2 in pillar
 }
 
 

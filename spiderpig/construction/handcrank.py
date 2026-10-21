@@ -352,23 +352,29 @@ RISER_THIN = (13.0, 4.0, "m8_thin_nut")
 """The riser's thin nut over the outer plate on each stud (DIN 439 M8, in the head layer):
 the plate, the shims, the sleeve and the ring clamped between it and the gearbox's face, a 13
 mm wrench on it."""
-RISER_NUT_NM = 10.0             # the thin nut's torque: TR Fastenings' A2-70 M8 14.5 N·m at a
-#                                 friction of 0.1, a thin nut's two-thirds (its stainless table,
-#                                 rendered 2026-10-14); the stud is class 8.8, the nut the limit
+RISER_NUT_NM = 9.0              # the thin nut's torque: under TR Fastenings' A2-70 M8 14.5 N·m
+#                                 at a friction of 0.1, a thin nut's two-thirds (its stainless
+#                                 table, rendered 2026-10-14); 10 until the simplification round
+#                                 1 (2026-10-21): on A2-70 studs and 6061 sleeves 9 keeps the
+#                                 stud 2 x walking and the sleeve's crush 1.3 x at A's cap
+#                                 (cradle_drive.riser_rating)
 RISER_NUT_K = (0.15, 0.2)       # the nut factor's band (threadlocker 243 wet on zinc and 18-8):
 #                                 the clamp T / (K d) at its two ends (the friction rated on the
 #                                 low clamp, the stud on the high)
-RISER_STUD = (8.0, 45.0, "m8_stud_88_45")
+RISER_STUD = (8.0, 45.0, "m8_stud_a270_45")
 """The riser's studs (design review round 3's M2: the 18-8 set screws had carried the
 gearbox in bending, and a set screw's class is for a headless screw not loaded in tension, TR
-Fastenings' note under its socket screws' torque table): M8 x 1.25 class 8.8 studs, four cut
-45 mm long from one 200 mm zinc-plated DIN 976 threaded rod (McMaster 99067A279), each
+Fastenings' note under its socket screws' torque table): M8 x 1.25 A2-70 studs (a stated
+class; the simplification round 1, 2026-10-21, the materials rule: class 8.8 steel cut from a
+DIN 976 rod before), each sawn 45 mm long from an M8 x 60 full-thread A2-70 hex screw, its head
+off (Fastenal M82580060A20000), each
 threaded into one of the face's tapped holes until it stops (threadlocker 243); its end filed
 to at most :data:`STUD_PAST_MAX` over its thin nut (thread, length, catalog key)."""
 STUD_PAST_MAX = 0.8             # a stud's end over its thin nut at most (the guide files it): the
 #                                 crank block's lowest plate passes over the four ends (design
 #                                 review round 3's m9: 1.45 mm drawn, under the stack's tolerances)
-STUD_PROOF_MPA = 580.0          # class 8.8's proof stress under M16 (ISO 898-1)
+STUD_PROOF_MPA = 450.0          # A2-70's stress at 0.2 % (ISO 3506-1): the studs' (class 8.8's
+#                                 580 until the simplification round 1)
 RISER_RING = 0.3
 """The riser's ring (design review round 3's M2): one plate of the crank sheet (0.125 in
 6061) on the gearbox's machined face, its bore this much over the face's spigot ring (it
@@ -378,11 +384,14 @@ sleeves stand on it, so the face takes their clamp over the whole ring."""
 RISER_RING_HOLE = 0.3           # its holes over the studs' thread (8.3 mm: the web to its bore
 #                                 stays over a thickness, SendCutSend's least; a stud that won't
 #                                 pass, the hole filed)
-RISER_SLEEVE = (12.0, 8.0, 20.0, "m8_sleeve_12x20")
+RISER_SLEEVE = (12.7, 8.0, 20.0, "m8_sleeve_6061_12p7x20")
 """The riser's sleeve on each stud, from the ring up to the shims under the plate (OD, bore,
-length, catalog key): 304 stainless, a snug 8.0 mm bore on the M8 stud (Harfington's 8 x 12 x
-20 mm spacers, five to a pack). 12 mm across keeps 1.5 mm off the 70 mm spigot ring on the 85
-mm PCD and 1.5 mm inside the face's 100 mm boss. Clamped, the plate, the shims, the sleeves
+length, catalog key): 6061-T6511, a 1 in piece of the posts' 1/2 in round faced to 20 mm and
+drilled 8.0 mm, a snug bore on the M8 stud (the simplification round 1, 2026-10-21, the
+materials rule: Harfington's 304 stainless 8 x 12 x 20 mm spacers before, whose annealed 205 MPa
+the clamp took past at the clutch's cap; 6061's 241 MPa on the wider ring holds it at 1.35,
+``cradle_drive.riser_rating``). 12.7 mm across keeps 1.15 mm off the 70 mm spigot ring on the
+85 mm PCD and 1.15 mm inside the face's 100 mm boss. Clamped, the plate, the shims, the sleeves
 and the ring are one stack on the face: friction carries the gearbox's side load and its turn,
 the sleeve the column's bending, the stud only its tension (round 2's printed sleeves had
 carried nothing, the studs all of it in bending over 18.7 mm)."""
@@ -443,10 +452,10 @@ A's (design review round 2's M-3) is 130 mm on a 230 mm reach: the reach puts it
 hand on its grip behind A's cradle link b2 and its rear tie Tr2 over the whole turn (round
 1's 85 mm crank on a 100 mm reach had the hand through them for 64.5° of crank) and in
 front of the base stop's rails behind the cradle (``cradle_report.hand_sweep``). A full 6
-L's worst start is 21.97 N at 130 mm run in, at the 22 N bar since design review round 2's
-12 mm tie rods (21.5 before; open: ``cradle_report.OPEN_GRIP``); at Figure 13's light-load
-maximum, 125 mm, it is 22.8 N, and a heavy-load crank (190 mm or more) meets A's bottle and
-the base stop's rails at every reach to 300 mm: so 5 mm over the light row's radius
+L's worst start is 21.5 N at 130 mm run in, under the 22 N bar (21.97, at it, from design
+review round 2's 12 mm steel tie rods to the simplification round 1's 6061 ones); at Figure
+13's light-load maximum, 125 mm, it is 22.8 N, and a heavy-load crank (190 mm or more) meets
+A's bottle and the base stop's rails at every reach to 300 mm: so 5 mm over the light row's radius
 (:data:`HANDLE_OVER_RADIUS`). Its tube is long, so its hub prints in two pieces
 (:data:`HUB_PRINT_MAX`)."""
 HANDLE_OVER_RADIUS: dict[str, float] = {"decanter_hinge": 5.0}
@@ -733,7 +742,7 @@ def journal_share(spec: HandleSpec) -> dict:
     return out
 
 
-DESIGN_START_NM: dict[str, float] = {"decanter_rcm": 2.719, "decanter_hinge": 2.858}
+DESIGN_START_NM: dict[str, float] = {"decanter_rcm": 2.66, "decanter_hinge": 2.794}
 """Per cradle, a sealed full 6 L's worst starting turn at the input (N·m) at the catalogue's
 static efficiency (:data:`NRV050`): ``cradle_report``'s ``handle_torque_nm``, which a test
 holds these to. The clutch is set on the user's own measurement; these draw it (the guide's
@@ -1442,16 +1451,18 @@ class HandCrank(Group):
                f"the face's side, collar first against the hub, its {k[0]:g} x {k[1]:g} key in "
                "its seat (the snap ring and washer on its far end); the gearbox on its back, "
                "face up, on a block with a hole for the shaft's far end. The riser's four "
-               f"studs: cut four {cut:g} mm lengths from the 200 mm M{d_stud:g} class 8.8 "
-               "threaded rod (a hacksaw; file each cut end square and run a nut on and off it "
-               "to clean its thread). Each into one of the face's four tapped holes, a drop of "
-               "threadlocker (243) on its thread, two nuts locked together on it to turn it, "
+               f"studs: saw the head off each of the four M{d_stud:g} x 60 A2-70 hex screws "
+               f"and cut it to {cut:g} mm (a hacksaw; file each cut end square and run a nut "
+               "on and off it to clean its thread). Each into one of the face's four tapped "
+               "holes, a drop of threadlocker (243) on its thread, two nuts locked together on "
+               "it to turn it, "
                f"until it stops: it stands about {stand:.1f} mm over the face (a caliper's "
                "depth rod; if it stands more than a millimetre taller, the hole's thread is "
                "short: cut the stud down to it). The riser's ring (cut with the crank plates) "
                "down over the studs onto the machined face, its bore round the raised spigot "
                "ring: it must lie flat (a stud that won't pass its hole: file the hole, never "
-               f"force it). A steel sleeve ({sl_bore:g} x {sl_od:g} x {sl_len:g} mm) down "
+               f"force it). An aluminium sleeve ({sl_bore:g} x {sl_od:g} x {sl_len:g} mm) "
+               "down "
                f"each stud onto the ring, and {n_shims} of the {shim_t:g} mm shims on each "
                "sleeve: the go/no-go may change how many.", "gearbox", sub=True),
             Op(STACK, (-1, 2), whole(*thins), "",

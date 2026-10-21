@@ -216,6 +216,172 @@ def _netrf10_of(key: str) -> Item | None:
 register_factory("pillar_shaft_10_m5_", _netrf10_of)
 register_factory("pillar_shaft_12_m6_", _netrf12_of)
 
+
+# --- the posts and tie rods: 6061-T6511 rod, faced and tapped at home -----------------------
+
+ROD_YIELD = 241.3           # MPa: 6061-T6511 extruded rod's specified minimum yield (35 ksi)
+ROD_TENSILE = 262.0         # MPa: its minimum tensile strength (38 ksi)
+ROD_SHEAR = 158.6           # MPa: its shear ultimate F_su (23 ksi), its thread's strip at it
+ROD_E = 69000.0             # MPa: 6061's modulus (as cradle_structure.E_ALU)
+ROD_BASIS = ("the Aluminum Association's Aluminum Standards and Data, Table 11.1 (extruded rod, "
+             "6061-T6511, 0.250 in and over: tensile 38.0, yield 35.0 ksi minimum, 262 / 241.3 "
+             "MPa; the ASTM B221 limits, aluminum.org/sites/default/files/2022-12/Table_11.1.pdf); "
+             "the Aluminum Design Manual 2015's B221 extrusion F_su 23 ksi, 158.6 MPa "
+             "(MIL-HDBK-5J Table 3.6.2.0(g) A-basis 26 ksi); E 69 GPa (ADM 10,100 ksi, "
+             "MIL-HDBK-5J 9,900)")
+"""Where the posts' and tie rods' ratings come from (the simplification round 1's stand check,
+2026-10-21: the materials rule, no steel in a structural part)."""
+ROD_ID = 5.0                # the strength check's bore: the M6 tap drill, as if tapped through
+ROD_THREAD = 12.0           # its M6 taps' depth (M x 2), tapped at home
+ROD_ROOT = 6.0              # its tapped ends rated as a tube to the female thread's roots
+ROD_HALF = 12.7             # 1/2 in round: the posts and the tie rods
+ROD_FACE = 1.5              # mm over its length each piece is bought, faced off at home
+ROD_STOCK: dict[float, dict] = {
+    ROD_HALF: {"in": "1/2", "url": "https://www.speedymetals.com/p-2438-12-rd-6061-t6511-"
+                                   "aluminum-extruded.aspx", "sku": "61r.5", "per_in": 0.192},
+}
+"""Speedy Metals' 6061-T6511 extruded rounds cut to length (the page and the cart, 2026-10-21;
+each length its own cart line, so its SKU is the stock's with the cut length:
+USD 0.192 an inch, each piece billed at its length rounded up to the next whole inch, cut +1/8
+-0 in; ASTM B221, diameter +-0.009 in from 0.500 to under 0.750 in): each post and tie rod
+bought as its own piece, :data:`ROD_FACE` over its length (faced square on the Carvera), so no
+piece is over 48 in and only the pivot posts are sawn at home (:data:`ROD_HARD`). The cart
+adds a process fee (about USD 8) to a line of more than ten pieces (order a cradle's posts in
+lines of ten at most) and takes no order under USD 20 (one cart with the other rods, or a stick
+to clear it)."""
+
+
+def _rod_tag(od: float) -> str:
+    return f"{od:.1f}".replace(".", "p")
+
+
+def al_rod(od: float, length: float) -> str:
+    """The catalog key of a 6061-T6511 round ``od`` mm (:data:`ROD_STOCK`), ``length`` mm long
+    and tapped M6 both ends: a cradle's post or tie rod (made on first use)."""
+    key = f"rod6061_{_rod_tag(od)}_m6_{round(length, 1):g}"
+    CATALOG.get(key)
+    return key
+
+
+def _rod_price(od: float, L: float) -> float:
+    """USD of one piece: its length and its facing allowance in whole inches (the cart's
+    billing) at the per-inch price (:data:`ROD_STOCK`)."""
+    import math
+
+    inches = math.ceil((L + ROD_FACE) / 25.4 - 1e-9)
+    return round(inches * ROD_STOCK[od]["per_in"], 3)
+
+
+def _rod_item(od: float, L: float) -> Item:
+    s = ROD_STOCK[od]
+    usd = _rod_price(od, L)
+    return Item(
+        f"rod6061_{_rod_tag(od)}_m6_{L:g}", f"{s['in']} in ({od:g} mm) 6061-T6511 round, "
+        f"{L:g} mm, faced and tapped M6 x {ROD_THREAD:g} both ends (cut to length by Speedy "
+        "Metals)", "standoff",
+        (Offer("Speedy Metals", s["url"], f"{s['sku']} cut {L + ROD_FACE:.1f} mm",
+               price_usd=usd, verified=True,
+               note=f"{s['in']} in round 6061-T6511 extruded, cut to {L + ROD_FACE:.1f} mm "
+                    f"(USD {s['per_in']:.3f} an inch in whole inches, the cart 2026-10-21): "
+                    f"faced to {L:g} mm both ends square on the Carvera, drilled 5.0 mm and "
+                    f"tapped M6 x {ROD_THREAD:g} deep each end by hand"),),
+        dims={"d": 6.0, "od": od, "length": L, "thread_depth": ROD_THREAD, "id": ROD_ID,
+              "yield_mpa": ROD_YIELD, "material": "aluminium"},
+        notes="A decanting cradle's post (a pillar or a stand column) or a cradle box's tie rod "
+              "since the simplification round 1 (2026-10-21: the materials rule, no steel in a "
+              "structural part; MISUMI's NETRF12 steel before): rated as a tube to its tapped "
+              f"ends' roots on {ROD_BASIS}.")
+
+
+def _rod_of(key: str) -> Item | None:
+    for od in ROD_STOCK:
+        pre = f"rod6061_{_rod_tag(od)}_m6_"
+        if not key.startswith(pre):
+            continue
+        try:
+            n = round(float(key.removeprefix(pre)) * 10)
+        except ValueError:
+            return None
+        L = n / 10
+        if not 250 <= n <= 6000 or f"{pre}{L:g}" != key:
+            return None
+        return _rod_item(od, L)
+    return None
+
+
+ROD_HARD = ("rod6061ha_12p7_305", 304.8, "https://www.mcmaster.com/6750K16/", "6750K16",
+            16.52)
+"""The pivots' posts' stock (the simplification round 1's stand check, 2026-10-21): McMaster's
+hard-anodized 1/2 in 6061-T6511 rod (ASTM B221, +-0.009 in, a 0.001 in hard coat), one foot,
+USD 16.52 (page rendered 2026-10-21): key, length (mm), URL, SKU, USD. A link turns on each
+pivot post (B's O1 and O2, A's G), so it turns on the hard coat, not on bare 6061 (aluminium
+galls on aluminium; a soft bore on a hard journal, as the steel posts were); the stand's
+columns and the tie rods carry no link and are bare. Sawn to length at home (its cut ends and
+taps bare)."""
+
+
+def al_rod_hard(length: float) -> str:
+    """The catalog key of a pivot post: :data:`ROD_HARD` cut to ``length`` mm, faced and tapped
+    M6 both ends (made on first use; the BOM buys the stick it's cut from:
+    ``dims["cut_from"]``)."""
+    key = f"rod6061ha_12p7_m6_{round(length, 1):g}"
+    CATALOG.get(key)
+    return key
+
+
+def _rod_hard_of(key: str) -> Item | None:
+    pre = "rod6061ha_12p7_m6_"
+    try:
+        n = round(float(key.removeprefix(pre)) * 10)
+    except ValueError:
+        return None
+    L = n / 10
+    if not 250 <= n <= 2900 or f"{pre}{L:g}" != key:
+        return None
+    stock, _, url, sku, _ = ROD_HARD
+    return Item(
+        key, f"1/2 in (12.7 mm) hard-anodized 6061-T6511 round, {L:g} mm, faced and tapped "
+        f"M6 x {ROD_THREAD:g} both ends (sawn from McMaster {sku})", "standoff",
+        (Offer("McMaster-Carr", url, sku, verified=True,
+               note=f"cut from the 1 ft stick ({stock}): the BOM buys the stick"),),
+        dims={"d": 6.0, "od": ROD_HALF, "length": L, "thread_depth": ROD_THREAD, "id": ROD_ID,
+              "yield_mpa": ROD_YIELD, "material": "aluminium", "cut_from": stock,
+              "cut_over": ROD_FACE},
+        notes="A decanting cradle's pivot post (a pillar a link turns on: B's O1 and O2, A's "
+              "G), since the simplification round 1 (2026-10-21): rated as the bare posts "
+              f"({ROD_BASIS}).")
+
+
+register(Item(ROD_HARD[0], "1/2 in hard-anodized 6061-T6511 round rod, 1 ft (McMaster "
+              f"{ROD_HARD[3]})", "standoff",
+              (Offer("McMaster-Carr", ROD_HARD[2], ROD_HARD[3], price_usd=ROD_HARD[4],
+                     verified=True, tiers=((1, ROD_HARD[4]),),
+                     note="hard-anodized 6061-T6511 extruded rod, 1/2 in, +-0.009 in, finish "
+                          "thickness 0.001 in, gray, ASTM B221, 1 ft (3 ft USD 36.72); "
+                          "length +-1/2 in; page rendered 2026-10-21"),),
+              dims={"od": ROD_HALF, "length": ROD_HARD[1], "material": "aluminium"},
+              notes="The pivot posts' stock (:data:`ROD_HARD`), sawn to length at home."))
+register_factory("rod6061ha_12p7_m6_", _rod_hard_of)
+
+ROD_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(250, 6001))
+"""The posts' and tie rods' lengths: 25-600 mm in 0.1 mm steps (each one faced to it)."""
+
+for _od in ROD_STOCK:
+    register_factory(f"rod6061_{_rod_tag(_od)}_m6_", _rod_of)
+
+register(
+    Item("m3_set_screw_5", "M3 x 5 mm set screw (ISO 4029, cup point), 18-8", "fastener",
+         (Offer("Bolt Depot", BD + "8706", "8706", price_usd=0.09, verified=True,
+                tiers=((1, 0.09), (100, 0.058)),
+                note="18-8 cup point, DIN 916 / ISO 4029, sold singly (USD 5.80 per 100); "
+                     "page rendered 2026-10-21"),),
+         dims={"d": 3.0, "length": 5.0},
+         notes="A saddle carrier's set screw up onto its tie rod (construction.cradle."
+               "CARRIER_SET_SCREW): 5 mm under the 1/2 in rods (the simplification round 1, "
+               "2026-10-21). Not in the walkers' M3 set screw lengths (crank_catalog."
+               "M3_SET_LENGTHS: their frame ties' studs choose from those)."),
+)
+
 register(
     Item("standoff_15_m8_nickel_150", "15 mm round steel standoff, 150 mm, tapped M8 both "
          "ends, electroless nickel plated (MISUMI PETR15-150)", "standoff",
@@ -499,7 +665,18 @@ register(
          (Offer("Accu", "https://accu-components.com/us/shim-washers/",
                 note="not bought by the build: its printed rings take these steps"),),
          dims={"id": 12.0, "od": 18.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
-         notes="Sizes the printed rings on a cradle's 12 mm pillar and crankpin (steps, OD)."),
+         notes="Sizes the printed rings on a cradle's 12 mm crankpin (steps, OD)."),
+    # the 1/2 in pillars' (6061 rod, the simplification round 1) printed gap rings' sizes
+    Item("ptfe_washer_13x19x0p5", "PTFE flat washer 13 x 19 x 0.5 mm", "washer",
+         (Offer("McMaster-Carr", "https://www.mcmaster.com/products/ptfe-washers/",
+                note="not bought by the build: it prints this face as a gap ring"),),
+         dims={"id": 13.0, "od": 19.0, "t": 0.5}),
+    Item("shim_din988_13x19", "DIN 988 shim ring 13 x 19 mm (0.1 / 0.2 / 0.3 / 0.5 / 1.0 mm)",
+         "washer",
+         (Offer("Accu", "https://accu-components.com/us/shim-washers/",
+                note="not bought by the build: its printed rings take these steps"),),
+         dims={"id": 13.0, "od": 19.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
+         notes="Sizes the printed rings on a cradle's 1/2 in (12.7 mm) pillar (steps, OD)."),
     Item("penlight_aaa", "AAA LED keychain light, twist switch (Olight i3E EOS), 14 x 60.5 mm",
          "electronics",
          (Offer("Battery Junction", "https://www.batteryjunction.com/products/olight-i3e-eos",
@@ -751,7 +928,7 @@ register(
                 "a24101800ux1328", pack_qty=5, price_usd=7.53, verified=True,
                 note="5 pcs, 304 stainless, 8 ID x 12 OD x 20 mm, 'for 5/16\" or M8 screw'; "
                      "the product JSON fetched 2026-10-20"),),
-         dims={"id": 8.0, "od": 12.0, "length": 20.0},
+         dims={"id": 8.0, "od": 12.0, "length": 20.0, "e_mpa": 193000.0, "yield_mpa": 205.0},
          notes="The gearbox riser's sleeves (construction.handcrank.RISER_SLEEVE): one on "
                "each stud, the ring to the shims, clamped."),
     Item("shim_8x14x0p5", "304 stainless flat shim 8 x 14 x 0.5 mm (pack of 20)", "washer",
@@ -759,7 +936,7 @@ register(
                 "a23040700ux0239", pack_qty=20, price_usd=6.14, verified=True,
                 note="20 pcs M8 304 ultra-thin flat washers 8 x 14 x 0.5 mm; the product JSON "
                      "fetched 2026-10-20 (2026-10-10 the same)"),),
-         dims={"id": 8.0, "od": 14.0, "t": 0.5},
+         dims={"id": 8.0, "od": 14.0, "t": 0.5, "e_mpa": 193000.0, "yield_mpa": 205.0},
          notes="The gearbox riser's go/no-go shims (construction.handcrank.RISER_SHIM), over "
                "each sleeve under the outer plate."),
     Item("m8_thin_nut", "M8 hex jam nut, 18-8 (13 x 4 mm)", "nut",
@@ -805,4 +982,35 @@ register(
            notes="A hand crank's grip pin (construction.handcrank.HANDLES): the printed grip "
                  "spins on its plain shank.")
       for L, (pn, each, n, bag) in {90: ("5827", 1.68, 100, 109.06)}.items()),
+)
+
+register(
+    Item("m8_stud_a270_45", "M8 x 45 stud, A2-70, sawn from an M8 x 60 full-thread hex screw "
+         "(DIN 933, Fastenal M82580060A20000)", "fastener",
+         (Offer("Fastenal", FASTENAL + "M82580060A20000", "M82580060A20000", price_usd=1.12,
+                verified=True,
+                note="M8-1.25 x 60 full-thread hex cap screw, 18-8 stainless, \"Grade A2-70\", "
+                     "ISO 3506-1; page rendered 2026-10-21. Its head sawn off and the stud cut "
+                     "to 45 mm (a hacksaw), the cut end filed and a nut run off it"),),
+         dims={"d": 8.0, "length": 45.0, "proof_mpa": 450.0},
+         notes="The gearbox's riser studs (construction.handcrank.RISER_STUD) since the "
+               "simplification round 1 (2026-10-21, the materials rule: class 8.8 steel "
+               "before): a stated A2-70, its 450 MPa stress at 0.2 % (ISO 3506-1) the proof "
+               "the riser is rated on (an 18-8 of no stated class is A2-50's 210 MPa: the stud "
+               "0.83 at the clutch's cap). A2 under an 18-8 nut galls: threadlocker 243 on the "
+               "thread, as before."),
+    Item("m8_sleeve_6061_12p7x20", "1/2 in 6061-T6511 riser sleeve, 12.7 x 20 mm, drilled 8.0 mm "
+         "(a 1 in piece cut by Speedy Metals)", "misc",
+         (Offer("Speedy Metals", ROD_STOCK[ROD_HALF]["url"],
+                f"{ROD_STOCK[ROD_HALF]['sku']} cut 1 in",
+                price_usd=ROD_STOCK[ROD_HALF]["per_in"], verified=True,
+                note="a 1 in piece of the posts' 1/2 in round (USD 0.192 an inch, whole inches, "
+                     "the cart 2026-10-21), faced to 20 mm on the Carvera and drilled 8.0 mm "
+                     "through on a drill press"),),
+         dims={"id": 8.0, "od": ROD_HALF, "length": 20.0, "material": "aluminium",
+               "e_mpa": ROD_E, "yield_mpa": ROD_YIELD},
+         notes="The gearbox riser's sleeves (construction.handcrank.RISER_SLEEVE) since the "
+               "simplification round 1 (2026-10-21, the materials rule: 304 stainless before, "
+               "whose annealed 205 MPa the clamp and the column's moment took past at the "
+               "clutch's cap): one on each stud, the ring to the shims, clamped."),
 )
