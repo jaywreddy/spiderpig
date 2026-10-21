@@ -269,7 +269,7 @@ def test_a_cradles_cutting_fit_charges_the_deburring_and_caps_the_blank():
     assert cut_estimate(key, [wide], fit) == pytest.approx(bare + 2 * 1.47, abs=0.02)
     assert cut_estimate(key, [narrow], fit) < cut_estimate(key, [wide], fit) - 2.8
     big = CutPart(1300.0, 2, 3560.0, 16, 576.0, 476.8)
-    assert 576.0 * 476.8 / 100.0 > fit.blank_cap
+    assert fit.blank_cap < 576.0 * 476.8 / 100.0
     turned = big._replace(long_mm=566.0, short_mm=463.7)
     assert cut_estimate(key, [turned], fit) == pytest.approx(cut_estimate(key, [big], fit),
                                                              rel=0.005)
@@ -913,7 +913,8 @@ def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
     a ring of the crank sheet on the gearbox's machined face, centred on its spigot ring, its
     holes' webs a thickness or more; on each stud a 6061 sleeve that sits on the face's boss
     between the spigot ring and the boss's edge, up to the plate, its length within the range
-    a 1 in piece faces to (simplification round 2: no shims), the plate over the spigot ring and the turning hub's end by ``RISER_CLEAR``; each
+    a 1 in piece faces to (simplification round 2: no shims), the plate over the spigot ring
+    and the turning hub's end by ``RISER_CLEAR``; each
     class 8.8 stud threaded a diameter or more into the face, short of its thread's depth, its
     end filed to at most ``STUD_PAST_MAX`` over its thin nut, under the crank block's lowest
     plate by half a millimetre with the go/no-go's window and the plates under the seat at
@@ -1603,7 +1604,8 @@ def test_the_guide_names_the_as_cut_parts_and_the_routed_birch():
     pin = {"links": [{"link": "b4"}, {"link": "b6"}]}
     mech.meta["wobble"] = {"pin:J": dict(pin, play_mm=0.40), "pin:K": dict(pin, play_mm=0.425)}
     words = thick_pins_words(mech)
-    assert words.startswith("Pin J carries links that") and "(by 0.01 mm)" in words
+    assert words.startswith("Pin J carries links that")
+    assert "(by 0.01 mm)" in words
     names = {t.label[:5]: t.name for t in part_types(mech)}
     assert names["LC300"].startswith("base board, CNC-routed, ")
     assert names["LC128"].startswith("crank block plate, laser-cut, ")

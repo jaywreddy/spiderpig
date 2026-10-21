@@ -1699,8 +1699,9 @@ def seat(size: BottleSize, at: Setting | None = None) -> tuple[float, float, flo
     return yf - xf * math.tan(slope), slope, 0.0
 
 
-SET_SCREW = 6.0            # an M3 cup-point set screw (the light's clip, the rear knob's hub,
-#                            the barrel nut's)
+SET_SCREW = 5.0            # an M3 cup-point set screw (the light's clip, the rear knob's hub,
+#                            the barrel nut's): 5 mm since simplification round 2 (the
+#                            carriers' length, one SKU; 6 before)
 CARRIER_SET_SCREW = 5.0    # the M3 cup-point set screw locking a carrier on each tie: 5 mm
 #                            since the 1/2 in tie rods (the simplification round 1,
 #                            2026-10-21: an M3 x 6 left 5.7 mm under a 12.7 mm rod)
@@ -2141,7 +2142,7 @@ POST = (150.0, -141.0)        # the post: 5/8 in 6061-T6511 rod (simplification 
 #                               length, its flats milled and its foot tapped M6 on the Carvera:
 #                               its length and foot. It takes the roll of a load hung at the
 #                               screw, all of it since the nut floats
-POST_KEY = "rod_6061_5_8_150"       # (hardware.cradle_catalog: Speedy Metals 2439)
+POST_KEY = "rod_6061_5_8_150"       # (hardware.cradle_catalog: McMaster 8974K48)
 POST_D = 15.875
 POST_YIELD = 241.3            # MPa: 6061-T6511 rod's least (the Aluminum Association's Table
 #                               11.1, extruded rod 0.250 in and over: 35 ksi)
@@ -2798,7 +2799,9 @@ CLIP_CUT = 33.0             # the plate's lower front, cut at 45° this far up f
 #                             foot at the saddle's back face (clear of a decanter at rest)
 CLIP_SCREW_X, CLIP_SCREW_Z = 82.5, 7.5   # its two M5 screws (their pilots 1.2 mm clear of
 #                                          the front tie's bore)
-CLIP_BITE = 7.0             # their thread in the saddle
+CLIP_BITE = 7.0             # their thread in the saddle (simplification round 2: 11 for the
+#                             base stop's M5 x 16, one SKU, put each screw's tip into the front
+#                             tie rod Tf2's bore, 4.9 mm^3: the clip keeps its M5 x 12)
 CLIP_SCREW = M5.key(CLIP_FLANGE + CLIP_BITE)    # M5 x 12
 M5_PILOT = 4.2              # a printed pilot an M5 cuts its own thread in
 
@@ -3958,9 +3961,11 @@ def shop_ops(view) -> list:
         f"Saw the pivot posts ({len(hard)}: the pillars a link turns on, {', '.join(pivots)}) "
         "from the hard-anodised 1/2 in rod, each 1.5 mm over its length (the BOM's cut list), "
         "a fine-tooth hacksaw in the vise, the rod wrapped in tape where the jaws hold it. "
-        f"The plain posts and tie rods ({len(plain)}) and the riser's sleeves come cut, 1.5 "
-        "mm over (Speedy Metals, +1/8 -0 in). The sleeves are only drilled here: each is "
-        "faced at the gearbox's step, to the gearbox's calipered height, once it has come.")
+        f"Saw the plain posts and tie rods ({len(plain)}) from McMaster's plain 1/2 in 3 ft "
+        "sticks the same way, 1.5 mm over, and the riser's four sleeves as 1 in (25.4 mm) "
+        "pieces (a mitre box keeps each cut square within the facing's 1.5 mm; the sticks' "
+        "spare is the sleeves' fallback). The sleeves are only drilled here: each is faced at "
+        "the gearbox's step, to the gearbox's calipered height, once it has come.")
     rod_lines = (
         "Face every piece but the riser's sleeves square to its length on the Carvera: the "
         "pieces lying along X in "

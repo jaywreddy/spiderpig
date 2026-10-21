@@ -28,8 +28,9 @@ self-locking worm gear reducer instead of a servo:
   the arm's whole outline, :data:`BLOCK_PLATES` of them stacked on the shaft: the lowest
   :data:`KEYED_PLATES` keyed over the key, the next bored round the shaft (every bored plate
   one file since simplification round 2: each slot cut :data:`KEY_SLOT` under the key's width,
-  the seven filed together on it to a slide fit), the *seat* on the shaft's steel end face (the riser's nuts set the end under it: the
-  guide's go/no-go; round 1's shim rings went with the fixed spacers), an M10 button head
+  the seven filed together on it to a slide fit), the *seat* on the shaft's steel end face
+  (the riser's nuts set the end under it: the guide's go/no-go; round 1's shim rings went
+  with the fixed spacers), an M10 button head
   down through it into the shaft's end tap at :data:`END_SCREW_NM` (steel and aluminium only
   in that clamp), and over
   the seat the plates that ring the end screw's head (the block's top stays where round 1 had
@@ -506,7 +507,9 @@ HANDLE_THUMB = (10.0, 10.0, 6.0)   # the thumb screw down onto that key: an M3 x
 #                                 the hub to the key (simplification round 1, 2026-10-21: the
 #                                 knurled McMaster 92545A115 and its brass heat-set insert went:
 #                                 no soldering iron; threadlocker 222 on its thread)
-CAP_SCREW = 8.0                 # the cap's: an M3 x 8 socket head and knob into the journal's nut
+CAP_SCREW = 10.0                # the cap's: an M3 x 10 socket head and knob into the journal's
+#                                 nut (8 until simplification round 2: the thumb screw's length,
+#                                 one SKU for the two)
 NUT = "m3_nut"                  # the captured nuts (DIN 934 M3, 18-8): each in a slot trap
 NUT_FIT = 0.15                  # a nut slot's clearance round the nut, each side (as the deck's)
 NUT_ROOF = 2.4                  # PETG between a nut and the face it pulls toward, at least
@@ -864,8 +867,9 @@ def riser_for(z0: float, a0: float, t: float, box: WormBox = NRV050,
     under it; the shaft's end drawn at the seat; the face under it by the shaft's and the
     hub's lengths; on the face the ring and the sleeve up to the plate (the sleeves set it,
     faced to the gearbox's measured height: a hub prouder or lower than drawn takes a sleeve
-    shorter or longer, within :data:`RISER_SLEEVE_RANGE`); each stud threaded :data:`STUD_IN` diameters or more into the face, short of
-    its tapped depth, up through the stack and its thin nut, its end filed to at most
+    shorter or longer, within :data:`RISER_SLEEVE_RANGE`); each stud threaded
+    :data:`STUD_IN` diameters or more into the face, short of its tapped depth, up through
+    the stack and its thin nut, its end filed to at most
     :data:`STUD_PAST_MAX` over the nut, so the crank block's lowest plate clears it with the
     go/no-go's window and the plates under the seat at their thickest (design review round
     3's m9). :class:`ConstructionError` if any of it doesn't hold."""

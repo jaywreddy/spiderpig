@@ -1264,18 +1264,15 @@ CRADLE_GREASE_NOTE = (
 """A decanting cradle's (:mod:`construction.cradle`; review round 1, m9; round 2, N5 and the
 drive's B-1)."""
 CRADLE_CARTS_NOTE = (
-    "The carts (simplification round 1, 2026-10-21: folded to seven and the upload). Their "
-    "shipping isn't in the totals; priced only where a page or a cart gave it that day: "
-    "SendCutSend free in the US over USD 39; Woodcraft standard USD 13.99 to 94103 for the "
-    "panels and the glue (its cart's rates). Unpriced: McMaster-Carr (\"applicable shipping "
-    "and tax will be added\", no order minimum), Bolt Depot, Fastenal, Phidgets (from "
-    "Calgary: shipping, duties and brokerage at checkout), Battery Junction, and Speedy "
-    "Metals (FedEx, calculated at checkout with an account). Speedy takes no order under USD "
-    "20 (one cradle's rods come to less: order both cradles' in one cart, or add a stick) and "
-    "adds a process fee of about USD 8 to a line of more than ten pieces (A's twelve posts: "
-    "two lines of six). One cart fewer: McMaster's multipurpose 6061 rod (8974K28, 1/2 in, "
-    "+-0.006 in, 6 ft USD 13.75; 8974K48, 5/8 in, 1/2 ft USD 3.25) in place of Speedy's "
-    "pieces, every piece sawn at home before it is faced.")
+    "The carts (simplification round 1, 2026-10-21: folded to seven and the upload; round "
+    "2: six, the rods from McMaster's sticks, sawn at home, in place of Speedy Metals' cut "
+    "pieces, whose cart took no order under USD 20 and shipped FedEx on an account only). "
+    "Their shipping isn't in the totals; priced only where a page or a cart gave it that "
+    "day: SendCutSend free in the US over USD 39; Woodcraft standard USD 13.99 to 94103 for "
+    "the panels and the glue (its cart's rates). Unpriced: McMaster-Carr (\"applicable "
+    "shipping and tax will be added\", no order minimum; its rods 3 ft and under, no "
+    "oversize parcel), Bolt Depot, Fastenal, Phidgets (from Calgary: shipping, duties and "
+    "brokerage at checkout) and Battery Junction.")
 """A decanting cradle's ORDER.md note on its carts (simplification round 1: McMaster's pages
 rendered 2026-10-21, Woodcraft's cart's shipping rates, Speedy's cart; ``order.py`` lists
 each cart)."""

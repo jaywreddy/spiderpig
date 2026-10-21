@@ -189,7 +189,7 @@ stops there:
     speed (`handcrank.agma_mu`): 0.558 at 100 rpm, MIL-STD-1472H's crank rate. The clutch's
     cap takes it (a cradle blocked while the handle turns stops the worm at that speed).
   - **The riser** (`handcrank.riser_for`, `RISER_STUD`, `RISER_RING`, `RISER_SLEEVE`,
-    `RISER_SHIM`, `RISER_THIN`; round 3's M2): a clamped stack on the face, which stands 25.2
+    `RISER_SLEEVE_RANGE`, `RISER_THIN`; round 3's M2): a clamped stack on the face, which stands 25.2
     mm under the plate's outer face, the spigot ring and the hub's end well under it whatever
     their heights.
     - Four M8 class 8.8 studs, cut 45 mm from one 200 mm zinc-plated DIN 976 rod (McMaster
@@ -204,7 +204,9 @@ stops there:
       clears the spigot by 1.5 mm on the 85 mm PCD, the stock size that does.
     - The go/no-go's shims over the sleeves (0.5 mm, 8 x 14, twenty to a pack, four DIN 125
       washers as coarse ones): about four a stud drawn; a clone's hub prouder or lower than
-      drawn is shimmed out, a millimetre either way.
+      drawn is shimmed out, a millimetre either way. (Until simplification round 2: since,
+      the sleeves are faced to the gearbox's calipered height, 21-23 mm, `RISER_AIM` over
+      the go/no-go window's low end, and no shim is bought.)
     - The plate, and a thin nut over it on each stud at 10 N·m: one stack, clamped. Friction
       carries the gearbox's side load and turn, the sleeves the columns' bending, the studs
       their tension (`cradle_drive.riser_rating`): walking it doesn't slip at an oiled
@@ -234,10 +236,12 @@ stops there:
     - The lowest three are keyed on the 8 mm key's straight flanks (`KEYED_PLATES`; the
       keyseat is end-milled, so the key's ends are round). Their slots are cut 0.25 mm
       under the key (`KEY_SLOT`: a laser's ±0.13 stays under it) and filed together on the
-      key to a slide fit, so each bears (round 2's m4). The three over them, up to the
-      seat, are slotted 0.4 mm wider than the key (`KEY_CLEAR`), clear of it: only the
-      keyed three are filed, and only they bear (round 2's laser-cut review, its minor 2:
-      round 1 had cut all seven slotted plates at the key's width and counted four). One
+      key to a slide fit, so each bears (round 2's m4). Since simplification round 2 every
+      bored plate is the same cut (one file of seven, USD 3.64 less live): all seven are
+      stacked and filed together on the key before the block goes together, and still only
+      the keyed three bear (round 2's laser-cut review, its minor 2: round 1 had cut all seven
+      slotted plates at the key's width and counted four; the three over them had been
+      slotted 0.4 mm wider than the key until simplification round 2). One
       plate alone holds 49.4 N·m at bearing yield on the sheet's thinnest, 3.048 mm
       (`handcrank.PLATE_UNDER`: SendCutSend's 0.125 in 6061, +0.152 / -0.127 mm, its spec
       table fetched 2026-10-15), 1.40 x B's walking peak; the three 148 (2.35 x the cap).

@@ -235,8 +235,9 @@ class StandoffAxle:
         through each plate's 6.4 mm hole, a DIN 125 washer under it at its foot only
         (simplification round 2, 2026-10-21: :data:`construction.cradle.HEAD_WASHED`; at both
         ends since design review round 2's m2, 2026-10-15, when the 10.5 mm heads had borne on
-        the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated class). Its bottle's load bends a 6 mm column between plates
-        too far (B's O1 at the 3 L's jam: SF 0.4, ``cradle_report``), a 10 mm steel one at the
+        the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated class). Its bottle's
+        load bends a 6 mm column between plates too far (B's O1 at the 3 L's jam: SF 0.4,
+        ``cradle_report``), a 10 mm steel one at the
         6 L's (0.78); 1/2 in 6061 is 1.6 x as stiff as the 10 mm steel and stronger at its
         tapped ends (ASTM B221's 241 MPa minimum against the steel's 235). Its links turn on
         it in 13.05 mm bores (its running fit). Its heads and washers, 4.9 mm, stand outside
@@ -655,7 +656,7 @@ class StandoffAxle:
                           + " while the column is bare to hold.", "columns"))
         if inner:
             ops.append(Op(JOIN, (1,), whole(*inner), "",
-                          (f"Each pillar's inner button head "
+                          ("Each pillar's inner button head "
                            + ("and washer " if "end" in self.washer_ends else
                               "(straight on the deburred plate: no washer) ")
                            + f"from the bay side, threadlocker, to {self.tighten_nm:g} N·m."
