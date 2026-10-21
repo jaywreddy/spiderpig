@@ -2572,9 +2572,13 @@ identity gate against `planner-f667d6b` is identical.
   lifts; the screws hold A2-70's proof 1.95 x; under the bare 12 mm edges the 5052 would pass
   VDI 2230's limiting pressure (Table A9: 5052 isn't in it; AlMg4.5Mn's 325 MPa scaled to
   5052-H32's tensile, 269), so an 18 mm 18-8 fender washer (Bolt Depot 7315, in the order
-  already) goes under every post's foot and both ends of every column (`cradle.FACE_WASHER`;
-  a pillar's inner end needs none, and O1's couldn't have one: b6). S_P 1.29 (B, column E2's
-  foot) and 1.61 (A). Walking every face shut at the least preload on B (0.99), none slipping;
+  already) goes on both ends of every post (`cradle.FACE_WASHER`; a pillar's inner one in
+  the clearance gap under the inner plate, where its printed gap ring had been): a pillar's
+  inner end needed none, but with a washer at each end every post of a side is one length
+  (`StandoffAxle.segment` takes a cradle post's gap to 0.01 mm; the columns' standoffs by the
+  same rule), one part number at its ten's price: B's twelve NETRF12-71.8 USD 71.88 (10 of
+  75.2 and 2 of 59.3 had been 92.50), A's sixteen 53.2. S_P 1.29 (B, column E2's foot) and
+  1.61 (A). Walking every face shut at the least preload on B (0.99), none slipping;
   the guide's column steps and the use limits say 4 N·m, and back to it after a clutch slip.
 - **M3, the blocked thresholds:** each angle pushed as far as its clutch lets it, not the
   least over the turn (`_block_threshold`, its structure with the block's tie rods). The rear
@@ -2594,6 +2598,12 @@ identity gate against `planner-f667d6b` is identical.
   button head at 8 N·m holds each). The packs: the wider frames land B's drive panel on the
   cradle box (unsupported, 157.5 L) and stand A's panels 255 mm tall (`PACK_OPEN`): the
   packing round re-plans them.
+- **The BOM** (`spiderpig build`, against the reviewed snapshot's): B USD 1,374.22 to
+  1,342.12 (-32.10: the standoffs -20.62, 29 fender washers +2.88, the screws +0.16; the
+  cutting -14.52, b2 out of 7075 -80.44 against the 5052's +65.92 for b2, the wider frames
+  and b6's arm), 59 lines to 57. A USD 1,056.74 to 1,119.08 (+62.34: its column E2 a side,
+  2 standoffs, 4 screws and 4 washers, 39 fender washers, +17.54; the cutting +44.80 for
+  the wider frames and the inner plate's chord to E2). No new SKU.
 - **The drive's numbers moved:** b6's wider arm took B's worst start to 2.717 N·m at the
   input (`handcrank.DESIGN_START_NM`, 2.712), its drawn clutch's cap to 63.9 N·m
   (`config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`). The structure holds it, and at the drive

@@ -1775,8 +1775,10 @@ frame that wasn't the one built, and leaning on idealizations as large as its ma
   shut at the least and not slipping, and at the cap its screw within A2-70's proof at 1.3
   and the plate under it within VDI 2230's limiting pressure (5052 not tabulated: AlMg4.5Mn's
   325 MPa scaled to 5052's tensile, 269; its R10's S_P 1). At the cap every face lifts: the
-  bare 12 mm edges would have dented the 5052, so an 18 mm fender washer goes under every
-  post's foot and both ends of every column (`cradle.FACE_WASHER`), and the guide takes the
+  bare 12 mm edges would have dented the 5052, so an 18 mm fender washer goes on both ends
+  of every post (`cradle.FACE_WASHER`; a pillar's inner one in the clearance gap under the
+  inner plate), every post of a side one length (B's twelve NETRF12-71.8, A's sixteen 53.2:
+  one part number, at its ten's price), and the guide takes the
   screws back to 4 N·m after a clutch slip.
 - **Searches a block over the push each angle's clutch lets through** (its M3,
   `_block_threshold`): where gravity helps the turn, up to 48 N at the grip, not the least
@@ -2198,10 +2200,12 @@ Things to know before cutting and on the bench:
     x0.78, 0.250 in x0.76, 6061 x0.72, the birch x0.75. It had been a flat 0.72.
   - Every quoted file is within 11 % (`tests/test_cradle.py` holds it). B comes to USD
     760.28 against 758.19 quoted, A to 580.03 against 573.82.
-  - Today's files, with the side frames' redesign of 2026-10-20: B's cutting USD 860.49
-    (5052 0.187 in 347.50, 7075 177.42, the birch 237.84, 6061 75.00, 0.250 in 22.73), the
-    whole build USD 1,373.94 (purchases 513.45). A's cutting is USD 642.93 (5052 0.187 in
-    311.44), the whole build 1,056.74 (purchases 413.81). (Round 2's drive merged, before
+  - Today's files, with design review round 3's frames (2026-10-20): B's cutting USD
+    845.97 (5052 0.187 in 413.42, 7075 96.98, the birch 237.84, 6061 75.00, 0.250 in 22.73),
+    the whole build USD 1,342.12 (purchases 496.15). A's cutting is USD 687.73 (5052 0.187
+    in 356.24), the whole build 1,119.08 (purchases 431.35). (The side frames' redesign of
+    2026-10-20, before round 3: B 860.49 and 1,374.22, A 642.93 and 1,056.74; round 2's
+    drive merged, before
     the redesign: B 797.23 and 1,307.24, A 605.39 and 1,005.50; before that merge B 768.44
     and 1,190.54, A 580.35 and 920.93.)
   - Until round 2 the BOM printed B's cutting at USD 301.58. That left out a "USD 68-136"
