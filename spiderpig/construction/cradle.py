@@ -5209,7 +5209,9 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
             "Stand the riser's two blocks, each on its lift, on a folded towel and lay the "
             "drive side panel on "
             f"them and its gearbox, outer plate down: {blocks}.", "drive",
-            (f"Its pins {names} stand in their links on their keepers, their clips out: push "
+            (f"Out of its box, peel the tape off {nudge} and b3 at their paint line first: "
+             f"{nudge} swings free again, for the cradle box's pin {second or pins[0]}.",
+             f"Its pins {names} stand in their links on their keepers, their clips out: push "
              "each down by its head, fully home. Then press each one's tip with a thumb, "
              f"hard (about {KEEPER_PUSH_N / 9.81:.0f} kg): it mustn't slide; a keeper that "
              "lets its pin slide has relaxed (reprint it 0.2 mm tighter at home; meanwhile "
@@ -5237,7 +5239,9 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
             f"{names} held in its links by their clips, and set its links to the pack pose by "
             f"the paint marks: {pose.marks}.", "set",
             (f"A strip of masking tape across b3 and the inner bar holds them while the panel "
-             f"turns over ({nudge} stays free: it is the one nudged into place).",),
+             f"turns over ({nudge} stays free: it is the one nudged into place). Out of its "
+             f"box it has both strips on: keep b3's, peel the one across {nudge} and b3 "
+             "off.",),
             Scene("pack", "passive", show=("passive",), marks=(r"R\.b[35]",))),
         ModuleStep(
             "turned over",

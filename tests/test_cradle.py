@@ -3624,35 +3624,60 @@ def test_the_guide_puts_the_pieces_and_their_spacers_in_the_box(monkeypatch):
 
     layout = {
         "modules": [{"key": "base", "label": "Base board", "on": ["floor"]},
-                    {"key": "box", "label": "Cradle box", "down": "bottom", "on": ["base"]},
+                    {"key": "box", "label": "Cradle box", "down": "bottom", "on": ["base"],
+                     "taped": "base"},
                     {"key": "drive", "label": "Drive side panel", "down": "outer",
                      "on": ["base", "spacer_3a"]}],
         "spacers": [{"key": "spacer_3a", "label": "Spacer 3a", "under": "drive",
                      "on": ["base"], "bears": ["L.gearbox", "base_plate"], "why": "support",
                      "rank": 1.5, "pads": ["3a"]},
                     {"key": "spacer_box_px", "label": "Spacer box_px", "under": "box",
-                     "on": ["floor"], "why": "restraint +x", "rank": -0.75, "pads": []}]}
+                     "on": ["floor"], "why": "restraint +x", "rank": -0.75, "pads": []},
+                    {"key": "spacer_9", "label": "Spacer 9", "under": "drive",
+                     "on": ["drive"], "why": "restraint +y", "rank": 2.25, "pads": [],
+                     "taped": "drive"}],
+        "arrow": {"words": "the board's end away from its riser locator"}}
     into, out = cp.box_steps(layout)
     # (a step a layer since pack turn 3: the pieces before the first side panel, then each
     # panel with its own spacers; review 2's M2)
     assert [t for t, _ in into] == ["The base board and the cradle box",
                                     "The drive side panel"]
     first, drive = into[0][1], into[1][1]
-    assert first[0].startswith("Each printed spacer goes in its engraved number up")
+    # (the arrows' end as the payload names it, from where the pieces lie: review 3's M1)
+    assert first[0] == ("Each printed spacer goes in its engraved number up, its arrow toward "
+                        "the board's end away from its riser locator, as the picture shows.")
     assert first[1].startswith("Spacer box_px on the carton's floor, where the cradle box will "
                                "stand")                # (ranked before the board: made up)
     assert first[2] == "The base board, on the carton's floor."
-    assert first[-1].startswith("Then the cradle box")
+    assert first[3].startswith("Then the cradle box")
+    assert first[4].startswith("Tape the cradle box to the base board")
     assert drive[0].startswith("Spacer 3a on the base board, under where the drive side "
                                "panel comes")
     assert "the drive side's gearbox" in drive[0]
-    assert "its outer plate down" in drive[-1]
-    assert out == [("The drive side panel", ["Lift the drive side panel straight up and out.",
-                                             "Then Spacer 3a."]),
+    assert "its outer plate down" in drive[1]
+    assert drive[2].startswith("Spacer 9 on the drive side panel, holding it down")
+    # out: every strip of tape peeled before what it holds comes out (review 3's M4)
+    assert out == [("The drive side panel", ["Peel the tape off Spacer 9 and lift it out.",
+                                             "Then lift the drive side panel straight up "
+                                             "and out.", "Then Spacer 3a out."]),
                    ("The base board and the cradle box",
-                    ["Lift the cradle box straight up and out.",
+                    ["Peel the tape off the cradle box.",
+                     "Then lift the cradle box straight up and out.",
                      "Then lift the base board straight up and out.",
-                     "Then Spacer box_px."])]
+                     "Then Spacer box_px out."])]
+    # the stock carton (review 3's M5): its spare filled before the board, a top sheet with
+    # a hole round the lip gauge, closed, marked; out, opened first, the filler kept
+    boxed = layout | {"mass_kg": 17.6, "packed_mm": [728.4, 350.5, 585.0],
+                      "top": {"kept": ["front_saddle_gauge"]}}
+    into, out = cp.box_steps(boxed)
+    assert into[0][1][0].startswith("The carton: Uline S-4509 (30 x 24 x 24 in inside, cut down "
+                                    "at its 14 in score; ORDER.md). Fill the carton's spare "
+                                    "first: 32 mm across one end and 23 mm along one side")
+    assert "round the lip gauge" in into[-1][1][-2]
+    assert "THIS SIDE UP" in into[-1][1][-1]
+    assert "NOT FOR A CARRIER" in into[-1][1][-1]
+    assert out[0][1][0] == "Cut the tape on the flaps, open them and lift the top sheet off."
+    assert out[-1][1][-1] == "The carton's filler stays in it for the trip back."
 
     def step(n: int, title: str) -> Step:
         return Step(n, title, "use", "Using it", None, [], [], [], ["..."], "robot")
@@ -3673,8 +3698,9 @@ def test_the_guide_puts_the_pieces_and_their_spacers_in_the_box(monkeypatch):
     pics = [s.scene for s in got[2:6]]
     assert all(p is not None and p.pose == "box" for p in pics)
     assert set(pics[0].marks) == {"spacer_box_px", "base", "box"}
-    assert set(pics[1].show) == {"spacer_box_px", "base", "box", "spacer_3a", "drive"}
-    assert set(pics[2].marks) == {"spacer_3a", "drive"}
+    assert set(pics[1].show) == {"spacer_box_px", "base", "box", "spacer_3a", "drive",
+                                 "spacer_9"}
+    assert set(pics[2].marks) == {"spacer_3a", "drive", "spacer_9"}
     assert make.with_box_steps(steps, BuildConfig(linkage="decanter_hinge", robot=False),
                                SimpleNamespace(meta={"cradle": True}), None) == steps
 
@@ -3798,6 +3824,57 @@ def test_nothing_bears_on_a_part_kept_clear_and_what_lifts_gets_a_cap():
     assert (m["overlaps"], m["order_faults"], m["unsupported"]) == ([], [], [])
 
 
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_tape_holds_nothing_up_and_a_far_lid_gets_a_corrugated_column():
+    """Packing review 3's m3 (pack turn 4): tape holds a piece along the floor, not up
+    (``voxpack.metrics``' ``taped``: B's hand crank had 226 mm to lift under two strips); a
+    block 250 mm under the lid, past what a printed cap reaches (``CAP_REACH``), gets a
+    column of corrugated to the lid instead (``_cap``'s ``filler``: "filler +y"), and the
+    printed restraints beside it that hold it along the floor: a cap that only stands on
+    it rides with it (``metrics``' ``riders``, ``_Spacers.free``), so it is no restraint
+    sideways."""
+    from spiderpig import voxpack as vp
+
+    def piece(key, boxes, mass):
+        ms = [vp.box_mesh(lo, hi) for lo, hi in boxes]
+        return vp.Packed(key, key, ms, mass, np.mean([(np.add(lo, hi)) / 2 for lo, hi in boxes],
+                                                      axis=0), 1.0, [key] * len(ms))
+
+    base = piece("base", [((-150, 0, -120), (150, 9, 120))], 3.0)
+    post = piece("post", [((100, 9, -100), (140, 300, -60))], 1.0)     # (the lid 300 up)
+    block = piece("block", [((-120, 9, 40), (-60, 50, 100))], 0.8)
+    pieces = [base, post, block]
+    g = vp.occupancy(pieces)
+    rows = vp.metrics(pieces, grid=g)["pieces"]
+    taped = {r["key"]: r for r in vp.metrics(pieces, grid=g, taped={"block": "base"})["pieces"]}
+    assert taped["block"]["free_mm"]["+y"] > 200.0          # (taped down: it still lifts)
+    kit = vp.spacers(g, rows)
+    col = [sp for sp in kit if sp.why == "filler +y"]
+    assert len(col) == 1
+    assert (col[0].under, col[0].on) == ("block", ("block",))
+    assert max(col[0].size_mm()) > vp.CAP_REACH * vp.CELL
+    assert any(sp.under == "block" and sp.why.startswith("restraint") for sp in kit)
+
+    def packed(sp):
+        vol, cen = vp.mesh_volume(*sp.mesh())
+        return vp.Packed(sp.key, sp.key, [sp.mesh()], 0.01, cen, vol, [sp.key])
+
+    order = sorted([(float(i), 0, pc) for i, pc in enumerate(pieces)]
+                   + [(sp.rank, 1, packed(sp)) for sp in kit], key=lambda t: (t[0], t[1]))
+    judged = [pc for *_, pc in order]
+    g2 = vp.occupancy(judged, (g.lo, g.hi))
+    riders = {sp.key: sp.on[0] for sp in kit if len(sp.on) == 1 and sp.on[0] != "floor"}
+    by = {r["key"]: r for r in vp.metrics(judged, grid=g2, riders=riders)["pieces"]}
+    assert by["block"]["slide_mm"] <= vp.CELL, by["block"]["free_mm"]   # (up too: its column)
+    # (without its restraints, the block and its column slide together: loose)
+    alone = [pc for pc in judged if pc.key not in {sp.key for sp in kit
+                                                   if sp.why.startswith("restraint")}]
+    g3 = vp.occupancy(alone, (g.lo, g.hi))
+    by = {r["key"]: r for r in vp.metrics(alone, grid=g3, riders=riders)["pieces"]}
+    assert by["block"]["slide_mm"] > vp.CELL
+
+
 def _box_of(sp, g) -> tuple[slice, slice, slice]:
     """A spacer's cells' place on its grid ``g`` (its ``vox`` there)."""
     v = sp.vox()
@@ -3844,6 +3921,32 @@ def test_a_spacer_prints_on_the_bed_numbered_and_laid_flat():
     rot, down = vp.print_pose(tower)
     assert down != "-y"
     assert np.rint(rot @ [0, 1, 0])[2] == 0                         # (lying down)
+    # a 6 mm bar 186 mm long from a 30 mm foot (1.5 mm cells, packing review 3's m1: B's
+    # spacer 6 stood 249 mm on 531 mm^2): standing on its foot it has no overhang, but it is
+    # a tower; it lies down, its bar a ceiling no bridge reaches: supports on
+    bar = np.zeros((124, 20, 20), bool)
+    bar[:4] = True
+    bar[:, 8:12, 8:12] = True
+    rot, down = vp.print_pose(bar, 1.5)
+    laid = vp.Vox(bar, np.zeros(3), 1.0).turned(rot).occ
+    assert down != "-x"
+    assert laid.shape[2] * 1.5 <= vp.PRINT_TALL
+    assert vp.ceiling(laid, 1.5)[1] * 1.5 ** 2 > vp.SUPPORT_MM2
+    stood = vp.Vox(bar, np.zeros(3), 1.0).turned(
+        np.asarray(((0, 1, 0), (0, 0, 1), (1, 0, 0)), float)).occ   # ("-x" down: on its foot)
+    assert stood.shape[2] * 1.5 > vp.PRINT_TALL
+    assert vp.ceiling(stood, 1.5) == (0, 0)
+    # a spacer in two bodies (cells sharing no face: a slicer refuses the STL, review 3's M2)
+    # is two spacers, each one body
+    two = np.array([(i, k, 4, 10) for i in range(1, 20) for k in range(1, 8)]
+                   + [(i, k, 4, 10) for i in range(30, 50) for k in range(1, 8)], np.int64)
+    sp2 = st.commit(vp._Spec([(1, 50, 1, 8)], np.zeros((1, 1, 3), np.int64), 0.5, "rail", (),
+                             ("rail",)), two, "spacer_y")
+    got = vp._fit_bed(st, sp2)
+    assert len(got) == 2
+    assert all(vp._label(q.vox().occ)[1] == 1 for q in got)
+    assert sum(q.volume for q in got) == pytest.approx(sp2.volume)
+    assert cp.spacer_print(got[0].to_json() | {"key": "spacer_08"})[1]["bodies"] == 1
     (pos, tri), info = cp.spacer_print(sp.to_json() | {"key": "spacer_07"})
     assert max(info["size_mm"]) > vp.SPACER_BED                      # (the whole, uncut)
     (pos, tri), info = cp.spacer_print(parts[0].to_json() | {"key": "spacer_07"})
@@ -3852,6 +3955,49 @@ def test_a_spacer_prints_on_the_bed_numbered_and_laid_flat():
     assert pos.min() == pytest.approx(0.0)
     vol, _ = vp.mesh_volume(pos, tri)
     assert vol < parts[0].volume                                     # (its label cut in)
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_arrows_end_is_named_by_what_lies_there():
+    """Packing review 3's M1 (pack turn 4): every spacer's engraved arrow points to the
+    carton's +x end (``voxpack.engrave``), and the box steps name that end by where the
+    pieces lie (``cradle_pack.arrow_end``), not by a word per cradle that a new plan can
+    turn round: by the board's riser locator (in the carton when the first spacer goes in)
+    and the drive side's gearbox that goes at the +x end; turned end for end, the words
+    turn too."""
+    from spiderpig import cradle_pack as cp
+    from spiderpig import voxpack as vp
+
+    def packed(key, parts):
+        ms = [vp.box_mesh(lo, hi) for lo, hi in parts.values()]
+        return vp.Packed(key, key, ms, 1.0, np.zeros(3), 1.0, list(parts))
+
+    def layout(flip):
+        s = -1.0 if flip else 1.0
+
+        def box(x0, x1, y0, y1):
+            a, b = sorted((s * x0, s * x1))
+            return ((a, y0, -50.0), (b, y1, 50.0))
+
+        board = packed("base", {"base_plate": box(-400, 200, 0, 9),
+                                "riser_locator_0": box(-380, -250, -9, 0)})
+        drive = packed("drive", {"L.frame_outer": box(-350, 150, 20, 26),
+                                 "L.gearbox": box(100, 190, 26, 80)})
+        return [board, drive], np.array([min(s * -403, s * 203), -12, -53]), \
+            np.array([max(s * -403, s * 203), 83, 53])
+
+    got = cp.arrow_end(*layout(False))
+    assert got == {"words": "the board's end away from its riser locator, where the drive "
+                            "side's gearbox goes", "toward": ["L.gearbox"],
+                   "away": ["riser_locator_0"]}
+    got = cp.arrow_end(*layout(True))       # (end for end: the gearbox at -x now)
+    assert got["words"] == "the board's end with its riser locator"
+    assert got["toward"] == ["riser_locator_0"]
+    # (and nothing bears on the light's printed clip either: review 3's M3, ``led`` alone
+    # had missed it, and B's cradle box had been stopped through it)
+    assert all(cp.keep_clear(n) for n in ("led", "led_clip", "led_clip_screw0"))
+    assert not cp.keep_clear("L.b6")
 
 
 @pytest.mark.no_fabricate
@@ -3883,7 +4029,24 @@ def test_the_carton_fits_the_pack_and_is_rated_for_it():
                                "packed_mm": [728.4, 350.5, 585.0]}, 17.6)
     assert any("S-4509" in ln and "14 in score" in ln for ln in tall)
     assert any("zone 5 $211.30" in ln for ln in tall)
-    assert any("$51.10 less" in ln for ln in tall)
+    # the stock carton is the choice (the user's, 2026-10-21: packing review 3's M6); the
+    # made-to-size carton an option only, its spare filled and topped (M5), and a carrier's
+    # outer box with 1.5 in of foam, 128 in of length and girth (2 in would be past USPS's
+    # 130: m7)
+    assert any(ln.startswith("The stock carton is the one to ship in") for ln in tall)
+    assert any(ln.startswith("An option only") and "$51.10 less" in ln for ln in tall)
+    assert not any("taped down from a larger carton" in ln for ln in tall)
+    assert any("32 mm across one end and 23 mm along one side" in ln
+               and "one flat sheet" in ln for ln in tall)
+    assert any("1.5 in of foam" in ln and "128 in of length and girth" in ln
+               and "NOT FOR A CARRIER" in ln for ln in tall)
+    assert sh.carrier_option((30.5, 24.5, 14.75), 0.25)["foam_in"] == 1.5
+    # A in S-12613 (67 mm over its top: review 3's M5): layers to the lid
+    a_lines = sh.ship_lines("A", {"box": {"inside_mm": [690.0, 241.6, 597.0]},
+                                  "packed_mm": [684.0, 235.6, 591.0]}, 17.1)
+    assert any("S-12613" in ln for ln in a_lines)
+    assert any("7 flat sheets" in ln and "67 mm to the carton's top edge" in ln
+               for ln in a_lines)
     assert any("S-12613" in ln for ln in lines)
     assert any("zone 5 $165.70" in ln for ln in lines)
 
@@ -4295,7 +4458,14 @@ def test_the_cradle_packs_in_one_box(key):
     mech = fabricate(template_for(cfg), cfg, t)
     p = flat_pack(mech, cfg.lk, t)
     assert p["plan"] == PACK_PLANS[key].name
-    from spiderpig.cradle_pack import STUB, keep_clear_cells, part_infos, stub_shape, taped_of
+    from spiderpig.cradle_pack import (
+        STUB,
+        keep_clear_cells,
+        part_infos,
+        riders_of,
+        stub_shape,
+        taped_of,
+    )
 
     shipped = {b.name: b for b in mech.bodies if b.part is not None and b.fab != "display"}
     names = [n for m in p["modules"] for n in m["parts"]]
@@ -4306,6 +4476,7 @@ def test_the_cradle_packs_in_one_box(key):
     lo = np.asarray(p["box"]["floor"], float)
     hi = lo + np.asarray(p["box"]["inside_mm"], float)
     pieces = []
+    at_x: dict[str, float] = {}         # (each part's middle along x, packed)
     for kind, m in in_order(p):         # (the printed spacers at their places in the order)
         if kind == "spacer":
             pieces.append(spacer_packed(m))
@@ -4319,6 +4490,7 @@ def test_the_cradle_packs_in_one_box(key):
             bb = sh.bounding_box()
             assert (np.array([bb.min.X, bb.min.Y, bb.min.Z]) >= lo - 0.05).all(), (n, lo)
             assert (np.array([bb.max.X, bb.max.Y, bb.max.Z]) <= hi + 0.05).all(), (n, hi)
+            at_x[n] = (bb.min.X + bb.max.X) / 2
             shapes.append(sh)
             kept.append(n)
         got = [(n, (np.asarray(q, float), np.asarray(i).reshape(-1, 3)))
@@ -4336,7 +4508,8 @@ def test_the_cradle_packs_in_one_box(key):
     grid = vp.occupancy(pieces, (org, hi))
     # (nothing rests on a gauge, a clip, the gearbox or a screw head: pack turn 3, B1)
     judged = vp.metrics(pieces, (org, hi), grid=grid,
-                        bearless=keep_clear_cells(pieces, grid, key), taped=taped_of(p))
+                        bearless=keep_clear_cells(pieces, grid, key), taped=taped_of(p),
+                        riders=riders_of(p))
     # (a spacer is shaped to the pack's meshes; the parts tessellated again here, a curve's
     # chords lie a little otherwise: a sliver of its TPU, under SPACER_SLIVER mm^3, gives)
     assert [o for o in judged["overlaps"] if (not o["a"].startswith("spacer_")
@@ -4376,6 +4549,19 @@ def test_the_cradle_packs_in_one_box(key):
         assert p["box"]["volume_l"] <= litres, p["box"]
     assert p["modules"][0]["key"] == "base"
     assert 0.0 < p["fill"] < 0.2
+    # the spacers' arrows point to the carton's +x end, and the box steps name it by parts
+    # that lie there (packing review 3's M1: turn 3 had turned the box, not the words)
+    mid = (lo[0] + hi[0]) / 2
+    arrow = p["arrow"]
+    assert arrow["toward"], arrow
+    assert all(at_x[n] > mid for n in arrow["toward"]), arrow
+    assert all(at_x[n] < mid for n in arrow["away"]), arrow
+    # every printed spacer one body as it prints (review 3's M2: B's spacer 12 was two, its
+    # STL refused by the slicer, its grams left out of the totals)
+    from spiderpig.cradle_pack import spacer_print
+
+    assert [d["key"] for d in kit if not is_filler(d)
+            and spacer_print(d)[1]["bodies"] != 1] == []
     pins, pillar = PACK_JOINTS[key]
     text = " ".join(p["steps"])
     assert pins in text, p["steps"]

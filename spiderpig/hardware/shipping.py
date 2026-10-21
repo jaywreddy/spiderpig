@@ -165,9 +165,54 @@ FIT_MM = 1.0
 model's 3 mm all round cost an inch)."""
 
 
+def carton_of(pack: dict, kg: float) -> dict | None:
+    """:func:`carton_for` of a cradle's pack payload ``pack`` (``cradle_pack``'s: its parts'
+    bounds ``packed_mm`` and :data:`FIT_MM` all round, else its box's inside) weighing
+    ``kg``: the carton ORDER.md names and the guide's box steps fill and close."""
+    parts = pack.get("packed_mm")
+    fit = (tuple(float(v) + 2 * FIT_MM for v in parts) if parts
+           else tuple(float(v) for v in pack["box"]["inside_mm"]))
+    return carton_for(fit, kg)          # type: ignore[arg-type]
+
+
+def board_mm(c: Carton) -> float:
+    """The carton's board (mm): a wall, from its page's inside and outside lengths (S-4509:
+    30 and 30 1/2 in, 6.4 mm), how thick a layer of it folded flat is."""
+    return (c.outside[0] - c.inside[0]) / 2 * IN
+
+
+def fill_words(got: dict, kept: str = "") -> dict[str, str]:
+    """How the spare inside a carton (:func:`carton_for`'s ``got``) is filled with the
+    bundle's spare cartons (packing review 3's M5: unfilled, the whole pack shifts in it,
+    and A's caps had 67 mm to rise): ``"sides"``, the end and the side; ``"top"``, the layers
+    over the pack under the lid (``kept``: the parts a hole is cut round, nothing pressing on
+    them); each "" where there is no spare that way."""
+    spare = got["spare_mm"]
+    t = board_mm(got["carton"])
+    ways = []
+    if spare[0] >= t / 2:
+        ways.append(f"{spare[0]:.0f} mm across one end")
+    if spare[2] >= t / 2:
+        ways.append(f"{spare[2]:.0f} mm along one side")
+    sides = ("Fill the carton's spare first: " + " and ".join(ways) + ", the bundle's spare "
+             "cartons cut to the carton's depth and folded flat, layer on layer "
+             f"(each about {t:.0f} mm), taped into a slab, so the pack can't shift in it."
+             if ways else "")
+    n = max(1, round(spare[1] / t))
+    it = "it" if n == 1 else "them"
+    hole = f", a hole cut through {'it' if n == 1 else 'each'} round {kept}" if kept else ""
+    top = ((f"Lay {'one flat sheet' if n == 1 else f'{n} flat sheets'} cut from a spare "
+            f"carton over the whole top ({spare[1]:.0f} mm to the carton's top edge){hole}: "
+            f"the lid then presses {it} down onto the pack"
+            + (", never on what the hole is round" if kept else "") + ".")
+           if spare[1] > 0.5 else "")
+    return {"sides": sides, "top": top}
+
+
 def _made_to_size(pack: dict, kg: float, stock: dict) -> list[str]:
     """A line for a carton made to the pack's own box (its outside, ``pack["box"]``), where
-    USPS bills it less than the stock one (``stock``: its :func:`usps`)."""
+    USPS bills it less than the stock one (``stock``: its :func:`usps`): an option only, the
+    stock carton being the choice (the user's, 2026-10-21: packing review 3's M6)."""
     if "outside_mm" not in pack["box"]:
         return []
     out = tuple(float(v) / IN for v in pack["box"]["outside_mm"])
@@ -175,24 +220,48 @@ def _made_to_size(pack: dict, kg: float, stock: dict) -> list[str]:
     if post["usd"][5] >= stock["usd"][5] - 0.005:
         return []
     o = " x ".join(f"{v:.1f}" for v in out)
-    return [f"A carton made to the pack's own box ({o} in outside: no stock size is; a box "
-            "maker cuts one, or one is cut and taped down from a larger carton) bills "
-            + " / ".join(f"zone {z} ${p:.2f}" for z, p in post["usd"].items())
-            + f": ${stock['usd'][5] - post['usd'][5]:.2f} less a shipment at zone 5"
+    return [f"An option only, not the plan: a carton made to the pack's own box ({o} in "
+            "outside; no stock size is, so a box maker's: cutting a stock carton down past its "
+            "scores re-makes its glued joint and two panels, and its rating no longer holds) "
+            "would bill " + " / ".join(f"zone {z} ${p:.2f}" for z, p in post["usd"].items())
+            + f", ${stock['usd'][5] - post['usd'][5]:.2f} less a shipment at zone 5"
             + (", the stock one being Oversized (over 108 in of length and girth)"
                if stock["oversized"] else "") + "."]
 
 
-def ship_lines(name: str, pack: dict, kg: float) -> list[str]:
+USPS_MAX_IN = 130
+"""USPS Ground Advantage Retail's most length and girth (DMM 101 3.2.1, fetched 2026-10-21:
+"must not measure more than 130 inches in length and girth combined")."""
+FOAM_IN = (2.0, 1.5, 1.0)
+"""in of foam round a carton inside an outer one (a carrier's option): the most that mails."""
+
+
+def carrier_option(outside_in: tuple[float, float, float], wall_in: float) -> dict | None:
+    """The carton (``outside_in``) inside an outer one of ``wall_in`` board with foam all
+    round: the most foam of :data:`FOAM_IN` whose length and girth (each side rounded up to
+    the inch) stays within :data:`USPS_MAX_IN` (packing review 3's m7: 2 in round S-4509 at
+    14 in is 131.5 in even unrounded, past it); None when none does."""
+    for f in FOAM_IN:
+        o = sorted((v + 2 * f + 2 * wall_in for v in outside_in), reverse=True)
+        up = [math.ceil(v - 1e-9) for v in o]
+        lg = up[0] + 2 * (up[1] + up[2])
+        if lg <= USPS_MAX_IN:
+            return {"foam_in": f, "outside_in": tuple(round(v, 2) for v in o),
+                    "length_girth_in": lg}
+    return None
+
+
+def ship_lines(name: str, pack: dict, kg: float, why_stock: str = "", kept: str = ""
+               ) -> list[str]:
     """ORDER.md's "Ship it" lines for a cradle's pack payload ``pack`` (``cradle_pack``'s:
-    its box, its parts' bounds ``packed_mm``) weighing ``kg`` with its spacers: the carton
-    (:func:`carton_for`: the parts' bounds and :data:`FIT_MM` all round, packing review 2's
-    m5), how it is cut and filled, its rating, the postage, a carton made to the pack's own
-    box where USPS bills that less, and what the pack is for."""
+    its box, its parts' bounds ``packed_mm``) weighing ``kg`` with its spacers: the stock
+    carton (:func:`carton_of`: the parts' bounds and :data:`FIT_MM` all round, packing
+    review 2's m5) and why it is the choice (``why_stock``, packing review 3's M6), how it
+    is cut, filled (:func:`fill_words`; ``kept``: what the top sheet's hole is round) and
+    marked, its rating, the postage, a carton made to the pack's own box as an option where
+    USPS bills that less, and what the pack is for (a carrier's: :func:`carrier_option`)."""
     inside = tuple(float(v) for v in pack["box"]["inside_mm"])
-    parts = pack.get("packed_mm")
-    fit = tuple(float(v) + 2 * FIT_MM for v in parts) if parts else inside
-    got = carton_for(fit, kg)       # type: ignore[arg-type]
+    got = carton_of(pack, kg)
     lines = ["## Ship it (the carton)", ""]
     dims = " x ".join(f"{v:.0f}" for v in inside)
     if got is None:
@@ -205,6 +274,8 @@ def ship_lines(name: str, pack: dict, kg: float) -> list[str]:
     spare = got["spare_mm"]
     post = got["postage"]
     o = got["outside_in"]
+    fill = fill_words(got, kept)
+    carrier = carrier_option(o, board_mm(c) / IN)
     lines += [
         f"{name} packs in {dims} mm (inside: its parts and their clearance; "
         f"{kg:.1f} kg with its spacers, {got['lb']:.1f} lb in its carton).", "",
@@ -213,21 +284,31 @@ def ship_lines(name: str, pack: dict, kg: float) -> list[str]:
         f"| 1 of {c.per} | {c.item}, {c.inside[0]:g} x {c.inside[1]:g} x {c.inside[2]:g} in"
         f"{cut} | {c.board} | {c.rated_lb:g} lb | ${c.usd:.2f} | "
         f"[product page]({c.url}) |", "",
+        f"The stock carton is the one to ship in{why_stock}.",
         f"Spare inside: {spare[0]:.0f} mm along, {spare[1]:.0f} mm over the top, {spare[2]:.0f} "
-        "mm across: fill the ends and sides with corrugated cut from the bundle's spare boxes "
-        "(the pack's spacers hold every piece; the filler only stops the pack shifting in the "
-        "carton). The bundle is bought whole (Uline sells by the bundle): ship one, keep the "
-        "rest for the trips.",
-        *_made_to_size(pack, kg, post),
+        "mm across (the pack's spacers hold every piece; the filler stops the pack shifting "
+        "in the carton). " + " ".join(t for t in (fill["sides"], fill["top"]) if t)
+        + " The bundle is bought whole (Uline sells by the bundle): ship one, keep the rest "
+        "for the trips and the filler.",
         f"USPS Ground Advantage Retail ({o[0]:g} x {o[1]:g} x {o[2]:g} in outside: "
         f"{post['dim_lb']} lb dimensional, billed {min(post['billed_lb'], 70)} lb"
         + (", oversized" if post["oversized"] else f", fees ${post['fees']:.2f}") + "): "
         + " / ".join(f"zone {z} ${p:.2f}" for z, p in post["usd"].items())
         + " (Notice 123, 2026-10-04; the shipping isn't in the totals).",
+        *_made_to_size(pack, kg, post),
         "The pack is for the car and for hand-carrying, where it rides upright and is set "
         "down: every piece rests on its plates on printed PETG spacers and is held each way "
-        "(up too) to a cell, 3 mm. A carrier drops a parcel this heavy from 30 in (FedEx's "
-        "ISTA 6-FedEx-A); the spacers locate, they don't cushion, so for a carrier insure it, "
-        "or pack the carton inside an outer one with 2 in of foam all round (no stock Uline "
-        "carton is that size: a custom box, Oversized at USPS).", ""]
+        "(up too) to a cell, 3 mm. Close the flaps and tape them shut, and mark two opposite "
+        "sides THIS SIDE UP, with arrows, and CAR OR HAND-CARRY ONLY: NOT FOR A CARRIER. A "
+        "carrier drops a parcel this heavy from 30 in (FedEx's ISTA 6-FedEx-A); the spacers "
+        "locate, they don't cushion, so for a carrier insure it, or "
+        + (f"pack the carton inside an outer one with {carrier['foam_in']:g} in of foam all "
+           "round (" + " x ".join(f"{v:g}" for v in carrier["outside_in"]) + " in outside, "
+           f"{carrier['length_girth_in']} in of length and girth, within USPS's "
+           f"{USPS_MAX_IN} in"
+           + (f", where {FOAM_IN[0]:g} in would be past it" if carrier["foam_in"] < FOAM_IN[0]
+              else "") + "; no stock Uline carton is that size: a custom one, Oversized at "
+           "USPS)."
+           if carrier else "ship a carton made to size inside an outer one with foam: this "
+           f"one in foam is past USPS's {USPS_MAX_IN} in of length and girth."), ""]
     return lines

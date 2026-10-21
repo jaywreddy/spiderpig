@@ -379,7 +379,9 @@ def sheet(title: str, subtitle: str, pieces, metrics: dict, grid, base: str | No
                  "pads (black): blocks cut to the real gap under a piece (the cut list)",
                  *([f"spacers: {metrics['spacers']['count']} printed in PETG, "
                     f"{metrics['spacers']['volume_cm3']:.0f} cm3 solid, about "
-                    f"{metrics['spacers']['grams']} g printed (each a piece here)"]
+                    f"{metrics['spacers']['grams']} g printed (each a piece here)"
+                    + (f"; {metrics['spacers']['fillers']} of corrugated"
+                       if metrics["spacers"].get("fillers") else "")]
                    if metrics.get("spacers", {}).get("count") else []),
                  "TIPS: its centre of mass is over nothing it rests on"):
         d.text((x, y), line, fill=MUTED, font=f)
@@ -428,7 +430,7 @@ def judge(inp: dict, layout: dict, name: str, out: Path, draw: bool = True,
     # (nothing rests on a gauge, a clip, the gearbox or a screw head: packing review 2's B1)
     m = vp.metrics(pieces, grid=grid,
                    bearless=cradle_pack.keep_clear_cells(pieces, grid, inp.get("linkage", "")),
-                   taped=cradle_pack.taped_of(layout))
+                   taped=cradle_pack.taped_of(layout), riders=cradle_pack.riders_of(layout))
     if said is not None:          # a box the layout claims, its pieces past it (an edit's)
         m["claimed_box_inside_mm"] = [round(float(v), 1) for v in said[1] - said[0]]
         m["past_claimed_box"] = bool((grid.lo < said[0] - 0.5).any()
@@ -475,12 +477,15 @@ def judge(inp: dict, layout: dict, name: str, out: Path, draw: bool = True,
 def spacer_summary(layout: dict) -> dict:
     """A layout's printed spacers (``cradle_pack.spacer_json``): how many, their solid's
     volume (cm^3), their mass as printed (g) and each one's key, label, size and why."""
-    kit = layout.get("spacers") or []
-    return {"count": len(kit),
+    from spiderpig.cradle_pack import is_filler
+
+    every = layout.get("spacers") or []
+    kit = [d for d in every if not is_filler(d)]    # (a filler is corrugated, not printed)
+    return {"count": len(kit), "fillers": len(every) - len(kit),
             "volume_cm3": round(sum(d["volume_cm3"] for d in kit), 1),
             "grams": round(sum(d.get("mass_kg", 0.0) for d in kit) * 1000.0),
             "list": [{k: d.get(k) for k in ("key", "label", "size_mm", "volume_cm3", "why",
-                                            "on", "words")} for d in kit]}
+                                            "on", "words")} for d in every]}
 
 
 def complete(row: dict) -> bool:

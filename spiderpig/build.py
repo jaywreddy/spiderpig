@@ -593,9 +593,11 @@ def main(argv=None) -> int:
 
     shipping = None
     if pack and pack.get("mass_kg"):
+        from spiderpig.cradle_pack import CARTON_WHY, kept_words
         from spiderpig.hardware.shipping import ship_lines
 
-        shipping = ship_lines(config.lk.name, pack, float(pack["mass_kg"]))
+        shipping = ship_lines(config.lk.name, pack, float(pack["mass_kg"]),
+                              CARTON_WHY.get(config.linkage, ""), kept_words(pack))
     (out / "ORDER.md").write_text(order_markdown(bom, order, rows, title=title,
                                                  build_dir=str(out), shipping=shipping))
     print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, prints)")
@@ -623,9 +625,13 @@ def _pack_spacers(kit: dict, folder: Path, rows: list[dict]) -> list:
         if is_filler(d):                # (corrugated, cut from a spare carton: no print)
             continue
         name = f"pack_{d['key']}"
-        size = " x ".join(f"{v:.1f}" for v in spacer_stl(d, folder / f"{name}.stl"))
+        info = spacer_stl(d, folder / f"{name}.stl")
+        if info["bodies"] != 1:         # (a slicer refuses it: packing review 3's M2)
+            raise RuntimeError(f"{name}.stl is {info['bodies']} bodies, not one print")
+        size = " x ".join(f"{v:.1f}" for v in info["size_mm"])
         rows.append({"file": f"{name}.stl", "qty": 1, "mirrored": 0,
-                     "print": "print 1 (the pack: 15 % gyroid, two walls, as laid)",
+                     "print": "print 1 (the pack: 15 % gyroid, two walls, as laid"
+                              + (", supports on" if info["supports"] else "") + ")",
                      "size_mm": size,
                      "filament": fil,
                      "grams_each_100pct": round(d["volume_cm3"]
