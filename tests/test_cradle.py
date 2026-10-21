@@ -583,7 +583,7 @@ def test_a_board_bracket_takes_a_stud_and_a_knob(sign):
     by = {suffix: (part, key) for part, key, suffix in parts}
     assert {k: v[1] for k, v in by.items()} == {
         "screw0": "m5_bhcs_16", "nut0": "m5_nut", "knob0": None, "nut2": "m5_nut",
-        "screw1": "m6_carriage_25", "washer1": "m6_washer_wide", "nut1": "m6_nut"}
+        "screw1": "m6_carriage_25", "washer1": "m6_washer_wide", "nut1": "m6_nylon_nut"}
     shapes = {"bracket": bracket, **{k: v[0] for k, v in by.items()}}
     for (a, sa), (b, sb) in itertools.combinations(shapes.items(), 2):
         inter = sa & sb
@@ -604,6 +604,73 @@ def test_a_board_bracket_takes_a_stud_and_a_knob(sign):
         Location((0.0, (26.5 + bb.max.Y) / 2, sign * cr.BRACKET[2] / 2)))
     inter = bracket & slot
     assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3
+    # its mouth chamfered (design review round 3's stand and use, m11): nothing of the
+    # bracket in the 45° lead either side at the top
+    lead = cr.SLOT_LEAD
+    for sx in (-1, 1):
+        corner = Box(lead - 0.4, 0.3, cr.BRACKET[2] - 0.2).moved(Location((
+            sx * (cr.STUD_SLOT / 2 + (lead - 0.4) / 2), bb.max.Y - 0.15 - 0.01,
+            sign * cr.BRACKET[2] / 2)))
+        inter = bracket & corner
+        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3, sx
+    # the trip (round 3's M1): the knob turned down onto its jam nut stands the nut's height
+    # off the plate, short of the upright's wall, so a cradle lowered so hangs on the
+    # uprights; backed off cr.KNOB_BACK_TURNS turns it clears the wall, its nut still all on
+    # the stud
+    wall = cr.BRACKET[2]
+    trip = out(jam)                                     # the knob's floor on its jam nut
+    assert trip < wall
+    back = trip + cr.KNOB_BACK_TURNS * cr.M5_PITCH
+    assert back >= wall + 0.5, back
+    assert out(stud) >= out(nut) + (back - inn(knob)), (out(stud), out(nut), back)
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_trip_and_the_first_build_read_as_a_user_does_them():
+    """Design review round 3's stand and use: the way back backs the knobs off two turns
+    before the cradle goes down (M1); B's drive side gets its studs on the bench and drops
+    into its brackets' slots (M3); the lifts say two people, or one in an order that can be
+    done (M5); pin X is told by where it is, and painted (m1); B's texts are its own (m3);
+    the room behind and beside (m5), the pad over the rim (m6), the riser as stacked (m7),
+    the clips out before the panel turns (m8), the towel (m9); the turns the page counts
+    (m13)."""
+    lk = linkage.get("decanter_rcm")
+    pins = cr.trip_pins(lk)
+    off, back = cr.module_steps(lk, pins)
+    by = {m.tag: m.words for m in off + back}
+    on = by["stand"]
+    assert on.index(f"{cr.KNOB_BACK_TURNS} full turns") < on.index("lower it straight onto")
+    assert cr.pin_words(lk, pins[0]) == "pin X, in the long link b4, nearer the gearbox"
+    assert "long link b4" in by["box_on"]
+    assert "second_tip_n" not in by["box_on"]
+    assert "long link b4" in by["lower"]
+    assert "two people" in by["base"]
+    assert "two people" in by["lay"]
+    assert "Alone" in by["lay"]
+    assert "column E1's, then pillar O1's" in by["lay"]          # the one nearer the gearbox
+    assert by["turn"].index("Pull each pin's clip") < by["turn"].index("turn the panel over")
+    assert "towel" in by["lift"]
+    assert "towel" in by["set"]
+    assert "stacked for your decanter" in by["riser"]
+    assert "paint an X" in cr._lay_first("decanter_rcm")[0]
+    text = cr.board_text("decanter_rcm")
+    assert not any("knobs go back on" in t for t in text)        # B's bolts keep their nuts
+    assert text[-1] == cr.DROP_DRIVE
+    assert cr.BRACKETS_BOARD in text
+    assert "tabs" in text[1]
+    assert "jam nut" in cr.studs_first("decanter_rcm")
+    assert any("knobs go back on" in t for t in cr.board_text("decanter_hinge"))
+    for key in CRADLES:
+        steps = {u.tag: u for u in cr.use_steps(key)}
+        where = " ".join(steps["where"].lines)
+        assert f"{cr.ROOM_FREE:g} mm free behind the base board and beside" in where
+        assert ("thumb knobs" in where) == (key not in cr.BOARD_BRACKETS)
+        assert steps["limits"].lines[0].startswith(f"1. Room: 950 mm of headroom and "
+                                                   f"{cr.ROOM_FREE:g} mm")
+        assert "pad over its rim" in steps["limits"].lines[3]
+        full = f"{cr.full_turns(linkage.get(key)):.1f} turns"
+        assert any(full in t for t in steps["decant"].lines), full
 
 
 @pytest.mark.construction
@@ -872,6 +939,23 @@ def test_the_base_board_is_rounded_offset_and_locates_its_riser():
     assert all(pytest.approx(table + cr.RISER_LIFT) == b.min.Y for b in blocks)    # on them
     tall = pytest.approx(cr.RISER_BLOCK[1] + cr.RISER_LIP, abs=0.02)
     assert all(tall == b.max.Y - b.min.Y for b in blocks)
+    # each block's relief over a post's head (design review round 3's stand and use, M5 and
+    # m2): a bore through its top that takes the head's 12 mm washer, under a cone whose
+    # mouth takes one set down 7 mm off; the boss's face round it bears on the plate
+    bore, mouth, deep = cr.RISER_RELIEF
+    for (_, part), b in zip(pieces[2:4], blocks, strict=True):
+        zc, yt = (b.min.Z + b.max.Z) / 2, b.max.Y
+        assert bore >= 12.0 + 1.0
+        assert (mouth - 12.0) / 2 >= 7.0
+        for d in (0.6, deep + 0.6, cr.RISER_LIP + cr.RISER_WALL - 0.6):
+            assert not solid_at(0.0, zc, part, yt - d)           # through the boss and top
+
+        def opening(d: float) -> float:                          # the cone's radius, d down
+            return mouth / 2 - d * (mouth - bore) / 2 / deep
+
+        assert not solid_at(opening(1.5) - 0.4, zc, part, yt - 1.0)   # in the cone
+        assert solid_at(opening(1.5) + 0.6, zc, part, yt - 2.0)       # its slope under it
+        assert solid_at(mouth / 2 + 1.0, zc, part, yt - 0.6)     # the boss's face round it
     lb = layers[-1].bounding_box()
     assert blocks[0].max.Y > lb.max.Y + 50.0             # it stands out of the locator
     top = layers[-1].bounding_box()
@@ -3141,6 +3225,10 @@ def test_every_pose_the_guide_rests_a_piece_in_is_rated(key):
     lo = inp["parts"]["L.frame_outer"]["lo"][2]
     standout = lo - inp["parts"]["L.gearbox"]["lo"][2]
     assert abs(cr.RISER_LIFT + cr.RISER_BLOCK[1] + cr.RISER_LIP - standout) <= 2.0, standout
+    # the guide's lifts (design review round 3's stand and use, M5: two people, or one in
+    # cradle.lay_down's order) say what the pieces weigh
+    for pose, kg in cr.LIFTS.get(key, {}).items():
+        assert abs(rows[pose]["kg"] - kg) <= 0.15, (pose, rows[pose]["kg"], kg)
 
 
 PACK_BOX = {"decanter_hinge": (705.0, 215.0, 610.0)}

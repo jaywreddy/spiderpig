@@ -1140,24 +1140,28 @@ CRADLE_PRINT_NOTE = (
     "support under its tower's arm and under the rear V block's flats and bosses. The hand "
     "crank in PETG too, its hub solid and its arm, cap and grip at 40 % (its clutch's "
     "plungers push on them always; check the clutch after a hot trip: the guide). The rest "
-    "in PLA: the brackets at 20 % infill with 4 walls, the other knobs (the base board's "
-    "thumb knobs, or B's studs' knobs, too) and the light's clip (on its tube's foot, a brim) "
-    "at 40 %; the TPU parts at 15-20 %, the pack's spacers (pack_spacer_*.stl, each lying "
-    "as it goes in the box) at 15 % gyroid with two walls. Each STL is posed as it should "
-    "print. For a cradle that travels in a car in summer, print the brackets and the knobs "
-    "in PETG too.")
+    "in PLA: the brackets at 20 % infill with 4 walls (B's in PETG: they stay on its "
+    "board, which rides in the car, clamped for good under their nuts), the other knobs (the "
+    "base board's thumb knobs, or B's studs' knobs, too) and the light's clip (on its tube's "
+    "foot, a brim) at 40 %; the TPU parts at 15-20 %, the pack's spacers (pack_spacer_*.stl, "
+    "each lying as it goes in the box) at 15 % gyroid with two walls. Each STL is posed as "
+    "it should print. For a cradle that travels in a car in summer, print the knobs in PETG "
+    "too.")
 """A decanting cradle's (:mod:`construction.cradle`; review round 2, N6 and m9; the drive's
 m7)."""
 CRADLE_GREASE_NOTE = (
-    "Grease (a dab of PTFE or lithium grease, not bought: a shop supply): the front M6 "
+    "Grease (the food-grade one bought, NSF H1: Super Lube 21030, since the saddles sit in "
+    "the wine's path; any PTFE or lithium grease only away from it): the front M6 "
     "thumbscrew as it goes in (stainless in a stainless nut galls dry) and the front V "
-    "block's sides in its box (a dry box guide binds); the rear lead screw's thread only "
+    "block's sides in its box (it slides dry too, smoother greased); the rear lead screw's "
+    "thread only "
     "above its collar, once it is in (the barrel nut's travel: run the block up and down "
     "once to spread it). Keep grease off the rear collar, its TPU brake washer and the rear "
     "knob's teeth: the knob's teeth lock the screw, and the washer only slows it with the "
     "knob lifted, dry. The same grease on the hand crank's clutch: its seat ring's face and "
     "six holes and its thrust washer (the clutch is set greased; dry, it can lock), and "
-    "again at its yearly check.")
+    "again at its yearly check; and wiped thin on the bare steel standoffs (the tie rods, "
+    "columns and pillars) for rust.")
 """A decanting cradle's (:mod:`construction.cradle`; review round 1, m9; round 2, N5 and the
 drive's B-1)."""
 # a foot's sock; a decanting cradle's liners, its collar, its lead screw's brake washer, its

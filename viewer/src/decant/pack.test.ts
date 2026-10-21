@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matmul, movedModule, packFraction, snappedDelta, stagger, type PackData } from './pack';
+import { matmul, movedModule, packFraction, packOrder, snappedDelta, stagger, type PackData } from './pack';
 
 const I = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
 
@@ -51,5 +51,23 @@ describe('the pack', () => {
       expect(stagger(1, i, n)).toBe(1);
     }
     expect(stagger(0.3, 0, n)).toBeGreaterThan(stagger(0.3, 3, n));
+  });
+});
+
+describe('what goes in the box', () => {
+  it('lists the printed spacers among the pieces in the order they go in, as the guide does', () => {
+    const m = (key: string) => ({ key, label: key, how: `the ${key}`, parts: [], matrix: [] });
+    const d: PackData = {
+      ...data(), modules: [m('board'), m('box'), m('drive')],
+      spacers: [{ key: 'spacer_02a', label: 'Spacer 2a', rank: 1, words: 'under the drive' },
+                { key: 'spacer_01a', label: 'Spacer 1a', rank: 0 },
+                { key: 'spacer_02b', label: 'Spacer 2b', rank: 1 }],
+    };
+    const order = packOrder(d);
+    expect(order.map((o) => o.label)).toEqual(
+      ['board', 'Spacer 1a', 'box', 'Spacer 2a', 'Spacer 2b', 'drive']);
+    expect(order.filter((o) => o.spacer)).toHaveLength(3);
+    expect(order[3]!.how).toBe('under the drive');
+    expect(packOrder(data())).toEqual([]);                    // (no spacers: the pieces alone)
   });
 });

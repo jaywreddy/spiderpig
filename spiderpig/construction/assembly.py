@@ -296,7 +296,8 @@ CRADLE_ORDER: tuple[Stage, ...] = (
                 "in the plan's layer order, the gearbox under the plate first: it stands "
                 "the plate up off the bench while the stack goes on. The steel standoffs "
                 "(tie rods, columns, pillars, the crank's) are bare 1018 steel: wipe each "
-                "with light oil before it goes in, and keep the cradle dry. Break the "
+                "with a thin film of the food-grade grease (a rag) before it goes in, and "
+                "keep the cradle dry. Break the "
                 "laser-cut edges where hands go (a file or fine sandpaper): the bay side and "
                 "the frame plates' tops."),
     Stage(UNIT, "L", "Drive side: inner plate",
@@ -312,7 +313,8 @@ CRADLE_ORDER: tuple[Stage, ...] = (
                 "turned from the link) and feel for a bind; if it binds, sand the spacer "
                 "under the inner plate."),
     Stage(FINISH, None, "Drive side onto the base board", where="robot",
-          tags=(("base",),), strict=True,
+          tags=(("studs_L",), ("base",)), strict=True,       # (B's studs on the bench first:
+          #                                                   it drops into its brackets)
           intro=CRADLE_FLAT + " The drive side stands on the base board from here on, the "
                 "board bare: its cleats and its finish go on once both sides stand on it."),
     Stage(FINISH, None, "Hand crank", where="robot", tags=(("handle",),), strict=True,

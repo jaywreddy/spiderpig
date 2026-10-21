@@ -356,6 +356,26 @@ register(
                 note="18-8, M6-1.0, DIN 934, 10 mm across flats, 4.7-5.0 high; page "
                      "rendered 2026-10-13"),),
          dims={"af": 10.0, "h": 5.0}),
+    Item("m6_nylon_nut", "M6 nylon-insert lock nut, 18-8", "nut",
+         (Offer("Bolt Depot", BD + "4795", "4795", price_usd=0.11, verified=True,
+                tiers=((1, 0.11), (100, 0.0655)),
+                note="18-8 (A-2), M6-1.0, nylon insert, 10 mm across flats (9.78-10.00), 6 mm "
+                     "high (5.7-6.0); page rendered 2026-10-20 (design review round 3, the "
+                     "stand and use's m4)"),),
+         dims={"af": 10.0, "h": 6.0},
+         notes="B's board brackets' feet (construction.cradle.BOARD_BRACKETS), snugged once "
+               "and never again: the insert holds it where a hand can't check it."),
+    Item("grease_h1", "Food-grade synthetic grease (NSF H1), PTFE, 3 oz tube: Super Lube "
+         "21030", "misc",
+         (Offer("Altex", "https://altex.com/products/super-lube-multi-purpose-synthetic-grease-"
+                "with-syncolon-3oz-21030", "21030", price_usd=11.99, verified=True,
+                note="Super Lube multi-purpose synthetic grease with Syncolon (PTFE), 3 oz, "
+                     "NSF H1 (registration 096790); page fetched 2026-10-20 (design review "
+                     "round 3, the stand and use's m10)"),),
+         notes="Every greased face of a decanting cradle (hardware.bom.CRADLE_GREASE_NOTE): "
+               "the front saddle's box guide and thumbscrew and the rear lead screw sit in the "
+               "wine's path, so the grease is one rated for incidental food contact; the same "
+               "tube does the clutch and, wiped thin, the tie rods."),
     # the rear saddle's lead screw (construction.cradle: its V block rides it at 8 mm a turn;
     # ServoCity pages rendered 2026-10-14, /root/scratch/decant/review5/r1_mounting/pages/ on
     # the development box)
