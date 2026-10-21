@@ -361,14 +361,14 @@ PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 material) when the config names the default (:data:`SHEET`): a decanting cradle is all
 aluminium, its links' 0.125 in 5052 (:data:`materials.CRADLE_LINK_SHEET`)."""
 
-PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 65.0, "decanter_rcm": 61.8}
+PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 64.9, "decanter_rcm": 61.8}
 """Per product linkage: the crank torque its joints are rated at in a jam, in place of a
 servo's firmware limit (:func:`torque_limit_nm`): a decanting cradle's, the most its hand
 crank's slip clutch lets through, however hard the push (:data:`PRODUCT_CLUTCH_NM`, since
 design review round 1; a firm 40 N push at the grip had been the case:
 :func:`spiderpig.cradle_report.jam_nm`, which a test holds these to)."""
 
-PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 65.0, "decanter_rcm": 61.8}
+PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 64.9, "decanter_rcm": 61.8}
 """Per product linkage: the most its hand crank's slip clutch lets onto the crank, however
 hard the push (design review round 2's B-1, 2026-10-14): set to slip at
 ``construction.handcrank.CLUTCH_SET`` x the start the user measures (a full 6 L's, drawn:
@@ -377,7 +377,7 @@ hard the push (design review round 2's B-1, 2026-10-14): set to slip at
 and run in after, or a start read high, can't take it over this), checked within
 ``CLUTCH_CHECK`` on its stub at every set-up, monthly and after greasing, through the NRV050's
 30:1 worm at the hand's 100 rpm (``handcrank.HAND_RPM``: ``handcrank.clutch``, which a test
-holds these to; spun at 200 rpm, 67.3 and 70.7: ``cradle_drive``'s ``fast_cap_nm``, the use
+holds these to; spun at 200 rpm, 65.8 and 69.0: ``cradle_drive``'s ``fast_cap_nm``, the use
 limits' "turn it, don't spin it"). Under the gearbox's 85 N·m maximum with margin
 (``cradle_drive.GEARBOX_CAP_FLOOR``). The crank torque to re-run a strength check at: a bound,
 unlike the push (``cradle_report``'s ``jam_capped`` rates it over the whole turn, the
