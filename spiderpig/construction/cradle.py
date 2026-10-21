@@ -545,6 +545,7 @@ SLOT_LEAD = 2.0         # the slot's mouth chamfered this far at 45° either sid
 #                         review round 3's stand and use, m11: a square mouth left the four
 #                         studs to be aimed to its 1.4 mm of play by eye)
 KNOB_BACK_TURNS = 2
+_WORDS = ("no", "one", "two", "three", "four")
 """How far the trip's way back backs each stud's knob off its jam nut before the cradle is
 lowered onto its board (design review round 3's stand and use, M1): snug on its jam nut for
 the trip, the knob's floor stands :data:`M5_NUT`'s 4.0 mm off the plate, where the
@@ -4454,8 +4455,8 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
                "nut rise out of its bracket's open slot, the rails out of their cleats. The "
                "brackets stay bolted to the board. Turn each knob back down onto its jam nut, "
                "snug, for the trip.")
-        on = (f"First back each knob off its jam nut {KNOB_BACK_TURNS} full turns: it then "
-              f"stands {back} mm off the nut, a fingernail, and the bracket's "
+        on = (f"First back each knob off its jam nut {_WORDS[KNOB_BACK_TURNS]} full turns: it "
+              f"then stands {back} mm off the nut, a fingernail, and the bracket's "
               f"{BRACKET[2]:g} mm upright passes between it and the plate (snug on its nut it "
               f"leaves {M5_NUT[1]:g} mm: the cradle would hang on the uprights by its knobs).",
               f"Then stand the cradle up by its two outer plates' top members ({lift}two "

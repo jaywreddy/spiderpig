@@ -640,7 +640,8 @@ def test_the_trip_and_the_first_build_read_as_a_user_does_them():
     off, back = cr.module_steps(lk, pins)
     by = {m.tag: m.words for m in off + back}
     on = by["stand"]
-    assert on.index(f"{cr.KNOB_BACK_TURNS} full turns") < on.index("lower it straight onto")
+    assert on.index(f"{cr._WORDS[cr.KNOB_BACK_TURNS]} full turns") < on.index(
+        "lower it straight onto")
     assert cr.pin_words(lk, pins[0]) == "pin X, in the long link b4, nearer the gearbox"
     assert "long link b4" in by["box_on"]
     assert "second_tip_n" not in by["box_on"]
