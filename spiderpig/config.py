@@ -310,16 +310,16 @@ in bending (design review round 1, 2026-10-14; ``cradle_report.structure``):
 The planner claims each at its width (:class:`construction.plates.LinkPlates`)."""
 
 PRODUCT_BOSS_R: dict[str, dict[str, dict[str, float]]] = {
-    "decanter_rcm": {"b1": {"M": 15.8}, "b2": {"O2": 17.0},
+    "decanter_rcm": {"b1": {"M": 16.2}, "b2": {"O2": 17.0},
                      "b3": {"O1": 17.0, "J": 14.0, "J2": 14.0}},
-    "decanter_hinge": {"b1": {"M": 15.8}, "b2": {"G": 17.0}},
+    "decanter_hinge": {"b1": {"M": 16.2}, "b2": {"G": 17.0}},
 }
 """Per product linkage, per link: a boss (a disc, its radius in mm) round the hole at a
 joint, where the link's width left the hole's edge in the cut rules' warning band (design
 review round 2, 2026-10-15, laser-cut parts minor 1; SendCutSend: two thicknesses of
 material from a hole to an edge, in 7075 "to prevent microcracks"):
-- each rod b1 at its crank bore M (12.35 mm): 9.6 mm of web, 1.5 x its 0.250 in (6.45 at
-  26 mm wide);
+- each rod b1 at its crank bore M (13.05 mm since simplification round 1's 1/2 in crankpin,
+  r 16.2; 12.35 and r 15.8 before): 9.7 mm of web, 1.5 x its 0.250 in (6.45 at 26 mm wide);
 - B's arms b2 at O2 and b3 at O1, A's cradle link b2 at G, each a pillar's 12.35 mm bore
   in 0.187-0.190 in: 10.8 mm, 2.2 x (5.8 at 24 mm).
 - B's 7075 links b3 and b4 at every 8.2 mm pin hole, r 14 (design review round 3,

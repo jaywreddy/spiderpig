@@ -60,12 +60,15 @@ ROD_KEY: dict[str, str] = {"516": "rod_6061_516", "38": "rod_6061_38"}
 ROD_YIELD = 241.3
 """MPa: 6061-T6's minimum yield, 35 ksi (the sheets' ``sheet_catalog.MIN_YIELD``; ASTM B211's
 cold-finished rod and B221's extruded the same)."""
-ROD_TOL = 0.0508
-"""A cold-finished rod's diameter tolerance either way (mm, +-0.002 in at 5/16-3/8 in: the
-vendor's stated figure, ``hardware.cradle_catalog``'s rod items)."""
+ROD_TOL = 0.0381
+"""A cold-finished rod's diameter tolerance either way (mm): +-0.0015 in at 0.125-0.500 in
+(Online Metals' aluminum tolerance table for 6061-T6 cold finish, ASTM B211, archived
+2025-08-08; Alcobra Metals' table for its B211 6061 rod from 0.375 in, fetched 2026-10-21).
+An extruded rod (ASTM B221, ANSI H35.2's Table 11.2) is +-0.008 in at 0.250-0.499: a laser's
+8.2 mm hole could jam on it."""
 ROD_FIT = 0.2625
 """A link's (and a printed ring's) hole over the rod: 8.2 mm for 5/16 in, the 8 mm pins' holes
-unchanged (radial play 0.26 nominal, 0.08-0.44 with the laser's +-0.127 and the rod's
+unchanged (diametral play 0.26 nominal, 0.10-0.43 with the laser's +-0.127 and the rod's
 :data:`ROD_TOL`, against the g6 pin's 0.08-0.34)."""
 END_SCREW = (3.0, 6.0, "m3_bhcs_6")
 """Each tapped end's screw: M3 x 6 ISO 7380 A2 (thread, length, catalog key); through the

@@ -727,7 +727,7 @@ def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
     got, _ = hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame")
     bodies = {b.name: b for b in got}
     thumb = bodies["handle_thumb_screw"]
-    assert thumb.bom_key == f"m3_shcs_{HANDLE_THUMB[0]:g}"
+    assert thumb.bom_key == f"m3_shcs_a2_{HANDLE_THUMB[0]:g}"
     assert bodies["handle_nut"].bom_key == NUT
     assert bodies["handle_cap_nut"].bom_key == NUT
     assert bodies["handle_knob"].fab == "printed"
@@ -3969,7 +3969,8 @@ def test_a_cradles_links_are_closed_bossed_and_claimed(key):
         if body_class(link) == "b1":
             assert 2 * chord_r(cfg, link, *segs[0]) == 26.0
             box = ol.face.bounding_box()
-            assert pytest.approx(2 * 15.8, abs=1e-6) == box.max.Y - box.min.Y
+            assert pytest.approx(2 * PRODUCT_BOSS_R[key]["b1"]["M"], abs=1e-6) == (
+                box.max.Y - box.min.Y)
         shapes = claims[link].make(layout)
         for k in (0, ctx.topo.geometry.samples // 3):
             held = [plates.flat_pill(local(s.shape.at, k), local(s.shape.at, k), s.shape.r)

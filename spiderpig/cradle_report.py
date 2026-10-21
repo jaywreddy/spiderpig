@@ -64,7 +64,6 @@ from spiderpig.hardware import mass as mass_mod
 from spiderpig.hardware.cradle_catalog import (
     NETRF10_ROOT,
     NETRF10_YIELD,
-    NETRF12_ID,
     NETRF12_ROOT,
     NETRF12_THREAD,
 )
@@ -447,17 +446,19 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
         "basis": "a clamped stack (ring, sleeve, shims, plate) on each of four class 8.8 M8 "
                  "studs: the stud's tension and shear, the sleeve's bending, the ring's "
                  "bearing; its slip at the faces' friction (cradle_drive.riser_rating)"}
-    # the crankpin: a NETRF12 standing in the crank block, the rod's force at the rod's
-    # mid-plane over the block's top (a cantilever that long out of its socket): it bends at
-    # the block's top, taken as the 12 x 5.0 tube its tapped end may be there, at 1018's
-    # hot-rolled minimum yield
+    # the crankpin: a 1/2 in 6061-T6 rod standing in the crank block (a NETRF12's 1018 until
+    # simplification round 1), the rod's force at the rod's mid-plane over the block's top (a
+    # cantilever that long out of its socket): it bends at the block's top, taken as the
+    # 12.7 x 5.0 tube its tapped end may be there, at 6061-T6's minimum yield
     note = mech.meta.get("hand_crank") or {}
     rod_mid = design.plan.z(design.plan.layers[rider])[0] + design.ctx.sheet_t(
         "link", rider) / 2
     lever = float(note.get("crankpin_lever_mm", rod_mid - (note.get("arm_z_mm") or
                                                            [0.0, 0.0])[1]))
-    od, bore = CRANKPIN_D, NETRF12_ID
-    cap = math.pi * (od ** 4 - bore ** 4) / (32 * od) * NETRF10_YIELD / 1000.0  # N·m
+    from spiderpig.construction.handcrank import CRANKPIN_BORE, CRANKPIN_YIELD
+
+    od, bore = CRANKPIN_D, CRANKPIN_BORE
+    cap = math.pi * (od ** 4 - bore ** 4) / (32 * od) * CRANKPIN_YIELD / 1000.0  # N·m
     out["crankpin"] = {"lever_mm": round(lever, 2), "capacity_nm": round(cap, 2),
                        "bottle_nm": round(f_rod * lever / 1000.0, 2),
                        "jam_nm": round(f_rod_jam * lever / 1000.0, 2),
