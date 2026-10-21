@@ -79,6 +79,8 @@ END_WASHER = "m4_washer_9021"
 4.3 x 12 x 1.0 (its 12 mm over the link's 8.2 or 9.79 mm hole; the button head's 5.7 mm on its
 4.3 mm bore)."""
 END_TAP = (2.5, 8.0)            # the M3 tap drill and its depth in each end
+TAP_R = 0.97 * END_SCREW[0] / 2 + 0.05   # the tapped hole as drawn: round the screw's modelled
+#                                          shank (the thread is the model's overlap otherwise)
 LOCK = "threadlocker_222"       # on each end screw (a turning link's washer would back it out)
 CLIP_STEP = 0.5                 # a clip pin's usable lengths: its cross hole drilled to the 0.5 mm
 ALU = "#c4c8cc"
@@ -166,8 +168,8 @@ class RodPinShaft(PivotPinShaft):
             raise ConstructionError(f"{group.name}: an {f.length:g} mm rod pin's ends leave "
                                     "their slots")
         d = self.d
-        tap = disc(xy, END_TAP[0] / 2, zb - 1.0, zb + END_TAP[1])
-        tap_hi = disc(xy, END_TAP[0] / 2, zt - END_TAP[1], zt + 1.0)
+        tap = disc(xy, TAP_R, zb - 1.0, zb + END_TAP[1])
+        tap_hi = disc(xy, TAP_R, zt - END_TAP[1], zt + 1.0)
         rod = difference(disc(xy, (d - self.model_gap) / 2, zb, zt), tap, tap_hi)
         out.bodies.append(hardware(f"{stem}_pin", rod, host, fab="purchased",
                                    bom_key=self.key_of(f.length), color=ALU))
@@ -305,7 +307,7 @@ class RodClipShaft(ClevisPinShaft):
         cross = Cylinder(hole / 2, d + 2.0, rotation=(0, 90, 0)).moved(
             Location((xy[0], xy[1], zc)))
         rod = difference(disc(xy, (d - self.model_gap) / 2, zh, zh + overall + air), cross,
-                         disc(xy, END_TAP[0] / 2, zh - 1.0, zh + END_TAP[1]))
+                         disc(xy, TAP_R, zh - 1.0, zh + END_TAP[1]))
         out.bodies.append(hardware(f"{stem}_pin", rod, host, fab="purchased",
                                    bom_key=self.key_of(f.length), color=ALU))
         out.bodies.append(hardware(f"{stem}_washer_lo", ring(xy, w_od, 4.3, zh - w_t, zh),
