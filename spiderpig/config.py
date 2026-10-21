@@ -283,7 +283,9 @@ arm X-Tr1 passes right over J (the planner finds no plan). Two pin types, no Chi
 screw, nothing threadlocked."""
 
 PRODUCT_CHORD_R: dict[str, dict[str, dict[tuple[str, str], float]]] = {
-    "decanter_rcm": {"b1": {("M", "P"): 13.0}, "b6": {("X", "Tr1"): 24.0, ("X", "Y"): 16.0}},
+    "decanter_rcm": {"b1": {("M", "P"): 13.0}, "b4": {("X", "K"): 14.0},
+                     "b5": {("Y", "J2"): 13.0},
+                     "b6": {("X", "Tr1"): 24.0, ("X", "Y"): 16.0}},
     "decanter_hinge": {"b1": {("M", "E"): 13.0}, "b2": {("E", "Tr1"): 16.0}},
 }
 """Per product linkage, per link: a chord (a pair of its joints, either way round) cut wider
@@ -295,6 +297,11 @@ in bending (design review round 1, 2026-10-14; ``cradle_report.structure``):
   jam, 32 mm wide against buckling out of its plane.
 - A's cradle link b2: its chord E-Tr1, in compression from the rod's pin to the rear tie
   under the jam, 32 mm wide against buckling.
+- B's bar b4 (simplification round 1, 2026-10-21: in 0.187 in 5052): its chord X-K, in
+  compression under the jam, 28 mm wide against buckling out of its plane, its bosses'
+  width already (the blank unchanged); 24 mm in 5052 held the cap at 1.42 nominal.
+- B's cradle link b5, 26 mm wide (the same round; design review round 3's laser-cut parts
+  minor 3): at 24 mm it came as cut, not deburred.
 - Each rod b1 (0.250 in), 26 mm wide (design review round 2, 2026-10-15, laser-cut parts
   M3): SendCutSend deburrs a part of at least 1 x 3 in; at 25.2 mm (24 and its crank
   bore's boss) it came as cut, its exit face's dross on its crankpin's spacer.
@@ -302,8 +309,7 @@ The planner claims each at its width (:class:`construction.plates.LinkPlates`)."
 
 PRODUCT_BOSS_R: dict[str, dict[str, dict[str, float]]] = {
     "decanter_rcm": {"b1": {"M": 15.8}, "b2": {"O2": 17.0},
-                     "b3": {"O1": 17.0, "J": 14.0, "J2": 14.0},
-                     "b4": {"X": 14.0, "J": 14.0, "K": 14.0}},
+                     "b3": {"O1": 17.0, "J": 14.0, "J2": 14.0}},
     "decanter_hinge": {"b1": {"M": 15.8}, "b2": {"G": 17.0}},
 }
 """Per product linkage, per link: a boss (a disc, its radius in mm) round the hole at a
@@ -316,7 +322,9 @@ material from a hole to an edge, in 7075 "to prevent microcracks"):
   in 0.187-0.190 in: 10.8 mm, 2.2 x (5.8 at 24 mm).
 - B's 7075 links b3 and b4 at every 8.2 mm pin hole, r 14 (design review round 3,
   2026-10-20, laser-cut parts M3: 9.9 mm, 2.05 x the 0.190 in; at 24 mm wide 7.9, 1.64 x,
-  under SendCutSend's 7075 rule; b4's blank then 28 mm, over the 25.27 mm it deburrs).
+  under SendCutSend's 7075 rule; b4's blank then 28 mm, over the 25.27 mm it deburrs). b4
+  needs none since simplification round 1 (2026-10-21): in 5052, its whole chord X-K is 28
+  mm wide (:data:`PRODUCT_CHORD_R`), the bosses' width.
 (B's cradle link b6 needs none at X: its rear arm X-Tr1's 48 mm end is one there, which
 :func:`cradle_structure.link_bending` counts for the chord Tf2-X, the one that passes pillar
 O1 by the planner's margin and can't grow.)

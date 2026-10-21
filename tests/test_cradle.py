@@ -309,9 +309,10 @@ def test_the_take_up_rates_each_pin_against_its_sheets_tolerances():
     """``cradle_report.take_up`` (design review round 2's M5): each pin's play against its
     links' sheets at their published over-thickness, worst case and RSS. On B's pins as
     reviewed (their wobble notes' plays), P (b1 0.250 in + b2, 0.187 in 5052 since design
-    review round 3) and Y (b5 + b6 0.187 in) come out short worst case; J, both 7075, keeps
-    0.09 mm, K (b2 5052, b4 7075) 0.04. The pillars too (round 3's laser-cut parts minor 9).
-    A rating: the guide and ORDER.md carry the fix."""
+    review round 3), K, X and Y (two 0.187 in 5052 links each since b4 went to 5052 in
+    simplification round 1) come out short worst case; J (b3 7075, b4 5052) keeps 0.04 mm.
+    The pillars too (round 3's laser-cut parts minor 9). A rating: the guide and ORDER.md
+    carry the fix."""
     from types import SimpleNamespace
 
     from spiderpig.cradle_report import take_up
@@ -325,12 +326,12 @@ def test_the_take_up_rates_each_pin_against_its_sheets_tolerances():
     got = take_up(cfg, SimpleNamespace(meta={"wobble": wobble}, bodies=[]))
     by = {r["pin"]: r for r in got["rows"]}
     assert set(by) == {*plays, "pillar O1"}
-    assert got["short_worst"] == ["P", "Y"]
+    assert got["short_worst"] == ["K", "P", "X", "Y"]
     assert got["short_rss"] == ["P"]
     assert by["P"]["growth_worst_mm"] == pytest.approx(0.915, abs=1e-3)
     assert by["P"]["margin_worst_mm"] == pytest.approx(-0.541, abs=1e-3)
-    assert by["J"]["margin_worst_mm"] == pytest.approx(0.092, abs=1e-3)
-    assert by["K"]["margin_worst_mm"] == pytest.approx(0.041, abs=1e-3)
+    assert by["J"]["margin_worst_mm"] == pytest.approx(0.041, abs=1e-3)
+    assert by["K"]["margin_worst_mm"] == pytest.approx(-0.01, abs=1e-3)
     assert by["pillar O1"]["margin_worst_mm"] == pytest.approx(0.222, abs=1e-3)
     assert [x["sheet"] for x in by["P"]["links"]] == ["al5052_6p35mm", "al5052_4p8mm"]
     assert got["fix"]
