@@ -1155,6 +1155,149 @@ def test_the_cradle_passes_the_cut_rules(key):
     assert got["ok"], got
 
 
+def _outline_turns(part) -> tuple[list[float], list[tuple[str, float]]]:
+    """A plate's top outline (its outer wire), in order: every tangent break's turn (degrees,
+    + convex, - re-entrant) and each edge's kind (``L``, ``+`` a convex arc, ``-`` a concave
+    one) with its radius."""
+    from OCP.GeomAbs import GeomAbs_Circle
+    from OCP.gp import gp_Pnt, gp_Vec
+
+    from spiderpig.layout import _ordered_edges
+
+    top = max((f for f in part.faces() if abs(abs(f.normal_at().Z) - 1) < 1e-6),
+              key=lambda f: f.center().Z)
+    edges = _ordered_edges(top.outer_wire())
+    pts = [(p.X(), p.Y()) for c, u0, u1 in edges
+           for p in (c.Value(u0 + (u1 - u0) * k / 8) for k in range(8))]
+    ccw = 1 if sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1)
+                   in zip(pts, pts[1:] + pts[:1], strict=True)) > 0 else -1
+
+    def tan(c, u, way):
+        p, v = gp_Pnt(), gp_Vec()
+        c.D1(u, p, v)
+        n = math.hypot(v.X(), v.Y())
+        return way * v.X() / n, way * v.Y() / n
+
+    breaks, kinds = [], []
+    for i, (c, u0, u1) in enumerate(edges):
+        way = 1 if u1 >= u0 else -1
+        if c.GetType() == GeomAbs_Circle:
+            ta, tm = tan(c, u0, way), tan(c, (u0 + u1) / 2, way)
+            kinds.append(("+" if (ta[0] * tm[1] - ta[1] * tm[0]) * ccw > 0 else "-",
+                          round(c.Circle().Radius(), 3)))
+        else:
+            kinds.append(("L", 0.0))
+        cn, v0, v1 = edges[(i + 1) % len(edges)]
+        a, b = tan(c, u1, way), tan(cn, v0, 1 if v1 >= v0 else -1)
+        cross = a[0] * b[1] - a[1] * b[0]
+        turn = math.degrees(math.atan2(abs(cross), a[0] * b[0] + a[1] * b[1]))
+        if turn > 0.5:
+            breaks.append(math.copysign(turn, cross * ccw))
+    return breaks, kinds
+
+
+def _s_steps(kinds, fillet: float) -> list[float]:
+    """The radii of the convex arcs between two concave ``fillet`` arcs: the S-steps a
+    closing leaves where a disc stands a little proud of a straight edge."""
+    n = len(kinds)
+    return [k[1] for i, k in enumerate(kinds) if k[0] == "+"
+            and all(kinds[j][0] == "-" and abs(kinds[j][1] - fillet) < 1e-6
+                    for j in ((i - 1) % n, (i + 1) % n))]
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_frame_plate_s_steps_are_tapered_and_its_cut_corners_rounded():
+    """Design review round 3, laser-cut parts minor 5: a strip with a boss 0.8 mm proud of it
+    and a 32 mm member running straight on from a 24 mm one closed into S-shaped steps
+    (R20, the boss's or the end's arc, R20); now each station is tapered into (the hull
+    between two proud stations, 1 in 10 from a proud one into a plain strip), so no S-step
+    is left. A corner a member's straight-on 60 mm widening (over :data:`STEP_MAX`) keeps.
+    The board's cut across a member leaves no sharp convex corner (rounded
+    :data:`EDGE_R`), and the outline has no tangent break at all."""
+    from spiderpig.shapes import Cut, Rect, cut_holes, disc, pill, union
+
+    t, web, fillet = 4.75, 9.6, 20.0
+    pads = [((0.0, 0.0), (100.0, 0.0), 12.0), ((100.0, 0.0), (180.0, 0.0), 16.0),
+            ((180.0, 0.0), (180.0, 120.0), 16.0)]
+    cuts = [Cut((40.0, 0.0), 6.4), Cut((100.0, 0.0), 6.4), Cut((180.0, 120.0), 6.4),
+            Rect((90.0, -29.5), (300.0, 40.0)),        # the board, its top at y -9.5
+            ]
+    old = cut_holes(cr._closed(union([pill(a, b, r, 0.0, t) for a, b, r in pads]
+                                     + [disc(c.xy, c.d / 2 + web, 0.0, t)
+                                        for c in cuts if isinstance(c, Cut)]),
+                               0.0, t, fillet), cuts, 0.0, t)
+    old_breaks, old_kinds = _outline_turns(old)
+    assert _s_steps(old_kinds, fillet), old_kinds           # (the closing's S-steps)
+    assert any(b > 0 for b in old_breaks)                   # (the board cut's corners)
+    new = cr.plate_part(pads, cuts, 0.0, t, web, fillet)
+    breaks, kinds = _outline_turns(new)
+    assert _s_steps(kinds, fillet) == []
+    assert breaks == []
+    assert ("+", cr.EDGE_R) in kinds
+    assert new.volume > 0.98 * old.volume
+    assert len(new.solids()) == 1
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_guide_names_the_as_cut_parts_and_the_routed_birch():
+    """Design review round 3, laser-cut parts minors 3 and 6: the arrival step names the
+    parts under SendCutSend's deburring minimum (:func:`assembly.as_cut_words`, a 24 mm link
+    once whatever its sides; a 30 mm one is deburred), and the parts table calls the birch
+    routed and names the crank block's plates (their files keep their labels)."""
+    from build123d import Box, Cylinder, Location
+
+    from spiderpig.construction.assembly import AS_CUT, CRADLE_ARRIVAL, as_cut_words
+    from spiderpig.labels import part_types
+    from spiderpig.mechanism import Body, Mechanism
+
+    def plate(w, h, t, sheet, name):
+        part = Box(w, h, t).moved(Location((w / 2, h / 2, t / 2)))
+        part = part - Cylinder(4.1, 3 * t).moved(Location((12, 12, t / 2)))
+        return Body(name, part, fab="laser", sheet=sheet)
+
+    mech = Mechanism("m", [plate(120, 24, 4.826, "al7075_4p8mm", f"{s}.b4") for s in "LR"]
+                     + [plate(120, 30, 4.75, "al5052_4p8mm", "L.b6"),
+                        plate(300, 200, 9.0, "birch_9mm", "base_plate"),
+                        plate(128, 44, 3.175, "al6061_3p2mm", "L.conn_plate3")],
+                     meta={"sheet": "al5052_3p2mm"})
+    assert as_cut_words(mech) == "b4"
+    assert AS_CUT in CRADLE_ARRIVAL
+    names = {t.label[:5]: t.name for t in part_types(mech)}
+    assert names["LC300"].startswith("base board, CNC-routed, ")
+    assert names["LC128"].startswith("crank block plate, laser-cut, ")
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_crank_block_plate_has_no_cusp_at_its_neck():
+    """Design review round 3, laser-cut parts minor 1: the crank block's plates (the arm's
+    pill on its hub's disc) met in two re-entrant cusps at the neck; closed by
+    :data:`construction.plates.CRANK_FILLET_R` the outline has no tangent break, and what
+    the closing added lies in the pills its claims take (:func:`plates.arm_fills`)."""
+    from build123d import Solid, Vector
+
+    from spiderpig.construction import plates
+    from spiderpig.construction.handcrank import NRV050
+    from spiderpig.shapes import difference, pill, union
+
+    t = 3.175
+    hc = HandCrank(NRV050)
+    ctx = type("C", (), {"sheet_t": staticmethod(lambda role: t)})()
+    hub, web, throw = hc.hub_r(ctx), hc.web_r(ctx), 105.0
+    part = plates.arm_plate(hub, web, throw, (0.0, 0.0), (0.0, throw), 0.0, t, ())
+    breaks, _ = _outline_turns(part)
+    assert breaks == []
+    face, covers = plates._arm(hub, web, throw)
+    plain = union([pill((0.0, 0.0), (throw, 0.0), web, 0.0, t),
+                   pill((0.0, 0.0), (0.0, 0.0), hub, 0.0, t)])
+    added = difference(Solid.extrude(face, Vector(0, 0, t)), plain)
+    assert added.volume > 1.0
+    held = union([pill(p, q, w, -1.0, t + 1.0) for p, q, w in covers])
+    assert difference(added, held).volume < 1e-6
+
+
 @pytest.fixture
 def cached_report_fabrications(monkeypatch):
     """``cradle_report``'s fabrications from the test cache (``cached_product``): a report

@@ -77,6 +77,7 @@ from spiderpig.construction.base import (
     Realized,
     hardware,
 )
+from spiderpig.construction.plates import arm_fills, arm_plate
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get
 from spiderpig.hardware.cradle_catalog import NETRF12_THREAD, netrf12
@@ -90,7 +91,6 @@ from spiderpig.shapes import (
     disc,
     intersection,
     moved,
-    plate,
     ring,
     union,
 )
@@ -783,6 +783,7 @@ class HandCrank(Group):
         geo.__dict__.pop("step", None)      # cached per point; recompute with the new ones
         m = ctx.params.margin
         hub, web = self.hub_r(ctx), self.web_r(ctx)
+        fills = arm_fills(ctx, hub, web, pin, self.throw(ctx))     # (its neck's R10)
         t = ctx.sheet_t("crank")
         head_r = RISER_HEAD_R + 0.3                         # the riser's thin nuts
         end_r = end_screw(self.box).head_d / 2 + 0.3        # the shaft's end screw's head
@@ -875,6 +876,7 @@ class HandCrank(Group):
                                   sheet=KEYED_PLATES * t if k == ARM_LAYER else 0.0))
                 out.append(Placed(k, Disc("O", hub), GROUP, "crank block hub", gap=True))
                 out += both(k, Pill("O", pin, web), "crank block")
+                out += [c for p, q, w in fills for c in both(k, Pill(p, q, w), "crank block")]
             # over it: the end screw's head at O, the tie bolt's head, the crankpin's spacer
             # (the rod rides over these)
             for k in hs:
@@ -1053,8 +1055,8 @@ class HandCrank(Group):
                 at_o = [Cut(tuple(o), es.d + 0.6)]
             else:                                   # round the end screw's head
                 at_o = [Cut(tuple(o), es.head_d + 1.5)]
-            part = plate([(tuple(o), tuple(mxy), self.web_r(ctx))], z_lo, z_lo + t,
-                         [*at_o, *pins], discs=[(tuple(o), self.hub_r(ctx))])
+            part = arm_plate(self.hub_r(ctx), self.web_r(ctx), self.throw(ctx), o, mxy, z_lo,
+                             z_lo + t, [*at_o, *pins])
             name = crank if i == 0 else f"{crank}_plate{i}"
             out.bodies.append(hardware(name, part, crank, fab="laser", sheet=ctx.sheet("crank"),
                                        color="#9aa3ad"))
@@ -1302,7 +1304,8 @@ class HandCrank(Group):
                   "spigot into the tube's socket, an M3 button head through the socket's wall "
                   "into that insert, threadlocker 243)")
                + ". The clutch's seat ring (cut with the crank plates) onto the "
-               "flange, its hex bore on the flange's hex; grease its face and its six holes "
+               "flange, its hex bore on the flange's hex, its marked face out (its seats "
+               "broken on arrival); grease its face and its six holes "
                "(lithium or PTFE grease). A 1/2\"-13 hex nut pressed into each of the three "
                "hex pockets in the arm's boss from its outer face (a vise); a spring plunger "
                "threaded through each from outside, ball first, until the ball stands about "

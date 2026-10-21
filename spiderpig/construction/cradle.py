@@ -1019,29 +1019,164 @@ class CradlePlates(FramePlates):
         return out
 
 
+STEP_MAX = 4.5          # a boss or a member's end this far or less proud of a strip: tapered
+STEP_TURN = 30.0        # two members this far or less off a straight line run straight on
+TAPER_RUN = 10.0        # a taper from a proud station into its plain strip: 1 in this
+EDGE_R = 3.0            # the outline's convex corners (where the board cut meets a member)
+
+
 def plate_part(pads, cuts, z0: float, z1: float, web: float, fillet: float = 0.0,
                keep_out=()) -> Shape3D:
-    """A cradle frame plate: its members (pills), a boss round every round hole, the inside
-    corners rounded ``fillet`` (a closing: the outline grown and shrunk back, so the joints
-    read as one shape), clear of ``keep_out`` (solids: what passes the plate's layer), less
-    the holes. Memoized (the keep-outs by identity: :func:`_keep_out` gives the same solid for
-    the same paths; each entry holds its keep-outs, so their ids stay theirs)."""
+    """A cradle frame plate: its members (pills, tapered where a boss or a straight-on
+    member stands a little proud of them: :func:`_tapered`), a boss round every round
+    hole, the inside corners rounded ``fillet`` (a closing: the outline grown and shrunk
+    back, so the joints read as one shape), clear of ``keep_out`` (solids: what passes the
+    plate's layer), its convex corners rounded :data:`EDGE_R` (an opening: where the board
+    cut meets a member, or a keep-out the edge), less the holes. Memoized (the keep-outs by
+    identity: :func:`_keep_out` gives the same solid for the same paths; each entry holds its
+    keep-outs, so their ids stay theirs)."""
     memo = (tuple(pads), tuple(cuts), z0, z1, web, fillet, tuple(map(id, keep_out)))
     hit = _PLATE_MEMO.get(memo)
     if hit is not None:
         return hit[0]
-    parts = [pill(a, b, r, z0, z1) for a, b, r in pads]
-    parts += [disc(c.xy, c.d / 2 + web, z0, z1) for c in cuts if isinstance(c, Cut) and web > 0]
+    bosses = [(c.xy, c.d / 2 + web) for c in cuts if isinstance(c, Cut) and web > 0]
+    away = union(list(keep_out)) if keep_out else None
+    parts = _tapered(pads, bosses, z0, z1, away)
+    parts += [disc(xy, r, z0, z1) for xy, r in bosses]
     part = union(parts)
     if fillet > 0:
         part = _closed(part, z0, z1, fillet)
-    if keep_out:
-        part = difference(part, union(list(keep_out)))
-    part = cut_holes(part, cuts, z0, z1)
+    if away is not None:
+        part = difference(part, away)
+    edges = [c for c in cuts if isinstance(c, Rect)]
+    if edges:
+        part = cut_holes(part, edges, z0, z1)
+    part = _opened(part, z0, z1, EDGE_R)
+    part = cut_holes(part, [c for c in cuts if not isinstance(c, Rect)], z0, z1)
     if len(_PLATE_MEMO) > 16:
         _PLATE_MEMO.clear()
     _PLATE_MEMO[memo] = (part, tuple(keep_out))
     return part
+
+
+def _tapered(pads, bosses, z0: float, z1: float, away=None) -> list[Shape3D]:
+    """The plate's members (``pads``: ``(a, b, r)``), each from station to station along
+    it (its ends, and every boss centred on it between) the convex hull of the two
+    stations' discs (design review round 3, laser-cut parts minor 5: where strips of
+    different widths met, or a boss stood proud of its strip, the closing left an S-shaped
+    step of 2.5-4 mm in a straight edge); between a proud station and a plain one, a straight
+    taper of 1 in :data:`TAPER_RUN` into the plain strip. A station's disc is the widest of
+    the member,
+    the bosses there and every member running straight on from it (within
+    :data:`STEP_TURN`), if that is at most :data:`STEP_MAX` proud of the member, else the
+    member's own (a designed widening, a gusset, a corner keep their shape). A taper that
+    would reach into ``away`` (the inner plate's keep-outs) keeps the step."""
+    out = []
+    for i, (a, b, r) in enumerate(pads):
+        a, b = (float(a[0]), float(a[1])), (float(b[0]), float(b[1]))
+        length = math.dist(a, b)
+        if length < 1e-6:
+            out.append(pill(a, b, r, z0, z1))
+            continue
+        u = ((b[0] - a[0]) / length, (b[1] - a[1]) / length)
+        stations = [(0.0, _station(pads, bosses, i, a, b))]
+        for xy, rb in bosses:           # a boss on the member between its ends
+            s = (xy[0] - a[0]) * u[0] + (xy[1] - a[1]) * u[1]
+            off = abs((xy[0] - a[0]) * u[1] - (xy[1] - a[1]) * u[0])
+            if off < 1e-3 and 1e-6 < s < length - 1e-6 and r < rb <= r + STEP_MAX + 1e-9:
+                stations.append((s, rb))
+        stations.append((length, _station(pads, bosses, i, b, a)))
+        stations.sort()
+        for (s0, r0), (s1, r1) in itertools.pairwise(stations):
+            if max(r0, r1) <= r + 1e-9:
+                out.append(pill(_along(a, u, s0), _along(a, u, s1), r, z0, z1))
+                continue
+            if min(r0, r1) <= r + 1e-9:     # one end proud: a taper of TAPER_RUN to 1
+                run = min(s1 - s0, TAPER_RUN * (max(r0, r1) - r))
+                if r1 > r0:
+                    plain, s0 = (s0, s1 - run), s1 - run
+                else:
+                    plain, s1 = (s0 + run, s1), s0 + run
+                if plain[1] - plain[0] > 1e-6:
+                    out.append(pill(_along(a, u, plain[0]), _along(a, u, plain[1]), r, z0, z1))
+            p, q = _along(a, u, s0), _along(a, u, s1)
+            if s1 - s0 <= abs(r1 - r0) + 1e-6:
+                out.append(pill(p, q, r, z0, z1))
+                continue
+            hull = _hull_pill(p, r0, q, r1, z0, z1)
+            if away is not None and difference(hull, pill(p, q, r, z0, z1)).distance_to(
+                    away) < 1e-6:
+                out.append(pill(p, q, r, z0, z1))
+            else:
+                out.append(hull)
+    return out
+
+
+def _station(pads, bosses, i: int, n, far) -> float:
+    """Member ``pads[i]``'s station disc at its end ``n`` (its other end ``far``): the widest
+    of it, the bosses at ``n`` and the members running straight on from it there, if at
+    most :data:`STEP_MAX` proud of it, else its own (:func:`_tapered`)."""
+    r = pads[i][2]
+
+    def at(p, q) -> bool:
+        return math.dist(p, q) < 1e-6
+
+    def heading(p) -> float:
+        return math.atan2(p[1] - n[1], p[0] - n[0])
+
+    wide = r
+    for j, (p, q, w) in enumerate(pads):
+        for end, other in ((p, q), (q, p)):
+            if j != i and at(end, n) and not at(other, n):
+                turn = abs(math.remainder(heading(other) - heading(far), 2 * math.pi))
+                if math.degrees(turn) >= 180.0 - STEP_TURN:
+                    wide = max(wide, w)
+    wide = max([wide] + [rb for xy, rb in bosses if at(xy, n)])
+    return wide if wide - r <= STEP_MAX + 1e-9 else r
+
+
+def _along(a, u, s: float) -> tuple[float, float]:
+    """The point ``s`` along the unit direction ``u`` from ``a``."""
+    return (a[0] + s * u[0], a[1] + s * u[1])
+
+
+def _hull_pill(p, rp: float, q, rq: float, z0: float, z1: float) -> Shape3D:
+    """The convex hull of a disc of radius ``rp`` at ``p`` and one of ``rq`` at ``q`` (a
+    tapered stadium: two tangent lines and two arcs, no boolean), extruded ``z0..z1``."""
+    from build123d import Edge, Vector
+
+    length = math.dist(p, q)
+    u = np.array([q[0] - p[0], q[1] - p[1]]) / length
+    n = np.array([-u[1], u[0]])
+    s = (rp - rq) / length
+    c = math.sqrt(max(0.0, 1.0 - s * s))
+    lo, hi = s * u - c * n, s * u + c * n
+    pa, qa = np.asarray(p, float), np.asarray(q, float)
+
+    def v(xy):
+        return Vector(float(xy[0]), float(xy[1]), z0)
+
+    wire = Wire([Edge.make_line(v(pa + rp * lo), v(qa + rq * lo)),
+                 Edge.make_three_point_arc(v(qa + rq * lo), v(qa + rq * u), v(qa + rq * hi)),
+                 Edge.make_line(v(qa + rq * hi), v(pa + rp * hi)),
+                 Edge.make_three_point_arc(v(pa + rp * hi), v(pa - rp * u), v(pa + rp * lo))])
+    return Solid.extrude(Face(wire), Vector(0, 0, z1 - z0))
+
+
+def _opened(part: Shape3D, z0: float, z1: float, r: float) -> Shape3D:
+    """``part`` (a plate from ``z0`` to ``z1``) with its convex corners rounded ``r``: its top
+    outline shrunk ``r`` and grown back (round joins), extruded back down (a corner the
+    board's cut leaves on a member, design review round 3's laser-cut parts minor 5: a
+    sharp point a hand finds)."""
+    from build123d import Kind, extrude, offset
+
+    tops = [f for f in part.faces() if abs(f.center().Z - z1) < 1e-6
+            and abs(abs(f.normal_at().Z) - 1.0) < 1e-6]
+    if not tops:
+        return part
+    grown = offset(offset(tops, -r, kind=Kind.ARC), r, kind=Kind.ARC)
+    faces = [f for f in grown.faces() if isinstance(f, Face)]
+    return union([extrude(f, amount=-(z1 - z0)) for f in faces])
 
 
 def _closed(part: Shape3D, z0: float, z1: float, r: float) -> Shape3D:

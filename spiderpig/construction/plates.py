@@ -298,6 +298,53 @@ def product_outline(ctx: Context, link: str, segs) -> Outline:
     return Outline((a, b), length, got[0], got[1])
 
 
+CRANK_FILLET_R = 10.0
+"""A hand crank's block plates (:mod:`construction.handcrank`): the arm's pill on its hub's
+disc, closed by this radius (design review round 3, laser-cut parts minor 1: they met in two
+55.6° cusps at the neck, the arm's most bent section, on all eight plates; round 2 had priced
+the R10 neck at USD 0.24 for six). What the closing adds lies inside the crank's own sweep
+and is claimed (:func:`arm_fills`)."""
+
+
+def _arm(hub_r: float, web_r: float, throw: float) -> tuple:
+    """The crank block plate's closed outline in its own frame (O at the origin, x toward
+    its crankpin ``throw`` away) and the pills covering what the closing added
+    (:func:`_close`), memoized as :func:`product_outline`'s."""
+    key = ((((0.0, 0.0), (throw, 0.0), web_r),), (((0.0, 0.0), hub_r),), CRANK_FILLET_R)
+    got = _OUTLINES.get(key)
+    if got is None:
+        got = _close(*key)
+        if len(_OUTLINES) > 64:
+            _OUTLINES.clear()
+        _OUTLINES[key] = got
+    return got
+
+
+def arm_fills(ctx: Context, hub_r: float, web_r: float, pin: str, throw: float
+              ) -> list[tuple[str, str, float]]:
+    """What closing a crank block plate's outline adds (:func:`_arm`), as pills between
+    points fixed to the crank (O and its crankpin ``pin``), added to the geometry: the
+    claims' share of :data:`CRANK_FILLET_R`."""
+    covers = _arm(hub_r, web_r, throw)[1]
+    ends = sorted({e for p, q, _ in covers for e in (p, q)})
+    name = {e: f"crank.fill{i}" for i, e in enumerate(ends)}
+    ctx.topo.add_link_points({name[e]: ("O", pin, e[0] / throw, e[1] / throw) for e in ends})
+    return [(name[p], name[q], w) for p, q, w in covers]
+
+
+def arm_plate(hub_r: float, web_r: float, throw: float, o, toward, z0: float, z1: float,
+              cuts) -> Shape3D:
+    """A crank block plate: :func:`_arm`'s closed outline on O at ``o``, its arm toward
+    ``toward`` (the crankpin's centre), from ``z0`` to ``z1``, less ``cuts``."""
+    from build123d import Solid
+
+    turn = math.degrees(math.atan2(toward[1] - o[1], toward[0] - o[0]))
+    face = _arm(hub_r, web_r, throw)[0].moved(
+        Location((float(o[0]), float(o[1]), z0), (0, 0, 1), turn))
+    part = cast("Shape3D", Solid.extrude(face, Vector(0, 0, z1 - z0)))
+    return cut_holes(part, cuts, z0, z1)
+
+
 def _xy0(p) -> Vector:
     return Vector(float(p[0]), float(p[1]), 0.0)
 

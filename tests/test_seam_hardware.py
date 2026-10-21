@@ -175,6 +175,49 @@ def test_the_crank_s_dog_boned_hex_pocket_passes_the_corner_rule():
     assert issues == []
 
 
+def _keyway(t: float, slot: float):
+    """A 25.25 mm bore with a key's slot out of it (the cradle's crank plate's), as a
+    cutter: the slot 5.6 mm long from 11.2 mm out, ``slot`` wide."""
+    bore = Cylinder(25.25 / 2, 3 * t).moved(Location((30, 30, t / 2)))
+    return bore + Box(5.6, slot, 3 * t).moved(Location((30 + 14.0, 30, t / 2)))
+
+
+def test_a_cradle_s_keyway_corners_are_seen_corner_by_corner():
+    """A keyway's square end on its round bore: read by its arcs the bore's 12.6 mm passes
+    it; read corner by corner (a decanting cradle's, ``kerf_corners``) its two sharp inside
+    corners are seen against the laser's published radius (about its kerf, 0.3 mm), a
+    warning. Its mouth on the bore (corners of the part pointing in) isn't one."""
+    t = 3.175
+    plate = _body(_plate(60, 60, t, pockets=[_keyway(t, 7.75)]), sheet="al6061_3p2mm")
+    assert not [i for i in manufacture.part_issues(plate, "al6061_3p2mm")
+                if i["rule"] == "corner"]
+    (c,) = [i for i in manufacture.part_issues(plate, "al6061_3p2mm", kerf_corners=True)
+            if i["rule"] == "corner"]
+    assert (c["level"], c["value"], c["limit"]) == ("warning", 0.0, 0.3)
+    assert "2 inside corners sharp" in c["detail"]
+    wires = sorted(manufacture._profile(plate).wires(), key=lambda w: w.length)
+    pocket = wires[0]                                   # (the outline the longer)
+    assert sorted(manufacture.inside_corners(pocket)) == pytest.approx([0.0, 0.0, 12.625])
+
+
+def test_corner_by_corner_a_hex_is_six_corners_and_a_dog_bone_none():
+    """Corner by corner: a hex pocket's six sharp corners (the clutch's seat ring's, on a
+    printed hex whose corners the nozzle rounds: a warning, harmless); the walker's
+    dog-boned hex pocket has only its reliefs' 0.8 mm arcs, over the 0.3 mm."""
+    from build123d import RegularPolygon, extrude
+
+    t = 2.54
+    hexagon = extrude(RegularPolygon(10.0, 6), 3 * t).moved(Location((15, 15, -t)))
+    plate = _body(_plate(30, 30, t, pockets=[hexagon]))
+    (c,) = [i for i in manufacture.part_issues(plate, "al6061_2p5mm", kerf_corners=True)
+            if i["rule"] == "corner"]
+    assert "6 inside corners sharp" in c["detail"]
+    cut = BoltCrank().for_sheet("al6061_2p5mm").hex_cut((15.0, 15.0), -t, 2 * t, 0.0)
+    dog = _body(_plate(30, 30, t, pockets=[cut]))
+    assert not [i for i in manufacture.part_issues(dog, "al6061_2p5mm", kerf_corners=True)
+                if i["rule"] == "corner"]
+
+
 def test_a_hole_under_the_minimum_is_an_error_in_metal_and_a_warning_in_acrylic():
     """SendCutSend won't cut a hole under the thickness in metal (the part comes back
     without it); Ponoko's 1 mm minimum in acrylic is a warning."""
@@ -226,13 +269,14 @@ def test_the_check_counts_the_rules_and_errors_over_every_laser_part():
 
 
 def test_a_part_under_the_deburring_minimum_arrives_as_cut():
-    """SendCutSend deburrs a part only from 1 x 3 in (its spec tables, 2026-10-15): a 24 mm
+    """SendCutSend deburrs a part only from 0.995 x 3 in (its quoting app's limit, 2026-10-20;
+    its spec tables say "1 x 3 in"): a 24 mm
     link on a cradle's 0.187 in 5052 is a warning (deburr it by hand), a 26 mm one passes,
     and a walker's sheet doesn't carry the rule (its audit is the identity gate's)."""
     t = 4.75
     narrow = _body(_plate(120, 24, t, [(12, 12, 8.2), (108, 12, 8.2)]), sheet="al5052_4p8mm")
     (d,) = [i for i in manufacture.part_issues(narrow, "al5052_4p8mm") if i["rule"] == "deburr"]
-    assert (d["level"], d["value"], d["limit"]) == ("warning", [24.0, 120.0], [25.4, 76.2])
+    assert (d["level"], d["value"], d["limit"]) == ("warning", [24.0, 120.0], [25.27, 76.2])
     assert "arrives as cut" in d["fix"]
     wide = _body(_plate(120, 26, t, [(13, 13, 8.2)]), sheet="al5052_4p8mm")
     assert not [i for i in manufacture.part_issues(wide, "al5052_4p8mm")
