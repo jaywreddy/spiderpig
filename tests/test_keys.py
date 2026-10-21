@@ -235,6 +235,13 @@ PATCH_ALLOWED = {
     ("spiderpig/tools/build_profile.py", "instrumented"):
         "the profiler wraps the build's calls in timers for the run, puts them back after; "
         "the results are the calls' own",
+    ("spiderpig/construction/cradle.py", "<module>"):
+        "sets its own module's class to _Module once at import (sys.modules[__name__]), "
+        "which counts stores into the namespace from outside for the part memo's key; "
+        "nothing the module computes changes",
+    ("spiderpig/construction/cradle.py", "_Module"):
+        "_Module's __setattr__ / __delattr__ count the store, then hand it to the "
+        "module's own (super()): the value stored is the caller's, unchanged",
 }
 """Every store into another object's namespace by name in the package, reviewed: none
 patches an engine module in a way that changes what it computes."""
