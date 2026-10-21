@@ -52,6 +52,9 @@ class Sheet:
     corner_r: float        # an inside corner comes out this round (mm)
     metal: bool
     sheet_mm: tuple[float, float]
+    yield_min_mpa: float | None = None  # its alloy and temper's specified minimum yield in
+    #                                     this gauge (None: none known): a product is rated
+    #                                     on it (:func:`allowable_mpa`)
 
     @property
     def min_edge(self) -> float:
@@ -88,7 +91,21 @@ def sheet(key: str) -> Sheet:
         edge_mm=float(d.get("edge_mm", 0.0)),
         min_part=_pair(d.get("min_part", (0.0, 0.0))),
         corner_r=float(d.get("corner_r", 0.0)), metal=bool(d.get("metal", False)),
-        sheet_mm=_pair(d.get("sheet_mm", (300.0, 300.0))))
+        sheet_mm=_pair(d.get("sheet_mm", (300.0, 300.0))),
+        yield_min_mpa=(float(d["yield_min_mpa"]) if d.get("yield_min_mpa") else None))
+
+
+def allowable_mpa(config, key: str) -> float:
+    """The yield a strength check rates sheet ``key`` at in ``config``'s build: a product's
+    (a decanting cradle, parts ordered to carry a bottle) at its alloy's specified minimum in
+    that gauge (``Sheet.yield_min_mpa``: design review round 3's M1, the cradles had been
+    rated on 5052-H32's typical 193 MPa against ASTM B209's 159), a walker's at the typical
+    value its rules and audits were set on (``Sheet.yield_mpa``)."""
+    sh = sheet(key)
+    lk = getattr(config, "lk", None)
+    if getattr(lk, "product", "") and sh.yield_min_mpa:
+        return sh.yield_min_mpa
+    return sh.yield_mpa
 
 
 LINK_SHEETS: dict[str, dict[str, str]] = {
@@ -108,7 +125,11 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # the A cradle's cradle link b2 0.187 in (2026-10-13: its 12 mm pillar G's hole leaves a
     # 0.125 in 5052 link at jam SF 1.13 under a 6 L's 69.3 N.m; the frame plates' sheet)
     "decanter_hinge": {"b2": "al5052_4p8mm"},
-    "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al7075_4p8mm", "b3": "al7075_4p8mm",
+    # (design review round 3, 2026-10-20: b2 back to 0.187 in 5052, its worst stress at the
+    # clutch's cap 36 MPa, SF 4.4 on 5052's minimum; its 8.2 mm holes at 1.66 t, under 7075's
+    # 2 t "to prevent microcracks", the 2 t only guidance in 5052; b4 stays 7075: its rear
+    # block 0.88 in 5052)
+    "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al5052_4p8mm", "b3": "al7075_4p8mm",
                      "b4": "al7075_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_4p8mm"},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links

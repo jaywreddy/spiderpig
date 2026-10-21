@@ -56,6 +56,17 @@ the class the posts' and the tie rods' end joints need once a jam gaps them (des
 round 2's m2: prying at 4-6 kN, A2-70's proof 9.0 kN; an unclassed 18-8's 210 MPa would yield).
 Their M6 lengths in the cradle (12, 16, 20) buy here; the others stay Bolt Depot's."""
 FASTENAL = "https://www.fastenal.com/product/details/"
+ACCU = "https://accu-components.com/us/"
+M6_BHCS_109 = {16: ("494818-SSB-M6-16-10-9", "SSB-M6-16-10.9",
+                    ((1, 1.45), (2, 0.86), (4, 0.58), (6, 0.44), (12, 0.35), (24, 0.30),
+                     (50, 0.27), (100, 0.25), (200, 0.24)))}
+"""Accu's class 10.9 M6 button heads (the page rendered 2026-10-20: "M6 X 16mm Socket Button
+Screws (ISO 7380) - High Tensile Steel (10.9)", finish "Natural" (unplated), a 4 mm key, USD
+each by quantity, shipping that day): where ISO 7380's 4 N·m in A2-70 leaves a cradle's joint
+too little preload (its tie rods' ends; ``construction.cradle.STEEL_FEET``'s pillar feet). Not
+the zinc-plated one (SSB-M6-16-10.9-Z): an electroplated class 10.9 risks hydrogen
+embrittlement (ISO 4042). Accu's A2-70 ISO 4017 hex heads (SEBF-M6-16-A2-70, USD 0.57 at 12,
+21 days) were weighed: their 4.15 mm heads don't fit under the cradle links (2026-10-20)."""
 M5_BHCS_BD = {8: ("6631", 0.12, 7.76), 10: ("6632", 0.12, 8.03), 12: ("6633", 0.13, 8.60),
               16: ("6634", 0.14, 9.60)}
 """Bolt Depot's 18-8 M5 button heads (pages rendered 2026-10-10: head 9.14-9.50 x 2.50-2.75,
@@ -64,8 +75,21 @@ M5_BHCS_BD = {8: ("6631", 0.12, 7.76), 10: ("6632", 0.12, 8.03), 12: ("6633", 0.
 NETRF10_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(150, 6001))
 """MISUMI NETRF10's lengths: 15-600 mm in 0.1 mm steps (+-0.1)."""
 NETRF10_ID = 4.2            # the strength check's bore: the M5 tap drill, as if tapped through
-NETRF10_YIELD = 220.0       # MPa: 1018 at its hot-rolled minimum, as NETRF6 (conservative)
+NETRF10_YIELD = 235.0       # MPa: the NETRF10/12 steel's specified minimum (below)
+NETRF_STEEL = ("MISUMI states NETRF's steel as 'EN 1.0038 Equiv.' (its global table, a "
+               "reseller's copy fetched 2026-10-20: famaga.com/catalog/misumi/id1136902) and "
+               "'1018 Carbon Steel or Equivalent' (its 2019 Americas catalogue, "
+               "mx.misumi-ec.com/en/pdf/fa/2019/2019_MX_2216.pdf); EN 1.0038 (S235JR) is "
+               "235 MPa minimum to 16 mm (EN 10025-2, Saarstahl's declaration of performance, "
+               "saarstahl.com/app/uploads/2016/03/S235JR_EN10025-2_2019-FL-D.pdf); 1018 has no "
+               "specified minimum (ASTM A108 sets none; SAE J1397 estimates 220 hot rolled, "
+               "370 cold drawn)")
+"""Where :data:`NETRF10_YIELD` comes from (design review round 3's M1, 2026-10-20: every
+part rated on its specified minimum; the posts had taken 1018's estimated hot-rolled 220
+MPa, a guess under the material MISUMI names)."""
 NETRF10_THREAD = 10.0       # its M5 taps' depth (M x 2)
+NETRF10_ROOT = 5.0          # its tapped ends rated as a tube to the female thread's roots (the
+#                             M5's major diameter: design review round 3's minor 3)
 NETRF10_TIERS: tuple[tuple[float, tuple[tuple[int, float], ...]], ...] = (
     (50.0, ((1, 13.46), (5, 9.76), (10, 4.91))),
     (100.0, ((1, 13.77), (5, 9.98), (10, 5.02))),
@@ -88,6 +112,9 @@ NETRF12_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(250, 1001))
 lengths priced."""
 NETRF12_ID = 5.0            # the strength check's bore: the M6 tap drill, as if tapped through
 NETRF12_THREAD = 12.0       # its M6 taps' depth (M x 2)
+NETRF12_ROOT = 6.0          # its tapped ends rated as a tube to the female thread's roots (the
+#                             M6's major diameter, not the 5.0 mm tap drill: design review
+#                             round 3's minor 3, Z 159.0 mm^3 against 164.5)
 NETRF12_TIERS: tuple[tuple[float, tuple[tuple[int, float], ...]], ...] = (
     (50.0, ((1, 15.62), (5, 11.37), (10, 5.74))),
     (100.0, ((1, 16.30), (5, 11.86), (10, 5.99))),
@@ -309,6 +336,15 @@ register(
                  **({"property_class": "A2-70", "proof_n": 9045.0}
                     if n in M6_BHCS_A270 else {})})
       for n, (pn, each, per100) in M6_BHCS_BD.items()),
+    *(Item(f"m6_bhcs109_{n}", f"M6 x {n} button head socket screw (ISO 7380), class 10.9 "
+           "steel, unplated", "fastener",
+           (Offer("Accu", ACCU + "socket-button-screws/" + path, sku, price_usd=tiers[0][1],
+                  verified=True, tiers=tiers,
+                  note="class 10.9 steel (High Tensile), ISO 7380, finish Natural (unplated), "
+                       "4 mm key; sold singly; page rendered 2026-10-20"),),
+           dims={"d": 6.0, "length": float(n), "head_d": 10.5, "head_h": 3.3,
+                 "property_class": "10.9", "proof_n": 0.8 * 830.0 * 20.1})
+      for n, (path, sku, tiers) in M6_BHCS_109.items()),
     *(Item(f"m5_bhcs_{n}", f"M5 x {n} button head socket screw (ISO 7380)", "fastener",
            (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
                   tiers=((1, each), (100, per100 / 100)), note=BD_NOTE),),

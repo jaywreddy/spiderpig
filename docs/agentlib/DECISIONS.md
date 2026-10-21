@@ -2847,3 +2847,154 @@ crank plates' closing, one clutch phrase, `DESIGN_START_NM`), `spiderpig/config.
 (`m6_nylon_nut`, `grease_h1`), `spiderpig/hardware/bom.py`, `spiderpig/hardware/order.py`,
 `spiderpig/labels.py`, `viewer/src/decant/pack.ts`, `viewer/src/decant/main.ts`,
 `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`.
+
+### 2026-10-20: the cradles' structure model corrected and their frames refitted to it (design review round 3, linkage and structure, and the laser-cut parts' share)
+
+Round 3's linkage review built an independent 3D frame of each side and found the report
+rating a frame that wasn't the one built (B's pillar O1), on typical yields, first order,
+with no buckling check, a ridge propping the solve, and the posts' screwed ends unrated. The
+laser-cut parts review priced the cut side of the same findings. Products only: the walkers'
+identity gate against `planner-f667d6b` is identical.
+
+- **B1, pillar O1 a cantilever.** Round 2 ended O1 under b6 (a NETRF12-59.3, its inner plate
+  uncut there), while `_side_posts` gave every pillar the plates' full gap: SF 0.39 at the
+  cap as built, read 1.37.
+  - A cradle pillar's printed neck may thin to 1.2 mm (`standoff.NECK_WALL`, three 0.4 mm
+    perimeters: it only locates its links) where a link passes it: b6 leaves 7.54 mm round O1
+    in layer 15, the rings' 1.5 mm wall needed 7.68. The plan is the same (B 16 layers), and
+    O1 is a NETRF12 of the other posts' length into the inner plate's new hole (its boss the
+    plate's 2 t). -USD 20.62 in standoffs.
+  - The report takes each post's span from the parts (`cradle_report.post_spans`,
+    `check_spans`: every post within `SPAN_TOL` of both plates' faces, a hole through each on
+    its axis) and a pillar's note must say both plates hold it; else it stops.
+    `test_every_post_the_side_frame_rates_stands_plate_to_plate`.
+- **M1, typical yields.** A product is rated on each alloy's specified minimum in its gauge
+  (`materials.allowable_mpa`, `sheet_catalog.MIN_YIELD`, ASTM B209-14 fetched today: 5052-H32
+  23.0 ksi, 158.6 MPa, not 193; 6061-T6 35.0; 7075-T6 0.190 in 69.0). MIL-HDBK-5J's S-basis
+  gives 5052-H32 22 ksi across the grain: B209's single figure is the bar, 4 % over it. The
+  posts' steel is 235 MPa, the specified minimum of the EN 1.0038 MISUMI names for NETRF
+  (`cradle_catalog.NETRF_STEEL`; its Americas catalogue says "1018 Carbon Steel or Equivalent",
+  and 1018 has no specified minimum: 220, its hot-rolled estimate, had been taken). The
+  walkers keep the typical values their rules and audits were set on.
+- **M2, buckling; minor 1, P-Delta.** The plates' members' in-plane forces and the posts'
+  axial ones enter as a geometric stiffness (`cradle_structure._geo4`, `side_frame_solve`):
+  each angle solved second order, and the side's buckling factor per angle a row of its own
+  (`frame:side buckling`). The old frames buckled at 1.35 x the cap (A) and 1.70 (B).
+- **M4, the ridge.** `cradle_structure._solve`: Jacobi-scaled, one refinement, no ridge; a
+  frame not held raises `SingularFrame`, every solve held to 1e-6 of its loads (a mode
+  nothing holds nor loads, a lone post's inner plate turning about it, is fixed exactly).
+- **Minor 2:** both idealizations of the plates (faces, and mid-planes with each post's end
+  a rigid half-thickness off), the worse per row. **Minor 1:** each plate section's
+  in-plane and out-of-plane stresses combined (`combined_sf`, `grillage_axial`). **Minor 3:**
+  the tapped ends at the thread's roots (`NETRF12_ROOT` 6.0). A pillar's link load spread
+  over its bore; a link's chord rated past its boss (or a wider chord's end disc there).
+- **The frames on that model** (`cradle.STANDS`): the old ones fell to B's inner plate 0.86,
+  outer 1.04, b6 1.12, O1 1.23; A's outer plate 0.39, column E1 0.47, inner plate 0.75.
+  Weighed (`cradle_report.structure` with the stand varied, the posts then on 220 MPa):
+
+  | option | B worst | A worst | cost |
+  |---|---|---|---|
+  | **wider members, 0.187 in 5052 (built); A a second rail column** | O1 1.37 | the outer plate 1.38 | the cutting's growth (BOM below), A's column USD 0 (from the 10-pack) |
+  | the frames in 0.250 in 5052 | O1 1.29, b6 1.12 | column E1 1.02 | about +37 % on the frames' cutting; O1's boss then meets Tf2, and the drive's stack moves |
+  | 6061-T6 frames and b6 | O1 1.23, b6 1.70 | buckling stays 1.35 (P-Delta) | +USD 170.62 on B (the laser-cut review's live quotes) |
+  | a third rail column on B, the old widths | the inner plate 0.81, O1 1.19 (the rear column moves the inner plate's turn toward O1) | | a column more |
+
+  - B: the rail 60 mm, O-Fr 80, O1-O 72, O2-O 88, O2-Fr 40, the inner chord D2-E1-E2 60,
+    D1-D2 44, O1-D1 27 (as Tf2 leaves); b6's rear arm 48 (`config.PRODUCT_CHORD_R`).
+  - A: a column E2 on the rail under the mouth, the inner chord along the rail to it 40 mm
+    (60 cut into the riser locator by 0.5 mm: the verify test found it), the rail 60, G-O
+    140, the legs from O 56, G-Ff 48, the triangles round G 40, C2-D1 34 (as Tf1 leaves),
+    the inner legs 40 and 60.
+  - The rails' lines stand 8 mm (B) and 10 (A) higher, their bottom edges where they were;
+    the brackets' uprights follow (`rail_y`).
+- **Laser-cut parts M3/M2:** b2 back to 0.187 in 5052 (its worst stress at the cap 36 MPa,
+  SF 6.3 on the minimum; -USD 45.98 live); b3 and b4 bossed r 14 at their 8.2 mm holes
+  (`PRODUCT_BOSS_R`: 2.05 t of 0.190 in 7075, SendCutSend's rule; b4 then 28 mm, deburred).
+  b4 stays 7075.
+- **M5, the posts' screwed ends** (`cradle_report.post_joints`): M6 A2-70 button heads at ISO
+  7380's most, 4 N·m (TR Fastenings' socket screws table: `fasteners.BUTTON_A2_70_NM`; the
+  posts' 6, the columns' none and the tie rods' 6 were drawn), the preload from TR's A2-70
+  table at friction 0.1-0.2 (`fasteners.preload_band`: 2.5-4.6 kN). At the cap every face
+  lifts; the screws hold A2-70's proof 1.95 x; under the bare 12 mm edges the 5052 would pass
+  VDI 2230's limiting pressure (Table A9: 5052 isn't in it; AlMg4.5Mn's 325 MPa scaled to
+  5052-H32's tensile, 269), so an 18 mm 18-8 fender washer (Bolt Depot 7315, in the order
+  already) goes on both ends of every post (`cradle.FACE_WASHER`; a pillar's inner one in
+  the clearance gap under the inner plate, where its printed gap ring had been): a pillar's
+  inner end needed none, but with a washer at each end every post of a side is one length
+  (`StandoffAxle.segment` takes a cradle post's gap to 0.01 mm; the columns' standoffs by the
+  same rule), one part number at its ten's price: B's twelve NETRF12-71.8 USD 71.88 (10 of
+  75.2 and 2 of 59.3 had been 92.50), A's sixteen 53.2. S_P 1.30 (B, column E2's foot) and
+  1.79 (A). Walking every face shut at the least preload on B (0.99), none slipping;
+  the guide's column steps and the use limits say 4 N·m, and back to it after a clutch slip.
+- **M3, the blocked thresholds:** each angle pushed as far as its clutch lets it, not the
+  least over the turn (`_block_threshold`, its structure with the block's tie rods). The rear
+  saddle gives within the clutch: B's outer plate at 1.3 at +21.0 N at the grip, 1 at +37.5 N
+  (the clutch passes up to 47.7 there); A's pillar G at 1.3 at +19.6 N. A 6 L's base: B's b6
+  at +20.6 and +32.7 N, A's b2 at +14.3 and +19.8. DECANTER.md said "none within the
+  clutch". The use limits' third ("nothing under the cradle box or the bottle") is the guard.
+- **M6, the cleats:** glued against the rail itself (`cradle.CLEAT` 0.02 mm a side; a sheet of
+  paper's 0.15 had let each side rock +-1.3°, +-9.7 mm at O1), the rock over the rail's 6.5 mm
+  in them counted in the sway (`side_stiffness`'s `rock_mm`): B 1.22 mm elastic and 2.63 of
+  rock under 20 N, 3.86; A 1.09 and 3.28, 4.37 (the test's bar 5).
+- **Minor 4, Tf2:** under the cap O1's link moves 1.38 mm against the inner plate (0.39
+  walking, on the walking bound), inside Tf2's 2.8 mm past the bar at rest.
+- **The three open items, closed** (the user's brief, the same day; real fixes, each test
+  holding it, nothing xfailed for them):
+  - **The tie rods' end joints** (both cradles: 0.98 of their gap walking at the least
+    preload, the A2-70 button head at ISO 7380's 4 N·m). Weighed: a full-strength A2-70
+    head at TR Fastenings' table torque (5.9 N·m at friction 0.1) closes them (1.45), but
+    the head hangs under the cradle link in the clearance gap over the rod or b4/b5: an
+    ISO 4017 hex's 4.15 mm needs a 4.4 mm gap, over the planner's 4 mm (`plan_z.GAP_MAX`),
+    and with the layer it then takes neither cradle plans (A none to 61 layers; B's pin K
+    would span 19.1 mm); an ISO 4762's 6 mm more so. A design change: Tr2's end moment goes
+    as its radius over the rods' sum of squares, so only a fifth rod, or the rear ones much
+    farther out, lowers it (a rod, its claims and the rear V block's seats). Built: the
+    same ISO 7380 head in class 10.9 steel (`cradle.TIE_M`, `fasteners.SCREWS`'
+    `bhcs109`), so no claim or part moves, at 6 N·m (`cradle.TIE_TIGHTEN_NM`): 3/4 of
+    ISO 7380's most in 10.9 (8, `fasteners.BUTTON_10_9_NM`), 3.8-7.0 kN, the most 52 % of
+    what its head carries (`BUTTON_10_9_PROOF_N`, 80 % of 10.9's proof: 13.3 kN); 8 would
+    put 9.3 kN into the rods' mild-steel taps and the 5052 for no joint that needs it.
+    Walking 1.48 x the end moment (A 1.47); jammed, the prying 3.73 (A 3.06). Steel by the
+    wine: the rods are bare carbon steel already (oiled), the heads lie outside the bay on
+    the cradle links' outer faces; unplated, as an electroplated 10.9 risks hydrogen
+    embrittlement (ISO 4042), oiled with the rods. Accu SSB-M6-16-10.9 (USD 0.44 each at 6,
+    0.35 at 12; ships the day), a new line; the guide says the plain-steel ones from their
+    own bag, 6 N·m on the key, back to 6 after a clutch slip (the stainless ones to 4).
+  - **A's pillar G's foot** (lifting at 1.06 x its decompression walking): the same 10.9
+    head at 6 N·m, its foot only (`cradle.STEEL_FEET`, `StandoffAxle.steel_foot`; its inner
+    end keeps the A2-70 one, at 0.59). Walking 0.70 (column D3's foot next, 0.63); at the
+    cap its screw 1.92 on the 10.9 head, the 5052 under its washer S_P 2.28 (A's worst now
+    2.16, column D3's end; at the drive review's 76.3 N·m 1.44, where G's foot on A2-70 had
+    been 1.09). One screw for both items: one part number, one torque.
+  - **A's lay-flat pose** (13.4° on the riser's blocks wherever they went, the bar 15°): A
+    doesn't come apart, so nothing needs it on its side. Off its board while the finish
+    cures, it stands on the bench on its six brackets' feet as on the board
+    (`cradle.REST_POSES`' new `"feet"`, `cradle_pack.rest_poses`): 27.0° and 32.3 N, 13.21
+    kg. `LAY_BLOCKS` drops A; the guide's finish step stands it there and gives its lift,
+    13.2 kg, two people (`cradle.LIFTS`). B's lifts re-measured on this structure: the
+    cradle 14.0 kg (12.9 had been the merged base's: the head's slow chunk 4 failed on it),
+    the drive side with the box 11.0 (10.3); B's poses 18.9°, 19.2°, 40.5°, 40.8° and
+    64.7°.
+  - Left for the packing turn: the packs (`PACK_OPEN`): the wider frames land B's drive
+    panel on the cradle box (unsupported, 157.5 L) and stand A's panels 255 mm tall.
+- **The BOM** (`spiderpig build`; on `decanting-cradle` with round 3's drive and use and
+  parts merged, B USD 1,412.11 and A 1,094.59): B to USD 1,379.89 (-32.22: the standoffs
+  -20.62, 29 fender washers +2.88, the screws +0.16; the cutting -14.64, b2 out of 7075
+  -80.44 against the 5052's +65.80 for b2, the wider frames and b6's arm). A to 1,156.93
+  (+62.34: its column E2 a side, 2 standoffs, 4 screws and 4 washers, 39 fender washers,
+  +17.54; the cutting +44.80 for the wider frames and the inner plate's chord to E2). No new
+  SKU (on the reviewed snapshot: B 1,374.22 to 1,342.12, A 1,056.74 to 1,119.08). Then the
+  10.9 heads: B USD 1,380.45 (+0.56, 8 of them), A 1,157.43 (+0.50, 10, bought as 12), a
+  line each (Accu); B 61 lines, A 57.
+- **The drive's numbers moved:** b6's wider arm took B's worst start to 2.719 N·m at the
+  input (`handcrank.DESIGN_START_NM`, 2.714 after round 3's saddles), its drawn clutch's cap
+  to 63.9 N·m (`config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`; 63.8); A's stay 2.858 and 67.2.
+  The structure holds both, and at the drive review's new-box 72.5 (B) and 76.3 (A) it
+  falls to O1 1.18 and A's outer plate 1.16.
+- **Where:** `spiderpig/cradle_structure.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/construction/cradle.py`, `spiderpig/construction/pivots/standoff.py`,
+  `spiderpig/construction/axle.py`, `spiderpig/materials.py`, `spiderpig/strength.py`,
+  `spiderpig/config.py`, `spiderpig/hardware/` (`sheet_catalog.py`, `cradle_catalog.py`,
+  `fasteners.py`), `spiderpig/construction/handcrank.py` (`DESIGN_START_NM` only),
+  `spiderpig/construction/__init__.py` (`STEEL_FEET`'s pillars), `spiderpig/cradle_pack.py`
+  (the `"feet"` rest), `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`.

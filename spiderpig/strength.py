@@ -295,7 +295,7 @@ def link_rows(config: BuildConfig, loads: dict, holes: dict[str, float] | None =
     by stem: a decanting cradle's pins and pillars are 8-12 mm), else :data:`LINK_HOLE`."""
     from spiderpig import linkage as lk_mod
     from spiderpig.construction.plates import RIDER_BOSS_T
-    from spiderpig.materials import FOOT_SHEET, link_sheets, sheet
+    from spiderpig.materials import FOOT_SHEET, allowable_mpa, link_sheets, sheet
 
     joints = loads.get("joints") or []
     if loads.get("source") not in PER_JOINT or not joints:
@@ -317,6 +317,7 @@ def link_rows(config: BuildConfig, loads: dict, holes: dict[str, float] | None =
         if not at:
             continue
         sh = sheet(sheets.get(key, config.sheet))
+        allow = allowable_mpa(config, sh.key)     # (a product's: its alloy's minimum)
         t = sh.thickness if sheets.get(key) else config.pitch
         an = (w - LINK_HOLE) * t
         zn = t * (w ** 3 - LINK_HOLE ** 3) / (6 * w)
@@ -339,7 +340,7 @@ def link_rows(config: BuildConfig, loads: dict, holes: dict[str, float] | None =
                       if foot is not None and foot not in at and foot in pts and pins else 0.0)
 
         row = {"joint": f"link:{key}", "kind": "link", "links": [key],
-               "sheet": sh.key, "thickness_mm": t, "allowable_mpa": sh.yield_mpa,
+               "sheet": sh.key, "thickness_mm": t, "allowable_mpa": allow,
                "pins": sorted(at), "bending": bending or any(frames.values())}
         for i, tag in enumerate(("walk", "jam")):
             F = max(f[i] for f in at.values())
@@ -351,7 +352,7 @@ def link_rows(config: BuildConfig, loads: dict, holes: dict[str, float] | None =
                 sig = max(sig, F * span / 4 / zg)
             if foot_lever and fr is None:
                 sig = max(sig, F * foot_lever / zn)
-            sf = sh.yield_mpa / sig if sig > 0 else None
+            sf = allow / sig if sig > 0 else None
             row[tag] = {"stress_mpa": round(sig, 2), "load_n": round(F, 2)}
             if fr is not None:
                 row[tag]["chord"] = f"{fr['worst']['chord']} at {fr['worst']['at']}"

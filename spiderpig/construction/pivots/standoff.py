@@ -110,6 +110,11 @@ def _stock(axle: StandoffAxle) -> tuple[tuple[float, ...], ...]:
 ALU = "#c8ccd0"
 COLUMN_TOL = 0.25    # the column within this of its gap (half the step)
 RUN_PLAY = 0.3       # a cradle's column: its links' axial running play on the standoff
+NECK_WALL = 1.2      # a cradle's printed neck at its thinnest (mm): three 0.4 mm perimeters, a
+#                      sleeve that only locates its links (the standoff carries the clamp), so
+#                      a pillar passes a layer a link sweeps 7.4 mm from its axis (B's O1 under
+#                      b6, design review round 3's B1: with the rings' 1.5 mm wall it ended
+#                      under b6, a cantilever)
 
 
 @dataclass(frozen=True)
@@ -143,6 +148,17 @@ class StandoffAxle:
     #                                  12 mm, tapped M6 (MISUMI NETRF12, cradle_shaft)
     outside: float | None = None     # the head room outside a frame plate (None: a layer,
     #                                  the pitch; a cradle's: its side is open there)
+    face_washer: str | None = None   # a washer between each end and its plate's face (its
+    #                                  catalog key; a cradle's: cradle.FACE_WASHER): on the
+    #                                  outer plate in the layer over it, under the inner one
+    #                                  in the clearance gap there
+    neck_wall: float | None = None   # a printed neck's thinnest wall where a passing link
+    #                                  leaves a layer less room than a ring (None: the
+    #                                  rings' ``Params.min_wall``; a cradle's: NECK_WALL)
+    foot: str = "bhcs"               # the foot's screw family (on the outer plate): "bhcs109"
+    #                                  a class 10.9 button head (a cradle's pillar in
+    #                                  cradle.STEEL_FEET: :meth:`steel_foot`)
+    foot_nm: float | None = None     # its tightening torque (None: ``tighten_nm``)
 
     @property
     def screw_d(self) -> float:
@@ -216,12 +232,24 @@ class StandoffAxle:
         ``cradle_report``), a 10 mm one at the 6 L's (0.78): the 12 mm is 1.73 x the 10 mm.
         Its heads and washers, 4.9 mm, stand outside the plates, where a cradle's side is
         open (the bay; the outside, its gearbox at O)."""
-        from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, NETRF12_ID
+        from spiderpig.construction.cradle import FACE_WASHER
+        from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, NETRF12_ROOT
+        from spiderpig.hardware.fasteners import BUTTON_A2_70_NM
 
-        return replace(self.one_piece(), stock="shaft12", size="M6", od=12.0, id_=NETRF12_ID,
+        return replace(self.one_piece(), stock="shaft12", size="M6", od=12.0, id_=NETRF12_ROOT,
                        yield_mpa=NETRF10_YIELD, end_hole=6.4, stud_hole=6.4,
                        min_engage=6.0, min_segment=24.0, washer_key="m6_washer",
-                       shim_key="m6_washer", tighten_nm=6.0, outside=5.0)
+                       shim_key="m6_washer", tighten_nm=BUTTON_A2_70_NM["6"],
+                       outside=5.0, neck_wall=NECK_WALL, face_washer=FACE_WASHER)
+
+    def steel_foot(self) -> StandoffAxle:
+        """A cradle's pillar whose foot joint needs more preload than an A2-70 button head
+        takes at ISO 7380's 4 N·m (``construction.cradle.STEEL_FEET``): its foot screw the tie
+        rods' class 10.9 button head at their torque (``construction.cradle.TIE_TIGHTEN_NM``;
+        the same head), its inner end's the A2-70 one."""
+        from spiderpig.construction.cradle import TIE_TIGHTEN_NM
+
+        return replace(self, foot="bhcs109", foot_nm=TIE_TIGHTEN_NM)
 
     def _running_play(self, build: Build, group: AxleGroup, out: Realized,
                       length: float) -> float:
@@ -260,25 +288,37 @@ class StandoffAxle:
                 break
         return got
 
+    @property
+    def face_t(self) -> float:
+        """The foot washer's thickness (:attr:`face_washer`; 0 without one)."""
+        return 0.0 if self.face_washer is None else float(get(self.face_washer).dims["t"])
+
+    @property
+    def face_r(self) -> float:
+        """The foot washer's radius (0 without one): what it claims in the layer over the
+        outer plate."""
+        return 0.0 if self.face_washer is None else float(get(self.face_washer).dims["od"]) / 2
+
     def washer(self) -> tuple[float, float, float]:
         if self.washer_key is None:
             return 0.0, 0.0, 0.0
         w = get(self.washer_key).dims
         return float(w["od"]), float(w["id"]), float(w["t"])
 
-    def end_screw(self, pitch: float, plate: bool = True
+    def end_screw(self, pitch: float, plate: bool = True, kind: str = "bhcs"
                   ) -> tuple[str, float, float, float] | None:
         """(key, length, head diameter, head height) of the button head (M4, or M3 for an
-        M3 column) through a frame plate (``plate``; else straight into the column's free
-        end, over the last link) and its washer into the standoff's end: the most thread up
-        to its depth (taken as the shortest standoff's)."""
+        M3 column; ``kind`` "bhcs109": a cradle's class 10.9 foot, :meth:`steel_foot`) through a
+        frame plate (``plate``; else straight into the column's free end, over the last link)
+        and its washer into the standoff's end: the most thread up to its depth (taken as the
+        shortest standoff's)."""
         from spiderpig.hardware.crank_catalog import M4_BHCS_LENGTHS, m4_bhcs
         from spiderpig.hardware.fasteners import SCREWS
 
         _, _, wt = self.washer()
         depth = min(self.thread_max, self.min_segment / 2)
         best = None
-        family = SCREWS.get(("bhcs", self.size[1:])) if self.size != "M4" else None
+        family = SCREWS.get((kind, self.size[1:])) if self.size != "M4" else None
         lengths = family.lengths if family is not None else M4_BHCS_LENGTHS
         for L in lengths:
             e = L - (pitch if plate else 0.0) - wt
@@ -305,7 +345,9 @@ class StandoffAxle:
             raise ConstructionError("an M4 pillar screw doesn't fit the frame plate arms")
         ring_min = (self.od + self.ring_fit) / 2 + p.min_wall   # the narrowest ring to cut
         screw = self.end_screw(ctx.sheet_t("frame"))
-        if screw is None or self.end_screw(ctx.pitch, False) is None:
+        if screw is None or self.end_screw(ctx.pitch, False) is None or (
+                self.foot != "bhcs" and self.end_screw(ctx.sheet_t("frame"), True,
+                                                       self.foot) is None):
             raise ConstructionError(f"no stock M4 screw fits a standoff pillar's ends in "
                                     f"{ctx.pitch:g} mm layers")
         w_od, _, w_t = self.washer()
@@ -325,8 +367,10 @@ class StandoffAxle:
         head = max(w_od, screw[2]) / 2
         from spiderpig.materials import washer_od
 
+        neck = ring_min if self.neck_wall is None else min(
+            ring_min, (self.od + self.ring_fit) / 2 + self.neck_wall)
         return AxleDims(axle=self.od / 2, spacer=max(p.spacer_d / 2, ring_min), head=head,
-                        neck=ring_min, washer=washer_od(self.od) / 2)
+                        neck=neck, washer=washer_od(self.od) / 2)
 
     def ends(self, d: AxleDims, pillar: bool, anchored: tuple[bool, bool], n_layers: int,
              pitch: float, span: float | None = None
@@ -386,6 +430,8 @@ class StandoffAxle:
         """The stock length for a ``gap`` mm between two faces (``max_short`` under it to
         ``max_long`` over, the nearest; with ``shims``, up to ``max_shims`` under it, steel
         shims (stock 0.5 mm washers) taking the rest up at its upper end), ``None`` when none is."""
+        if self.stock == "shaft12":     # (a cradle's: its posts one length whatever the
+            gap = round(gap, 2)         # float noise in their gaps, 0.01 mm)
         if self.stock.startswith("shaft"):
             # (the shaft: its lengths, end shims in SHIM_STEP steps only (stock 0.5 mm washers,
             # two to a 1 mm shim), the column within COLUMN_TOL of its gap; goBILDA M4 keeps
@@ -442,7 +488,8 @@ class StandoffAxle:
         axle = self.column_axle(set(links), b, layout.pitch, a, layout, air)
         if axle is None:
             return 0.0
-        span = layout.z(b)[0] - layout.z(a)[1] - air(a + 1, b - 1)
+        span = layout.z(b)[0] - layout.z(a)[1] - air(a + 1, b - 1) - self.face_t * (
+            anchored[0] + anchored[1])
         length = axle.segment(span, b - 1 > a and b - 1 not in links)
         return 0.0 if length is None else max(0.0, length - span)
 
@@ -499,7 +546,8 @@ class StandoffAxle:
                                 lambda x, y: column_air(view, group, x, y))
         if axle is None:
             return []
-        span = view.z(b)[0] - view.z(a)[1] - column_air(view, group, a + 1, b - 1)
+        span = view.z(b)[0] - view.z(a)[1] - column_air(view, group, a + 1, b - 1) - (
+            self.face_t * (anchored[0] + anchored[1]))
         length = axle.segment(span, b - 1 > a and b - 1 not in col.links)
         return [] if length is None else [axle.segment_key(length)]
 
@@ -571,18 +619,26 @@ class StandoffAxle:
 
         stem = re.escape(stem_of(group))
         bottom, top = view.layers[0][0], view.layers[view.top][1]
-        column = view.named(rf"{stem}_standoff\d+")
+        column = view.named(rf"{stem}_standoff\d+") + view.named(rf"{stem}_face\d+")
         ends = view.named(rf"{stem}_(screw|washer)\d+")
         column += [n for n in ends if view.z[n][0] < bottom - 1e-3]
         inner = [n for n in ends if n not in column and view.z[n][1] > top + 1e-3]
         ops = []
         cradle = self.stock == "shaft12"        # (a cradle's: its sides open, no servo bay)
+        foot = (f"its M{self.size[1:]} steel button head (class 10.9, from its own bag: not a "
+                f"stainless one; to {self.foot_nm:g} N·m) and washer from outside"
+                if self.foot == "bhcs109" else "its button head and washer from outside")
         if column:
             ops.append(Op(STACK, (-1, 1), whole(*column), "",
                           "Screw each pillar's standoff column (one piece) to the outer plate: "
-                          + "its button head and washer from outside"
-                          + f", threadlocker, to {self.tighten_nm:g} N·m while the column is "
-                          "bare to hold.", "columns"))
+                          + foot
+                          + (", an 18 mm fender washer on the plate's inner face under the "
+                             "column's foot and another on its top end for the inner plate "
+                             "(matched to the columns' by caliper, within 0.05 mm)"
+                             if self.face_washer is not None else "")
+                          + (", threadlocker" if self.foot == "bhcs109" else
+                             f", threadlocker, to {self.tighten_nm:g} N·m")
+                          + " while the column is bare to hold.", "columns"))
         if inner:
             ops.append(Op(JOIN, (1,), whole(*inner), "",
                           (f"Each pillar's inner button head and washer from the bay side, "
@@ -624,9 +680,32 @@ class StandoffAxle:
             if col.roles[k][0] == "neck":
                 raise ConstructionError(f"{group.name}: a standoff can't neck down (layer {k})")
         shimmed: dict[int, float] = {}      # face -> the shims' thickness under it
-        trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
         long = 0.0          # how far the stock standoff (and take-up) is off its gap
         z0, z1 = build.z(a)[1], build.z(b)[0]
+        trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
+        if self.face_washer is not None:    # each anchored end on a washer on its plate
+            wd = get(self.face_washer).dims
+            tw = float(wd["t"])
+            for k, plate in ((a, anchored[0]), (b, anchored[1])):
+                if not plate:
+                    continue
+                if k == b:          # under the inner plate: in the clearance gap there
+                    g = build.plan.gaps.get(b - 1, 0.0) if b - 1 in col.washers else 0.0
+                    if g < tw - EPS:
+                        raise ConstructionError(
+                            f"{group.name}: no {tw:g} mm clearance gap under the inner plate "
+                            f"for its end's washer (layer {b - 1}'s gap {g:g} mm)")
+                    trim[b - 1] = tw
+                lo = z0 if k == a else z1 - tw
+                out.bodies.append(hardware(f"{stem}_face{k}",
+                                           bored(disc(xy, float(wd["od"]) / 2, lo, lo + tw),
+                                                 xy, float(wd["id"]), lo, lo + tw),
+                                           host, fab="purchased", bom_key=self.face_washer,
+                                           color=STEEL))
+                if k == a:
+                    z0 += tw
+                else:
+                    z1 -= tw
         span = z1 - z0 - column_air(build, group, a + 1, b - 1)
         length = self.segment(span, b - 1 > a and b - 1 not in col.links)
         if length is None:
@@ -647,7 +726,7 @@ class StandoffAxle:
                 zs0 = z1 - t
                 g = build.plan.gaps.get(b - 1, 0.0) if b - 1 in col.washers else 0.0
                 if g > 0:
-                    trim[b - 1] = min(t, g)
+                    trim[b - 1] = min(t + trim.get(b - 1, 0.0), g)
                 out.bodies.append(hardware(f"{stem}_shims{b}", ring(xy, self.shim_od(),
                                                                     self.stud_hole, zs0, z1),
                                            host, fab="purchased", bom_key=self.shim_key,
@@ -659,8 +738,9 @@ class StandoffAxle:
                 z1 = zs0
         # the printed sleeves (common.sleeve_runs), stopped under the shims where they reach
         # down into the spacer layer under the face
-        slots = [replace(sl, z1=min(sl.z1, z1)) for sl in
-                 column_slots(build, group, col, fill=fill, trim=trim) if sl.z0 < z1 - EPS]
+        slots = [replace(sl, z0=max(sl.z0, z0), z1=min(sl.z1, z1)) for sl in
+                 column_slots(build, group, col, fill=fill, trim=trim)
+                 if sl.z0 < z1 - EPS and sl.z1 > z0 + EPS]
         long += build_sleeves(build, group, slots, out, self.od + self.ring_fit, host, stem)[0]
         bore = max(2.0, self.screw_d / 2)       # (its tapped ends, drawn through)
         seg = disc(xy, self.od / 2 - 0.01, z0, z1) - disc(xy, bore, z0 - 1, z1 + 1)
@@ -672,7 +752,7 @@ class StandoffAxle:
         for k, sign, plate in ends:
             # through the plate (and any shims under it) into the standoff's end
             grip = (build.plan.t(k) if plate else pitch) + shimmed.get(k, 0.0)
-            got = self.end_screw(grip, plate)
+            got = self.end_screw(grip, plate, self.foot if sign < 0 and plate else "bhcs")
             if got is None:
                 raise ConstructionError(f"{group.name}: no stock M4 screw takes a {grip:.2f} mm "
                                         f"grip at layer {k}")

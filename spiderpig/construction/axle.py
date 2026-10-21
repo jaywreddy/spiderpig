@@ -237,6 +237,15 @@ class AxleGroup(Group):
             tips = getattr(self.construction, "tips", None)
             if tips is not None:            # what passes beyond its end's retainer (a clevis
                 out += tips(d, L, k0, k1, ax, g)    # pin's end past its clip)
+            face_r = float(getattr(self.construction, "face_r", 0.0) or 0.0)
+            if self.pillar and down and face_r:    # its foot's washer, on the outer plate
+                if 1 in mset:
+                    raise Unbuildable("its foot's washer on the outer plate would take its "
+                                      "link's layer 1")
+                if free.get(1, np.inf) < face_r:
+                    raise Unbuildable(f"its foot's washer: {crossing(1)}")
+                out += [Placed(1, Disc(ax, face_r), g, f"{g} foot washer"),
+                        Placed(0, Disc(ax, face_r), g, f"{g} foot washer", gap=True)]
             beside = {k for m in ms for k in (m - 1, m + 1)} - mset
             for k in range(k0 + 1, k1):
                 if k in mset:

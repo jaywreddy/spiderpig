@@ -83,13 +83,24 @@ def _axle_groups(ctx: Context, config) -> list[Group]:
             # aluminium goBILDA standoff (cradle_report's strength rows)
             made[kind] = made[kind].cradle_shaft()
     own: dict[str, str] = {}
+    steel: tuple[str, ...] = ()
     if _cradle(config):
         from spiderpig.config import PRODUCT_PIN_JOINTS, PRODUCT_PINS
+        from spiderpig.construction.cradle import STEEL_FEET
 
         if config.pin == PRODUCT_PINS.get(config.lk.product):    # (a pin asked for: all)
             own = PRODUCT_PIN_JOINTS.get(config.linkage, {})
-    return [AxleGroup(ax, _resolved(own[ax.name], ctx) if ax.kind == "pin" and ax.name in own
-                      else made[ax.kind]) for ax in ctx.topo.axes if ax.kind in kinds]
+        if hasattr(made["frame"], "steel_foot"):    # (a pillar's foot on a 10.9 screw)
+            steel = STEEL_FEET.get(config.linkage, ())
+
+    def of(ax):
+        if ax.kind == "pin" and ax.name in own:
+            return _resolved(own[ax.name], ctx)
+        if ax.kind == "frame" and ax.name in steel:
+            return made["frame"].steel_foot()
+        return made[ax.kind]
+
+    return [AxleGroup(ax, of(ax)) for ax in ctx.topo.axes if ax.kind in kinds]
 
 
 def _resolved(key: str, ctx: Context):

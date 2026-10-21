@@ -167,7 +167,8 @@ audits (the identity gate's baseline): a decision for a walker change of its own
 
 
 ALLOYS = {
-    # alloy: (temper, its page, density g/cm^3, yield MPa, the walkers' cut rate USD/cm^2)
+    # alloy: (temper, its page, density g/cm^3, yield MPa (typical), the walkers' cut rate
+    # USD/cm^2)
     "5052": ("H32", SCS_AL, 2.68, 193.0, 0.20),
     "6061": ("T6", SCS_6061, 2.70, 276.0, 0.40),
     # SendCutSend's datasheet (materials?sku=ALU7075-190, fetched 2026-10-13): .125, .190,
@@ -176,6 +177,35 @@ ALLOYS = {
     # 2026-10-14)
     "7075": ("T6", "https://sendcutsend.com/materials/7075-aluminum/", 2.82, 476.0, None),
 }
+"""Each alloy's temper, page, density and **typical** yield: the walkers' strength rules and
+audits were set on these (``yield_mpa``; the identity gate holds them)."""
+
+KSI = 6.894757
+B209 = "https://jahanayegh.com/home/images/standard/B-209.pdf"
+MIN_YIELD: dict[str, tuple[tuple[float, float, float], ...]] = {
+    # alloy: (from in, to in, the specified minimum yield in that band, MPa)
+    "5052": ((0.017, 2.000, 23.0 * KSI),),          # H32: 0.114-0.249 and 0.250-0.499, 23.0
+    "6061": ((0.010, 2.000, 35.0 * KSI),),          # T6 0.065-0.249, T651 0.250-0.499: 35.0
+    "7075": ((0.126, 0.249, 69.0 * KSI), (0.250, 0.499, 67.0 * KSI)),   # T6; T651 plate
+}
+"""Each alloy's **specified minimum** yield by gauge (ASTM B209-14 Tables 2 and 3, the inch
+edition, :data:`B209`, fetched 2026-10-20; long transverse for the heat-treatable ones):
+5052-H32 "0.114-0.249 31.0 38.0 23.0" and "0.250-0.499 31.0 38.0 23.0" ksi (tensile min, max,
+yield min); 6061-T6 "0.065-0.128 ... 42.0 ... 35.0", "0.129-0.249 ... 35.0", T651 "0.250-0.499
+... 35.0"; 7075-T6 "0.188-0.249 ... 80.0 ... 69.0", "0.126-0.187 ... 69.0", T651 "0.250-0.499
+... 78.0 ... 67.0". The metric edition (B209M-14) says 160, 240 and 475 MPa. MIL-HDBK-5J's
+S-basis gives 5052-H32 22 ksi across the grain (23 along it): B209's single 23.0 is the bar,
+a laser-cut part's grain unknown (``docs/agentlib/DECISIONS.md``, 2026-10-20). A product (a
+decanting cradle) is rated on these (:func:`materials.allowable_mpa`; design review round 3's
+M1: 5052's typical 193 MPa had been taken)."""
+
+
+def min_yield(alloy: str, inch: float) -> float | None:
+    """The specified minimum yield (MPa) of ``alloy`` at ``inch`` (:data:`MIN_YIELD`)."""
+    for lo, hi, mpa in MIN_YIELD.get(alloy, ()):
+        if lo - 1e-9 <= inch <= hi + 1e-9:
+            return round(mpa, 1)
+    return None
 
 
 def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None,
@@ -192,14 +222,17 @@ def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None,
                price_usd=price),),
         dims={"thickness": t, "material": "aluminium", "alloy": f"{alloy}-{temper}",
               "density": density, "yield_mpa": yield_mpa,
+              "yield_min_mpa": min_yield(alloy, inch),
               "min_hole": t, "sheet_mm": sheet_mm, **SCS_RULES_AL, "min_part": small,
               "thickness_tol": (over, under), "sku": spec["sku"],
               **({"deburr_mm": SCS_DEBURR_MM} if key in DEBURR_CHECKED else {}),
               # the cutting, material included (hardware.bom.cut_estimate, calibrated on
               # SendCutSend's live quotes of 2026-10-08): per cm^2 of part, least per part
               **({"cut_usd_cm2": rate, "cut_min_usd": 2.20} if rate is not None else {})},
-        notes=f"{alloy}-{temper}: yield {yield_mpa:g} MPa "
-              f"({'SendCutSend' if alloy == '7075' else 'ASM'}); minimum hole = thickness, "
+        notes=f"{alloy}-{temper}: yield {yield_mpa:g} MPa typical "
+              f"({'SendCutSend' if alloy == '7075' else 'ASM'}), "
+              f"{min_yield(alloy, inch) or yield_mpa:g} MPa minimum (ASTM B209); "
+              "minimum hole = thickness, "
               f"2 t hole-to-edge, min part {small[0]:g} x {small[1]:g} mm, thickness "
               f"+{over:g}/-{under:g} mm, deburred from 1 x 3 in (SendCutSend's {spec['sku']} "
               "spec table, 2026-10-15).",

@@ -39,7 +39,8 @@ from __future__ import annotations
 
 import itertools
 import math
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -61,9 +62,10 @@ from spiderpig.cradle_drive import JAM_FLOOR, clutch_case, drive_limits, riser_r
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware import mass as mass_mod
 from spiderpig.hardware.cradle_catalog import (
-    NETRF10_ID,
+    NETRF10_ROOT,
     NETRF10_YIELD,
     NETRF12_ID,
+    NETRF12_ROOT,
     NETRF12_THREAD,
 )
 from spiderpig.stack import body_class
@@ -414,7 +416,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     t_rod = design.ctx.sheet_t("link", rider)
     far = next(j for j in lk.links[rider][0] if j != lk.crank[1])
     from spiderpig.config import chord_r
-    from spiderpig.materials import link_sheets, sheet
+    from spiderpig.materials import allowable_mpa, link_sheets
 
     w = 2 * chord_r(config, rider, lk.crank[1], far)
     inertia = w * t_rod ** 3 / 12.0
@@ -429,7 +431,8 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                   "jam_n": round(f_rod_jam, 1), "sf_bottle": round(p_cr / max(f_rod, 1e-9), 2),
                   "sf_jam": round(p_cr / max(f_rod_jam, 1e-9), 2),
                   "eccentricity_mm": round(span / 2, 2),
-                  "yield_mpa": sheet(link_sheets(config).get(rider, config.sheet)).yield_mpa}
+                  "yield_mpa": allowable_mpa(config, link_sheets(config).get(rider,
+                                                                             config.sheet))}
     for tag, f in (("bottle", f_rod), ("jam", f_rod_jam)):
         out["rod"][f"sf_secant_{tag}"] = round(float(rod_secant_sf(np.array([f]),
                                                                     out["rod"])[0]), 2)
@@ -821,7 +824,8 @@ def keepers(config: BuildConfig, mech) -> dict:
 
 def take_up(config: BuildConfig, mech) -> dict:
     """Each pin's axial take-up against its links' sheets as they may arrive (design review
-    round 2's M5): a pin (``mech.meta["wobble"]``'s ``pin:`` notes: its links and its
+    round 2's M5): a pin (``mech.meta["wobble"]``'s ``pin:`` notes, and since round 3's
+    laser-cut parts minor 9 its pillars' ``pillar:``, a row ``"pillar O2"``: its links and its
     play, the barrel or the length between the rings less the stack as drawn, the printed
     parts' tolerance already in) takes its links' thickness over the nominal; each link's
     sheet is over by up to its published tolerance (``thickness_tol``, SendCutSend's spec
@@ -837,7 +841,7 @@ def take_up(config: BuildConfig, mech) -> dict:
 
     rows = []
     for name, note in sorted((mech.meta.get("wobble") or {}).items()):
-        if not name.startswith("pin:") or not note.get("links"):
+        if not name.startswith(("pin:", "pillar:")) or not note.get("links"):
             continue
         links, overs = [], []
         for ln in note["links"]:
@@ -847,7 +851,8 @@ def take_up(config: BuildConfig, mech) -> dict:
             links.append({"link": ln["link"], "sheet": key, "over_mm": over})
         play = float(note.get("play_mm") or 0.0)
         worst, rss = sum(overs), math.sqrt(sum(o * o for o in overs))
-        rows.append({"pin": name[4:], "kind": str((note.get("section") or {}).get("name", "")),
+        rows.append({"pin": name[4:] if name.startswith("pin:") else name.replace(":", " "),
+                     "kind": str((note.get("section") or {}).get("name", "")),
                      "play_mm": round(play, 3), "links": links,
                      "growth_worst_mm": round(worst, 3), "growth_rss_mm": round(rss, 3),
                      "margin_worst_mm": round(play - worst, 3),
@@ -1602,10 +1607,11 @@ def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float,
 
 def column_section(stand: cr.Stand) -> tuple[float, float, float]:
     """A stand column's section (mm): its diameter, the bore its tapped ends are rated as
-    (the tap drill's, as a pillar's: a NETRF10's M5 4.2, a NETRF12's M6 5.0) and their
-    depth (:func:`construction.cradle.column_parts`)."""
+    (the female thread's roots, as a pillar's: a NETRF10's M5 5.0, a NETRF12's M6 6.0;
+    design review round 3's minor 3: the tap drill's had been taken) and their depth
+    (:func:`construction.cradle.column_parts`)."""
     col = cr.column_parts(stand)
-    return col.d, (NETRF12_ID if col.d > 10.0 else NETRF10_ID), col.thread
+    return col.d, (NETRF12_ROOT if col.d > 10.0 else NETRF10_ROOT), col.thread
 
 
 BLOCKS = {"front saddle": (55.0, -47.95), "rear saddle": (317.5, -149.0),
@@ -1654,11 +1660,96 @@ def _stand_widths(stand: cr.Stand) -> dict[tuple[str, str], float]:
     return widths
 
 
-def _side_posts(config: BuildConfig, notes: dict, joints, pts) -> tuple[list, float]:
+SPAN_TOL = 2.5          # mm: a post's standoff ends within this of each plate's face (its
+#                         end shims, StandoffAxle.max_shims, and the play)
+_SPANS: dict[int, tuple[object, dict]] = {}     # post_spans by the mechanism (kept alive)
+
+
+def post_spans(config: BuildConfig, mech) -> dict[str, dict]:
+    """Every post between a side's frame plates as fabricated (design review round 3's B1:
+    B's pillar O1 had stopped 15.9 mm under the inner plate, no hole cut there, while the
+    side frame tied it to it): per side and post (``"L"``, ``"pillar:O1"`` /
+    ``"column:D1"``), its standoff's z extent, the plates' faces it stands between, how far
+    short of each it ends (mm) and whether each plate is cut through on its axis (a hole
+    there, its screw's). Memoized by the mechanism."""
+    from build123d import Vector
+
+    hit = _SPANS.get(id(mech))
+    if hit is not None and hit[0] is mech:
+        return hit[1]
+    lk = config.lk
+    stand = cr.stand_of(lk)
+    stems = {f"pillar:{j}": rf"pillar_{j}_standoff\d+" for j in lk.frame if j != lk.crank[0]}
+    stems.update({f"column:{n}": f"stand_column_{n}" for n in stand.columns})
+    by = {b.name: b for b in mech.bodies if b.part is not None}
+    out: dict[str, dict] = {}
+    for side in sorted({n.split(".", 1)[0] for n in by if "." in n}):
+        outer, inner = by.get(f"{side}.frame_outer"), by.get(f"{side}.torso")
+        if outer is None or inner is None:
+            continue
+        po, pi = outer.placed_part(), inner.placed_part()
+        ob, ib = po.bounding_box(), pi.bounding_box()
+        up = ob.max.Z <= ib.min.Z           # the outer plate under the inner (the L side)
+        f_out, f_in = (ob.max.Z, ib.min.Z) if up else (ob.min.Z, ib.max.Z)
+        mid_o, mid_i = (ob.min.Z + ob.max.Z) / 2, (ib.min.Z + ib.max.Z) / 2
+        got: dict[str, dict] = {}
+        for name, stem in stems.items():
+            parts = [b for n, b in by.items() if re.fullmatch(f"{side}\\.{stem}", n)]
+            if not parts:
+                got[name] = {"found": False}
+                continue
+            bbs = [b.placed_part().bounding_box() for b in parts]
+            lo, hi = min(b.min.Z for b in bbs), max(b.max.Z for b in bbs)
+            x = (min(b.min.X for b in bbs) + max(b.max.X for b in bbs)) / 2
+            y = (min(b.min.Y for b in bbs) + max(b.max.Y for b in bbs)) / 2
+            near_o, near_i = (lo, hi) if up else (hi, lo)
+            got[name] = {"found": True, "z": [round(lo, 3), round(hi, 3)],
+                         "faces": [round(f_out, 3), round(f_in, 3)],
+                         "short_mm": [round(abs(near_o - f_out), 3),
+                                      round(abs(near_i - f_in), 3)],
+                         "holes": [not po.is_inside(Vector(x, y, mid_o)),
+                                   not pi.is_inside(Vector(x, y, mid_i))]}
+        out[side] = got
+    if len(_SPANS) > 3:
+        _SPANS.clear()
+    _SPANS[id(mech)] = (mech, out)
+    return out
+
+
+def check_spans(config: BuildConfig, mech) -> None:
+    """Every post the side frame rates stands plate to plate in ``mech``, as it models them
+    (:func:`post_spans`): its standoff within :data:`SPAN_TOL` of both plates' faces, a hole
+    through each plate on its axis; else ``ValueError`` (a cantilever the side frame doesn't
+    model, or a post with nothing to screw it to)."""
+    bad = []
+    for side, got in post_spans(config, mech).items():
+        for name, g in got.items():
+            if not g["found"]:
+                bad.append(f"{side}.{name}: no standoff fabricated")
+                continue
+            for plate, short, hole in zip(("outer", "inner"), g["short_mm"], g["holes"],
+                                          strict=True):
+                if short > SPAN_TOL:
+                    bad.append(f"{side}.{name} stops {short:.1f} mm short of the {plate} "
+                               "plate")
+                if not hole:
+                    bad.append(f"{side}.{name}: the {plate} plate has no hole on its axis")
+    if bad:
+        raise ValueError(f"{config.lk.key}: the side frame rates every post plate to plate, "
+                         "but " + "; ".join(bad))
+
+
+def _side_posts(config: BuildConfig, notes: dict, joints, pts, mech=None
+                ) -> tuple[list, float]:
     """The drive side's posts (:class:`cradle_structure.Post`): each pillar with its links'
-    loads at their mid-planes over the outer plate's face, each stand column, each with its
+    loads along their bores over the outer plate's face (half a quarter of the link's
+    thickness either side of its mid-plane: the load spread over the bore), each stand
+    column, each with its
     plates' hold on its ends (:func:`cradle_structure.plate_spring`); and the plates' gap
-    (mm)."""
+    (mm), between layer 0's top and the plan's top layer's bottom. Each post stands plate to
+    plate: a pillar's note must say it reaches both (``supports``), and with ``mech`` the
+    fabricated parts must (:func:`check_spans`; design review round 3's B1: B's O1, a
+    cantilever, had been rated on the plates' full gap)."""
     from spiderpig import cradle_structure as cs
     from spiderpig.materials import sheet_of, thickness
 
@@ -1669,6 +1760,8 @@ def _side_posts(config: BuildConfig, notes: dict, joints, pts) -> tuple[list, fl
     widths = _stand_widths(stand)
     t_frame = thickness(config, sheet_of(config, "frame"))
     nodes = [j for j in lk.frame if j != lk.crank[0]] + list(stand.columns)
+    if mech is not None:
+        check_spans(config, mech)
 
     def spring(pairs, n: str) -> np.ndarray:
         at = {k: xy[k] for k in xy if k in nodes or any(k in pr for pr in pairs)}
@@ -1689,7 +1782,11 @@ def _side_posts(config: BuildConfig, notes: dict, joints, pts) -> tuple[list, fl
             continue
         lz = note["layer_z"]
         face = float(lz["0"][1])
-        top = int(note.get("top") or max(map(int, lz)))
+        top = max(map(int, lz))
+        sup = [int(k) for k in note.get("supports") or (0, top)]
+        if sorted(sup) != [0, top]:
+            raise ValueError(f"{lk.key}: pillar {j} is held at layers {sup}, not by both frame "
+                             f"plates (0 and {top}): the side frame rates it plate to plate")
         length = float(lz[str(top)][0]) - face
         od = float(note["section"]["bearing_d"])
         ei = cs.E_STEEL * math.pi * od ** 4 / 64        # (solid but for its tapped ends)
@@ -1702,7 +1799,9 @@ def _side_posts(config: BuildConfig, notes: dict, joints, pts) -> tuple[list, fl
                 raise ValueError(f"pillar {j}: no layer for its link {body}")
             z0 = float(lz[str(k)][0])
             t = thickness(config, sheet_of(config, "link", body))
-            loads.append((jk, -1.0, z0 + t / 2 - face))
+            # its bore bears along its thickness: half the load a quarter of it either side
+            # of its mid-plane (a load spread evenly over t, to the moment between them)
+            loads += [(jk, -0.5, z0 + t / 4 - face), (jk, -0.5, z0 + 3 * t / 4 - face)]
         out.append(cs.Post(j, np.asarray(pts[j][0], float), ei, loads,
                            spring(stand.outer, j), spring(stand.inner, j), NETRF12_THREAD))
     if length is None:
@@ -1760,9 +1859,14 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
     of it, the side's stiffness across (``stiffness``), the cradle box across the bay
     (``box``), and the strength rows they add (``rated``: the columns, a row per frame plate,
     the tie rods and their end joints) and the pillars' moments (``pillars``) for
-    :func:`loads_doc`."""
+    :func:`loads_doc`. Since design review round 3 (2026-10-20): each post's span from the
+    parts (:func:`check_spans`), the solve exact, both idealizations of the plates (faces and
+    mid-planes, the worse), second order with the side's buckling per angle (``buckling``,
+    a rated row), each plate section's stresses combined, every part on its specified
+    minimum yield (:func:`materials.allowable_mpa`), and the posts' screwed ends
+    (``joints``, :func:`post_joints`)."""
     from spiderpig import cradle_structure as cs
-    from spiderpig.materials import link_sheets, sheet, thickness
+    from spiderpig.materials import allowable_mpa, link_sheets, thickness
 
     lk = config.lk
     if ts is None:
@@ -1790,8 +1894,8 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
     sections = {}
     for name in lk.links:
         key = sheets.get(name, config.sheet)
-        sh = sheet(key)
-        sections[name] = cs.LinkSection(w, thickness(config, key), sh.yield_mpa, key)
+        sections[name] = cs.LinkSection(w, thickness(config, key), allowable_mpa(config, key),
+                                        key)
     link = cr.cradle_link(lk)
     ties = [j for j in lk.links[link][0] if j.startswith("T")]
     on = {"walk": ties, "jam": ties}
@@ -1804,10 +1908,13 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
     def width(name: str, a: str, b: str) -> float:
         return 2 * chord_r(config, name, a, b)
 
+    from spiderpig.config import PRODUCT_BOSS_R
+
+    bosses = PRODUCT_BOSS_R.get(lk.key, {})
     frames = {tag: cs.link_bending(lk, pts, joints, v, sections, holes, {link: on[tag]}, sk,
-                                   width) for tag, (v, sk, _) in cases.items()}
-    side, length = _side_posts(config, notes, joints, pts)
-    plates_ = side_plates(config, pts)
+                                   width, bosses) for tag, (v, sk, _) in cases.items()}
+    side, length = _side_posts(config, notes, joints, pts, mech)
+    faces = side_plates(config, pts)
     o_joint = next(jk for jk, (j, b1, b2) in enumerate(joints)
                    if j == lk.crank[0] and b2 == "ground")
     z_rod = rod_height(config, notes, mech.meta.get("hand_crank"))
@@ -1818,61 +1925,126 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
         f = -v[:, o_joint]
         return {lk.crank[0]: z_rod * np.stack([-f[:, 1], f[:, 0]], -1)}
 
-    got: dict[str, dict] = {}
-    grills: dict[str, dict] = {}
-    for tag, (v, sk, _) in cases.items():
-        got[tag], grills[tag] = cs.side_frame(side, length, v, plates_, sk, turns=turns(v))
-    stiff = side_stiffness(config, side, length, plates_, len(joints))
-
-    # the frame plates in their plane: the outer pinned at its feet, the posts' feet and the
-    # gearbox on it; the inner floating on its posts' ends
     stand = cr.stand_of(lk)
-    xy = plates_.xy
-    t_frame = plates_.t
-    y_frame = sheet(config.frame_sheet).yield_mpa
+    xy = faces.xy
+    t_frame = faces.t
+    y_frame = allowable_mpa(config, config.frame_sheet)
     widths = _stand_widths(stand)
     post_nodes = [p.name.split(":", 1)[-1] for p in side]
-    plates: dict[str, dict] = {}
-    for tag, (v, sk, torque) in cases.items():
+    web = _frame_web(config)
+    stiff = side_stiffness(config, side, length, faces, len(joints))
+    mid = side_stiffness(config, side, length, replace(faces, mid=True), len(joints))
+    for k in ("pivots_n_mm", "across_n_mm", "crank_n_mm"):
+        for n, kv in mid[k].items():
+            stiff[k][n] = min(stiff[k][n], kv)
+    stiff["least_n_mm"] = min(stiff["pivots_n_mm"].values())
+    # the side rocks on its rail's play in the cleats before they bear (design review round
+    # 3's M6): 2 x the play over the rail's bearing height, at each pivot's height over the
+    # board; the reported sway is the elastic one and that rocking
+    board = float(pts[cr.mouth_name(lk)][0][1]) + cr.BASE_TOP
+    rock = {n: 2 * cr.CLEAT[1] / cr.CLEAT_BEAR * (float(xy[n][1]) - board)
+            for n in stiff["pivots_n_mm"]}
+    stiff["elastic_mm"] = round(SWAY_PUSH_N / (2 * stiff["least_n_mm"]), 2)
+    stiff["rock_mm"] = {n: round(r, 2) for n, r in rock.items()}
+    stiff["sway_mm"] = round(max(SWAY_PUSH_N / (2 * k) + rock[n]
+                                 for n, k in stiff["pivots_n_mm"].items()), 2)
+
+    def in_plane(got_t: dict, v: np.ndarray, sk: np.ndarray, torque: np.ndarray) -> dict:
+        """Both plates in their plane: the outer pinned at its feet, the posts' feet and the
+        gearbox on it; the inner floating on its posts' ends."""
         keep = ~sk
-        for fix in ("box",):
-            ld_o = {(p.name.split(":", 1)[-1]): got[tag][p.name]["forces"][fix]["foot"]
-                    for p in side}
-            ld_o[lk.crank[0]] = ld_o.get(lk.crank[0], 0.0) - v[keep, o_joint]
-            outer = cs.members({k: xy[k] for k in {*(q for pr in stand.outer for q in pr),
-                                                   *ld_o, *_on_members(stand, "outer")}},
-                               stand.outer, widths, t_frame, y_frame, ld_o, stand.feet,
-                               (lk.crank[0], -torque[keep] * 1000.0),
-                               tied=[*stand.feet, *post_nodes], across_k=stiff["across_n_mm"])
-            ld_i = {(p.name.split(":", 1)[-1]): -got[tag][p.name]["forces"][fix]["end"]
-                    for p in side}
-            inner = cs.members({k: xy[k] for k in {*(q for pr in stand.inner for q in pr),
-                                                   *ld_i, *_on_members(stand, "inner")}},
-                               stand.inner, widths, t_frame, y_frame, ld_i, (),
-                               tied=post_nodes)
-            for plate, res in (("outer", outer), ("inner", inner)):
+        ld_o = {(p.name.split(":", 1)[-1]): got_t[p.name]["forces"]["box"]["foot"]
+                for p in side}
+        ld_o[lk.crank[0]] = ld_o.get(lk.crank[0], 0.0) - v[keep, o_joint]
+        outer = cs.members({k: xy[k] for k in {*(q for pr in stand.outer for q in pr),
+                                               *ld_o, *_on_members(stand, "outer")}},
+                           stand.outer, widths, t_frame, y_frame, ld_o, stand.feet,
+                           (lk.crank[0], -torque[keep] * 1000.0),
+                           tied=[*stand.feet, *post_nodes], across_k=stiff["across_n_mm"])
+        ld_i = {(p.name.split(":", 1)[-1]): -got_t[p.name]["forces"]["box"]["end"]
+                for p in side}
+        inner = cs.members({k: xy[k] for k in {*(q for pr in stand.inner for q in pr),
+                                               *ld_i, *_on_members(stand, "inner")}},
+                           stand.inner, widths, t_frame, y_frame, ld_i, (), tied=post_nodes)
+        return {"outer": outer, "inner": inner}
+
+    # each side as one frame, rated both ways its plates may be idealized (design review
+    # round 3's minor 2: at their faces, where the posts end, and at their mid-planes, where
+    # they bend, each post's end a rigid half-thickness off it; the worse of the two per
+    # row): first order, then the plates' members' in-plane forces (and the posts' axial
+    # ones) on the frame's bending out of the plates, second order (P-Delta) and its
+    # buckling factor per angle (round 3's M2); every member end out of its plane with its
+    # in-plane stress (round 3's minor 1)
+    got: dict[str, dict] = {}
+    plates: dict[str, dict] = {}
+    lam: dict[str, tuple[float, float, float]] = {}
+
+    def chain(plates_, v, sk, torque) -> tuple:
+        """One case's side frame first order, its plates in their plane, then second order
+        (memoized by the mechanism, the idealization and the case's vectors: the walking
+        case is the same in every call of a report)."""
+        key = (id(mech), plates_.mid, hash(np.ascontiguousarray(v).tobytes()),
+               hash(np.ascontiguousarray(sk).tobytes()), hash(np.asarray(torque).tobytes()),
+               round(length, 6), z_rod)
+        hit = _CHAIN.get(key)
+        if hit is not None and hit[0] is mech:
+            return hit[1]
+        first = cs.side_frame_solve(side, length, v, plates_, sk, turns=turns(v),
+                                    second_order=False)
+        mem = in_plane(first.posts, v, sk, torque)
+        axial = {pl: cs.grillage_axial(getattr(plates_, pl), xy, mem[pl]["forces"])
+                 for pl in ("outer", "inner")}
+        frame = cs.side_frame_solve(side, length, v, plates_, sk, turns=turns(v),
+                                    axial=axial, second_order=True)
+        if len(_CHAIN) > 24:
+            _CHAIN.clear()
+        _CHAIN[key] = (mech, (mem, axial, frame))
+        return mem, axial, frame
+
+    for plates_ in (faces, replace(faces, mid=True)):
+        for tag, (v, sk, torque) in cases.items():
+            mem, axial, frame = chain(plates_, v, sk, torque)
+            if frame.buckling is not None and len(frame.buckling):
+                i = int(np.argmin(frame.buckling))
+                at = float(np.degrees(ts[~sk][i]))
+                comp = max((float(-f[i, 0]) for pl in axial.values() for f in pl.values()),
+                           default=0.0)
+                if tag not in lam or frame.buckling[i] < lam[tag][0]:
+                    lam[tag] = (float(frame.buckling[i]), at, max(comp, 0.0))
+            have = got.setdefault(tag, {})
+            for name, row in frame.posts.items():
+                old = have.get(name)
+                if old is None:
+                    have[name] = {**row, "forces": {k: (dict(f) if isinstance(f, dict) else f)
+                                                    for k, f in row["forces"].items()}}
+                    continue
+                for k in ("moment_nm", "ends_nm", "mid_nm", "shear_n", "foot_nm", "tip_nm",
+                          "end_n", "drift_mm"):
+                    old[k] = max(old[k], row[k])
+                for part in ("foot", "end"):        # the larger end moment per angle
+                    a_, b_ = old["forces"]["turn"][part], row["forces"]["turn"][part]
+                    bigger = np.hypot(*b_.T) > np.hypot(*a_.T)
+                    old["forces"]["turn"][part] = np.where(bigger[:, None], b_, a_)
+            for plate, segs in (("outer", plates_.outer), ("inner", plates_.inner)):
                 into = plates.setdefault(plate, {}).setdefault(tag, {})
-                for m_ in res["members"]:
-                    have = into.get(m_["member"])
-                    if have is None:
+                rows = [*mem[plate]["members"],
+                        *cs.plate_rows(frame.grillages[plate], segs, xy, t_frame, y_frame,
+                                       plate_holes(config, plate), web,
+                                       inplane=axial[plate]).values()]
+                for m_ in rows:
+                    have_ = into.get(m_["member"])
+                    if have_ is None:
                         into[m_["member"]] = dict(m_)
                         continue
-                    if m_["safety"] < have["safety"]:
-                        have.update({k: m_[k] for k in ("stress_mpa", "safety")})
-                    if m_["buckling"] is not None and (have["buckling"] is None
-                                                       or m_["buckling"] < have["buckling"]):
-                        have.update({k: m_[k] for k in ("compression_n", "buckling")})
-        # each plate out of its plane (design review round 2's B1: a post's end moment
-        # shared by stiffness, not spread over the sections; every member end, the cut
-        # plate's section there)
-        web = _frame_web(config)
-        for plate, segs in (("outer", plates_.outer), ("inner", plates_.inner)):
-            into = plates.setdefault(plate, {}).setdefault(tag, {})
-            into.update(cs.plate_rows(grills[tag][plate], segs, xy, t_frame, y_frame,
-                                      plate_holes(config, plate), web))
+                    if m_["safety"] < have_["safety"]:
+                        have_.update({k: m_[k] for k in m_ if k not in ("compression_n",
+                                                                       "buckling")})
+                    if m_["buckling"] is not None and (have_["buckling"] is None
+                                                       or m_["buckling"] < have_["buckling"]):
+                        have_.update({k: m_[k] for k in ("compression_n", "buckling")})
 
-    # the strength rows: the columns, each frame plate (its worst member), the pillars'
-    # moments for strength.joint_strength, the tie rods across the bay
+    # the strength rows: the columns, each frame plate (its worst member), the side's
+    # buckling, the pillars' moments for strength.joint_strength, the tie rods across the bay
     rated = []
     d, bore, _ = column_section(stand)
     for p in side:
@@ -1887,14 +2059,25 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
                "sheet": config.frame_sheet, "thickness_mm": t_frame,
                "section": f"{plate} frame plate's members", "what":
                f"the {plate} frame plate's members (in-plane stress, Euler out of the plane "
-               "between their nodes, and out of the plane at every member's ends: "
-               "cradle_structure.plate_rows)"}
+               "between their nodes, and at every member's ends out of the plane with the "
+               "in-plane stress there, P-Delta: cradle_structure.plate_rows)"}
         for tag, ms in by.items():
             worst = min(ms.values(), key=lambda m_: min(m_["safety"], m_["buckling"] or
                                                         math.inf))
             sf = min(worst["safety"], worst["buckling"] or math.inf)
             row[tag] = {"safety": round(sf, 2), "governs": worst["member"],
                         "load_n": worst["compression_n"], "stress_mpa": worst["stress_mpa"]}
+        rated.append(row)
+    if lam:
+        row = {"joint": "frame:side buckling", "kind": "frame", "links": [],
+               "sheet": config.frame_sheet, "thickness_mm": t_frame,
+               "section": "the side frame out of its plates' plane",
+               "what": "the drive side's posts and both frame plates buckling as one frame "
+                       "(cradle_structure.side_frame_solve: the least load factor over the "
+                       "angles rated)"}
+        for tag, (lv, at, comp) in lam.items():
+            row[tag] = ({"safety": round(lv, 2), "governs": f"at crank {at:.0f}°",
+                         "load_n": round(comp, 1)} if math.isfinite(lv) else None)
         rated.append(row)
     box = box_racking(config, joints, pts, cases, float(mech.meta["tie_mm"]))
     rated += box["rows"]
@@ -1905,7 +2088,7 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
         od = float(notes[f"pillar:{p.name}"]["section"]["bearing_d"])
         pillars[p.name] = {tag: {"moment_nmm": got[tag][p.name]["moment_nm"] * 1000.0,
                                  "bending_mpa": round(post_bending(got[tag][p.name], od,
-                                                                   NETRF12_ID), 1),
+                                                                   NETRF12_ROOT), 1),
                                  "shear_n": got[tag][p.name]["shear_n"],
                                  "foot_nm": got[tag][p.name]["foot_nm"],
                                  "end_n": got[tag][p.name]["end_n"]} for tag in got}
@@ -1916,9 +2099,16 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
             "link_frames": frames, "posts": strip,
             "plates": {plate: {tag: list(ms.values()) for tag, ms in by.items()}
                        for plate, by in plates.items()},
+            "buckling": {tag: {"factor": round(lv, 2) if math.isfinite(lv) else None,
+                               "crank_deg": round(at, 1), "most_compression_n": round(c, 1)}
+                         for tag, (lv, at, c) in lam.items()},
+            "joints": post_joints(config, side, {tag: got[tag] for tag in got}),
             "stiffness": {k: v for k, v in stiff.items() if k != "across_n_mm"},
             "box": {k: v for k, v in box.items() if k != "rows"},
             "rated": rated, "pillars": pillars}
+
+
+_CHAIN: dict = {}       # structure's side-frame chain per case (its ``chain``)
 
 
 def _on_members(stand: cr.Stand, plate: str) -> list[str]:
@@ -2013,7 +2203,7 @@ def side_stiffness(config: BuildConfig, side, length: float, plates, n_joints: i
     from spiderpig import cradle_structure as cs
 
     lk = config.lk
-    memo = (lk.key, round(length, 6), n_joints, plates.t, tuple(plates.feet),
+    memo = (lk.key, round(length, 6), n_joints, plates.t, plates.mid, tuple(plates.feet),
             tuple((ab, w) for ab, w in (*plates.outer, *plates.inner)),
             tuple((n, tuple(np.round(np.asarray(p, float), 6))) for n, p in
                   sorted(plates.xy.items())),
@@ -2058,7 +2248,8 @@ PASSIVE_SHARE = 0.5     # the passive half's share of what the cradle box carrie
 #                         and the box straddle the bay's middle, and a block on a saddle or on
 #                         the bottle comes in there (a decanter's rim under the mouth)
 TIE_PROOF_N = 20.1 * 450.0     # an M6 A2-70 screw's proof load (stress area 20.1 mm^2, ISO
-#                                3506-1's 450 MPa): the tie rods' and the posts' button heads
+#                                3506-1's 450 MPa): the posts' button heads (the tie rods'
+#                                class 10.9 ones: fasteners.BUTTON_10_9_PROOF_N)
 
 
 def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) -> dict:
@@ -2072,8 +2263,9 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) ->
     radius from the mouth, ``G J / L`` in twist). Per case: the moment crossing, each rod's
     shear, end moment and twist, its tapped end's stress (the tube its tap leaves, 1018 at
     its least yield), the end joint's gapping moment (its preload, ``TIE_TIGHTEN_NM`` on the
-    screw, over the end face's kern) and, gapped, the screw's prying tension against its
-    proof load; the strength rows (``"rows"``: the rods, their end joints)."""
+    screw, over the end face's kern) and, gapped, the screw's prying tension against what its
+    head carries (a class 10.9 button head, ``fasteners.BUTTON_10_9_PROOF_N``); the strength
+    rows (``"rows"``: the rods, their end joints)."""
     from spiderpig import cradle_structure as cs
     from spiderpig.linkages.decanters import TIES
 
@@ -2081,7 +2273,7 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) ->
     link = cr.cradle_link(lk)
     mouth = pts[cr.mouth_name(lk)]
     d, L = cr.TIE_D, tie_mm
-    bore = NETRF12_ID if d > 10.0 else NETRF10_ID
+    bore = NETRF12_ROOT if d > 10.0 else NETRF10_ROOT
     ei = cs.E_STEEL * math.pi * d ** 4 / 64
     gj = cs.E_STEEL / 2.6 * math.pi * d ** 4 / 32
     k_s, k_t = 12 * ei / L ** 3, gj / L
@@ -2089,21 +2281,25 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) ->
     k_rot = sum(k_s * ri * ri + k_t for ri in r.values())
     z_tube = math.pi * (d ** 4 - bore ** 4) / (32 * d)
     screw_d = cr.TIE_M.d
-    preload = cr.TIE_TIGHTEN_NM * 1000.0 / (NUT_FACTOR * screw_d)
+    from spiderpig.hardware.fasteners import BUTTON_10_9_PROOF_N, preload_band
+
+    proof = BUTTON_10_9_PROOF_N[f"{screw_d:g}"]
+    preload = preload_band(f"{screw_d:g}", cr.TIE_TIGHTEN_NM)[0]   # (its least: friction 0.2)
     kern = (d * d + cr.TIE_ROD_HOLE ** 2) / (8 * d)
     gap_nm = preload * kern / 1000.0
     out: dict = {"rod": f"NETRF{d:g} x {L:g} mm, M{screw_d:g} ends", "share": PASSIVE_SHARE,
                  "radii_mm": {n: round(v, 1) for n, v in r.items()},
                  "gap_moment_nm": round(gap_nm, 2), "preload_n": round(preload),
-                 "screw_proof_n": round(TIE_PROOF_N), "cases": {}, "rows": []}
+                 "screw_proof_n": round(proof), "cases": {}, "rows": []}
     rod_row: dict = {"joint": "box:tie rods", "kind": "box", "links": [],
                      "section": f"{d:g} mm steel standoff tie rods across the bay (NETRF{d:g}, "
                                 f"as a {d:g} x {bore:g} tube at their tapped ends)",
                      "what": "the cradle box's tie rods racking across the bay (the passive "
                              "half's moment about the mouth)"}
     joint_row: dict = {"joint": "box:tie rod ends", "kind": "box", "links": [],
-                       "section": f"the tie rods' M{screw_d:g} end screws (A2-70) prying a "
-                                  "gapped end joint", "what": "the tie rods' end joints",
+                       "section": f"the tie rods' M{screw_d:g} end screws (ISO 7380, class "
+                                  "10.9) prying a gapped end joint",
+                       "what": "the tie rods' end joints",
                        "walk": None}
     for tag, (v, sk, _) in cases.items():
         keep = ~np.asarray(sk, bool)
@@ -2139,9 +2335,160 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) ->
                         "moment_nm": top["end_nm"], "safety": round(worst, 2)}
         if tag == "jam":
             joint_row["jam"] = {"load_n": round(prying), "moment_nm": top["end_nm"],
-                                "safety": round(TIE_PROOF_N / max(prying, 1e-9), 2)}
+                                "safety": round(proof / max(prying, 1e-9), 2)}
     out["rows"] = [rod_row, joint_row]
     return out
+
+
+POST_FACE = (12.0, 6.4)     # a post's end face on its plate (mm): the 12 mm standoff's end over
+#                             the plate's 6.4 mm hole
+POST_WASHER = (18.0, 1.6)   # the 18-8 fender washer under each post's foot (OD, its least
+#                             thickness): it spreads the face's edge into the outer plate
+POST_WASHED: dict[str, tuple[str, ...]] = {"pillar": ("foot", "end"),
+                                           "column": ("foot", "end")}
+"""The post ends a fender washer spreads into its plate, by kind (design review round 3,
+laser-cut parts M1): both ends of every post (a pillar's inner one in the clearance gap
+under the inner plate), so every post of a side is one length."""
+P_LIMIT_MPA = 269.0         # the frame plate's limiting surface pressure under a post's end
+#                             (VDI 2230 Part 1, Table A9, p_G: 5052 isn't tabulated; AlMg4.5Mn
+#                             F27, 5083, 325 MPa at Rm 260, scaled to 5052-H32's 215 minimum,
+#                             ASTM B209M; transcribed by FVA's help and Bossard's
+#                             "Flaechenpressung" sheet, fetched 2026-10-20: "short-term values
+#                             at room temperature, guide values"). VDI 2230's R10 holds the
+#                             pressure under it (S_P >= 1)
+P_LIMIT_BASIS = ("VDI 2230-1 (2015) Table A9's limiting surface pressure p_G, AlMg4.5Mn F27 "
+                 "325 MPa scaled to 5052-H32's 215 MPa minimum tensile: 269 MPa; R10's S_P >= "
+                 "1 (adoc.fva-service.de/help/8.0/de/attr/PMID_19259.htm, Bossard's "
+                 "Flaechenpressung sheet 01-2025)")
+SLIP_MU = 0.2               # a post's end face on aluminium, threadlocker on it: the least
+#                             friction a slip is rated at (steel on aluminium dry 0.47-0.61)
+
+
+def contact_peak(clamp: np.ndarray, moment: np.ndarray, od: float, bore: float) -> np.ndarray:
+    """The peak pressure (MPa) an annulus ``od`` / ``bore`` (mm) clamped by ``clamp`` (N)
+    takes under ``moment`` (N·mm), per case: linear while it stays closed (``F / A + M /
+    Z``), past its kern the no-tension solution (the pressure linear over what still bears,
+    nothing where it lifts: the face's edge carrying it), ``inf`` where the clamp can't hold
+    the moment at all (past ``F od / 2``)."""
+    clamp = np.maximum(np.asarray(clamp, float), 1e-9)
+    moment = np.abs(np.asarray(moment, float))
+    area = math.pi * (od * od - bore * bore) / 4
+    z = math.pi * (od ** 4 - bore ** 4) / (32 * od)
+    kern = z / area
+    out = clamp / area + moment / z
+    # the annulus on a polar grid; the lifted part's edge (the neutral axis, c) found by
+    # bisection on where the pressure's resultant lies, every case at once
+    rr = np.linspace(bore / 2, od / 2, 17)
+    th = np.linspace(0.0, 2 * math.pi, 97)[:-1]
+    r_, t_ = np.meshgrid((rr[:-1] + rr[1:]) / 2, th, indexing="ij")
+    da = (r_ * np.diff(rr)[:, None] * (2 * math.pi / len(th))).ravel()
+    x = (r_ * np.cos(t_)).ravel()
+    open_ = np.nonzero(moment > clamp * kern)[0]
+    if len(open_):
+        e = moment[open_] / clamp[open_]            # the resultant's offset (mm)
+        lo, hi = np.full(len(open_), -od / 2), np.full(len(open_), od / 2)
+        for _ in range(48):
+            c = (lo + hi) / 2
+            w = np.maximum(x[None, :] - c[:, None], 0.0)
+            arm = (w * x * da).sum(axis=1) / np.maximum((w * da).sum(axis=1), 1e-300)
+            lo, hi = np.where(arm < e, c, lo), np.where(arm < e, hi, c)
+        w = np.maximum(x[None, :] - ((lo + hi) / 2)[:, None], 0.0)
+        peak = clamp[open_] / np.maximum((w * da).sum(axis=1), 1e-300) * w.max(axis=1)
+        out[open_] = np.where(e >= od / 2 * 0.98, np.inf, peak)
+    return out
+
+
+def post_joints(config: BuildConfig, side, got: dict) -> dict:
+    """Each post's screwed ends (design review round 3's M5): its end face (``POST_FACE``)
+    clamped to its plate by an M6 A2-70 button head at ``fasteners.BUTTON_A2_70_NM``, or at a
+    foot ``construction.cradle.STEEL_FEET`` names the tie rods' class 10.9 one at
+    ``construction.cradle.TIE_TIGHTEN_NM`` (each the preload band of ``fasteners.preload_band``
+    at friction 0.1-0.2; the 10.9's proof its head's, ``fasteners.BUTTON_10_9_PROOF_N``),
+    under the moment, shear
+    and pull the side frame gives it there (``got``: per case, :func:`structure`'s posts with
+    their per-angle forces). Per end and case: the moment over the face's decompression at
+    the least preload (``open_x``: 1 the face's edge lifts, ``kern``), the screw's tension
+    once it opens (the moment over the face's radius, its preload at least) over A2-70's
+    proof (``screw_sf``), the face's peak pressure on the plate at the most preload (the
+    no-tension contact, :func:`contact_peak`; at an end with a fender washer,
+    ``POST_WASHED``, spread through it at 45°) over the plate's limiting surface pressure
+    (:data:`P_LIMIT_MPA`, ``bearing_sf``: VDI 2230's S_P),
+    and the shear over the face's friction at the least preload (``slip_x``). Walking, every
+    face must stay shut and not slip (fretting each pour); at the clutch's cap a face may
+    lift (the guide re-tightens them after a slip) if the screw and the plate hold."""
+    from spiderpig.hardware.fasteners import BUTTON_10_9_PROOF_N, BUTTON_A2_70_NM, preload_band
+
+    nm, steel_nm = BUTTON_A2_70_NM["6"], cr.TIE_TIGHTEN_NM
+    steel = cr.STEEL_FEET.get(config.linkage, ())
+    bands = {False: preload_band("6", nm), True: preload_band("6", steel_nm)}
+    proofs = {False: TIE_PROOF_N, True: BUTTON_10_9_PROOF_N["6"]}
+    od, bore = POST_FACE
+    area = math.pi * (od * od - bore * bore) / 4
+    kern = math.pi * (od ** 4 - bore ** 4) / (32 * od) / area
+    w_od, w_t = POST_WASHER
+    spread = min(w_od, od + 2 * w_t)                # its plate's face under the washer
+    plate = P_LIMIT_MPA
+    rows: dict[str, dict] = {}
+    worst: dict[str, dict] = {}
+    for p in side:
+        for tag, by in got.items():
+            g = by.get(p.name)
+            if g is None:
+                continue
+            fo = g["forces"]
+            pull = np.maximum(np.asarray(fo.get("axial", np.zeros(1)), float), 0.0)
+            for end in ("foot", "end"):
+                m = np.hypot(*np.asarray(fo["turn"][end], float).T)
+                v = np.hypot(*np.asarray(fo["box"][end], float).T)
+                if not len(m):
+                    continue
+                is_steel = end == "foot" and p.name in steel
+                f_lo, f_hi = bands[is_steel]
+                c_lo = np.maximum(f_lo - pull, 0.0)
+                c_hi = np.maximum(f_hi - pull, 1e-9)
+                open_x = m / np.maximum(c_lo * kern, 1e-9)
+                screw = np.maximum(f_hi, m / (od / 2) + pull)
+                kind = "column" if p.name.startswith("column:") else "pillar"
+                face = spread if end in POST_WASHED[kind] else od
+                peak = contact_peak(c_hi, m, face, bore)
+                slip = v / np.maximum(SLIP_MU * c_lo, 1e-9)
+                i = int(np.argmax(open_x))
+                row = {"moment_nm": round(float(m.max()) / 1000, 2),
+                       "shear_n": round(float(v.max()), 1),
+                       "pull_n": round(float(pull.max()), 1),
+                       "open_x": round(float(open_x.max()), 2),
+                       "screw_n": round(float(screw.max())),
+                       "screw_sf": round(proofs[is_steel] / float(screw.max()), 2),
+                       "peak_mpa": (round(float(peak.max()), 1)
+                                    if math.isfinite(float(peak.max())) else None),
+                       "bearing_sf": round(plate / float(peak.max()), 2),
+                       "slip_x": round(float(slip.max()), 2), "at": int(i)}
+                rows.setdefault(f"{p.name} {end}", {})[tag] = row
+                w = worst.setdefault(tag, {"open_x": 0.0, "slip_x": 0.0, "screw_sf": math.inf,
+                                           "bearing_sf": math.inf})
+                for k in ("open_x", "slip_x"):
+                    if row[k] > w[k]:
+                        w[k], w[k + "_at"] = row[k], f"{p.name} {end}"
+                for k in ("screw_sf", "bearing_sf"):
+                    if row[k] < w[k]:
+                        w[k], w[k + "_at"] = row[k], f"{p.name} {end}"
+    f_lo, f_hi = bands[False]
+    out = {"screw": f"M6 x 16 button head A2-70 (ISO 7380), {nm:g} N·m",
+           "preload_n": [round(f_lo), round(f_hi)], "kern_mm": round(kern, 2),
+           "decompression_nm": [round(f_lo * kern / 1000, 2), round(f_hi * kern / 1000, 2)]}
+    if steel:
+        h_lo, h_hi = bands[True]
+        out["steel_feet"] = {"pillars": list(steel),
+                             "screw": f"M6 x 16 button head class 10.9 (ISO 7380), "
+                                      f"{steel_nm:g} N·m",
+                             "preload_n": [round(h_lo), round(h_hi)],
+                             "proof_n": round(BUTTON_10_9_PROOF_N["6"]),
+                             "decompression_nm": [round(h_lo * kern / 1000, 2),
+                                                  round(h_hi * kern / 1000, 2)]}
+    return {**out,
+            "proof_n": round(TIE_PROOF_N), "plate_mpa": plate,
+            "plate_basis": P_LIMIT_BASIS, "slip_mu": SLIP_MU,
+            "washer_mm": list(POST_WASHER), "rows": rows, "worst": worst}
 
 
 def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float,
@@ -2210,21 +2557,27 @@ def blocked(config: BuildConfig, mech, *, ts=None, crank_nm: float | None = None
     return out
 
 
-THRESHOLD_STEPS = (0.15, 0.4, 1.0)
+THRESHOLD_STEPS = (0.12, 0.3, 0.55, 1.0)
 """Where :func:`_block_threshold` rates the push beyond turning: these fractions of the most
-the clutch lets past the walking torque (the safety factors' inverses are near linear in it:
-the stresses are, but for the walking loads' offset and the worst angle moving)."""
+the clutch lets past the walking torque at any angle, each angle's push no more than its own
+(the safety factors' inverses are near linear in the push: the stresses are, but for the
+walking loads' offset, the worst angle moving and the angles the clutch caps)."""
 
 
 def _block_threshold(config: BuildConfig, mech, ts, near, rigid, joints, at, cap: float,
                      rod_euler_n: float | None) -> dict:
     """:func:`blocked`'s threshold for a block at ``at``: the loads at a push ``x`` beyond
     turning are the walking ones plus ``x`` times each angle's increment per N·m (the
-    statics are linear in the crank's torque), rated by :func:`structure` and
-    :func:`spiderpig.strength.check` at :data:`THRESHOLD_STEPS` of the clutch's most; each
-    part's ``1 / SF`` interpolated (and extrapolated from the first two below them) to where
-    it reaches ``1 / 1.3`` and ``1``. Returns the first part each way, the push (N·m at the
-    crank, N at the grip through the worm at a hand's speed) and the block's force."""
+    statics are linear in the crank's torque), each angle's push no more than the clutch lets
+    past its own walking torque (``cap - T_walk``: where gravity helps the turn, far more
+    than where it fights it; design review round 3's M3, the search had stopped at the least
+    over every angle), rated by :func:`structure` and :func:`spiderpig.strength.check` at
+    :data:`THRESHOLD_STEPS` of the most any angle takes; each part's ``1 / SF`` interpolated
+    (and extrapolated from the first two below them) to where it reaches ``1 / 1.3`` and
+    ``1``. Returns the first part each way, the push (N·m at the crank, N at the grip through
+    the worm at a hand's speed: the least at any angle), the block's force, and the most
+    push the clutch lets through at any angle (``within_nm``, ``within_grip_n``): a part
+    that reaches neither within it holds the block until the clutch slips."""
     from spiderpig import strength
 
     walk_t, _, walk_v = statics_vectors(config, rigid, joints, ts)
@@ -2233,7 +2586,7 @@ def _block_threshold(config: BuildConfig, mech, ts, near, rigid, joints, at, cap
     d_t = np.maximum(cap - walk_t, 1e-6)
     inc = (bv - walk_v) / d_t[:, None, None]
     per_nm = np.abs(held) / d_t                       # the block's force per N·m pushed
-    most = float(d_t[keep].min())                     # the push every angle can take
+    most = float(d_t[keep].max())                     # the push the clutch lets through
     rider = next(b for b, (js, _) in config.lk.links.items() if config.lk.crank[1] in js)
     rod_jk = next(jk for jk, (j, *_) in enumerate(joints) if j == config.lk.crank[1])
     walk_f = np.linalg.norm(walk_v, axis=-1)
@@ -2241,10 +2594,11 @@ def _block_threshold(config: BuildConfig, mech, ts, near, rigid, joints, at, cap
     inv: dict[str, list[float]] = {}
     xs = [most * s for s in THRESHOLD_STEPS]
     for x in xs:
-        v = walk_v + x * inc
+        x_t = np.minimum(x, d_t)                      # each angle: no more than its clutch
+        v = walk_v + x_t[:, None, None] * inc
         f = np.where(near[:, None], 0.0, np.linalg.norm(v, axis=-1))
         rows = joint_rows(config, rider, joints, walk_f, f)
-        st = structure(config, mech, ts=ts, skip=near, jam=(walk_t + x, v))
+        st = structure(config, mech, ts=ts, skip=near, block=at, jam=(walk_t + x_t, v))
         chk = strength.check(mech.meta.get("wobble") or {}, mech.meta, config,
                              loads_doc(config, rows, peak, st))
         sfs = {r["joint"]: (r.get("jam") or {}).get("safety") for r in chk["rows"]}
@@ -2275,12 +2629,16 @@ def _block_threshold(config: BuildConfig, mech, ts, near, rigid, joints, at, cap
         "are linear in the crank's torque), every part rated as the report rates it")}
     for level, tag in ((JAM_FLOOR, "sf_1p3"), (1.0, "sf_1")):
         hits = [(x, k) for k, ys in inv.items() if (x := reach(ys, level)) is not None]
+        hits = [(x, k) for x, k in hits if x <= most + 1e-9]   # within the clutch
         if not hits:
             out[tag] = None
             continue
         x, part = min(hits)
+        x_t = np.minimum(x, d_t)
         out[tag] = {"part": part, "crank_nm": round(x, 2), "grip_n": round(x / grip, 1),
-                    "block_n": round(float(x * per_nm[keep].max()))}
+                    "block_n": round(float((x_t * per_nm)[keep].max()))}
+    out["within_nm"] = round(most, 2)
+    out["within_grip_n"] = round(most / grip, 1)
     return out
 
 
@@ -2329,6 +2687,16 @@ side frames at the clutch's cap"): design review round 2 (2026-10-15) had rated 
 posts and both frame plates as one frame (``cradle_structure.side_frame``) and found B's
 outer plate (0.6), pillar O2 (0.73) and column D2 (0.97), A's outer plate (0.41), column D3
 (0.83), inner plate (1.09) and pillar G (1.25) under it."""
+
+OPEN_JOINTS: dict[str, dict[str, str]] = {}
+"""Per cradle, the screwed joints open at their walking bar (every post's face shut walking at
+its screw's least preload, :func:`post_joints`; the tie rods' end joints closed,
+:func:`box_racking`'s ``gap_ratio``): the user's call; the tests hold each within 10 % and
+xfail on it. None since 2026-10-20: design review round 3's M5 had put every M6 button head at
+ISO 7380's 4 N·m in A2-70, and both cradles' tie rods' end joints stood at their gap walking
+(0.98 of it at the least preload) and A's pillar G's foot lifted (1.06 x its decompression);
+the tie rods' ends and that foot take class 10.9 button heads at 6 N·m
+(``construction.cradle.TIE_M``, ``STEEL_FEET``): the same heads, no plan changed."""
 
 OPEN_GRIP: dict[str, str] = {
     "decanter_hinge": "A's 130 mm crank, kept (design review round 3's m5): a full 6 L's "

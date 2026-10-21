@@ -1419,9 +1419,10 @@ def lay_blocks(inp: dict, lk) -> list[np.ndarray]:
 def rest_poses(inp: dict, lk) -> list[dict]:
     """Each of the guide's resting poses of cradle ``lk`` (``construction.cradle.REST_POSES``)
     rated by :func:`resting` from :func:`gather`'s input ``inp`` (its pack pose): the pieces'
-    parts' meshes, masses and centres, set down drive side down, passive side down, or the
-    cradle box levelled and turned over (its saddles' tops down), on the riser's blocks where
-    the pose says (:func:`lay_blocks`; their own weight left out)."""
+    parts' meshes, masses and centres, set down drive side down, passive side down, the
+    cradle box levelled and turned over (its saddles' tops down), or standing on its feet (as
+    on its board), on the riser's blocks where the pose says (:func:`lay_blocks`; their own
+    weight left out)."""
     poses = cr.REST_POSES.get(lk.key, ())
     if not poses:
         return []
@@ -1446,7 +1447,8 @@ def rest_poses(inp: dict, lk) -> list[dict]:
             pts += blocks
             owner += [f"riser block {i}" for i, b in enumerate(blocks) for _ in range(len(b))]
         down = {"drive": drive_out, "passive": -drive_out,
-                "top": level.T @ np.array([0.0, 1.0, 0.0])}[rest.down]
+                "top": level.T @ np.array([0.0, 1.0, 0.0]),
+                "feet": np.array([0.0, -1.0, 0.0])}[rest.down]
         got = resting(np.concatenate(pts), com, mass, down, owner)
         rows.append({"pose": rest.key, "words": rest.words, "kg": round(mass, 2), **got})
     return rows
