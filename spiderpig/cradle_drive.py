@@ -63,7 +63,8 @@ def riser_rating(box, notes: dict, f, t_nm) -> dict:
     studs had carried the gearbox in bending over 18.7 mm, rated nowhere) at a rod force ``f``
     (N, at the rod's mid-plane) and a crank torque ``t_nm`` (N·m, the housing's reaction),
     each a number or an array. The rigid housing hangs from the plate on four clamped
-    columns (the ring, a sleeve, the shims) on the 85 mm PCD: each takes a quarter of the
+    columns (the ring and a sleeve faced to the gearbox's height: no shims since
+    simplification round 2) on the 85 mm PCD: each takes a quarter of the
     force and its share of the turn, ``V`` (the worst, the two aligned), the force's moment
     about the columns' mid-height as push-pull pairs, ``N`` (the worst stud's), and the
     columns' end moments, ``m = V H / 2`` (fixed at the face and at the plate: the four keep
@@ -78,7 +79,6 @@ def riser_rating(box, notes: dict, f, t_nm) -> dict:
         HAND_CRANK,
         RISER_NUT_K,
         RISER_NUT_NM,
-        RISER_SHIM,
         RISER_SLEEVE,
         RISER_STUD,
         STUD_PROOF_MPA,
@@ -95,20 +95,18 @@ def riser_rating(box, notes: dict, f, t_nm) -> dict:
     a_minor = math.pi / 4 * (d - 1.22687 * 1.25) ** 2
     from spiderpig.hardware.catalog import get
 
-    sl_od, sl_id, sl_len, sl_key = RISER_SLEEVE
+    sl_od, sl_id, sl_key = RISER_SLEEVE
     sleeve = get(sl_key).dims
     e_sl = float(sleeve.get("e_mpa", 193000.0))
     y_sl = float(sleeve.get("yield_mpa", SS304_YIELD))
-    e_shim = float(get(RISER_SHIM[3]).dims.get("e_mpa", 193000.0))
     a_sl = math.pi / 4 * (sl_od ** 2 - sl_id ** 2)
     z_sl = math.pi * (sl_od ** 4 - sl_id ** 4) / (32 * sl_od)
     kern = (sl_od ** 2 + sl_id ** 2) / (8 * sl_od)
     t_ring = float(notes.get("riser_ring_mm", 3.175))
-    shims = float(notes.get("riser_shims_mm", h - t_ring - sl_len))
+    sl_len = float(notes.get("riser_sleeve_mm", h - t_ring))
     t_plate = float(notes.get("plate_inner_z_mm", 4.75)) - (face + h)
     k_b = E_STEEL * a_s / (h + t_plate)
     k_m = 1.0 / (sl_len / (e_sl * a_sl) + t_ring / (E_ALU_ * a_sl)
-                 + shims / (e_shim * math.pi / 4 * (RISER_SHIM[0] ** 2 - RISER_SHIM[1] ** 2))
                  + t_plate / (E_ALU_ * math.pi / 4 * (13.0 ** 2 - (d + 0.6) ** 2)))
     phi = k_b / (k_b + k_m)
     p_lo = RISER_NUT_NM * 1000.0 / (RISER_NUT_K[1] * d)

@@ -973,8 +973,9 @@ register(
                 note="20 pcs M8 304 ultra-thin flat washers 8 x 14 x 0.5 mm; the product JSON "
                      "fetched 2026-10-20 (2026-10-10 the same)")),
          dims={"id": 8.0, "od": 14.0, "t": 0.5, "e_mpa": 193000.0, "yield_mpa": 205.0},
-         notes="The gearbox riser's go/no-go shims (construction.handcrank.RISER_SHIM), over "
-               "each sleeve under the outer plate."),
+         notes="The gearbox riser's go/no-go shims, over each sleeve under the outer plate, "
+               "until simplification round 2 (2026-10-21): the sleeves are faced to the "
+               "gearbox's measured height since (construction.handcrank.RISER_SLEEVE_RANGE)."),
     Item("m8_thin_nut", "M8 hex jam nut, 18-8 (13 x 4 mm)", "nut",
          (Offer("Bolt Depot", BD + "13573", "13573", price_usd=0.15, verified=True,
                 tiers=((1, 0.15), (100, 0.0979)), note=BD_2 + ": 13 mm AF, 4 mm"),),
@@ -1035,20 +1036,22 @@ register(
                "the riser is rated on (an 18-8 of no stated class is A2-50's 210 MPa: the stud "
                "0.83 at the clutch's cap). A2 under an 18-8 nut galls: threadlocker 243 on the "
                "thread, as before."),
-    Item("m8_sleeve_6061_12p7x20", "1/2 in 6061-T6511 riser sleeve, 12.7 x 20 mm, drilled 8.0 mm "
-         "(a 1 in piece cut by Speedy Metals)", "misc",
+    Item("m8_sleeve_6061_12p7", "1/2 in 6061-T6511 riser sleeve, 12.7 mm, faced to the "
+         "gearbox's height (21-23 mm), drilled 8.0 mm (a 1 in piece cut by Speedy Metals)", "misc",
          (Offer("Speedy Metals", ROD_STOCK[ROD_HALF]["url"],
                 f"{ROD_STOCK[ROD_HALF]['sku']} cut 1 in",
                 price_usd=ROD_STOCK[ROD_HALF]["per_in"], verified=True,
                 note="a 1 in piece of the posts' 1/2 in round (USD 0.192 an inch, whole inches, "
-                     "the cart 2026-10-21), faced to 20 mm on the Carvera and drilled 8.0 mm "
-                     "through on a drill press"),),
-         dims={"id": 8.0, "od": ROD_HALF, "length": 20.0, "material": "aluminium",
+                     "the cart 2026-10-21), drilled 8.0 mm through on a drill press and faced "
+                     "on the Carvera to the gearbox's calipered height"),),
+         dims={"id": 8.0, "od": ROD_HALF, "length": 22.0, "material": "aluminium",
                "e_mpa": ROD_E, "yield_mpa": ROD_YIELD},
          notes="The gearbox riser's sleeves (construction.handcrank.RISER_SLEEVE) since the "
                "simplification round 1 (2026-10-21, the materials rule: 304 stainless before, "
                "whose annealed 205 MPa the clamp and the column's moment took past at the "
-               "clutch's cap): one on each stud, the ring to the shims, clamped."),
+               "clutch's cap): one on each stud, the ring to the plate, clamped; faced to "
+               "the gearbox's measured height since simplification round 2 (2026-10-21: to "
+               "20 mm under 1-3 mm of 304 shims before)."),
 )
 
 # -- simplification round 1 (2026-10-21, the user's materials rule: no steel in a structural

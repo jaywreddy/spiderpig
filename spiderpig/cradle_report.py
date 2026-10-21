@@ -447,7 +447,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     # the gearbox's riser walking (its cap's: jam_capped's rows; design review round 3's M2)
     out["drive"]["riser"] = {
         "walk": riser_rating(box, notes, f_rod, peak),
-        "basis": "a clamped stack (ring, sleeve, shims, plate) on each of four A2-70 M8 "
+        "basis": "a clamped stack (ring, faced sleeve, plate) on each of four A2-70 M8 "
                  "studs: the stud's tension and shear, the 6061 sleeve's crush and bending, "
                  "the ring's bearing; its slip at the faces' friction "
                  "(cradle_drive.riser_rating)"}

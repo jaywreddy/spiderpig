@@ -911,9 +911,9 @@ def _the_clutch_is_set_slippable(hc, spec, climb: float, setting: dict) -> None:
 def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
     """The riser (design review round 3's M2: a clamped stack, not four studs in bending):
     a ring of the crank sheet on the gearbox's machined face, centred on its spigot ring, its
-    holes' webs a thickness or more; on each stud a steel sleeve that sits on the face's boss
-    between the spigot ring and the boss's edge, the go/no-go's shims over it within their
-    range, the plate over the spigot ring and the turning hub's end by ``RISER_CLEAR``; each
+    holes' webs a thickness or more; on each stud a 6061 sleeve that sits on the face's boss
+    between the spigot ring and the boss's edge, up to the plate, its length within the range
+    a 1 in piece faces to (simplification round 2: no shims), the plate over the spigot ring and the turning hub's end by ``RISER_CLEAR``; each
     class 8.8 stud threaded a diameter or more into the face, short of its thread's depth, its
     end filed to at most ``STUD_PAST_MAX`` over its thin nut, under the crank block's lowest
     plate by half a millimetre with the go/no-go's window and the plates under the seat at
@@ -931,8 +931,8 @@ def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
         RISER_CLEAR,
         RISER_RING,
         RISER_RING_HOLE,
-        RISER_SHIMS_RANGE,
         RISER_SLEEVE,
+        RISER_SLEEVE_RANGE,
         RISER_STUD,
         RISER_THIN,
         SEAT_LOW,
@@ -954,8 +954,8 @@ def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
     hole = box.face_thread + RISER_RING_HOLE
     assert box.pcd / 2 - hole / 2 - (box.spigot_d + RISER_RING) / 2 >= t   # the ring's webs
     assert box.face_d / 2 - box.pcd / 2 - hole / 2 >= t
-    assert r.ring_t + RISER_SLEEVE[2] + r.shims == pytest.approx(r.height)
-    assert RISER_SHIMS_RANGE[0] <= r.shims <= RISER_SHIMS_RANGE[1]
+    assert r.ring_t + r.sleeve == pytest.approx(r.height)
+    assert RISER_SLEEVE_RANGE[0] <= r.sleeve <= RISER_SLEEVE_RANGE[1] < 25.4 - 1.0
     d = RISER_STUD[0]
     assert STUD_IN * d <= r.engage <= box.face_depth - 0.5
     assert 0.0 <= r.past <= STUD_PAST_MAX
@@ -983,12 +983,13 @@ def test_the_riser_holds_the_gearbox_as_a_clamped_stack():
     (``RISER_MU``) by 2 x; at B's and A's capped jam 30° from the toggles (the review's rod
     forces) every strength row holds 1.3 (the stud in A2-70 at its proof, the sleeve in
     bending and crushed, the ring's bearing); the 18-8 set screws round 2 had, carried in
-    bending over 18.7 mm, were SF 0.55-0.62 (the review's)."""
-    from spiderpig.construction.handcrank import NRV050
+    bending over 18.7 mm, were SF 0.55-0.62 (the review's). Simplification round 2: the
+    sleeve faced to the gearbox's height, no shims, at either end of its range."""
+    from spiderpig.construction.handcrank import NRV050, RISER_SLEEVE_RANGE
     from spiderpig.cradle_drive import riser_rating
 
     notes = {"riser_height_mm": 25.2, "face_z_mm": -25.2, "rod_mid_z_mm": 55.0,
-             "riser_ring_mm": 3.175, "riser_shims_mm": 2.025, "plate_inner_z_mm": 4.75}
+             "riser_ring_mm": 3.175, "riser_sleeve_mm": 22.025, "plate_inner_z_mm": 4.75}
     walk = riser_rating(NRV050, notes, 410.0, 35.8)
     assert walk["slip_sf"] >= 2.0, walk
     assert min(walk["sf_stud"], walk["sf_sleeve"], walk["sf_ring_bearing"]) >= 2.0, walk
@@ -998,11 +999,17 @@ def test_the_riser_holds_the_gearbox_as_a_clamped_stack():
     assert walk["sf_sleeve_crush"] >= 1.5, walk
     assert walk["least"] == min(walk["sf_stud"], walk["sf_sleeve"], walk["sf_ring_bearing"],
                                 walk["sf_sleeve_crush"])
-    for f, cap in ((1931.9, 63.7), (2301.7, 67.1)):
-        got = riser_rating(NRV050, notes, f, cap)
-        assert got["least"] >= 1.3, got
-        assert got["sf_stud"] >= 1.3, got
-        assert got["sf_sleeve_crush"] >= 1.3, got
+    for sleeve in (None, *RISER_SLEEVE_RANGE):
+        at = dict(notes)
+        if sleeve is not None:          # the gearbox's hub a millimetre either way
+            h = sleeve + at["riser_ring_mm"]
+            at.update(riser_height_mm=h, face_z_mm=-h, riser_sleeve_mm=sleeve)
+        assert riser_rating(NRV050, at, 410.0, 35.8)["slip_sf"] >= 2.0
+        for f, cap in ((1931.9, 63.7), (2301.7, 67.1)):
+            got = riser_rating(NRV050, at, f, cap)
+            assert got["least"] >= 1.3, (sleeve, got)
+            assert got["sf_stud"] >= 1.3, (sleeve, got)
+            assert got["sf_sleeve_crush"] >= 1.3, (sleeve, got)
 
 
 def p_ok(name: str, pieces) -> bool:

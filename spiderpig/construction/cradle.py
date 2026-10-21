@@ -3939,9 +3939,11 @@ def shop_ops(view) -> list:
         "from the hard-anodised 1/2 in rod, each 1.5 mm over its length (the BOM's cut list), "
         "a fine-tooth hacksaw in the vise, the rod wrapped in tape where the jaws hold it. "
         f"The plain posts and tie rods ({len(plain)}) and the riser's sleeves come cut, 1.5 "
-        "mm over (Speedy Metals, +1/8 -0 in).")
+        "mm over (Speedy Metals, +1/8 -0 in). The sleeves are only drilled here: each is "
+        "faced at the gearbox's step, to the gearbox's calipered height, once it has come.")
     rod_lines = (
-        "Face every piece square to its length on the Carvera: the pieces lying along X in "
+        "Face every piece but the riser's sleeves square to its length on the Carvera: the "
+        "pieces lying along X in "
         "the vise against one stop, a batch a setup, an end mill's flank across the end, then "
         "re-clamped once for the other end. Each to its length within 0.05 mm (a side's "
         "posts all one length: they set its plates' gap), each end square to "
