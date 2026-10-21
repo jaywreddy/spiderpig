@@ -1802,18 +1802,19 @@ def test_b_stands_turns_easily_and_holds():
     walk = [x["walk_sf"] for x in rows if x["walk_sf"] is not None]
     assert min(walk) >= 2.0, [(x["joint"], x["walk_sf"]) for x in rows]
     _holds_the_jam(r, "decanter_rcm")
-    # the quick-release clevis pins at X and Y (2026-10-13): stronger than the M6 Chicago
-    # screws they replaced (1.72 and 1.49 jammed); K and J2 clevis pins too, P and J the
-    # hardened pivot pins (design review round 1): no Chicago screw left
+    # the quick-release pins at X and Y (2026-10-13; 6061 rod clip pins since simplification
+    # round 1): stronger than the M6 Chicago screws they replaced (1.72 and 1.49 jammed);
+    # every pin 6061 rod, P the 3/8 in one: no steel pin left
     quick = {x["joint"]: x for x in rows if x["joint"] in ("pin:X", "pin:Y")}
     assert set(quick) == {"pin:X", "pin:Y"}
     for x in quick.values():
-        assert "clevis" in x["section"], x
+        assert "a clip's" in x["section"], x
         assert x["jam_sf"] >= 2.0, x
         assert x["walk_sf"] >= 6.0, x
     pins = {x["joint"]: x["section"] for x in rows if x["kind"] == "pin"}
-    assert {j for j, s in pins.items() if "clevis" in s} == {"pin:K", "pin:J2", "pin:X", "pin:Y"}
-    assert {j for j, s in pins.items() if "pivot pin" in s} == {"pin:P", "pin:J"}
+    assert all("6061-T6 rod pin" in s for s in pins.values()), pins
+    assert {j for j, s in pins.items() if "a clip's" in s} == {"pin:X", "pin:Y"}
+    assert {j for j, s in pins.items() if "3/8 in" in s} == {"pin:P"}
     # X's and Y's TPU keepers (pack turn 1): each holds its pin 10 x its weight at the least
     # interference a print gives and TPU's least published modulus, and goes on by hand
     k = r["keepers"]
@@ -1822,15 +1823,17 @@ def test_b_stands_turns_easily_and_holds():
     assert k["least_ratio"] >= k["bar"] == 10.0
     # design review round 2's M3: against the most the way back can put on a pin's tip,
     # half the 3.6 kg cradle box, the bench push screens each keeper 1.5 x over it; printed
-    # at 7.4 mm, at least 0.4 mm of grip; still on by hand, a tube over the pin
-    assert cr.KEEPER == (7.4, 0.4)
+    # at 7.38 mm on the 5/16 in rod, at least 0.36 mm of grip; still on by hand, a tube over
+    # the pin (7.4 and 0.4 on the 8 mm clevis pin)
+    assert cr.KEEPER == (7.38, 0.36)
     assert 3.3 < k["box_kg"] < 3.9          # (the 12 mm tie rods since round 2: 3.2 before)
     assert 13.0 < k["load_n"] < 18.0
     assert k["load_ratio"] >= k["load_bar"] == 1.5
     assert all(x["push_on_n"] <= k["push_on_bar_n"] == 120.0 for x in k["rows"])
     # the packing review's m1 (pack turn 2): at the tight end too (the bore 0.15 mm under,
-    # the pin at its most: 0.74 mm), still by hand with a tube over the pin
-    assert k["tight_mm"] == pytest.approx(0.74)
+    # the pin at its most, the cold-finished rod's 7.976 mm: 0.75 mm), still by hand with a
+    # tube over the pin
+    assert k["tight_mm"] == pytest.approx(0.75)
     assert all(x["push_on_tight_n"] <= k["push_on_bar_n"] for x in k["rows"])
     # and its M2: the box onto the drive side lying down, pin X first: its centre of mass
     # lies past X from Y, so turned about X it lifts off Y's tip (the other way round it
