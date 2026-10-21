@@ -32,6 +32,8 @@ export interface CradleMotion {
   full_deg: number;
   turns_to_full: number;
   ratio: number;
+  /** the handle turns either side of rest and of full tilt that are toggle zones */
+  toggle_turns?: number;
   mouth_wander_mm: number;
   /** the bottle the model draws (its V blocks at its setting) */
   bottle: { key?: string; name: string; outline: XY[]; setting?: Setting };
@@ -107,6 +109,21 @@ export function turnsAt(m: CradleMotion, f: number): number {
 export function fractionAtTurns(m: CradleMotion, turns: number): number {
   const u = m.rest + (turns / m.ratio) * m.n;
   return (((u / m.n) % 1) + 1) % 1;
+}
+
+/** The toggle zones as handle turns from rest (``[from, to]`` each, within 0..``ratio``): the
+ * ``toggle_turns`` either side of rest and of full tilt, where no clutch bounds the force and
+ * the gearbox's red arcs say hands out (``handcrank.TOGGLE_TURNS``); none without it. */
+export function toggleZones(m: CradleMotion): [number, number][] {
+  const z = m.toggle_turns ?? 0;
+  if (!(z > 0)) return [];
+  return [[0, z], [m.turns_to_full - z, m.turns_to_full + z], [m.ratio - z, m.ratio]];
+}
+
+/** Whether ``turns`` handle turns from rest lie in a toggle zone. */
+export function inToggleZone(m: CradleMotion, turns: number): boolean {
+  const t = ((turns % m.ratio) + m.ratio) % m.ratio;
+  return toggleZones(m).some(([a, b]) => t >= a - 1e-9 && t <= b + 1e-9);
 }
 
 /** Rest to full tilt (``tipping``), or back (``returning``), at ``f``. */

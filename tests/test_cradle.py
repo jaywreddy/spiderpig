@@ -586,7 +586,7 @@ def test_a_board_bracket_takes_a_stud_and_a_knob(sign):
     by = {suffix: (part, key) for part, key, suffix in parts}
     assert {k: v[1] for k, v in by.items()} == {
         "screw0": "m5_bhcs_16", "nut0": "m5_nut", "knob0": None, "nut2": "m5_nut",
-        "screw1": "m6_carriage_25", "washer1": "m6_washer_wide", "nut1": "m6_nut"}
+        "screw1": "m6_carriage_25", "washer1": "m6_washer_wide", "nut1": "m6_nylon_nut"}
     shapes = {"bracket": bracket, **{k: v[0] for k, v in by.items()}}
     for (a, sa), (b, sb) in itertools.combinations(shapes.items(), 2):
         inter = sa & sb
@@ -607,6 +607,74 @@ def test_a_board_bracket_takes_a_stud_and_a_knob(sign):
         Location((0.0, (26.5 + bb.max.Y) / 2, sign * cr.BRACKET[2] / 2)))
     inter = bracket & slot
     assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3
+    # its mouth chamfered (design review round 3's stand and use, m11): nothing of the
+    # bracket in the 45° lead either side at the top
+    lead = cr.SLOT_LEAD
+    for sx in (-1, 1):
+        corner = Box(lead - 0.4, 0.3, cr.BRACKET[2] - 0.2).moved(Location((
+            sx * (cr.STUD_SLOT / 2 + (lead - 0.4) / 2), bb.max.Y - 0.15 - 0.01,
+            sign * cr.BRACKET[2] / 2)))
+        inter = bracket & corner
+        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3, sx
+    # the trip (round 3's M1): the knob turned down onto its jam nut stands the nut's height
+    # off the plate, short of the upright's wall, so a cradle lowered so hangs on the
+    # uprights; backed off cr.KNOB_BACK_TURNS turns it clears the wall, its nut still all on
+    # the stud
+    wall = cr.BRACKET[2]
+    trip = out(jam)                                     # the knob's floor on its jam nut
+    assert trip < wall
+    back = trip + cr.KNOB_BACK_TURNS * cr.M5_PITCH
+    assert back >= wall + 0.5, back
+    assert out(stud) >= out(nut) + (back - inn(knob)), (out(stud), out(nut), back)
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_trip_and_the_first_build_read_as_a_user_does_them():
+    """Design review round 3's stand and use: the way back backs the knobs off two turns
+    before the cradle goes down (M1); B's drive side gets its studs on the bench and drops
+    into its brackets' slots (M3); the lifts say two people, or one in an order that can be
+    done (M5); pin X is told by where it is, and painted (m1); B's texts are its own (m3);
+    the room behind and beside (m5), the pad over the rim (m6), the riser as stacked (m7),
+    the clips out before the panel turns (m8), the towel (m9); the turns the page counts
+    (m13)."""
+    lk = linkage.get("decanter_rcm")
+    pins = cr.trip_pins(lk)
+    off, back = cr.module_steps(lk, pins)
+    by = {m.tag: m.words for m in off + back}
+    on = by["stand"]
+    assert on.index(f"{cr._WORDS[cr.KNOB_BACK_TURNS]} full turns") < on.index(
+        "lower it straight onto")
+    assert cr.pin_words(lk, pins[0]) == "pin X, in the long link b4, nearer the gearbox"
+    assert "long link b4" in by["box_on"]
+    assert "second_tip_n" not in by["box_on"]
+    assert "long link b4" in by["lower"]
+    assert "two people" in by["base"]
+    assert "two people" in by["lay"]
+    assert "Alone" in by["lay"]
+    assert "column E1's, then pillar O1's" in by["lay"]          # the one nearer the gearbox
+    assert by["turn"].index("Pull each pin's clip") < by["turn"].index("turn the panel over")
+    assert "towel" in by["lift"]
+    assert "towel" in by["set"]
+    assert "stacked for your decanter" in by["riser"]
+    assert "paint an X" in cr._lay_first("decanter_rcm")[0]
+    text = cr.board_text("decanter_rcm")
+    assert not any("knobs go back on" in t for t in text)        # B's bolts keep their nuts
+    assert text[-1] == cr.DROP_DRIVE
+    assert cr.BRACKETS_BOARD in text
+    assert "tabs" in text[1]
+    assert "jam nut" in cr.studs_first("decanter_rcm")
+    assert any("knobs go back on" in t for t in cr.board_text("decanter_hinge"))
+    for key in CRADLES:
+        steps = {u.tag: u for u in cr.use_steps(key)}
+        where = " ".join(steps["where"].lines)
+        assert f"{cr.ROOM_FREE:g} mm free behind the base board and beside" in where
+        assert ("thumb knobs" in where) == (key not in cr.BOARD_BRACKETS)
+        assert steps["limits"].lines[0].startswith(f"1. Room: 950 mm of headroom and "
+                                                   f"{cr.ROOM_FREE:g} mm")
+        assert "pad over its rim" in steps["limits"].lines[3]
+        full = f"{cr.full_turns(linkage.get(key)):.1f} turns"
+        assert any(full in t for t in steps["decant"].lines), full
 
 
 @pytest.mark.construction
@@ -655,12 +723,18 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
     """The hand crank's slip clutch (design review round 2's B-1): three steel ball-nose spring
     plungers in the arm's boss, their balls on the edges of a 6061 seat ring's holes (a 30°
     seat); set at 1.3 x the start the user measures, checked within its window, its cap the
-    config's for each cradle; every set-up's plunger force (B or A, the gearbox run in or new,
-    the greased friction's either end) within the plunger's range less its climb; its slip
+    config's for each cradle, under its ceiling whatever the gearbox's run-in state (design
+    review round 3's M1); every set-up's plunger force (B or A, the gearbox run in or new, the
+    greased friction's either end) within the plunger's range up to the guide's limit, an
+    eighth of a turn from the felt stop (its m3); its slip
     rising with the friction, never locking greased, locking dry (the band the report
     rates); its parts meet nowhere, each ball touching its hole's edge; the cap keyed on the
     journal's flat holds the arm on, so the crank comes off the input shaft whole; the grip on
-    a bolt's plain shank."""
+    a bolt's plain shank; each plunger's nut pressed in from the boss's inner face (its m2).
+    The set state is slippable in the drawn parts (design review round 3's B1): each plunger
+    drawn at the guide's start, half a turn out from the felt stop, its body's nose over the
+    ring's face by 0.2 mm or more (its room for the ball's climb) on B's and A's crank, and
+    at the guide's limit still."""
     from spiderpig.config import PRODUCT_CLUTCH_NM
     from spiderpig.construction.handcrank import (
         CLUTCH,
@@ -672,9 +746,11 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
         PLUNGER,
         HandCrank,
         clutch,
+        clutch_ceiling,
         clutch_drift,
         clutch_slip,
         drawn_clutch,
+        plunger_setting,
     )
 
     rate = (PLUNGER["force"][1] - PLUNGER["force"][0]) / PLUNGER["travel"]
@@ -682,14 +758,21 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
     climb = big_r - math.sqrt(big_r ** 2 - a ** 2)
     assert math.degrees(math.asin(a / big_r)) == pytest.approx(30.0, abs=0.5)
     assert CLUTCH["seat_d"] >= 3.175                        # SendCutSend's least hole
+    setting = plunger_setting()
+    assert setting["climb_mm"] == pytest.approx(climb, abs=1e-3)
+    assert setting["start_room_mm"] >= 0.2
+    assert setting["limit_room_mm"] >= 0.2
     for key in CRADLES:
         got = drawn_clutch(key)
         assert PRODUCT_CLUTCH_NM[key] == pytest.approx(got["crank_cap_nm"], abs=0.05)
         assert got["set_nm"] == pytest.approx(CLUTCH_SET * DESIGN_START_NM[key], abs=1e-3)
         new = clutch(DESIGN_START_NM[key] * NRV050.eta_static / NRV050.eta_new(),
-                     HANDLES.get(key, HANDLES[""]).throw, NRV050)
+                     HANDLES.get(key, HANDLES[""]).throw, NRV050, clutch_ceiling(key))
+        assert new["crank_cap_nm"] <= got["crank_cap_nm"] + 1e-9     # the ceiling holds it
+        assert new["margin"] >= 1.0                                   # (and it still turns)
         for f in (*got["plunger_n"], *new["plunger_n"]):
-            assert PLUNGER["force"][0] - 0.5 <= f <= PLUNGER["force"][1] - rate * climb, f
+            assert PLUNGER["force"][0] - 0.5 <= f <= setting["limit_n"] + 1e-9, f
+            assert f <= PLUNGER["force"][1] - rate * climb
     drift = clutch_drift()
     assert 1.0 < drift["greased"][1] <= drift["greased_worn"][1] < 2.0
     assert drift["locks_dry"]
@@ -719,30 +802,84 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
     assert HANDLES[""].reach <= by["handle_cap"].part.bounding_box().min.X
     assert max(s[2] for s in sweep) >= max(b.part.bounding_box().max.X for b in parts) - 1e-6
     assert max(s[0] for s in sweep) >= HANDLES[""].throw + HANDLES[""].grip[0] / 2
+    for spec in {HANDLES[k].reach: HANDLES[k] for k in HANDLES}.values():
+        _the_clutch_is_set_slippable(hc, spec, climb, setting)
+
+
+def _the_clutch_is_set_slippable(hc, spec, climb: float, setting: dict) -> None:
+    """In the drawn hand crank (``spec``'s reach): each ball seated, its tip the climb under
+    the seat ring's face, and its plunger's body (its thread, not its ball) over the face by
+    0.2 mm or more: as the ball climbs out its spring goes in by the climb, and with less room
+    the nose lands on the ring first (locked). Drawn at the guide's start (the felt stop,
+    half a turn out), and at its limit (an eighth of a turn) the room still left; each
+    plunger's nut in its pocket from the boss's inner face, flush with it."""
+    from build123d import Box, Cylinder, Location
+
+    from spiderpig.construction.handcrank import CLUTCH, NEAR_STOP, NUT_HALF, PLUNGER, SET_BACK
+
+    parts, _ = hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame", spec)
+    by = {b.name: b for b in parts}
+    face = by["handle_seat_ring"].part.bounding_box().max.X
+    a_in = spec.reach - CLUTCH["boss_t"]
+    big_r = PLUNGER["ball_d"] / 2
+    for i in range(CLUTCH["plungers"]):
+        plunger = by[f"handle_plunger{i}"].part
+        bb = plunger.bounding_box()
+        cy, cz = bb.center().Y, bb.center().Z
+        # the ball seated, its tip the climb under the ring's face: as it climbs out its
+        # spring goes in by the climb, so the body's nose must stand over the face (its
+        # room) or the nose lands on the ring first and the clutch locks
+        assert pytest.approx(face - climb, abs=1e-3) == bb.min.X
+        low = Box(5.2, 40.0, 40.0).moved(Location((face + 0.2 - 2.6, cy, cz)))
+        ub = (plunger & low).bounding_box()
+        # only the ball under 0.2 mm over the face: the body's thread (12.7 mm) stands over
+        assert max(ub.size.Y, ub.size.Z) <= PLUNGER["ball_d"] + 1e-3, (spec.reach, ub)
+        # the body's nose: where the solid first reaches out past the ball's radius
+        shell = (Cylinder(10.0, 80.0, rotation=(0, 90, 0))
+                 - Cylinder(big_r + 0.2, 82.0, rotation=(0, 90, 0))).moved(
+            Location((bb.min.X + 40.0, cy, cz)))
+        nose = (plunger & shell).bounding_box().min.X
+        assert nose - face == pytest.approx(setting["start_room_mm"], abs=0.01)
+        # turned in from there to the guide's limit, the room still left
+        turned = (SET_BACK - NEAR_STOP) * PLUNGER["pitch"]
+        assert nose - turned - face >= 0.2 - 1e-6
+        nut = by[f"handle_plunger_nut{i}"].part.bounding_box()
+        assert pytest.approx(a_in, abs=1e-6) == nut.min.X
+        assert pytest.approx(a_in + NUT_HALF[1], abs=1e-6) == nut.max.X
 
 
 @pytest.mark.construction
 @pytest.mark.no_fabricate
 def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
-    """The riser (design review round 2): four studs in the gearbox's machined face, each
-    nut set by a printed sleeve that sits on the face between its spigot ring and its boss's
-    edge, the plate over the spigot ring and the turning hub's end by ``RISER_CLEAR``
-    whatever their unmeasured heights; each stud threaded a diameter or more into the face,
-    short of its thread's depth, its end in the head layer under the block; the crank
-    block's seat plate on the shaft's steel end, its M10 end screw's head no higher over the
-    block's top than the tie's head (the rod rides where it did); the keyed plates on the
-    key's straight flanks for any end the go/no-go's window takes."""
+    """The riser (design review round 3's M2: a clamped stack, not four studs in bending):
+    a ring of the crank sheet on the gearbox's machined face, centred on its spigot ring, its
+    holes' webs a thickness or more; on each stud a steel sleeve that sits on the face's boss
+    between the spigot ring and the boss's edge, the go/no-go's shims over it within their
+    range, the plate over the spigot ring and the turning hub's end by ``RISER_CLEAR``; each
+    class 8.8 stud threaded a diameter or more into the face, short of its thread's depth, its
+    end filed to at most ``STUD_PAST_MAX`` over its thin nut, under the crank block's lowest
+    plate by half a millimetre with the go/no-go's window and the plates under the seat at
+    their thickest (its m9); the crank block's seat plate on the shaft's steel end, its M10
+    end screw's head no higher over the block's top than the tie's head (the rod rides where
+    it did); the keyed plates on the key's straight flanks for any end the go/no-go's window
+    takes."""
     from spiderpig.construction.handcrank import (
         BLOCK_PLATES,
         HEAD_LAYER_T,
         KEYED_PLATES,
         M6,
         NRV050,
+        PLATE_OVER,
         RISER_CLEAR,
+        RISER_RING,
+        RISER_RING_HOLE,
+        RISER_SHIMS_RANGE,
         RISER_SLEEVE,
         RISER_STUD,
         RISER_THIN,
+        SEAT_LOW,
         STUD_IN,
+        STUD_PAST_MAX,
         arm_z,
         end_screw,
         riser_for,
@@ -751,17 +888,24 @@ def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
     t, t_frame = 3.175, 4.75
     box = NRV050
     a0, a1 = arm_z(0.0, t_frame, KEYED_PLATES * t)
-    r = riser_for(0.0, a0, t, box, t_frame)
+    r = riser_for(0.0, a0, t, box, t_frame, t)
     assert r.height - max(box.spigot_h, box.hub_out) >= RISER_CLEAR
     od = RISER_SLEEVE[0]
     assert box.pcd / 2 - od / 2 >= box.spigot_d / 2 + 1.0       # off the spigot ring
     assert box.pcd / 2 + od / 2 <= box.face_d / 2 - 1.0          # on the face's boss
+    hole = box.face_thread + RISER_RING_HOLE
+    assert box.pcd / 2 - hole / 2 - (box.spigot_d + RISER_RING) / 2 >= t   # the ring's webs
+    assert box.face_d / 2 - box.pcd / 2 - hole / 2 >= t
+    assert r.ring_t + RISER_SLEEVE[2] + r.shims == pytest.approx(r.height)
+    assert RISER_SHIMS_RANGE[0] <= r.shims <= RISER_SHIMS_RANGE[1]
     d = RISER_STUD[0]
     assert STUD_IN * d <= r.engage <= box.face_depth - 0.5
-    stud_top = r.face - r.engage + r.stud
-    assert 0.5 - 1e-9 <= stud_top - (t_frame + RISER_THIN[1]) <= HEAD_LAYER_T - RISER_THIN[1]
-    assert stud_top < a0 - 0.5                                   # under the block
-    assert r.sleeve == pytest.approx(r.height - 6.5)
+    assert 0.0 <= r.past <= STUD_PAST_MAX
+    assert r.stud >= r.stud_drawn                                # (filed, never short)
+    stud_top = r.face - r.engage + r.stud_drawn
+    assert stud_top == pytest.approx(t_frame + RISER_THIN[1] + r.past)
+    assert stud_top + STUD_PAST_MAX - r.past + SEAT_LOW + r.seat_k * PLATE_OVER <= a0 - 0.5
+    assert HEAD_LAYER_T - RISER_THIN[1] - STUD_PAST_MAX >= 0.5
     assert r.seat == pytest.approx(a0 + r.seat_k * t)
     assert r.shaft_end == pytest.approx(r.seat)
     top = a0 + BLOCK_PLATES * t
@@ -771,6 +915,29 @@ def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
     for end in (r.seat, r.seat - r.low):
         assert end - box.key_short - key_w / 2 >= a1 - 0.2 - 1e-9
         assert end - box.key_short - key_len + key_w / 2 <= a0
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_riser_holds_the_gearbox_as_a_clamped_stack():
+    """The riser rated (design review round 3's M2, ``cradle_drive.riser_rating``): at a
+    rod force and torque like B's walking peak it doesn't slip at the faces' oiled friction
+    (``RISER_MU``) by 2 x; at B's and A's capped jam 30° from the toggles (the review's rod
+    forces) every strength row holds 1.3 (the stud in class 8.8 at its proof, the sleeve,
+    the ring's bearing); the 18-8 set screws round 2 had, carried in bending over 18.7 mm,
+    were SF 0.55-0.62 (the review's)."""
+    from spiderpig.construction.handcrank import NRV050
+    from spiderpig.cradle_drive import riser_rating
+
+    notes = {"riser_height_mm": 25.2, "face_z_mm": -25.2, "rod_mid_z_mm": 55.0,
+             "riser_ring_mm": 3.175, "riser_shims_mm": 2.025, "plate_inner_z_mm": 4.75}
+    walk = riser_rating(NRV050, notes, 410.0, 35.8)
+    assert walk["slip_sf"] >= 2.0, walk
+    assert walk["least"] >= 2.0, walk
+    for f, cap in ((1931.9, 63.7), (2301.7, 67.1)):
+        got = riser_rating(NRV050, notes, f, cap)
+        assert got["least"] >= 1.3, got
+        assert got["sf_stud"] >= 1.3, got
 
 
 def p_ok(name: str, pieces) -> bool:
@@ -875,6 +1042,23 @@ def test_the_base_board_is_rounded_offset_and_locates_its_riser():
     assert all(pytest.approx(table + cr.RISER_LIFT) == b.min.Y for b in blocks)    # on them
     tall = pytest.approx(cr.RISER_BLOCK[1] + cr.RISER_LIP, abs=0.02)
     assert all(tall == b.max.Y - b.min.Y for b in blocks)
+    # each block's relief over a post's head (design review round 3's stand and use, M5 and
+    # m2): a bore through its top that takes the head's 12 mm washer, under a cone whose
+    # mouth takes one set down 7 mm off; the boss's face round it bears on the plate
+    bore, mouth, deep = cr.RISER_RELIEF
+    for (_, part), b in zip(pieces[2:4], blocks, strict=True):
+        zc, yt = (b.min.Z + b.max.Z) / 2, b.max.Y
+        assert bore >= 12.0 + 1.0
+        assert (mouth - 12.0) / 2 >= 7.0
+        for d in (0.6, deep + 0.6, cr.RISER_LIP + cr.RISER_WALL - 0.6):
+            assert not solid_at(0.0, zc, part, yt - d)           # through the boss and top
+
+        def opening(d: float) -> float:                          # the cone's radius, d down
+            return mouth / 2 - d * (mouth - bore) / 2 / deep
+
+        assert not solid_at(opening(1.5) - 0.4, zc, part, yt - 1.0)   # in the cone
+        assert solid_at(opening(1.5) + 0.6, zc, part, yt - 2.0)       # its slope under it
+        assert solid_at(mouth / 2 + 1.0, zc, part, yt - 0.6)     # the boss's face round it
     lb = layers[-1].bounding_box()
     assert blocks[0].max.Y > lb.max.Y + 50.0             # it stands out of the locator
     top = layers[-1].bounding_box()
@@ -1158,6 +1342,155 @@ def test_the_cradle_passes_the_cut_rules(key):
     assert got["ok"], got
 
 
+def _outline_turns(part) -> tuple[list[float], list[tuple[str, float]]]:
+    """A plate's top outline (its outer wire), in order: every tangent break's turn (degrees,
+    + convex, - re-entrant) and each edge's kind (``L``, ``+`` a convex arc, ``-`` a concave
+    one) with its radius."""
+    from OCP.GeomAbs import GeomAbs_Circle
+    from OCP.gp import gp_Pnt, gp_Vec
+
+    from spiderpig.layout import _ordered_edges
+
+    top = max((f for f in part.faces() if abs(abs(f.normal_at().Z) - 1) < 1e-6),
+              key=lambda f: f.center().Z)
+    edges = _ordered_edges(top.outer_wire())
+    pts = [(p.X(), p.Y()) for c, u0, u1 in edges
+           for p in (c.Value(u0 + (u1 - u0) * k / 8) for k in range(8))]
+    ccw = 1 if sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1)
+                   in zip(pts, pts[1:] + pts[:1], strict=True)) > 0 else -1
+
+    def tan(c, u, way):
+        p, v = gp_Pnt(), gp_Vec()
+        c.D1(u, p, v)
+        n = math.hypot(v.X(), v.Y())
+        return way * v.X() / n, way * v.Y() / n
+
+    breaks, kinds = [], []
+    for i, (c, u0, u1) in enumerate(edges):
+        way = 1 if u1 >= u0 else -1
+        if c.GetType() == GeomAbs_Circle:
+            ta, tm = tan(c, u0, way), tan(c, (u0 + u1) / 2, way)
+            kinds.append(("+" if (ta[0] * tm[1] - ta[1] * tm[0]) * ccw > 0 else "-",
+                          round(c.Circle().Radius(), 3)))
+        else:
+            kinds.append(("L", 0.0))
+        cn, v0, v1 = edges[(i + 1) % len(edges)]
+        a, b = tan(c, u1, way), tan(cn, v0, 1 if v1 >= v0 else -1)
+        cross = a[0] * b[1] - a[1] * b[0]
+        turn = math.degrees(math.atan2(abs(cross), a[0] * b[0] + a[1] * b[1]))
+        if turn > 0.5:
+            breaks.append(math.copysign(turn, cross * ccw))
+    return breaks, kinds
+
+
+def _s_steps(kinds, fillet: float) -> list[float]:
+    """The radii of the convex arcs between two concave ``fillet`` arcs: the S-steps a
+    closing leaves where a disc stands a little proud of a straight edge."""
+    n = len(kinds)
+    return [k[1] for i, k in enumerate(kinds) if k[0] == "+"
+            and all(kinds[j][0] == "-" and abs(kinds[j][1] - fillet) < 1e-6
+                    for j in ((i - 1) % n, (i + 1) % n))]
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_frame_plate_s_steps_are_tapered_and_its_cut_corners_rounded():
+    """Design review round 3, laser-cut parts minor 5: a strip with a boss 0.8 mm proud of it
+    and a 32 mm member running straight on from a 24 mm one closed into S-shaped steps
+    (R20, the boss's or the end's arc, R20); now each station is tapered into (the hull
+    between two proud stations, 1 in 10 from a proud one into a plain strip), so no S-step
+    is left. A corner a member's straight-on 60 mm widening (over :data:`STEP_MAX`) keeps.
+    The board's cut across a member leaves no sharp convex corner (rounded
+    :data:`EDGE_R`), and the outline has no tangent break at all."""
+    from spiderpig.shapes import Cut, Rect, cut_holes, disc, pill, union
+
+    t, web, fillet = 4.75, 9.6, 20.0
+    pads = [((0.0, 0.0), (100.0, 0.0), 12.0), ((100.0, 0.0), (180.0, 0.0), 16.0),
+            ((180.0, 0.0), (180.0, 120.0), 16.0)]
+    cuts = [Cut((40.0, 0.0), 6.4), Cut((100.0, 0.0), 6.4), Cut((180.0, 120.0), 6.4),
+            Rect((90.0, -29.5), (300.0, 40.0)),        # the board, its top at y -9.5
+            ]
+    old = cut_holes(cr._closed(union([pill(a, b, r, 0.0, t) for a, b, r in pads]
+                                     + [disc(c.xy, c.d / 2 + web, 0.0, t)
+                                        for c in cuts if isinstance(c, Cut)]),
+                               0.0, t, fillet), cuts, 0.0, t)
+    old_breaks, old_kinds = _outline_turns(old)
+    assert _s_steps(old_kinds, fillet), old_kinds           # (the closing's S-steps)
+    assert any(b > 0 for b in old_breaks)                   # (the board cut's corners)
+    new = cr.plate_part(pads, cuts, 0.0, t, web, fillet)
+    breaks, kinds = _outline_turns(new)
+    assert _s_steps(kinds, fillet) == []
+    assert breaks == []
+    assert ("+", cr.EDGE_R) in kinds
+    assert new.volume > 0.98 * old.volume
+    assert len(new.solids()) == 1
+    # A's plates keep their steps for its flat pack (cradle.TAPERED), their corners rounded
+    assert frozenset({"decanter_rcm"}) == cr.TAPERED
+    plain = cr.plate_part(pads, cuts, 0.0, t, web, fillet, taper=False)
+    breaks, kinds = _outline_turns(plain)
+    assert _s_steps(kinds, fillet)
+    assert breaks == []
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_guide_names_the_as_cut_parts_and_the_routed_birch():
+    """Design review round 3, laser-cut parts minors 3 and 6: the arrival step names the
+    parts under SendCutSend's deburring minimum (:func:`assembly.as_cut_words`, a 24 mm link
+    once whatever its sides; a 30 mm one is deburred), and the parts table calls the birch
+    routed and names the crank block's plates (their files keep their labels)."""
+    from build123d import Box, Cylinder, Location
+
+    from spiderpig.construction.assembly import AS_CUT, CRADLE_ARRIVAL, as_cut_words
+    from spiderpig.labels import part_types
+    from spiderpig.mechanism import Body, Mechanism
+
+    def plate(w, h, t, sheet, name):
+        part = Box(w, h, t).moved(Location((w / 2, h / 2, t / 2)))
+        part = part - Cylinder(4.1, 3 * t).moved(Location((12, 12, t / 2)))
+        return Body(name, part, fab="laser", sheet=sheet)
+
+    mech = Mechanism("m", [plate(120, 24, 4.826, "al7075_4p8mm", f"{s}.b4") for s in "LR"]
+                     + [plate(120, 30, 4.75, "al5052_4p8mm", "L.b6"),
+                        plate(300, 200, 9.0, "birch_9mm", "base_plate"),
+                        plate(128, 44, 3.175, "al6061_3p2mm", "L.conn_plate3")],
+                     meta={"sheet": "al5052_3p2mm"})
+    assert as_cut_words(mech) == "b4"
+    assert AS_CUT in CRADLE_ARRIVAL
+    names = {t.label[:5]: t.name for t in part_types(mech)}
+    assert names["LC300"].startswith("base board, CNC-routed, ")
+    assert names["LC128"].startswith("crank block plate, laser-cut, ")
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_crank_block_plate_has_no_cusp_at_its_neck():
+    """Design review round 3, laser-cut parts minor 1: the crank block's plates (the arm's
+    pill on its hub's disc) met in two re-entrant cusps at the neck; closed by
+    :data:`construction.plates.CRANK_FILLET_R` the outline has no tangent break, and what
+    the closing added lies in the pills its claims take (:func:`plates.arm_fills`)."""
+    from build123d import Solid, Vector
+
+    from spiderpig.construction import plates
+    from spiderpig.construction.handcrank import NRV050
+    from spiderpig.shapes import difference, pill, union
+
+    t = 3.175
+    hc = HandCrank(NRV050)
+    ctx = type("C", (), {"sheet_t": staticmethod(lambda role: t)})()
+    hub, web, throw = hc.hub_r(ctx), hc.web_r(ctx), 105.0
+    part = plates.arm_plate(hub, web, throw, (0.0, 0.0), (0.0, throw), 0.0, t, ())
+    breaks, _ = _outline_turns(part)
+    assert breaks == []
+    face, covers = plates._arm(hub, web, throw)
+    plain = union([pill((0.0, 0.0), (throw, 0.0), web, 0.0, t),
+                   pill((0.0, 0.0), (0.0, 0.0), hub, 0.0, t)])
+    added = difference(Solid.extrude(face, Vector(0, 0, t)), plain)
+    assert added.volume > 1.0
+    held = union([pill(p, q, w, -1.0, t + 1.0) for p, q, w in covers])
+    assert difference(added, held).volume < 1e-6
+
+
 @pytest.fixture
 def cached_report_fabrications(monkeypatch):
     """``cradle_report``'s fabrications from the test cache (``cached_product``): a report
@@ -1370,19 +1703,35 @@ def _holds_the_clutchs_cap(r: dict, key: str) -> None:
     shaft included, holds the cap at SF 1.3 or more 30° and more from the toggles, the side
     frames too since their redesign (2026-10-20; the band round a toggle where any falls
     under 1.3 is reported, no wider); the keyed plates at the cap."""
-    from spiderpig.cradle_drive import OUTPUT
+    from spiderpig.cradle_drive import OUTPUT, RISER
 
     clutch = r["drive"]["clutch"]
     assert clutch["margin"] >= clutch["margin_floor"]
     assert r["drive"]["jam_torque_nm"] == pytest.approx(clutch["crank_cap_nm"], abs=0.01)
     assert clutch["unchecked_cap_nm"] > clutch["crank_cap_nm"]          # (reported)
+    # the ceiling (design review round 3's M1): set on a new box, the cap is the rated one,
+    # and the new box's 6 L still turns; spun fast, more (reported, the use limits' "turn
+    # it, don't spin it")
+    assert clutch["set_new_cap_nm"] <= clutch["crank_cap_nm"] + 0.05
+    assert clutch["set_new_no_ceiling_cap_nm"] > clutch["crank_cap_nm"]
+    assert clutch["new_box_margin"] >= 1.0
+    assert clutch["fast_cap_nm"] > clutch["crank_cap_nm"]
+    assert clutch["fast_cap_least_sf"] >= 1.2
+    # every plunger setting reachable by the guide's limit but a 10 % weak spring's at the
+    # greased friction's low end (the slip then stays under the target: its m3)
+    assert all(case == ["0.09", "0.9"] for case in clutch["plunger_reach"]["under"])
+    # the gearbox's riser (its M2): no slip walking, every strength row at the cap 30° off
+    riser = r["drive"]["riser"]
+    assert riser["walk"]["slip_sf"] >= 2.0, riser
+    assert riser["cap"]["least"] >= 1.3, riser
     assert r["drive"]["input_overhung"]["sf"] >= 2.0
     assert r["drive"]["output_overhung"]["sf_walk"] >= 3.0
     capped = r["jam_capped"]
     assert capped["crank_nm"] == clutch["crank_cap_nm"]
     away = capped["by_band"][-1]["parts"]
     assert min(away.values()) >= 1.3, away          # every part 30° from the toggles,
-    assert OUTPUT in capped["parts"]                # the output shaft among them
+    assert OUTPUT in capped["parts"]                # the output shaft among them,
+    assert RISER in capped["parts"]                 # and the gearbox's riser
     bands = [(x["band_deg"], x["worst"]) for x in capped["by_band"]]
     held = [v["holds_1p3_outside_deg"] for v in capped["parts"].values()]
     assert None not in held, bands                  # (5° steps: where the old case
@@ -1570,9 +1919,25 @@ def test_the_cradle_has_an_assembly_order(key):
     assert "to level" in btext
     assert "luggage scale" in btext
     assert steps.index(board) > max(steps.index(s) for s in steps if s.side == "R")
+    # the clutch set, the worm's hold and the toggle zones once the cradle is built (design
+    # review round 3's stand and use M2, M4): the last build step; the hand crank's step
+    # sets the plungers at their felt start (its B1), no more
+    htext = " ".join(hand.text)
+    for words in ("stops hard", "half a turn", "an eighth of a turn", "Before the first pour"):
+        assert words in htext, words
+    for words in ("flush", "Measure the start", "tube in a vise", "toggle"):
+        assert words not in htext, words
+    (pour,) = [s for s in steps if s.title == "Before the first pour"]
+    assert steps.index(pour) == steps.index(board) + 1
+    assert not pour.adds
+    ptext = " ".join(pour.text)
+    for words in ("luggage scale", "check stub", "no vise", "none over the ceiling",
+                  "every month or ten pours", "red arc", "folded under the rod",
+                  "one straight line", "worm's hold"):
+        assert words in ptext, words
     # the use, in order, after the build; its own items, none a wall of text; a picture each
     use = [s for s in steps if s.stage == USE]
-    assert steps.index(use[0]) == steps.index(board) + 1
+    assert steps.index(use[0]) == steps.index(pour) + 1
     titles = [s.title for s in use]
     assert titles[:5] == ["Before you use it", "Setting it for a bottle", "The decanter's riser",
                           "Decanting", "The use limits"]
@@ -2121,12 +2486,18 @@ def test_the_saddles_hold_a_full_6_l():
     the rails' flanges), the post and the screws 3 x under their yield, the gate's lock
     gripping 2 x what it holds at the least friction cited, the rear knob's teeth holding
     the greased lead screw; no V block's guide jams raising it under twice the most friction
-    cited for its faces (review round 2, N1: the post 213 mm from the screw jammed at 0.15,
-    0.095 for a 750 ml); the lip gauge held on its post."""
+    cited for its faces, dry (review round 2, N1: the post 213 mm from the screw jammed at
+    0.15, 0.095 for a 750 ml; round 3's mounting m9: the front one held only greased); the
+    lip gauge held on its post. Design review round 3 (mounting): the gate's ears' roots
+    (M3: the push's lever under the rails, unrated), the rear lock's two M3 set screws
+    (m3), and the lip gauge at a wet bottle's slide onto its pad (m1: its peak over the
+    static pull, the gauge's parts rated at it)."""
     from spiderpig.cradle_report import (
+        PETG_STEEL,
         PLA_ALLOW,
         PRINTED,
         SUSTAINED_SF,
+        TPU_WET,
         TRANSIENT_SF,
         drawers,
         saddles,
@@ -2154,6 +2525,28 @@ def test_the_saddles_hold_a_full_6_l():
                  "base stop's rails' tongues (bending where they leave the sockets)",
                  "lip gauge on its post (fixed)", "rear knob's tower (bending)"):
         assert part in rows, part
+    # the gate's ears' roots: in their layers, the gate printing on its top; its plate
+    # hanging from its top bar across them
+    ears = rows["base stop's gate's ears (their root)"]
+    assert "in its layers" in ears["basis"]
+    assert ears["sf"] >= SUSTAINED_SF
+    assert "across" in rows["base stop's gate (its plate hanging from its top bar)"]["basis"]
+    # the rear lock's set screws: the hub's on a flat on the screw, the nut's by friction
+    # through its printed thread across its layers
+    hub = rows["rear knob's hub on the lead screw (its M3 set screw on the flat)"]
+    nut = rows["rear barrel nut in its boss (its M3 set screw)"]
+    assert "across" in nut["basis"]
+    assert min(hub["sf"], nut["sf"]) >= SUSTAINED_SF
+    assert cr.LEAD_FLAT[0] > 0.0
+    # a wet bottle's slide onto the pad: it can start in the swing only under tan 30° / √2,
+    # and its peak over the static pull is what the gauge's parts are rated at
+    slide = got["slide"]
+    assert slide["mu_static_most"] == pytest.approx(math.tan(math.radians(30.0)) / math.sqrt(2),
+                                                    abs=1e-3)
+    assert slide["mu_kinetic"] == TPU_WET < slide["mu_static_most"]
+    assert slide["peak_n"] > slide["static_n"]
+    assert rows["lip gauge's post (bent and twisted)"]["load_n"] == pytest.approx(
+        slide["peak_n"], abs=0.1)
     # the brake alone, greased, doesn't hold: the knob's lock does
     greased = rows["rear lead screw's brake, the knob lifted, greased"]
     assert greased["bar"] is None
@@ -2163,12 +2556,85 @@ def test_the_saddles_hold_a_full_6_l():
     assert {(r["bottle"], r["guide"]) for r in guides} == {
         (z.name, g) for z in cr.SIZES for g in ("rear", "front")}
     assert all(r["ok"] and r["mu_jam"] >= 2 * r["mu"] for r in guides)
+    assert all(r["mu"] == PETG_STEEL["dry"][1] for r in guides)       # (both dry)
     rear = {r["bottle"]: r for r in guides if r["guide"] == "rear"}
     assert rear[cr.STANDARD.name]["mu_jam"] == pytest.approx(
         rear[cr.STANDARD.name]["engagement_mm"] / 54.0, abs=1e-3)
     assert min(r["mu_jam"] for r in rear.values()) > 0.6     # (it had been 0.095)
     assert got["balance"]["ok"]
     assert got["gauge"]["held"]
+
+
+@pytest.mark.no_fabricate
+def test_real_bottles_lie_clear_of_the_saddles_and_the_light():
+    """Design review round 3, mounting M1 and M2: the 750 ml and the 6 L impériale are drawn as
+    their makers draw them (Saverglass's 4427, univerre's NGBD06QFR, traced), not the model's
+    cosine shoulder that had hidden their real ones. Each listed bottle, set as the guide
+    measures it (its neck :data:`construction.cradle.NECK_AT` from the lip, the front V's
+    bearing's back end), at rest on the gate and slid onto the pad: the front V bears on its
+    measured section (its widest there), the V's relief behind the bearing and the carrier's
+    back wall clear its shoulder, the light's head lies under the glass with room, and the
+    pad covers the rim. At the light's old place (118 mm) the impériale lay on its head."""
+    from dataclasses import replace
+
+    assert cr.STANDARD.profile()[1] == (2.0, 13.44)                  # (the drawings)
+    assert cr.IMPERIAL.profile()[-1] == (493.0, 74.96)
+    assert cr.MAGNUM.profile()[0] == (0.0, cr.MAGNUM.r_neck)        # (the model)
+    assert cr.NECK_AT == cr.FRONT_BEAR - cr.STOP_GAP
+    words = " ".join(next(u for u in cr.use_steps("decanter_rcm") if u.tag == "setting").lines)
+    assert f"neck's diameter {cr.NECK_AT:g} mm down from the lip" in words
+    for size in cr.SIZES:
+        for mouth in (cr.STOP_GAP, cr.GAUGE_FRONT[1]):
+            room = cr.bottle_room(size, mouth)
+            if mouth == cr.STOP_GAP:
+                assert room["bearing"] == pytest.approx(room["neck"], abs=0.05), size.key
+                assert room["neck"] == pytest.approx(size.r_neck, abs=0.4), size.key
+            assert room["relief"] >= 1.0, (size.key, mouth, room)
+            assert room["wall"] >= 2.5, (size.key, mouth, room)
+            assert room["light"] >= 5.0, (size.key, mouth, room)
+            assert room["pad"] >= 2.5, (size.key, mouth, room)
+    assert cr.bottle_room(cr.IMPERIAL, cr.GAUGE_FRONT[1])["light"] >= 10.0
+    # (m8) a methuselah whose shoulder were as full as the impériale's clears it too
+    fuller = replace(cr.METHUSELAH, outline=cr.UNIVERRE_NGBD06QFR)
+    assert cr.bottle_room(fuller, cr.GAUGE_FRONT[1])["light"] >= 10.0
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_gate_prints_on_its_top_its_pointer_wide_and_notched():
+    """Design review round 3, mounting M3, m2 and m4: the base stop's gate prints on its top
+    (its top bar, ears and pointer on the bed: the ears' roots and the 25.5 mm pointer in its
+    layers; on its face the pointer had been a 2 x 6 mm column), its ears
+    :data:`construction.cradle.GATE_TOP` tall over the rails with their roots filleted, its
+    pointer 4 mm wide with the vernier notched through its inner edge to the rail's top (cut
+    in its top they read across a 6 mm step), and the M5 x 25 lock bolt still reaching past
+    its nut."""
+    from spiderpig.build import print_pose
+
+    rear = cr.SADDLES[1]
+    stop = cr.setting(cr.STANDARD).stop
+    gate, (bolt, *_, nut) = cr._gate(rear, stop)
+    pose = cr.print_poses(["base_stop_gate"], 0.0)["base_stop_gate"]
+    assert pose == [("Z", -0.0), ("X", -90.0)]
+    posed = print_pose(gate, pose).bounding_box()
+    hi = cr.REAR_FLANGE[1]
+    bb = gate.bounding_box()
+    assert pytest.approx((hi + cr.GATE_TOP, cr.GATE_BOTTOM)) == (bb.max.Y, bb.min.Y)
+    assert pytest.approx(-(hi + cr.GATE_TOP)) == posed.min.Z         # its top on the bed
+    assert cr.GATE_TOP >= 9.0
+    assert cr.EAR_FILLET >= 4.0
+    pitch, lines, width = cr.VERNIER
+    assert width >= 4.0
+    assert pytest.approx(cr.POINTER_IN + width) == bb.max.Z
+    # each notch through the pointer's whole height at its inner edge
+    from build123d import Box, Location
+
+    for k in range(1, lines + 1):
+        probe = Box(0.3, cr.GATE_TOP - 0.2, 0.4).moved(Location(
+            (stop - pitch * k, hi + cr.GATE_TOP / 2, cr.POINTER_IN + 0.25)))
+        hit = gate & probe
+        assert hit is None or getattr(hit, "volume", 0.0) < 1e-6, k
+    assert bolt.bounding_box().min.Y <= nut.bounding_box().min.Y - 0.8   # (past its nut)
 
 
 @pytest.mark.no_fabricate
@@ -2278,6 +2744,9 @@ def test_the_cradle_page_lists_the_cradles_and_serves_their_swing(monkeypatch):
     r = client.get("/api/cradle/decanter_hinge?n=48")
     assert r.status_code == 200
     assert r.json()["n"] == 48
+    from spiderpig.construction.handcrank import TOGGLE_TURNS
+
+    assert r.json()["toggle_turns"] == TOGGLE_TURNS     # the slider's red zones (round 3's M4)
     # how it's used: the guide's own use steps, the use limits' five-line card first
     # (design review round 2's M5: the page had none of them)
     use = r.json()["use"]
@@ -3061,10 +3530,12 @@ def test_the_riser_rule_gives_each_listed_vessel_its_stack():
 @pytest.mark.construction
 def test_the_room_under_the_mouth_names_its_lowest_part():
     """``cradle_report.room`` of B as fabricated: the lowest part of the cradle box over the
-    drawn decanter's rim over the whole swing is the light's printed clip, at rest, about
-    380 mm over the table (design review round 2: the guide had named the front saddle, 66
-    mm higher); the drawn decanter's riser by the rule is the whole printed set; the recorded
-    room (``RISER_REF``) is this one (``SPIDERPIG_REGEN=1`` rewrites it)."""
+    drawn decanter's rim over the whole swing is the light's printed clip, near rest, about
+    394 mm over the table (design review round 2: the guide had named the front saddle, 66
+    mm higher than the clip's 380 then; round 3's mounting M2 moved the light 18 mm toward
+    the mouth, 14 mm higher at rest); the drawn decanter's riser by the rule is the whole
+    printed set; the recorded room (``RISER_REF``) is this one (``SPIDERPIG_REGEN=1``
+    rewrites it)."""
     import json
     import os
     from pathlib import Path
@@ -3076,8 +3547,8 @@ def test_the_room_under_the_mouth_names_its_lowest_part():
     got = room(cfg, fabricate(template_for(cfg), cfg, 0.0))
     low = got["lowest"]
     assert low["part"] == "led_clip"
-    assert 370.0 < low["mm"] < 390.0
-    assert low["tilt_deg"] == pytest.approx(REST["decanter_rcm"], abs=1.0)
+    assert 385.0 < low["mm"] < 400.0
+    assert low["tilt_deg"] == pytest.approx(REST["decanter_rcm"], abs=5.0)
     assert got["drawn"]["riser_mm"] == cr.DECANTER_RISER
     assert got["drawn"]["stack"][0] == cr.DECANTER_RISER
     path = Path(__file__).resolve().parents[1] / RISER_REF
@@ -3143,6 +3614,10 @@ def test_every_pose_the_guide_rests_a_piece_in_is_rated(key):
     lo = inp["parts"]["L.frame_outer"]["lo"][2]
     standout = lo - inp["parts"]["L.gearbox"]["lo"][2]
     assert abs(cr.RISER_LIFT + cr.RISER_BLOCK[1] + cr.RISER_LIP - standout) <= 2.0, standout
+    # the guide's lifts (design review round 3's stand and use, M5: two people, or one in
+    # cradle.lay_down's order) say what the pieces weigh
+    for pose, kg in cr.LIFTS.get(key, {}).items():
+        assert abs(rows[pose]["kg"] - kg) <= 0.15, (pose, rows[pose]["kg"], kg)
 
 
 PACK_BOX = {"decanter_hinge": (705.0, 215.0, 610.0)}
@@ -3339,7 +3814,7 @@ def test_the_cradle_packs_in_one_box(key):
     base = set(by["base"]["parts"])
     assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_nut1")} <= base
     assert {shipped[n].bom_key for n in base if n.startswith("foot_bracket")} == {
-        "m6_carriage_25", "m6_washer_wide", "m6_nut", None}         # (None: the knobs)
+        "m6_carriage_25", "m6_washer_wide", "m6_nylon_nut", None}   # (None: the brackets)
     assert {n for n in shipped if n.startswith(("base_cleat", "riser_locator"))} <= base
     assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_knob")} <= base
     assert 5.0 <= p["pose"]["turns_from_rest"] <= 6.5
@@ -3357,8 +3832,9 @@ def test_the_cradle_packs_in_one_box(key):
     assert text.index("on its drive side") < text.index("R-clip") < text.index(
         "lift it straight up") < text.index("Cradle box: lift it straight up")
     back = " ".join(p["reassembly"])
-    for words in ("paint marks", "pin X into its hole first", "Lower the cradle box onto it",
-                  "Both R-clips in", "cleats", "knobs loose", "paper check",
+    for words in ("paint marks", "(its paint X), into its hole first",
+                  "Lower the cradle box onto it", "Both R-clips in", "cleats", "knobs loose",
+                  "paper check",
                   "Pin X first, always", "press each one's tip with a thumb",
                   "down into its bracket's slot"):
         assert words in back, (words, p["reassembly"])

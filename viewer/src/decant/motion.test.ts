@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  adjustShift, bracket, fractionAtTurns, phaseAt, pointAt, saddleAt, settingOffsets, swingBounds,
-  tiltAt, tiltWords, toPlane, turnsAt, type CradleMotion,
+  adjustShift, bracket, fractionAtTurns, inToggleZone, phaseAt, pointAt, saddleAt, settingOffsets,
+  swingBounds, tiltAt, tiltWords, toggleZones, toPlane, turnsAt, type CradleMotion,
 } from './motion';
 
 /** A toy cradle: 4 samples, its tilt -20, 0, 40, 0; rest at 0, full tilt at 2. */
@@ -87,5 +87,15 @@ describe('the cradle page\'s swing', () => {
     expect(tiltWords(-25)).toBe('neck up 25.0°');
     expect(tiltWords(0.2)).toBe('level');
     expect(tiltWords(55)).toBe('neck down 55.0°');
+  });
+
+  it('marks the toggle zones either side of rest and of full tilt', () => {
+    const m = toy();
+    expect(toggleZones(m)).toEqual([]);                  // (none sent: none drawn)
+    expect(inToggleZone(m, 1)).toBe(false);
+    m.toggle_turns = 2.5;
+    expect(toggleZones(m)).toEqual([[0, 2.5], [12.5, 17.5], [27.5, 30]]);
+    for (const t of [0, 2.4, 13, 15, 17.5, 28, 30, 31]) expect(inToggleZone(m, t)).toBe(true);
+    for (const t of [2.6, 7.5, 12.4, 17.6, 27.4]) expect(inToggleZone(m, t)).toBe(false);
   });
 });

@@ -15,11 +15,12 @@ import type { View } from '../types';
 import { COLORS, createDiagram, type Diagram } from './diagram';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import {
-  createPack, movedModule, packFraction, snappedDelta, type Pack, type PackData, type PackModule,
+  createPack, movedModule, packFraction, packOrder, snappedDelta, type Pack, type PackData,
+  type PackModule,
 } from './pack';
 import { createPour, type RoomData } from './pour';
 import {
-  fractionAtTurns, phaseAt, tiltAt, tiltWords, turnsAt, type CradleMotion,
+  fractionAtTurns, inToggleZone, phaseAt, tiltAt, tiltWords, toggleZones, turnsAt, type CradleMotion,
 } from './motion';
 
 interface CradleCard { key: string; name: string; notes: string; verdict: 'build' | 'study'; why: string }
@@ -244,6 +245,7 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
     slider.max = String(m.ratio);
     const fullAt = (m.turns_to_full / m.ratio) * 100;
     $('tick-full').style.left = `${fullAt}%`;
+    renderZones(m);
     f = fractionAtTurns(m, turns ?? 0);
     dirty = true;
     pour.detach();
@@ -317,13 +319,18 @@ function renderPackInfo(d: PackData): void {
     back.push(p, list(d.reassembly));
   }
   // the pieces as they go in the box: what is under another goes in first
-  const h2 = document.createElement('h3'); h2.textContent = `In the box, from the floor up (${d.modules.length} pieces)`;
+  const order = packOrder(d);
+  const nSpacers = order.filter((m) => m.spacer).length;
+  const h2 = document.createElement('h3');
+  h2.textContent = `In the box, from the floor up (${d.modules.length} pieces`
+    + (nSpacers ? `, ${nSpacers} printed spacers)` : ')');
   const pieces = document.createElement('ol');
   pieces.className = 'pack-pieces';
-  for (const m of d.modules) {
+  for (const m of order) {
     const li = document.createElement('li');
     li.textContent = m.label;
     li.title = m.how;
+    if (m.spacer) li.className = 'pack-spacer';
     pieces.appendChild(li);
   }
   info.append(h, size, how, ol, ...back, h2, pieces, editPanel());
@@ -565,7 +572,19 @@ function readouts(m: CradleMotion): void {
     ? `tipping: ${left.toFixed(1)} turns to full tilt`
     : `returning: ${left.toFixed(1)} turns to rest`;
   $('tilt-bar').style.width = `${Math.max(0, Math.min(1, (tilt - m.rest_deg) / (m.full_deg - m.rest_deg))) * 100}%`;
+  $('zone').hidden = !inToggleZone(m, turns);
   if (document.activeElement !== slider) slider.value = String(turns);
+}
+
+/** The toggle zones as red bands on the slider's track (the gearbox's red arcs). */
+function renderZones(m: CradleMotion): void {
+  const box = $('zones');
+  box.replaceChildren(...toggleZones(m).map(([a, b]) => {
+    const band = document.createElement('span');
+    band.style.left = `${(a / m.ratio) * 100}%`;
+    band.style.width = `${((b - a) / m.ratio) * 100}%`;
+    return band;
+  }));
 }
 
 const clock = new THREE.Timer();

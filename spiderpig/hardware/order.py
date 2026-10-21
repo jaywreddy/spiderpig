@@ -31,8 +31,10 @@ LINE_NOTES = {
                  "phidgets.com/docs/U.S._Tariffs): 40 % on the gearbox (HTS 8483.40.50.10) and "
                  "50 % on the shaft (8483.10.50.00), USD 40.43 (tariffs.wove.com, 2026-10-15), "
                  "so USD 139.78 before UPS's shipping, the brokerage and the checkout's own "
-                 "fee, which show only at checkout: run the cart before ordering the rest. "
-                 "Not in the total.",
+                 "fee, which show only at checkout (an account's: no guest checkout). The "
+                 "example on that page shows a brokerage of USD 31.99 on an order (its customs "
+                 "charges' picture, viewed 2026-10-20): about USD 172 landed before shipping. "
+                 "Run the cart before ordering the rest. Not in the total.",
 }
 
 SERVICE_ORDER_URL = {
@@ -237,6 +239,10 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
                              f"{r['material']} | {r['thickness_mm']:g} mm | {r['size_mm']} |"
                              f"{more} {r['parts']} |")
             lines += ["", f"{sum(r['qty'] for r in rows)} parts in {len(rows)} files.", ""]
+            if fitted:      # (a cradle's: design review round 3, laser-cut parts minor 6)
+                lines += ["As the parts arrive, write each one's label (its file name's first "
+                          "word) on it with a paint pen: some files differ only by a hole or "
+                          "a slot (the crank block's keyed and clear plates).", ""]
 
     if print_rows:
         lines += ["## Print", "",

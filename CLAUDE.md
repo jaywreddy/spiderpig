@@ -294,3 +294,6 @@ both sides.
   foreground wait loops; a longer job runs in the background in chunks of a few minutes
   (the slow cradle tests by `docs/agentlib/TESTING.md`'s Chunks, never the whole file; the
   gate per design, `--designs`); a step that goes over is reported and its cause found.
+  A helper agent runs in the background (`run_in_background: true`) while its caller
+  works on (a foreground helper blocks its caller for its whole run), and its brief
+  carries these rules: no sleep-waits, steps under 5 min.

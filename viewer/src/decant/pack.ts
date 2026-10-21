@@ -56,6 +56,31 @@ export interface PackData {
   missing?: string[];
   warnings?: string[];
   score?: number | null;    // ``voxpack.score``; null when a piece is missing
+  /** The printed spacers that go in with the pieces (``cradle_pack.spacer_json``). */
+  spacers?: PackSpacer[];
+}
+
+/** A printed spacer of a pack (``cradle_pack.spacer_json``): its label (``Spacer 4a``),
+ * what it carries and stands on, and its place among the pieces' (``rank``: it goes in
+ * after the piece of that index). */
+export interface PackSpacer {
+  key: string;
+  label: string;
+  words?: string;
+  rank?: number;
+}
+
+/** A pack's pieces and printed spacers in the order they go in the box, bottom up, as the
+ * guide lists them (``cradle_pack.in_order``): each spacer by its ``rank`` among the pieces'
+ * places, after the piece of the same place (design review round 3's stand and use, m13:
+ * the page had listed the pieces alone). */
+export function packOrder(d: PackData): { label: string; how: string; spacer: boolean }[] {
+  const seq = d.modules.map((m, i) => ({ at: i, k: 0, label: m.label, how: m.how, spacer: false }));
+  for (const sp of d.spacers ?? []) {
+    seq.push({ at: sp.rank ?? 0, k: 1, label: sp.label, how: sp.words ?? '', spacer: true });
+  }
+  seq.sort((a, b) => a.at - b.at || a.k - b.k);       // (stable: ties keep their order)
+  return seq.map(({ label, how, spacer }) => ({ label, how, spacer }));
 }
 
 /** The clip fraction the pack's transforms start from (0, the clip's first frame, if none). */
