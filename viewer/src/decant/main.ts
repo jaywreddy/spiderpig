@@ -4,7 +4,10 @@
  * decanter) beside its mechanism in the linkage's plane (``/api/cradle/<key>``: SVG,
  * ``diagram.ts``), both posed from one clip fraction ``f`` (0: the crank at 0; the clip is
  * one crank turn). The slider and the readouts speak in handle turns from rest and the
- * bottle's tilt. Deep links: ``?design=decanter_rcm&turns=7.5&view=side``.
+ * bottle's tilt. Deep links: ``?design=decanter_rcm&turns=7.5&view=side`` (``&overlays=0``:
+ * without the gap's measuring line, for a picture; ``&pack=1``: packed). ``window.__decant``
+ * is a browser test's or a render's handle: whether the page has settled, the camera on named
+ * parts, parts hidden, the pack held part-way.
  */
 import * as THREE from 'three';
 import './decant.css';
@@ -262,13 +265,15 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
     status('');
     dirty = true;
     // the room under the mouth (a fabrication: a minute the first time), then the riser
+    roomKnown = false;
     void getJson<RoomData>(`/api/cradle/${encodeURIComponent(key)}/room`, signal).then((r) => {
       if (mine === ticket && loaded === next) {
         pour.setRoom(r);
         if (packTarget > 0 || packS > 0) pour.setVisible(false);   // (packed meanwhile)
         dirty = true;
       }
-    }).catch((err: unknown) => { if (!isAbort(err)) console.error(err); });
+    }).catch((err: unknown) => { if (!isAbort(err)) console.error(err); })
+      .finally(() => { if (mine === ticket) roomKnown = true; });
   } catch (err) {
     if (isAbort(err)) return;
     console.error(err);
@@ -451,6 +456,73 @@ window.addEventListener('keydown', (e) => {
 // (a hook for a browser test: edit without aiming a click at a piece)
 (window as unknown as { __packEdit: object }).__packEdit = {
   start: startEditing, pick, data: () => pack?.data(), editing: () => editing,
+};
+
+// (a hook for a browser test or a render: the page settled; the camera on named parts)
+let roomKnown = false;
+(window as unknown as { __decant: object }).__decant = {
+  /** the glb posed, the room under the mouth in (or failed), a pack asked for flown in */
+  ready: () => !!loaded && !!motion && roomKnown && packS === packTarget,
+  /** The camera from ``dir`` (world, Z up) on the named nodes' box, ``margin`` round it. */
+  frameOn(names: string[], dir: [number, number, number], margin = 1.15): boolean {
+    if (!loaded) return false;
+    loaded.root.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    for (const n of names.map((x) => THREE.PropertyBinding.sanitizeNodeName(x))) {
+      loaded.root.traverse((o) => {
+        if (o.visible && o.name.startsWith(n)) box.expandByObject(o);
+      });
+    }
+    if (box.isEmpty()) return false;
+    const size = box.getSize(new THREE.Vector3()), centre = box.getCenter(new THREE.Vector3());
+    const cam = stage.camera;
+    const r = (size.length() / 2) * margin;
+    const dist = r / Math.sin(THREE.MathUtils.degToRad(cam.fov) / 2);
+    stage.controls.target.copy(centre);
+    cam.position.copy(centre).addScaledVector(new THREE.Vector3(...dir).normalize(), dist);
+    cam.near = Math.max(0.5, dist / 100);
+    cam.far = dist * 40;
+    cam.updateProjectionMatrix();
+    stage.controls.update();
+    dirty = true;
+    return true;
+  },
+  /** The camera at ``pos`` looking at ``target`` (world mm, Z up). */
+  look(pos: [number, number, number], target: [number, number, number]): void {
+    stage.camera.position.set(...pos);
+    stage.controls.target.set(...target);
+    stage.camera.near = 2;
+    stage.camera.far = 40000;
+    stage.camera.updateProjectionMatrix();
+    stage.controls.update();
+    dirty = true;
+  },
+  /** The node names under the cradle (what ``frameOn`` takes). */
+  names: () => {
+    const out: string[] = [];
+    loaded?.walker.traverse((o) => { if (o.name) out.push(o.name); });
+    return out;
+  },
+  camera: () => ({ pos: stage.camera.position.toArray(), target: stage.controls.target.toArray() }),
+  /** The measuring overlay (the mouth-to-rim gap) on or off. */
+  overlays: (v: boolean) => pour.setOverlays(v),
+  /** The stage (a test's look at the scene, the renderer's info). */
+  stage: () => stage,
+  /** Hide (or show) the named nodes (the bottle, to see the saddles under it). */
+  hide(names: string[], hidden = true): void {
+    for (const n of names) {
+      const o = loaded?.root.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(n));
+      if (o) o.visible = !hidden;
+    }
+    dirty = true;
+  },
+  /** The flat pack held at ``s`` (0 assembled .. 1 packed; after ``?pack=1``). */
+  packAt(s: number): void {
+    if (!pack) return;
+    packS = packTarget = Math.max(0, Math.min(1, s));
+    pack.set(packS);
+    dirty = true;
+  },
 };
 
 function exportLayout(): void {

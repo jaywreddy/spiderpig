@@ -15,7 +15,7 @@ from build123d import Box, Cylinder, Location
 from spiderpig import manufacture, materials
 from spiderpig.construction.crank import BoltCrank
 from spiderpig.hardware import bom
-from spiderpig.hardware.catalog import get
+from spiderpig.hardware.catalog import finish, get
 from spiderpig.mechanism import Body
 
 pytestmark = pytest.mark.no_fabricate
@@ -117,6 +117,21 @@ def test_the_m3_and_m4_families_stack_in_whole_mm_and_half_steps():
     assert bom.stack_steps("shim_din988_3x6") == (1.0, 0.5)
     assert bom.stack_steps("shim_din988_4x8") == (1.0, 0.5)
     assert bom.stack_steps("shim_din988_6x12") == (0.1, 0.2, 0.3, 0.5, 1.0)
+
+
+def test_a_bought_parts_finish_is_the_first_its_name_or_offer_names():
+    """The surface the viewer draws a bought part with (``catalog.finish``, the bake's node
+    extras): the first of ``FINISHES`` its name names, else its offer's note; none for plain
+    steel or an unknown key."""
+    assert finish("rod6061ha_516_305") == "hard_anodized"       # not bare 6061
+    assert finish("rod6061_12p7_m6_68.2") == "aluminium"
+    assert finish("spring_plunger_half13") == "black_oxide"     # (its 440C ball's stainless after)
+    assert finish("hairpin_cotter_2x50") == "zinc"              # its offer's note
+    assert finish("m3_bhcs_6") == "stainless"                   # its offer's note: 18-8
+    assert finish("m6_carriage_25") == "zinc"
+    assert finish("nrv050_output_shaft_25") is None
+    assert finish(None) is None
+    assert finish("no_such_part") is None
 
 
 def test_each_shim_thickness_is_its_own_catalog_item():

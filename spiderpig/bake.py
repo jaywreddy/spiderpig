@@ -73,6 +73,8 @@ from spiderpig.config import (
 )
 from spiderpig.construction.robot import robot_template
 from spiderpig.fabricate import design_side, fabricate, template_for
+from spiderpig.hardware.bom import printed_filaments
+from spiderpig.hardware.catalog import finish as catalog_finish
 from spiderpig.hardware.catalog import get as catalog_get
 from spiderpig.hardware.mass import PartProps, part_props
 from spiderpig.mechanism import Body, Mechanism, MechanismTemplate
@@ -717,6 +719,21 @@ def _animate(config: BuildConfig, ref: _Reference, meshes: _Meshes, n_frames: in
     return anim
 
 
+def _surfaces(mech: Mechanism) -> dict[str, dict[str, str]]:
+    """What each body's surface is, for the viewer's materials (a node's extras): a printed
+    body's ``filament`` (:func:`hardware.bom.printed_filaments`: PETG, TPU or the design's
+    own), a bought one's ``finish`` (:func:`hardware.catalog.finish`: hard-anodized,
+    stainless, black oxide...; none for plain steel)."""
+    filaments = printed_filaments(mech, mech.meta.get("filament", "pla_filament"))
+    out: dict[str, dict[str, str]] = {}
+    for body in mech.bodies:
+        if body.fab == "printed" and filaments.get(body.name):
+            out[body.name] = {"filament": str(filaments[body.name])}
+        elif body.fab == "purchased" and (f := catalog_finish(body.bom_key)):
+            out[body.name] = {"finish": f}
+    return out
+
+
 def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim: _Animation,
                         prof: _Profiler) -> tuple[list[pygltflib.Node], pygltflib.Animation]:
     """Stage 5: the root node ``walker`` (standing the robot up) with one animated child per
@@ -728,6 +745,7 @@ def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim:
     samplers: list[pygltflib.AnimationSampler] = []
     channels: list[pygltflib.AnimationChannel] = []
     with prof.timed("5_gltf_nodes_channels"):
+        surfaces = _surfaces(ref.mech)
         root = pygltflib.Node(name="walker", rotation=list(_ROOT_ROTATION))
         nodes.append(root)
         ground = math.inf       # lowest model Y any mesh reaches over the cycle
@@ -750,7 +768,7 @@ def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim:
                                            .min()))
             node.extras = {
                 "fab": body.fab, "rigid_with": body.rigid_with, "bom": body.bom_key,
-                "body": body.name,
+                "body": body.name, **surfaces.get(body.name, {}),
             }
             node_idx = len(nodes)
             nodes.append(node)

@@ -87,6 +87,9 @@ export interface Pour {
   /** Put another bottle size in the cradle (``motion.bottles``' ``key``): its V blocks and its
    * base stop move to its setting. */
   setBottle(key: string): void;
+  /** Show or hide the measuring overlay (the mouth-to-rim gap's line and label): off for a
+   * picture. */
+  setOverlays(v: boolean): void;
 }
 
 const ULLAGE_MM = 60;
@@ -308,7 +311,7 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
   bar.appendChild(barIn);
   const keptRow = el('div', 'row small');
   const printSel = el('select');
-  printSel.title = 'The printed parts’ colour (PLA)';
+  printSel.title = 'The printed parts’ colour (PETG and PLA; the TPU liners and feet print black)';
   for (const name of Object.keys(PRINT_COLORS)) {
     const o = el('option', '', name);
     o.value = name;
@@ -328,7 +331,7 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
   printRow.appendChild(watch);
   panel.append(bottleRow, pickRow, facts, riserRow, riserNote, gapRow, pourRow, bar, keptRow,
     printRow);
-  if (look.quality === 'low') panel.append(el('div', 'note', 'simplified glass (software GPU): ?quality=high for refraction'));
+  if (look.quality === 'low') panel.append(el('div', 'note', 'simplified glass and wine (software GPU): ?quality=high for refraction'));
   // in the right-hand column under the readouts if the page has one, else floating
   const hud = document.getElementById('hud');
   if (hud) { hud.after(panel); panel.classList.add('docked'); } else document.body.appendChild(panel);
@@ -353,15 +356,15 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
   let gapLine: THREE.LineSegments | null = null;
   let anchor = new THREE.Vector3();                 // the vessel's axis on the table
   let lastF = 0;
+  let overlays = params.get('overlays') !== '0';    // the gap's line and label (?overlays=0: off)
+  let shown = true;                                 // the vessel and the wine (the pack hides them)
   const plane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
   const wineClipped = look.materials.wine.clone();
   wineClipped.clippingPlanes = [plane];
   wineClipped.clipShadows = true;
   const topMat = look.materials.wine.clone();
   topMat.side = THREE.DoubleSide;
-  const streamMat = look.materials.wine.clone();
-  streamMat.color.set('#7d0f26');
-  streamMat.emissive.set('#2a0309');      // a thin stream glows garnet against the light
+  const streamMat = look.materials.wineThin;   // a thin stream glows ruby against the light
 
   // the riser under the vessel: the highest printed stack the rule allows (the room under
   // the mouth, from the API: none until it arrives); the panel's slider tries another
@@ -446,7 +449,7 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     glass.renderOrder = 2;
     glass.name = 'vessel_glass';
     stand.add(glass);
-    vesselWine = new THREE.Mesh(new THREE.BufferGeometry(), look.materials.wine);
+    vesselWine = new THREE.Mesh(new THREE.BufferGeometry(), look.materials.wineDeep);
     vesselWine.position.z = h0;
     vesselWine.castShadow = true;
     vesselWine.visible = false;
@@ -605,7 +608,7 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
       mid.project(stage.camera);
       const r = stage.canvas.getBoundingClientRect();
       const visible = mid.z < 1 && Math.abs(mid.x) < 1 && Math.abs(mid.y) < 1;
-      gapLabel.hidden = !visible;
+      gapLabel.hidden = !visible || !overlays;
       gapLabel.style.left = `${r.left + ((mid.x + 1) / 2) * r.width + 12}px`;
       gapLabel.style.top = `${r.top + ((1 - mid.y) / 2) * r.height - 10}px`;
       gapLabel.textContent = `${gap.toFixed(0)} mm`;
@@ -720,6 +723,7 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     );
     gapLine.renderOrder = 10;
     gapLine.frustumCulled = false;
+    gapLine.visible = overlays;
     stage.scene.add(gapLine);
 
     // the table, the light and the shadows round the cradle (at rest)
@@ -847,11 +851,21 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
   }
 
   function setVisible(v: boolean): void {
-    for (const o of [stand, stream, gapLine, frame]) if (o) o.visible = v;
+    shown = v;
+    for (const o of [stand, stream, frame]) if (o) o.visible = v;
+    if (gapLine) gapLine.visible = v && overlays;
     for (const o of modelRiser) o.visible = !v;          // (it packs: the flat pack shows it)
-    gapLabel.hidden = !v || gapLabel.hidden;
+    gapLabel.hidden = !v || !overlays || gapLabel.hidden;
     onChange();
   }
 
-  return { look, attach, detach, update, setRoom, setVisible, setBottle };
+  function setOverlays(v: boolean): void {
+    overlays = v;
+    if (gapLine) gapLine.visible = v && shown;
+    if (!v) gapLabel.hidden = true;
+    pose(lastF);
+    onChange();
+  }
+
+  return { look, attach, detach, update, setRoom, setVisible, setBottle, setOverlays };
 }

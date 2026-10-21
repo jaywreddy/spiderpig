@@ -201,6 +201,38 @@ def adhesive(sheet: str) -> str:
     return "epoxy_2part" if metal else "acrylic_cement"
 
 
+FINISHES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("hard_anodized", ("hard-anodized", "hard anodized")),
+    ("black_oxide", ("black-oxide", "black oxide")),
+    ("zinc", ("zinc",)),
+    ("stainless", ("18-8", "a2-70", "a2 stainless", "(a-2)", "stainless")),
+    ("aluminium", ("6061", "5052", "aluminium", "aluminum")),
+    ("brass", ("brass",)),
+)
+"""A bought part's surface, by the words its item names it with (:func:`finish`), first
+match first: a hard-anodized 6061 rod is ``hard_anodized``, not bare ``aluminium``."""
+
+
+def finish(key: str | None) -> str | None:
+    """The surface the bought part ``key`` shows (the viewer draws it so): the first of
+    :data:`FINISHES` its name, else its first offer's note, names; ``None`` for plain steel,
+    an unknown key, or a part that doesn't say."""
+    if not key:
+        return None
+    try:
+        item = get(key)
+    except KeyError:
+        return None
+    texts = [item.name.lower()]
+    if item.offers:
+        texts.append((item.offers[0].note or "").lower())
+    for text in texts:
+        for name, words in FINISHES:
+            if any(w in text for w in words):
+                return name
+    return "aluminium" if item.dims.get("material") == "aluminium" else None
+
+
 _LOADED = False
 
 
