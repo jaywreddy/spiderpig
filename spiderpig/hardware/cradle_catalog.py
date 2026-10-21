@@ -221,11 +221,14 @@ register_factory("pillar_shaft_12_m6_", _netrf12_of)
 
 ROD_YIELD = 241.3           # MPa: 6061-T6511 extruded rod's specified minimum yield (35 ksi)
 ROD_TENSILE = 262.0         # MPa: its minimum tensile strength (38 ksi)
-ROD_SHEAR = 165.5           # MPa: 6061-T6's shear ultimate F_su (24 ksi), its thread's strip
+ROD_SHEAR = 158.6           # MPa: its shear ultimate F_su (23 ksi), its thread's strip at it
 ROD_E = 69000.0             # MPa: 6061's modulus (as cradle_structure.E_ALU)
-ROD_BASIS = ("ASTM B221 (Table 2), 6061-T6511 extruded rod and bar to 6.499 in: tensile 38.0 "
-             "ksi, yield 35.0 ksi minimum (262 / 241.3 MPa); the Aluminum Design Manual's "
-             "6061-T6 extrusion F_su 24 ksi (165.5 MPa); E 69 GPa (the repo's 6061)")
+ROD_BASIS = ("the Aluminum Association's Aluminum Standards and Data, Table 11.1 (extruded rod, "
+             "6061-T6511, 0.250 in and over: tensile 38.0, yield 35.0 ksi minimum, 262 / 241.3 "
+             "MPa; the ASTM B221 limits, aluminum.org/sites/default/files/2022-12/Table_11.1.pdf); "
+             "the Aluminum Design Manual 2015's B221 extrusion F_su 23 ksi, 158.6 MPa "
+             "(MIL-HDBK-5J Table 3.6.2.0(g) A-basis 26 ksi); E 69 GPa (ADM 10,100 ksi, "
+             "MIL-HDBK-5J 9,900)")
 """Where the posts' and tie rods' ratings come from (the simplification round 1's stand check,
 2026-10-21: the materials rule, no steel in a structural part)."""
 ROD_ID = 5.0                # the strength check's bore: the M6 tap drill, as if tapped through
@@ -303,6 +306,60 @@ def _rod_of(key: str) -> Item | None:
     return None
 
 
+ROD_HARD = ("rod6061ha_12p7_305", 304.8, "https://www.mcmaster.com/6750K16/", "6750K16",
+            16.52)
+"""The pivots' posts' stock (the simplification round 1's stand check, 2026-10-21): McMaster's
+hard-anodized 1/2 in 6061-T6511 rod (ASTM B221, +-0.009 in, a 0.001 in hard coat), one foot,
+USD 16.52 (page rendered 2026-10-21): key, length (mm), URL, SKU, USD. A link turns on each
+pivot post (B's O1 and O2, A's G), so it turns on the hard coat, not on bare 6061 (aluminium
+galls on aluminium; a soft bore on a hard journal, as the steel posts were); the stand's
+columns and the tie rods carry no link and are bare. Sawn to length at home (its cut ends and
+taps bare)."""
+
+
+def al_rod_hard(length: float) -> str:
+    """The catalog key of a pivot post: :data:`ROD_HARD` cut to ``length`` mm, faced and tapped
+    M6 both ends (made on first use; the BOM buys the stick it's cut from:
+    ``dims["cut_from"]``)."""
+    key = f"rod6061ha_12p7_m6_{round(length, 1):g}"
+    CATALOG.get(key)
+    return key
+
+
+def _rod_hard_of(key: str) -> Item | None:
+    pre = "rod6061ha_12p7_m6_"
+    try:
+        n = round(float(key.removeprefix(pre)) * 10)
+    except ValueError:
+        return None
+    L = n / 10
+    if not 250 <= n <= 2900 or f"{pre}{L:g}" != key:
+        return None
+    stock, _, url, sku, _ = ROD_HARD
+    return Item(
+        key, f"1/2 in (12.7 mm) hard-anodized 6061-T6511 round, {L:g} mm, faced and tapped "
+        f"M6 x {ROD_THREAD:g} both ends (sawn from McMaster {sku})", "standoff",
+        (Offer("McMaster-Carr", url, sku, verified=True,
+               note=f"cut from the 1 ft stick ({stock}): the BOM buys the stick"),),
+        dims={"d": 6.0, "od": ROD_HALF, "length": L, "thread_depth": ROD_THREAD, "id": ROD_ID,
+              "yield_mpa": ROD_YIELD, "material": "aluminium", "cut_from": stock,
+              "cut_over": ROD_FACE},
+        notes="A decanting cradle's pivot post (a pillar a link turns on: B's O1 and O2, A's "
+              "G), since the simplification round 1 (2026-10-21): rated as the bare posts "
+              f"({ROD_BASIS}).")
+
+
+register(Item(ROD_HARD[0], "1/2 in hard-anodized 6061-T6511 round rod, 1 ft (McMaster "
+              f"{ROD_HARD[3]})", "standoff",
+              (Offer("McMaster-Carr", ROD_HARD[2], ROD_HARD[3], price_usd=ROD_HARD[4],
+                     verified=True, tiers=((1, ROD_HARD[4]),),
+                     note="hard-anodized 6061-T6511 extruded rod, 1/2 in, +-0.009 in, finish "
+                          "thickness 0.001 in, gray, ASTM B221, 1 ft (3 ft USD 36.72); "
+                          "length +-1/2 in; page rendered 2026-10-21"),),
+              dims={"od": ROD_HALF, "length": ROD_HARD[1], "material": "aluminium"},
+              notes="The pivot posts' stock (:data:`ROD_HARD`), sawn to length at home."))
+register_factory("rod6061ha_12p7_m6_", _rod_hard_of)
+
 ROD_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(250, 6001))
 """The posts' and tie rods' lengths: 25-600 mm in 0.1 mm steps (each one faced to it)."""
 
@@ -311,8 +368,10 @@ for _od in ROD_STOCK:
 
 register(
     Item("m3_set_screw_5", "M3 x 5 mm set screw (ISO 4029, cup point), 18-8", "fastener",
-         (Offer("Bolt Depot", BD + "8706", "8706", price_usd=None, verified=False,
-                note="18-8 cup point; unpriced (the price to be fetched)"),),
+         (Offer("Bolt Depot", BD + "8706", "8706", price_usd=0.09, verified=True,
+                tiers=((1, 0.09), (100, 0.058)),
+                note="18-8 cup point, DIN 916 / ISO 4029, sold singly (USD 5.80 per 100); "
+                     "page rendered 2026-10-21"),),
          dims={"d": 3.0, "length": 5.0},
          notes="A saddle carrier's set screw up onto its tie rod (construction.cradle."
                "CARRIER_SET_SCREW): 5 mm under the 1/2 in rods (the simplification round 1, "

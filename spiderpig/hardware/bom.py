@@ -1481,6 +1481,22 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
 # ---------------------------------------------------------------------------
 
 
+def body_line(body) -> BomLine:
+    """A purchased body's line: one of its item, or, for an item cut from stock at home
+    (``dims["cut_from"]``: a cradle's pivot posts, sawn from a stick of rod), the stock with
+    the piece's ``cut X mm`` (its length and ``dims["cut_over"]``), so the cut list counts the
+    sticks (:func:`cut_list`)."""
+    try:
+        dims = get(body.bom_key).dims
+    except KeyError:
+        return BomLine(body.bom_key, 1, body.name)
+    stock = dims.get("cut_from")
+    if not stock:
+        return BomLine(body.bom_key, 1, body.name)
+    cut = float(dims["length"]) + float(dims.get("cut_over") or 0.0)
+    return BomLine(str(stock), 1, f"{body.name}: cut {cut:.1f} mm")
+
+
 def bought_lines(mech) -> list[BomLine]:
     """What :func:`bom_from_mechanism` buys, line by line, before it groups them: each
     purchased body's item, the fitting's lines, the extras, the shim stacks as what is
@@ -1488,7 +1504,7 @@ def bought_lines(mech) -> list[BomLine]:
     those). A line whose ``where`` starts with a body's name is that body's
     (:func:`line_body`): the assembly guide lists it where the body goes on."""
     fitted, _, replaced = fitting_lines(mech)
-    lines = [BomLine(b.bom_key, 1, b.name) for b in mech.bodies
+    lines = [body_line(b) for b in mech.bodies
              if b.fab == "purchased" and b.bom_key and b.name not in replaced]
     lines += fitted
     lines += list(mech.bom_extras)
@@ -1526,7 +1542,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
     filament = filament or mech.meta.get("filament")
     fil_name = _filament_name(filament) if filament else "PLA/PETG"
     fitted, fit_notes, replaced = fitting_lines(mech)
-    lines.extend(BomLine(body.bom_key, 1, body.name) for body in mech.bodies
+    lines.extend(body_line(body) for body in mech.bodies
                  if body.fab == "purchased" and body.bom_key and body.name not in replaced)
     lines += fitted
     notes += fit_notes

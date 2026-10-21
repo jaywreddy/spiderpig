@@ -181,10 +181,10 @@ class StandoffAxle:
             from spiderpig.hardware.cradle_catalog import netrf10
 
             return netrf10(length)
-        if self.stock == "shaft12":
-            from spiderpig.hardware.cradle_catalog import al_rod
+        if self.stock == "shaft12":     # (a cradle's pivot post: a link turns on its hard coat)
+            from spiderpig.hardware.cradle_catalog import al_rod_hard
 
-            return al_rod(self.od, length)
+            return al_rod_hard(length)
         from spiderpig.hardware.crank_catalog import gobilda_1501
 
         return gobilda_1501(length)
