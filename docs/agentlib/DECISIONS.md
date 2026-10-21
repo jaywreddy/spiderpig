@@ -2923,8 +2923,8 @@ identity gate against `planner-f667d6b` is identical.
   inner end needed none, but with a washer at each end every post of a side is one length
   (`StandoffAxle.segment` takes a cradle post's gap to 0.01 mm; the columns' standoffs by the
   same rule), one part number at its ten's price: B's twelve NETRF12-71.8 USD 71.88 (10 of
-  75.2 and 2 of 59.3 had been 92.50), A's sixteen 53.2. S_P 1.29 (B, column E2's foot) and
-  1.61 (A). Walking every face shut at the least preload on B (0.99), none slipping;
+  75.2 and 2 of 59.3 had been 92.50), A's sixteen 53.2. S_P 1.30 (B, column E2's foot) and
+  1.79 (A). Walking every face shut at the least preload on B (0.99), none slipping;
   the guide's column steps and the use limits say 4 N·m, and back to it after a clutch slip.
 - **M3, the blocked thresholds:** each angle pushed as far as its clutch lets it, not the
   least over the turn (`_block_threshold`, its structure with the block's tie rods). The rear
@@ -2944,16 +2944,18 @@ identity gate against `planner-f667d6b` is identical.
   button head at 8 N·m holds each). The packs: the wider frames land B's drive panel on the
   cradle box (unsupported, 157.5 L) and stand A's panels 255 mm tall (`PACK_OPEN`): the
   packing round re-plans them.
-- **The BOM** (`spiderpig build`, against the reviewed snapshot's): B USD 1,374.22 to
-  1,342.12 (-32.10: the standoffs -20.62, 29 fender washers +2.88, the screws +0.16; the
-  cutting -14.52, b2 out of 7075 -80.44 against the 5052's +65.92 for b2, the wider frames
-  and b6's arm), 59 lines to 57. A USD 1,056.74 to 1,119.08 (+62.34: its column E2 a side,
-  2 standoffs, 4 screws and 4 washers, 39 fender washers, +17.54; the cutting +44.80 for
-  the wider frames and the inner plate's chord to E2). No new SKU.
-- **The drive's numbers moved:** b6's wider arm took B's worst start to 2.717 N·m at the
-  input (`handcrank.DESIGN_START_NM`, 2.712), its drawn clutch's cap to 63.9 N·m
-  (`config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`). The structure holds it, and at the drive
-  review's new-box 72.5 (B) and 76.3 (A) it falls to O1 1.18 and A's outer plate 1.16.
+- **The BOM** (`spiderpig build`; on `decanting-cradle` with round 3's drive and use and
+  parts merged, B USD 1,412.11 and A 1,094.59): B to USD 1,379.89 (-32.22: the standoffs
+  -20.62, 29 fender washers +2.88, the screws +0.16; the cutting -14.64, b2 out of 7075
+  -80.44 against the 5052's +65.80 for b2, the wider frames and b6's arm). A to 1,156.93
+  (+62.34: its column E2 a side, 2 standoffs, 4 screws and 4 washers, 39 fender washers,
+  +17.54; the cutting +44.80 for the wider frames and the inner plate's chord to E2). No new
+  SKU (on the reviewed snapshot: B 1,374.22 to 1,342.12, A 1,056.74 to 1,119.08).
+- **The drive's numbers moved:** b6's wider arm took B's worst start to 2.719 N·m at the
+  input (`handcrank.DESIGN_START_NM`, 2.714 after round 3's saddles), its drawn clutch's cap
+  to 63.9 N·m (`config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`; 63.8); A's stay 2.858 and 67.2.
+  The structure holds both, and at the drive review's new-box 72.5 (B) and 76.3 (A) it
+  falls to O1 1.18 and A's outer plate 1.16.
 - **Where:** `spiderpig/cradle_structure.py`, `spiderpig/cradle_report.py`,
   `spiderpig/construction/cradle.py`, `spiderpig/construction/pivots/standoff.py`,
   `spiderpig/construction/axle.py`, `spiderpig/materials.py`, `spiderpig/strength.py`,
