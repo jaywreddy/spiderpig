@@ -1339,8 +1339,9 @@ def part_words(name: str) -> str:
         return (whose + w.removeprefix("the ")) if side else w
     if re.fullmatch(r"b\d+", stem):
         return f"{whose}link {stem}"
-    if m := re.fullmatch(r"pin_([A-Za-z0-9]+)_(pin|clip)", stem):
-        return f"{whose}pin {m.group(1)}" + ("'s clip" if m.group(2) == "clip" else "")
+    if m := re.fullmatch(r"pin_([A-Za-z0-9]+)_(pin|clip|screw)\w*", stem):
+        return f"{whose}pin {m.group(1)}" + {"clip": "'s clip", "screw": "'s screw"}.get(
+            m.group(2), "")
     if stem.startswith("spacer_"):
         return "spacer " + stem.removeprefix("spacer_")
     return (whose or "the ") + stem.replace("_", " ")
@@ -1373,7 +1374,7 @@ is named by in the box steps (:func:`arrow_end`): each a pattern of part names
 (``re.fullmatch``) and its words. Packing review 3's M1: it had been a word per cradle, B's
 "the cradle box's base stop end", which pack turn 3's plan had turned to the other end."""
 CARTON_WHY: dict[str, str] = {
-    "decanter_rcm": ": the user's choice of 2026-10-21 (packing review 3's M6). In a stock "
+    "decanter_rcm": ": the user's choice of 2026-10-21. In a stock "
                     "carton this order and pack turn 2's (the cradle box on the board, the "
                     "drive panel over it) bill alike, Oversized, so this one is kept for its "
                     "load path: the heaviest piece, the drive panel, lies lowest, bay down on "

@@ -198,12 +198,13 @@ def fill_words(got: dict, kept: str = "") -> dict[str, str]:
              "cartons cut to the carton's depth and folded flat, layer on layer "
              f"(each about {t:.0f} mm), taped into a slab, so the pack can't shift in it."
              if ways else "")
-    hole = f", a hole cut through it round {kept}" if kept else ""
     n = max(1, round(spare[1] / t))
+    it = "it" if n == 1 else "them"
+    hole = f", a hole cut through {'it' if n == 1 else 'each'} round {kept}" if kept else ""
     top = ((f"Lay {'one flat sheet' if n == 1 else f'{n} flat sheets'} cut from a spare "
             f"carton over the whole top ({spare[1]:.0f} mm to the carton's top edge){hole}: "
-            "the lid then presses it down onto the pack" + (", never on what the hole is round"
-                                                            if kept else "") + ".")
+            f"the lid then presses {it} down onto the pack"
+            + (", never on what the hole is round" if kept else "") + ".")
            if spare[1] > 0.5 else "")
     return {"sides": sides, "top": top}
 

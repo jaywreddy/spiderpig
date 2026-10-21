@@ -2024,7 +2024,8 @@ def ceiling(a: np.ndarray, cell: float = 1.0) -> tuple[int, int]:
         if not s.any():
             far += int(o.sum())
             continue
-        far += int((o & (distance_transform_edt(~s) * cell > BRIDGE_MM / 2)).sum())
+        reach = np.asarray(distance_transform_edt(~s), float) * cell
+        far += int((o & (reach > BRIDGE_MM / 2)).sum())
     return int(over.sum()), far
 
 
