@@ -377,7 +377,7 @@ hard the push (design review round 2's B-1, 2026-10-14): set to slip at
 and run in after, or a start read high, can't take it over this), checked within
 ``CLUTCH_CHECK`` on its stub at every set-up, monthly and after greasing, through the NRV050's
 30:1 worm at the hand's 100 rpm (``handcrank.HAND_RPM``: ``handcrank.clutch``, which a test
-holds these to; spun at 200 rpm, 65.8 and 69.0: ``cradle_drive``'s ``fast_cap_nm``, the use
+holds these to; spun at 200 rpm, 65.8 and 69.1: ``cradle_drive``'s ``fast_cap_nm``, the use
 limits' "turn it, don't spin it"). Under the gearbox's 85 N·m maximum with margin
 (``cradle_drive.GEARBOX_CAP_FLOOR``). The crank torque to re-run a strength check at: a bound,
 unlike the push (``cradle_report``'s ``jam_capped`` rates it over the whole turn, the

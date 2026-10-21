@@ -2476,7 +2476,7 @@ pins' 0.34): the mouth sags a few tenths of a millimetre more at worst, against 
 | | B (`decanter_rcm`) | A (`decanter_hinge`) |
 |---|---|---|
 | a full 6 L's worst start at the input (`handcrank.DESIGN_START_NM`) | 2.629 N·m (2.719) | 2.763 (2.858) |
-| the clutch's cap (`config.PRODUCT_CLUTCH_NM`); spun at 200 rpm | 61.8 N·m (63.9); 65.8 | 64.9 (67.2); 69.0 |
+| the clutch's cap (`config.PRODUCT_CLUTCH_NM`); spun at 200 rpm | 61.8 N·m (63.9); 65.8 | 64.9 (67.2); 69.1 |
 | the running peak at the crank | 34.7 N·m (35.9) | 36.5 (37.7) |
 | every cap row but the box's | 1.53 or more (b6) | 1.40 or more (b2) |
 | `jam_capped`, 30° and more from the toggles | 1.44 (the gearbox riser; 1.33 pillar O1) | 1.37 (the riser; 1.38) |
