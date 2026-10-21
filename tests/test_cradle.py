@@ -1703,13 +1703,15 @@ def _open_at_cap(r: dict, key: str) -> list[str]:
     from spiderpig.cradle_report import OPEN_AT_CAP
 
     rows = {x["joint"]: x for x in r["strength"]["rows"]}
+    open_ = OPEN_AT_CAP.get(key, {})
     got = []
-    for k, why in OPEN_AT_CAP.get(key, {}).items():
+    for k in open_:
         sf = rows[k]["jam_sf"]
-        assert sf is not None and sf < 1.3, f"{key}: {k} holds the cap now: drop it"
+        assert sf is not None
+        assert sf < 1.3, f"{key}: {k} holds the cap now: drop it"
         got.append(f"{k} {sf:g} at the cap")
-    return [f"open at the clutch's cap: {', '.join(got)} ({next(iter(OPEN_AT_CAP[key].values()))})"
-            ] if got else []
+    why = sorted(set(open_.values()))
+    return [f"open at the clutch's cap: {', '.join(got)} ({'; '.join(why)})"] if got else []
 
 
 def _the_grip_is_open(grip: list[str]) -> None:
@@ -2550,7 +2552,7 @@ def test_the_cradle_box_racks_on_its_tie_rods():
     rods = box_rods(cfg)
     M = 20.0e3                                          # (under the joints' slip)
     rigid = cs.box_frame(links, rods, [M], hold="held", rigid_links=True)
-    d, L = cr.TIE_D, 274.9
+    L = 274.9
     ei, gj = rods["Tr2"].ei(), rods["Tr2"].gj()
     r = {n: math.hypot(*TIES[n]) for n in TIES}
     theta = M / sum(12 * ei / L ** 3 * x * x + gj / L for x in r.values())
@@ -2618,6 +2620,7 @@ def test_the_saddles_hold_a_full_6_l():
     (m3), and the lip gauge at a wet bottle's slide onto its pad (m1: its peak over the
     static pull, the gauge's parts rated at it)."""
     from spiderpig.cradle_report import (
+        PETG_ALU,
         PETG_STEEL,
         PLA_ALLOW,
         PRINTED,
@@ -2656,13 +2659,20 @@ def test_the_saddles_hold_a_full_6_l():
     assert "in its layers" in ears["basis"]
     assert ears["sf"] >= SUSTAINED_SF
     assert "across" in rows["base stop's gate (its plate hanging from its top bar)"]["basis"]
-    # the rear lock's set screws: the hub's on a flat on the screw, the nut's by friction
-    # through its printed thread across its layers
+    # the rear lock: the hub's set screw on a flat printed on the screw; the printed nut
+    # floating in its hex pocket, kept from turning by its flats (simplification round 1:
+    # the screw, the nut and the thrust ring printed, the post 5/8 in 6061 taking all of
+    # the roll); the screw knocked across its layers
     hub = rows["rear knob's hub on the lead screw (its M3 set screw on the flat)"]
-    nut = rows["rear barrel nut in its boss (its M3 set screw)"]
-    assert "across" in nut["basis"]
+    nut = rows["rear nut in its hex pocket (its flats)"]
     assert min(hub["sf"], nut["sf"]) >= SUSTAINED_SF
     assert cr.LEAD_FLAT[0] > 0.0
+    assert "across" in rows["rear lead screw (bending)"]["basis"]
+    assert rows["rear lead screw's thread (bearing on its flanks)"]["sf"] >= SUSTAINED_SF
+    assert rows["rear nut on the V block"]["sf"] >= SUSTAINED_SF
+    assert rows["rear post (bending)"]["limit_mpa"] == cr.POST_YIELD
+    turned = rows["rear knob, turned (the bottle out)"]
+    assert turned["grip_n"] < 10.0                          # (a fingertip's turn)
     # a wet bottle's slide onto the pad: it can start in the swing only under tan 30° / √2,
     # and its peak over the static pull is what the gauge's parts are rated at
     slide = got["slide"]
@@ -2681,7 +2691,8 @@ def test_the_saddles_hold_a_full_6_l():
     assert {(r["bottle"], r["guide"]) for r in guides} == {
         (z.name, g) for z in cr.SIZES for g in ("rear", "front")}
     assert all(r["ok"] and r["mu_jam"] >= 2 * r["mu"] for r in guides)
-    assert all(r["mu"] == PETG_STEEL["dry"][1] for r in guides)       # (both dry)
+    assert all(r["mu"] == (PETG_ALU if r["guide"] == "rear" else PETG_STEEL)["dry"][1]
+               for r in guides)                         # (both dry; the rear on 6061)
     rear = {r["bottle"]: r for r in guides if r["guide"] == "rear"}
     assert rear[cr.STANDARD.name]["mu_jam"] == pytest.approx(
         rear[cr.STANDARD.name]["engagement_mm"] / 54.0, abs=1e-3)

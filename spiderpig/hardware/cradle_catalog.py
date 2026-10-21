@@ -235,6 +235,21 @@ register(
               "L's roll with its share of the moving parts at 5.7 x its yield (12 mm had "
               "been 2.99 x). Its steel taken as the NETRF12's, 1018 or equivalent at 220 "
               "MPa."),
+    Item("rod_6061_5_8_150", "5/8 in round 6061-T6511 aluminium rod, 150 mm (cut 6 in, faced "
+         "to length, its wrench flats milled and its foot tapped M6 on the Carvera)", "standoff",
+         (Offer("Speedy Metals", "https://www.speedymetals.com/showproduct.aspx?productid=2439",
+                "2439", price_usd=1.80, verified=True,
+                note="5/8\" Rd 6061-T6511 Aluminum, Extruded, by the inch: 'Base Price: "
+                     "$0.30' an inch, cut 'Plus 1/8\", Minus 0\"' (6 in: $1.80; the cart "
+                     "showed it so, 2026-10-21); FedEx, cart-calculated; the cart takes "
+                     "orders over $20.00 only (one cart with the other rods)"),),
+         dims={"d": 6.0, "od": 15.875, "length": 150.0, "flats": 13.0, "flat_length": 10.0,
+               "yield_mpa": 241.3, "material": "aluminium"},
+         notes="The rear saddle's post (construction.cradle.POST; simplification round 1, "
+               "2026-10-21: no steel; MISUMI's PETR15-150 nickel-plated steel until then): "
+               "the V block's boss slides on it; it takes a hung 6 L's roll (all of it: the "
+               "lead screw's nut floats) at 7.2 x its 241 MPa least yield (the Aluminum "
+               "Association's Table 11.1, 6061-T6511 extruded rod 0.250 in and over)."),
     Item("m8_bhcs_12", "M8 x 12 button head socket screw (ISO 7380), 18-8", "fastener",
          (Offer("Bolt Depot", BD + "6654", "6654", price_usd=0.40, verified=True,
                 tiers=((1, 0.40), (100, 0.2688)),

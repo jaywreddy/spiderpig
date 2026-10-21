@@ -212,8 +212,10 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
         same = g.qty - len(g.mirrored)
         todo = f"print {same}"
         files = [f"{stem}.stl"]
-        if g.mirrored:
-            export_stl(_on_plate(print_pose(g.ref.part.mirror(Plane.YZ), turns)),
+        if g.mirrored:      # posed, then mirrored across the bed (mirrored first, a pose
+            #                 with a turn about Z had stood a cradle's rail liner 170 mm
+            #                 up, tilted; simplification round 1)
+            export_stl(_on_plate(print_pose(g.ref.part, turns).mirror(Plane.YZ)),
                        str(out_dir / f"{stem}_mirrored.stl"))
             files.append(f"{stem}_mirrored.stl")
             todo += f", and {len(g.mirrored)} mirrored ({stem}_mirrored.stl)"
