@@ -3225,8 +3225,9 @@ only: the walkers' identity gate is identical.
   `BRACE_CLEAR`; `shapes.Socket`): a 2 in x 0.065 in 6061-T6 tube (Speedy Metals 4604, USD
   0.61 an inch, the page of the day; 12 in USD 7.32), 192 g, GJ/L 254 N·m/°; each end keyed
   into a laser-cut socket in its cradle link (53.2 mm, 12 teeth 6 mm wide to 46.9 mm, their
-  roots r 1), the tube's ends notched for them on the Carvera 0.1 mm over the teeth as cut
-  (its free turn 0.47° both ends), 0.25 mm short of the links' outer faces; no screw. Its
+  roots r 1), the tube's ends notched for them at home, marked from a socket and along the
+  tube, sawn and filed to fit, 0.1 mm over the teeth as cut at most (its free turn 0.47°
+  both ends), 0.25 mm short of the links' outer faces; no screw. Its
   claims through the inner plate's layer as a tie rod's, its path in the inner plate's
   keep-out and its clearance check; the guide's shop step ("brace") and the cradle link's
   step put it in; the BOM's line (`cradle_catalog.brace_tube`).

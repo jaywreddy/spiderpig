@@ -396,13 +396,14 @@ def _brace_of(key: str) -> Item | None:
     s = BRACE_STOCK
     inches = math.ceil((L + ROD_FACE) / 25.4 - 1e-9)
     return Item(
-        key, f"2 in x 0.065 in 6061-T6 round tube, {L:g} mm, faced and its ends notched for "
-        "its sockets' teeth on the Carvera (cut to length by Speedy Metals)", "standoff",
+        key, f"2 in x 0.065 in 6061-T6 round tube, {L:g} mm, its ends squared and notched "
+        "for its sockets' teeth at home (cut to length by Speedy Metals)", "standoff",
         (Offer("Speedy Metals", s["url"], f"{s['sku']} cut {L + ROD_FACE:.1f} mm",
                price_usd=round(inches * s["per_in"], 3), verified=True,
                note=f"2 in OD x 0.065 in wall 6061-T6 tube, cut to {L + ROD_FACE:.1f} mm "
                     f"(USD {s['per_in']:.2f} an inch in whole inches, the page 2026-10-21): "
-                    f"faced to {L:g} mm square on the Carvera, 12 notches milled in each end"),),
+                    f"brought to {L:g} mm square by hand, 12 notches sawn and filed in each "
+                    "end"),),
         dims={"od": s["od"], "wall": s["wall"], "length": L, "yield_mpa": s["yield_mpa"],
               "material": "aluminium"},
         notes="A decanting cradle's racking brace (simplification round 2, 2026-10-21): the "

@@ -1121,9 +1121,9 @@ class CradleTies(Group):
         if view.side == "R":
             return [Op(STACK, (k, 1), whole(link), "", "", "cradle_link"), *ops]
         brace = (f" The racking brace's tube into the link's toothed socket from its bay side, "
-                 f"its notches down over the {BRACE_TEETH[0]} teeth (either end: they're "
-                 "alike; turn it until they drop in), standing up beside the rods: no screw "
-                 "holds it, the teeth key it and the rods' screws close the box on it."
+                 f"its notches down over the {BRACE_TEETH[0]} teeth (either end, at any "
+                 "turn they drop in at), standing up beside the rods: "
+                 "no screw holds it, the teeth key it and the rods' screws close the box on it."
                  if any(j.startswith("B") for j in lk.links[link][0]) else "")
         return [Op(STACK, (k, 0, "ties"), whole(link), "Cradle link and tie rods",
                    f"The four tie rods onto the cradle link, an M{TIE_M.d:g} x "
@@ -4056,27 +4056,36 @@ def shop_ops(view) -> list:
                   scene=Scene("built", show=("*",),
                               marks=(r"[LR]\.pillar_\w+", r"[LR]\.stand_column_\w+",
                                      r"tie_T[a-z]+\d"))))
-    # the racking brace's tube (simplification round 2): faced with the rods, then notched
+    # the racking brace's tube (simplification round 2): to length, then notched to its
+    # sockets' teeth, each end marked from its own socket
     braces = sorted(n for n, k in keys.items() if k.startswith("tube6061_2in_065_"))
     if braces:
         n_t, tooth = BRACE_TEETH
+        notch = float(view.meta.get("brace_notch_mm") or 0.0)
         ops.append(Op(
             SHOP, (1, 1), (), "The racking brace's tube, notched",
             "The racking brace's 2 in tube comes cut 1.5 mm over (Speedy Metals, with the "
-            "rods): face it to its length with the tie rods, in their setup (it lies along X "
-            "in the vise, soft jaws or tape on it: a 0.065 in wall dents), both ends square.",
+            "rods). Bring it to its length (the BOM's cut list) within 0.1 mm, both ends "
+            "square: each end rubbed on 120-grit paper taped to the flat table, the tube "
+            "upright and turned as it goes, a caliper across it and a machinist's square on "
+            "it between strokes (its notches' ends stand 0.1 mm off the teeth: a tube that "
+            "long holds the box apart on it, not on its rods).",
             "brace", count=False,
-            lines=(f"Caliper the {n_t} teeth of each cradle link's socket as cut (about "
-                   f"{tooth:g} mm). Mill a notch for each in each end of the tube, "
-                   f"{BRACE_CLEAR:g} mm over the teeth's width (their widest), "
-                   f"{float(view.meta.get('brace_notch_mm') or 0.0):.2f} mm deep from the "
-                   "end, square across "
-                   f"the wall: {n_t} notches, one every {360 / n_t:g}°, the tube lying in a "
-                   f"printed V-block and turned to each by a printed {n_t}-flat collar on it, "
-                   "a 1/8 in end mill down through the top of its wall.",
-                   "Try each end in its socket: its notches drop over the teeth with no "
-                   "shake you can feel when you twist it (shake is the box racking before "
-                   "the tube takes its share); deburr the notches, never file a tooth."),
+            lines=(f"Mark one end from a socket: the tube stood on a cradle link over its "
+                   f"socket, centred, and both sides of each of the {n_t} teeth (about "
+                   f"{tooth:g} mm wide, visible past the tube's wall) drawn up it with a fine "
+                   "paint pen. Carry each line down the tube to the other end along a "
+                   "straightedge (the tube on the flat table, a square against it): both ends' "
+                   "notches in line, as the two links' teeth are across the bay, so either end "
+                   f"goes into either link at any of its {n_t} turns.",
+                   f"Saw each notch's two sides to the marks, {notch:.2f} mm deep from the "
+                   "end, with the fine-tooth hacksaw, the tube in the vise in tape, and file "
+                   f"out the wall between them square: {n_t * 2} notches in all.",
+                   "Try each end in each link's socket and file any notch that holds it "
+                   f"off until the end drops over every tooth, {BRACE_CLEAR:g} mm over each "
+                   "tooth's width at most: no shake you can feel when you twist it (shake is "
+                   "the box racking before the tube takes its share). Deburr the notches; "
+                   "never file a tooth."),
             scene=Scene("built", show=("*",), marks=(r"brace_\w+",))))
     # drilled and tapped
     m6 = 2 * (len(hard) + len(plain)) + 2 * len(crankpin) + 1      # (+ the rear post's foot)

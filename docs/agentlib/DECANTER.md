@@ -1892,10 +1892,11 @@ as a beam between both plates) missed. They feed `strength.check` (`loads_doc`'s
       the rear carrier rides the rear rods; in front of the mouth the stream and the gauge.
     - Each end is keyed into its cradle link: a laser-cut socket (`cradle.BRACE_SOCKET`:
       53.2 mm across, 12 teeth 6 mm wide standing in to 46.9 mm, their roots rounded r 1),
-      the tube's ends notched for them on the Carvera 0.1 mm over the teeth as cut
-      (`BRACE_CLEAR`: its free turn 0.47° both ends, `cradle_report.box_brace`), its ends
-      0.25 mm short of the links' outer faces. No screw: the teeth key it, the rods' screws
-      close the box on it. 192 g; GJ/L 254 N·m/°.
+      the tube's ends notched for them at home, one end marked from a socket, the lines
+      carried along the tube to the other, sawn and filed to fit, 0.1 mm over the teeth as
+      cut at most (`BRACE_CLEAR`: its free turn 0.47° both ends, `cradle_report.box_brace`),
+      its ends 0.25 mm short of the links' outer faces. No screw: the teeth key it, the rods'
+      screws close the box on it. 192 g; GJ/L 254 N·m/°.
     - b6 carries the couple from the socket to its pins in its plane
       (`cradle_structure.link_bending`'s `couples`: all of the box's moment at the socket):
       its rear arm X-Tr1 64 mm (48 before), Tr1-Tr2 64 (24), a chord Tr2-Br 76 (the socket's
@@ -2604,8 +2605,10 @@ tube: Speedy Metals 4604, 12 in), SendCutSend's cutting 752.11 (+24.26, the two 
 b6 the bigger: their wider rear and the socket's pad). Speedy's cart clears its USD 20 minimum
 on B alone now (21.79). A unchanged.
 
-**Home work:** the tube faced with the tie rods and its 24 notches milled on the Carvera (an
-estimate: 45 min); the guide's shop step (`cradle.shop_ops`, "brace").
+**Home work:** the tube brought to length by hand (120-grit on the flat table, to 0.1 mm)
+and its 24 notches marked from a socket and along the tube, sawn and filed to fit (an
+estimate: 1.5-2 h); the guide's shop step (`cradle.shop_ops`, "brace"). Hand tools only:
+whether the Carvera's vise takes a 2 in tube isn't on Makera's pages found that day.
 
 **Open:**
 - **A's cradle box at the clutch's cap** (`OPEN_AT_CAP`: rods 0.55, screws 1.02, link 0.17):
@@ -2633,7 +2636,8 @@ The assembly guide's order is `construction.assembly.CRADLE_MODULE_ORDER` on B a
 `CRADLE_ORDER` on A:
 0. **The shop work** (`assembly.SHOP_STAGE`, `cradle.shop_ops`; simplification round 1,
    2026-10-21: the posts, tie rods, pins and crankpin are 6061 rod made at home, the cleats
-   and the riser locator cut on the Carvera), five steps before the first part goes on:
+   and the riser locator cut on the Carvera), five steps before the first part goes on (six
+   on B since simplification round 2):
    - the arrival checks: the cut parts labelled, deburred and calipered (`CRADLE_ARRIVAL`);
      B's rod b1 at least 5.79 mm thick (`cradle.ARRIVAL_LEAST_T`: its buckling at the cap
      goes as its thickness cubed); each rod stick calipered and its reading written on it,
@@ -2645,6 +2649,9 @@ The assembly guide's order is `construction.assembly.CRADLE_MODULE_ORDER` on B a
      each pivot post and the crankpin calipered at its journal (over 12.85 mm, its link's
      13.05 mm bore opened to 13.10: `cradle.POST_OVER`), the riser's studs sawn from A2-70
      screws, its sleeves drilled;
+   - on B, the racking brace's tube: squared to its length by hand (to 0.1 mm), one end
+     marked from a socket's teeth, the lines carried down it to the other end (both ends'
+     notches in line, as the links' teeth are), its 24 notches sawn and filed to fit;
    - the pins cut to their calipered stacks + 0.3 mm (`order.PIN_TAKE_UP_MM`, ORDER.md's
      pins note: `order.ROD_PIN_NOTE`), the crankpin to its drawn length;
    - every tapped end drilled and tapped (M6 at the posts', tie rods' and crankpin's ends and

@@ -1885,12 +1885,14 @@ def test_b_stands_turns_easily_and_holds():
                                                                 for j in "XY"}
     assert k["least_ratio"] >= k["bar"] == 10.0
     # design review round 2's M3: against the most the way back can put on a pin's tip,
-    # half the 3.1 kg cradle box, the bench push screens each keeper 1.5 x over it; printed
-    # at 7.38 mm on the 5/16 in rod, at least 0.36 mm of grip; still on by hand, a tube over
-    # the pin (7.4 and 0.4 on the 8 mm clevis pin)
+    # half the cradle box (3.4 kg with its racking brace), the bench push screens each keeper
+    # 1.5 x over it; printed at 7.38 mm on the 5/16 in rod, at least 0.36 mm of grip; still on
+    # by hand, a tube over the pin (7.4 and 0.4 on the 8 mm clevis pin)
     assert cr.KEEPER == (7.38, 0.36)
-    assert 2.8 < k["box_kg"] < 3.3          # (the 1/2 in 6061 tie rods since the simplification
-    #                                         round 1: 3.6 on round 2's 12 mm steel, 3.2 before)
+    assert 3.2 < k["box_kg"] < 3.6          # (the brace's tube and b6's wider rear since the
+    #                                         simplification round 2: 3.1 on round 1's 1/2 in
+    #                                         6061 tie rods, 3.6 on the design review round
+    #                                         2's 12 mm steel ones)
     assert 13.0 < k["load_n"] < 18.0
     assert k["load_ratio"] >= k["load_bar"] == 1.5
     assert all(x["push_on_n"] <= k["push_on_bar_n"] == 120.0 for x in k["rows"])
@@ -1982,11 +1984,15 @@ def test_the_cradle_has_an_assembly_order(key):
     link = cr.cradle_link(cfg.lk)
     modules = key in cr.PACK_POSES
     # the shop work first (simplification round 1): the arrival checks, the rods, the pins,
-    # the taps, the Carvera's birch; no part goes on in them
+    # the taps, the Carvera's birch; no part goes on in them. B's racking brace's tube
+    # notched after the rods (simplification round 2)
+    braced = key == "decanter_rcm"
     shop = [s for s in steps if s.stage == SHOP]
-    assert [s.title for s in shop] == ["Arrival checks", "Rods to length, faced",
-                                       "Pins cut to their stacks", "Drilled and tapped",
-                                       "The cleats and the riser locator, on the Carvera"]
+    assert [s.title for s in shop] == [
+        "Arrival checks", "Rods to length, faced",
+        *(("The racking brace's tube, notched",) if braced else ()),
+        "Pins cut to their stacks", "Drilled and tapped",
+        "The cleats and the riser locator, on the Carvera"]
     assert steps[:len(shop)] == shop
     assert not any(s.adds for s in shop)
     words = " ".join(t for s in shop for t in s.text)
@@ -2001,6 +2007,7 @@ def test_the_cradle_has_an_assembly_order(key):
     (ties,) = [s for s in steps if f"L.{link}" in s.adds]
     assert ties.sub
     assert {"tie_Tf1", "tie_Tr2"} <= set(ties.adds)
+    assert ("brace_Br" in ties.adds) is braced          # (the tube with the rods)
     (passive,) = [s for s in steps if f"R.{link}" in s.adds]
     assert passive.stage == UNIT
     assert passive.side == "R"

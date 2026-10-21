@@ -293,12 +293,14 @@ marks; the trip's way back sends the user here (design review round 3's stand an
 clutch had been set at the hand crank's step, before the cradle box existed)."""
 
 SHOP_STAGE = Stage(SHOP, None, "Shop work, before the build",
-                   tags=(("arrival",), ("rods",), ("pins",), ("taps",), ("carvera",)),
+                   tags=(("arrival",), ("rods",), ("brace",), ("pins",), ("taps",),
+                         ("carvera",)),
                    strict=True, intro=CRADLE_ARRIVAL)
 """A cradle's first stage (simplification round 1, 2026-10-21: its posts, tie rods, pins and
 crankpin are 6061 rod made at home, its cleats and riser locator cut on the user's Carvera;
-``construction.cradle.shop_ops``): the parts as they arrive, the rods cut and faced, the pins
-cut to their stacks, every rod end drilled and tapped, the birch."""
+``construction.cradle.shop_ops``): the parts as they arrive, the rods cut and faced, B's
+racking brace's tube notched (simplification round 2), the pins cut to their stacks, every
+rod end drilled and tapped, the birch."""
 
 CRADLE_ORDER: tuple[Stage, ...] = (
     # a decanting cradle (construction.cradle): the shop work first, then the drive side
@@ -390,8 +392,9 @@ CRADLE_MODULE_ORDER: tuple[Stage, ...] = (
           tags=(("R.stack.cradle_link", "tie_screws"),), strict=True,
           text=(("cradle_link", "The passive side's cradle link onto the tie rods' free "
                                 "ends and the racking brace's tube's, which stand up from "
-                                "the cradle lying on its drive side: turn the link a little "
-                                "until the tube's notches drop over its socket's teeth."),),
+                                "the cradle lying on its drive side: the link lowered level "
+                                "onto them, its socket's teeth into the tube's notches as its "
+                                "holes go over the rods' ends."),),
           intro="On the cradle, not on the bench: the tie rods hold the passive side's "
                 "cradle link."),
     Stage(STACK, "R", "Passive side panel: stack",
