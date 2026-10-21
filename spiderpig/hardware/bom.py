@@ -1191,11 +1191,13 @@ CRADLE_CARTS_NOTE = (
     "and tax will be added\", no order minimum), Bolt Depot, Fastenal, Phidgets (from "
     "Calgary: shipping, duties and brokerage at checkout), Battery Junction, and Speedy "
     "Metals (FedEx, calculated at checkout with an account). Speedy takes no order under USD "
-    "20 (one cradle's rods come to less: order both cradles' in one cart, or add a stick) and "
-    "adds a process fee of about USD 8 to a line of more than ten pieces (A's twelve posts: "
-    "two lines of six). One cart fewer: McMaster's multipurpose 6061 rod (8974K28, 1/2 in, "
-    "+-0.006 in, 6 ft USD 13.75; 8974K48, 5/8 in, 1/2 ft USD 3.25) in place of Speedy's "
-    "pieces, every piece sawn at home before it is faced.")
+    "20 (B's rods and its racking brace's 2 in tube clear it since simplification round 2; "
+    "A's rods alone come to less: order both cradles' in one cart, or add a stick) and adds "
+    "a process fee of about USD 8 to a line of more than ten pieces (A's twelve posts: two "
+    "lines of six). One cart fewer for the rods: McMaster's multipurpose 6061 rod (8974K28, "
+    "1/2 in, +-0.006 in, 6 ft USD 13.75; 8974K48, 5/8 in, 1/2 ft USD 3.25) in place of "
+    "Speedy's pieces, every piece sawn at home before it is faced (B's tube then alone at "
+    "Speedy, under its minimum).")
 """A decanting cradle's ORDER.md note on its carts (simplification round 1: McMaster's pages
 rendered 2026-10-21, Woodcraft's cart's shipping rates, Speedy's cart; ``order.py`` lists
 each cart)."""

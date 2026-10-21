@@ -101,6 +101,8 @@ from spiderpig.shapes import (
     Cut,
     Rect,
     Shape3D,
+    Socket,
+    box,
     cut_holes,
     difference,
     disc,
@@ -188,6 +190,22 @@ TIE_TIGHTEN_NM = 6.0    # the tie rods' screws tightened (the guide), and STEEL_
 #                         a foot's washer and into the rods' mild-steel taps for no joint that
 #                         needs it. (6 N·m on A2-70 button heads until design review round 3;
 #                         4 until 2026-10-20)
+BRACE_TUBE = (50.8, 1.651)     # the racking brace (simplification round 2, 2026-10-21): a
+#                               2 in x 0.065 in 6061-T6 round tube (Speedy Metals 4604) across
+#                               the bay at decanters.BRACE, each end keyed into its cradle link
+BRACE_TEETH = (12, 6.0)        # its socket's teeth in each cradle link: how many, how wide
+#                               (cut with the link: 6 mm, over the 4.75 mm sheet), in as many
+#                               notches milled in the tube's end on the Carvera
+BRACE_SOCKET = (26.6, 23.45, 1.0)   # the socket: its edge's radius (the tube's 25.4 and its
+#                               teeth's root rounds, r 1.0, the laser's corner, clear of it),
+#                               the teeth's tips (0.3 mm inside the tube's bore: they centre it)
+BRACE_CLEAR = 0.1              # a notch over its tooth, milled to the teeth as cut (calipered):
+#                               the tube's free turn in each link, 0.1 mm at its wall's mid
+#                               radius (cradle_report.box_brace's play, both ends: 0.47°)
+BRACE_SHORT = 0.25             # its ends short of the links' outer faces (nothing proud in the
+#                               side's next layer)
+BRACE_GAP = 0.1                # its notches' bottoms off the teeth at each end (it doesn't
+#                               take the tie rods' clamp: the screws close the links on the rods)
 STEEL_FEET: dict[str, tuple[str, ...]] = {}
 """The pillars whose foot (its end on the outer plate) takes the tie rods' class 10.9 button head
 at :data:`TIE_TIGHTEN_NM` in both sides, not an A2-70 one at ISO 7380's 4 N·m: none since the
@@ -782,6 +800,16 @@ def tie_points(topo, lk) -> dict[str, str]:
             if body_class(body) == link and joint.startswith("T")}
 
 
+def brace_points(topo, lk) -> dict[str, str]:
+    """The racking brace's joint (``decanters.BRACE``: ``Br``) -> its topology point, on a
+    cradle whose link has one (simplification round 2, 2026-10-21)."""
+    from spiderpig.linkages.decanters import BRACE
+
+    link = cradle_link(lk)
+    return {joint: p for (body, joint), p in sorted(topo.point_of.items())
+            if body_class(body) == link and joint in BRACE}
+
+
 def _point_of(topo, lk, joint: str) -> str:
     link = cradle_link(lk)
     for (body, j), p in topo.point_of.items():
@@ -1019,7 +1047,9 @@ class CradleTies(Group):
         lk = ctx.config.lk
         link = next(n for n in ctx.topo.links if body_class(n) == cradle_link(lk))
         ties = list(tie_points(ctx.topo, lk).values())
+        braces = list(brace_points(ctx.topo, lk).values())
         r = TIE_D / 2 + 0.3
+        r_brace = BRACE_TUBE[0] / 2 + 0.3
         head = TIE_M.head_d / 2 + 0.3
 
         def make(L: Layout):
@@ -1041,6 +1071,13 @@ class CradleTies(Group):
                 # handcrank.CRANKPIN_PLAY, is less than the 0.4 mm left)
                 out.append(Placed(k - 1, Disc(name, head), self.name, "tie screw head",
                                   gap=True, height=TIE_M.head_h + 0.25, toward=-1))
+            for name in braces:     # the racking brace's tube, as a tie rod (no screw head)
+                out.extend(Placed(j, Disc(name, r_brace), self.name, "brace tube")
+                           for j in range(k + 1, L.top))
+                out.extend(Placed(j, Disc(name, r_brace), self.name, "brace tube", gap=True)
+                           for j in range(k, L.top))
+                out.append(Placed(L.top, Disc(name, r_brace), self.name, "brace tube",
+                                  seat=True))
             return out
 
         return [Claim("tie rods", frozenset((link,)), make)]
@@ -1053,6 +1090,8 @@ class CradleTies(Group):
         ties = tie_points(topo, lk)
         for name in ties.values():
             out.cut(link, Cut(tuple(build.xy(name)), TIE_ROD_HOLE))
+        for name in brace_points(topo, lk).values():
+            out.cut(link, brace_socket(build, name))
         _ties_clear_the_inner_plate(build, done, ties)
         return out
 
@@ -1081,14 +1120,19 @@ class CradleTies(Group):
                           "keepers"))
         if view.side == "R":
             return [Op(STACK, (k, 1), whole(link), "", "", "cradle_link"), *ops]
+        brace = (f" The racking brace's tube into the link's toothed socket from its bay side, "
+                 f"its notches down over the {BRACE_TEETH[0]} teeth (either end: they're "
+                 "alike; turn it until they drop in), standing up beside the rods: no screw "
+                 "holds it, the teeth key it and the rods' screws close the box on it."
+                 if any(j.startswith("B") for j in lk.links[link][0]) else "")
         return [Op(STACK, (k, 0, "ties"), whole(link), "Cradle link and tie rods",
                    f"The four tie rods onto the cradle link, an M{TIE_M.d:g} x "
                    f"{TIE_ROD_SCREW:g} steel button head (class 10.9, from its own bag: not "
                    "a stainless one) through the link from its leg side into each "
                    f"(threadlocker, {TIE_TIGHTEN_NM:g} N·m on the key: closed, the joint holds "
                    "the box's walking moment without working); the rods "
-                   "stand up from its bay side. It goes onto the stack rods up, its bores "
-                   "down over the posts and the pins it rides.", "cradle_link",
+                   f"stand up from its bay side.{brace} It goes onto the stack rods up, its "
+                   "bores down over the posts and the pins it rides.", "cradle_link",
                    sub=True), *ops]
 
     def motion(self, got: Realized) -> Motion:
@@ -1348,17 +1392,20 @@ def _keep_out(build: Build) -> tuple[Shape3D, ...]:
 
 
 def _tie_specs(build: Build) -> list[tuple]:
-    """:func:`_tie_paths`' pills as :func:`pill`'s arguments."""
-    ties = tie_points(build.plan.topo, build.ctx.config.lk)
+    """:func:`_tie_paths`' pills as :func:`pill`'s arguments (the racking brace's tube's
+    too)."""
+    lk = build.ctx.config.lk
     z0, z1 = build.z(build.top)
-    r = TIE_D / 2 + build.plan.spec.margin
     out = []
-    for name in ties.values():
-        path = np.asarray(build.plan.topo.geometry.points[name], float).reshape(-1, 2)
-        step = max(1, len(path) // 48)
-        pts = [*path[::step], path[0]]
-        out += [(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0)
-                for a, b in itertools.pairwise(pts)]
+    for names, d in ((tie_points(build.plan.topo, lk), TIE_D),
+                     (brace_points(build.plan.topo, lk), BRACE_TUBE[0])):
+        r = d / 2 + build.plan.spec.margin
+        for name in names.values():
+            path = np.asarray(build.plan.topo.geometry.points[name], float).reshape(-1, 2)
+            step = max(1, len(path) // 48)
+            pts = [*path[::step], path[0]]
+            out += [(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0)
+                    for a, b in itertools.pairwise(pts)]
     return out
 
 
@@ -1414,6 +1461,22 @@ def _ties_clear_the_inner_plate(build: Build, done: Realized, ties: Mapping[str,
     reach = TIE_D / 2 + build.plan.spec.margin
     for tie, name in ties.items():
         _clear_the_inner_plate(build, done, tie, name, reach, "tie rod")
+    reach = BRACE_TUBE[0] / 2 + build.plan.spec.margin
+    for brace, name in brace_points(build.plan.topo, build.ctx.config.lk).items():
+        _clear_the_inner_plate(build, done, brace, name, reach, "racking brace")
+
+
+def brace_socket(build: Build, name: str) -> Socket:
+    """The racking brace's socket in the cradle link at point ``name`` (:data:`BRACE_SOCKET`,
+    :data:`BRACE_TEETH`): its first tooth along the link's chord from ``Tr2``, as the
+    link lies in the build."""
+    lk = build.ctx.config.lk
+    tr2 = tie_points(build.plan.topo, lk).get("Tr2")
+    at = np.asarray(build.xy(name), float)
+    d = at - np.asarray(build.xy(tr2), float) if tr2 is not None else np.array([1.0, 0.0])
+    r_out, r_tip, root = BRACE_SOCKET
+    return Socket((float(at[0]), float(at[1])), r_out, r_tip, BRACE_TEETH[0], BRACE_TEETH[1],
+                  math.atan2(float(d[1]), float(d[0])), root)
 
 
 def _clear_the_inner_plate(build: Build, done: Realized, label: str, name: str,
@@ -1458,6 +1521,31 @@ def _rod(length: float, d: float = TIE_D) -> str:
     from spiderpig.hardware.cradle_catalog import al_rod
 
     return al_rod(d, round(length, 1))
+
+
+def _brace_key(length: float) -> str:
+    """The catalog key of the racking brace's tube, ``length`` mm (made on first use:
+    ``hardware.cradle_catalog.brace_tube``)."""
+    from spiderpig.hardware.cradle_catalog import brace_tube
+
+    return brace_tube(round(length, 1))
+
+
+def _brace_tube(xy, z0: float, z1: float, notch: float, angle: float) -> Shape3D:
+    """The racking brace's tube from ``z0`` to ``z1`` (:data:`BRACE_TUBE`), a notch ``notch``
+    deep at each end for each of its socket's teeth (:data:`BRACE_TEETH`, the first at
+    ``angle``), each :data:`BRACE_CLEAR` over its tooth."""
+    od, wall = BRACE_TUBE
+    n, tooth = BRACE_TEETH
+    tube = difference(disc(xy, od / 2, z0, z1), disc(xy, od / 2 - wall, z0 - 1.0, z1 + 1.0))
+    cuts = []
+    r = od / 2 - wall / 2
+    for k in range(n):
+        a = angle + 2.0 * math.pi * k / n
+        at = (float(xy[0]) + r * math.cos(a), float(xy[1]) + r * math.sin(a))
+        cuts.extend(box(at, (wall + 2.0, tooth + BRACE_CLEAR, notch + 1.0), lo, a)
+                    for lo in (z0 - 1.0, z1 - notch))
+    return difference(tube, union(cuts))
 
 
 def _tie(xy, z0: float, z1: float, d: float = TIE_D, thread: float = TIE_THREAD) -> Shape3D:
@@ -3411,6 +3499,16 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
             extras.append(hardware(f"tie_{n}_screw{s}", _screw(xy, face, sign), host,
                                    fab="purchased", bom_key=TIE_M.key(TIE_ROD_SCREW),
                                    color=TIE_COLOR))
+    # the racking brace's tube (simplification round 2): its ends in the cradle links'
+    # sockets, BRACE_SHORT short of their outer faces, its notches on their teeth
+    for n, p in brace_points(topo, lk).items():
+        sock = brace_socket(build, p)
+        reach = half + t_link - BRACE_SHORT
+        extras.append(hardware(f"brace_{n}", _brace_tube(sock.xy, -reach, reach,
+                                                         t_link - BRACE_SHORT + BRACE_GAP,
+                                                         sock.angle),
+                               host, fab="purchased", bom_key=_brace_key(2 * reach),
+                               color=TIE_COLOR))
     stand = stand_of(lk)
     z0 = plan.z(0)[1]
     foot_half = z_mid - z0                            # a base tie between the outer plates
@@ -3628,6 +3726,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                 cradle_lip=[float(cf.lip[0]), float(cf.lip[1])], cradle_tilt=float(cf.tilt),
                 mid_plane=z_mid, bay_mm=BAY, lip_height_mm=LIP_HEIGHT,
                 tie_mm=tie_len, base_tie_mm=foot_len, bay_tie_mm=bay_len, fastened=fastened,
+                brace_notch_mm=round(t_link - BRACE_SHORT + BRACE_GAP, 2),
                 bottle=shown.name, cradle_linkage=lk.key, cradle_modules=lk.key in PACK_POSES,
                 keepers=sorted(prefixed(n, s) for n in keepers for s in SIDES_LR),
                 petg=sorted([n for n in PETG_PARTS if any(b.name == n for b in extras)]
@@ -3683,7 +3782,8 @@ def assembly(view) -> list:
     k = int(view.meta.get("cradle_layer", 0))
     ties = view.named(r"tie_[A-Za-z0-9]+")
     if ties:
-        ops.append(Op(STACK, (k, 0, "ties"), whole(*ties, *view.named(r"tie_\w+_screwL")),
+        ops.append(Op(STACK, (k, 0, "ties"), whole(*ties, *view.named(r"tie_\w+_screwL"),
+                                                    *view.named(r"brace_[A-Za-z0-9]+")),
                       "Cradle link and tie rods", "", "cradle_link", sub=True, side="L"))
     key = str(view.meta.get("cradle_linkage") or "")
     modules = bool(view.meta.get("cradle_modules"))
@@ -3956,6 +4056,28 @@ def shop_ops(view) -> list:
                   scene=Scene("built", show=("*",),
                               marks=(r"[LR]\.pillar_\w+", r"[LR]\.stand_column_\w+",
                                      r"tie_T[a-z]+\d"))))
+    # the racking brace's tube (simplification round 2): faced with the rods, then notched
+    braces = sorted(n for n, k in keys.items() if k.startswith("tube6061_2in_065_"))
+    if braces:
+        n_t, tooth = BRACE_TEETH
+        ops.append(Op(
+            SHOP, (1, 1), (), "The racking brace's tube, notched",
+            "The racking brace's 2 in tube comes cut 1.5 mm over (Speedy Metals, with the "
+            "rods): face it to its length with the tie rods, in their setup (it lies along X "
+            "in the vise, soft jaws or tape on it: a 0.065 in wall dents), both ends square.",
+            "brace", count=False,
+            lines=(f"Caliper the {n_t} teeth of each cradle link's socket as cut (about "
+                   f"{tooth:g} mm). Mill a notch for each in each end of the tube, "
+                   f"{BRACE_CLEAR:g} mm over the teeth's width (their widest), "
+                   f"{float(view.meta.get('brace_notch_mm') or 0.0):.2f} mm deep from the "
+                   "end, square across "
+                   f"the wall: {n_t} notches, one every {360 / n_t:g}°, the tube lying in a "
+                   f"printed V-block and turned to each by a printed {n_t}-flat collar on it, "
+                   "a 1/8 in end mill down through the top of its wall.",
+                   "Try each end in its socket: its notches drop over the teeth with no "
+                   "shake you can feel when you twist it (shake is the box racking before "
+                   "the tube takes its share); deburr the notches, never file a tooth."),
+            scene=Scene("built", show=("*",), marks=(r"brace_\w+",))))
     # drilled and tapped
     m6 = 2 * (len(hard) + len(plain)) + 2 * len(crankpin) + 1      # (+ the rear post's foot)
     m3 = 2 * (len(pins) - len(clips)) + len(clips)
@@ -4420,7 +4542,7 @@ def _block_xy(key: str) -> tuple[np.ndarray, list[np.ndarray]]:
     return pts[lk.crank[0]][0], at
 
 
-LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 12.7, "drive_box": 9.9},
+LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 13.2, "drive_box": 10.4},
                                       "decanter_hinge": {"cradle": 12.0}}
 """What a person lifts onto and off the lay-flat blocks, or off the board (kg;
 ``cradle_pack.rest_poses``' masses, held to them in ``tests/test_cradle.py``): B's cradle off
@@ -4428,7 +4550,8 @@ its board, and its drive side with the cradle box (the first build's lay); A's c
 board (its first build: the board's finish). Two people, one each side, or one in the order
 :func:`lay_down` gives (design review round 3's stand and use, M5: lifted by its outer
 plates' 4.75 mm top edges 430 mm apart, 465 mm over a counter, the NIOSH lifting equation's
-recommended limit is 11.7 kg at most)."""
+recommended limit is 11.7 kg at most). B's 12.7 and 9.9 until simplification round 2's racking
+brace (0.46 kg on the box)."""
 
 
 def lay_down(key: str, what: str = "cradle") -> str:

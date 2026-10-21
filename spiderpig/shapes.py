@@ -90,6 +90,22 @@ class Rect:
     angle: float = 0.0
 
 
+@dataclass(frozen=True)
+class Socket:
+    """A toothed round cut-out (a decanting cradle's racking brace's socket: a tube's end
+    keyed into a link): a hole ``r_out`` round centred on ``xy`` with ``teeth`` straight-sided
+    teeth ``tooth`` wide standing in from its edge to ``r_tip``, the first at ``angle``
+    (radians, world XY), their roots rounded ``root_r`` (the laser's corner)."""
+
+    xy: tuple[float, float]
+    r_out: float
+    r_tip: float
+    teeth: int
+    tooth: float
+    angle: float = 0.0
+    root_r: float = 1.0
+
+
 def disc(xy: XY, radius: float, z0: float, z1: float) -> Shape3D:
     """Solid cylinder at ``xy`` spanning ``z0..z1``."""
     return Cylinder(radius=radius, height=z1 - z0).move(
@@ -193,7 +209,41 @@ def _unwrap(shape):
     return solids[0] if len(solids) == 1 else shape
 
 
-def _cutter(cut: Cut | Rect, z0: float, z1: float) -> Shape3D:
+def _socket_cutter(cut: Socket, z0: float, z1: float) -> Shape3D:
+    """:class:`Socket`'s cutter: the disc less its teeth, the roots rounded."""
+    x, y = float(cut.xy[0]), float(cut.xy[1])
+    body = disc(cut.xy, cut.r_out, z0, z1)
+    depth = cut.r_out - cut.r_tip + 2.0
+    teeth = []
+    for k in range(cut.teeth):
+        a = cut.angle + 2.0 * math.pi * k / cut.teeth
+        r = cut.r_tip + depth / 2.0
+        teeth.append(box((x + r * math.cos(a), y + r * math.sin(a)),
+                         (depth, cut.tooth, z1 - z0 + 2.0), z0 - 1.0, a))
+    out = difference(body, union(teeth))
+    if cut.root_r > 0:              # the roots: where each tooth's sides meet the edge
+        half = math.asin(min(cut.tooth / 2.0 / cut.r_out, 1.0))
+        want = [cut.angle + 2.0 * math.pi * k / cut.teeth + s * half
+                for k in range(cut.teeth) for s in (-1.0, 1.0)]
+
+        def root(e) -> bool:
+            p, q = e.start_point(), e.end_point()
+            if abs(q.Z - p.Z) < 0.5 * (z1 - z0) or abs(math.hypot(p.X - x, p.Y - y)
+                                                       - cut.r_out) > 1e-3:
+                return False
+            a = math.atan2(p.Y - y, p.X - x)
+            return any(abs((a - w + math.pi) % (2.0 * math.pi) - math.pi) < 1e-3
+                       for w in want)
+
+        roots = [e for e in out.edges() if root(e)]
+        if roots:
+            out = out.fillet(cut.root_r, roots)
+    return out
+
+
+def _cutter(cut: Cut | Rect | Socket, z0: float, z1: float) -> Shape3D:
+    if isinstance(cut, Socket):
+        return _socket_cutter(cut, z0, z1)
     if isinstance(cut, Rect):
         return box(cut.xy, (cut.size[0], cut.size[1], z1 - z0), z0, cut.angle)
     body = disc(cut.xy, cut.d / 2, z0, z1)
@@ -209,7 +259,8 @@ def _cutter(cut: Cut | Rect, z0: float, z1: float) -> Shape3D:
     return difference(body, slab.move(Pos(cx, cy, (z0 + z1) / 2)))
 
 
-def cut_holes(part: Shape3D, cuts: Iterable[Cut | Rect], z0: float, z1: float) -> Shape3D:
+def cut_holes(part: Shape3D, cuts: Iterable[Cut | Rect | Socket], z0: float, z1: float
+              ) -> Shape3D:
     """Cut through-holes (round, D or rectangular) spanning ``z0..z1`` (with overshoot)."""
     cutters = [_cutter(c, z0 - 1.0, z1 + 1.0) for c in cuts]
     if not cutters:
@@ -222,7 +273,7 @@ def plate(
     pills: Iterable[tuple[XY, XY, float]],
     z0: float,
     z1: float,
-    cuts: Iterable[Cut | Rect] = (),
+    cuts: Iterable[Cut | Rect | Socket] = (),
     discs: Iterable[tuple[XY, float]] = (),
 ) -> Shape3D:
     """A laser-cut plate: union of pills ``(p, q, r)`` and discs ``(xy, r)``, minus cuts."""

@@ -1673,11 +1673,13 @@ def _the_drive_keeps_its_bars(r: dict) -> list[str]:
 def _holds_the_jam(r: dict, key: str) -> None:
     """Every row of the report holds the jam at SF 1.3 or more but the parts open at the
     clutch's cap (``cradle_report.OPEN_AT_CAP``: the cradle box since simplification round
-    1), and nothing under it is off that list; the side frames' posts and plates among them
-    (their redesign, 2026-10-20); the cradle box's tie rods, their end joints and the cradle
-    link out of its plane among the rows (design review round 2's M1, the box a 3D frame
-    since simplification round 1), walking every end joint closed and none slipping in twist
-    at its least preload, the rear carrier's bridge riding the racking box within its bar;
+    1, B's closed by round 2's racking brace), and nothing under it is off that list; the
+    side frames' posts and plates among them (their redesign, 2026-10-20); the cradle box's
+    tie rods, their end joints and the cradle link out of its plane among the rows (design
+    review round 2's M1, the box a 3D frame since simplification round 1), and B's racking
+    brace (its tube and its sockets' teeth), which takes most of the jam's twist; walking
+    every end joint closed and none slipping in twist at its least preload, the rear
+    carrier's bridge riding the racking box within its bar;
     the rod as a beam-column at its far pin's offset (its minor 1); the side's stiffness
     across (its M3: a hand's 20 N sideways on the bottle sways the pivots under 5 mm)."""
     from spiderpig.cradle_report import OPEN_AT_CAP
@@ -1691,7 +1693,12 @@ def _holds_the_jam(r: dict, key: str) -> None:
     assert under <= set(open_at_cap), under
     assert {"frame:outer", "frame:inner"} <= {j for j, _ in held}
     box = {x["joint"]: x for x in rows if x["kind"] == "box"}
-    assert set(box) == {"box:tie rods", "box:tie rod ends", "box:cradle link"}
+    braced = key == "decanter_rcm"                    # (B's racking brace: decanters.BRACE)
+    assert set(box) == {"box:tie rods", "box:tie rod ends", "box:cradle link",
+                        *(("box:brace", "box:brace teeth") if braced else ())}
+    if braced:                                          # the brace takes the jam
+        jam = r["structure"]["box"]["cases"]["jam"]
+        assert jam["brace"]["twist_nm"] >= 0.8 * jam["crossing_nm"], jam["brace"]
     from spiderpig.cradle_report import OPEN_JOINTS
 
     open_ = OPEN_JOINTS.get(key, {})
@@ -2592,7 +2599,7 @@ def _box_case(key: str = "decanter_rcm", moment_nm: float = 100.0):
     link = cr.cradle_link(lk)
     pts = {n: np.asarray(p, float).reshape(1, 2)
            for n, p in LegSolution(linkage_key=key).joints_at(0.0).items()}
-    pins = [j for j in lk.links[link][0] if j not in TIES and j not in ("Lc", "Ax")]
+    pins = [j for j in lk.links[link][0] if j not in TIES and j not in ("Lc", "Ax", "Br")]
     joints = [(j, link, "other") for j in pins]
     mouth = pts[cr.mouth_name(lk)][0]
     q = pts[pins[0]][0] - mouth
@@ -2626,7 +2633,8 @@ def test_the_cradle_box_racks_on_its_tie_rods():
     cfg = BuildConfig(linkage="decanter_rcm", robot=False)
     joints, pts, vecs = _box_case()
     got = box_racking(cfg, joints, pts, {"walk": (vecs, np.zeros(1, bool), None),
-                                         "jam": (vecs, np.zeros(1, bool), None)}, 274.9)
+                                         "jam": (vecs, np.zeros(1, bool), None)}, 274.9,
+                      braces={})                        # (the box unbraced: round 1's)
     assert got["cases"]["walk"]["crossing_nm"] == pytest.approx(PASSIVE_SHARE * 100.0)
     assert got["cases"]["jam"]["crossing_nm"] == pytest.approx(JAM_SHARE * 100.0)
     assert {r["joint"] for r in got["rows"]} == {"box:tie rods", "box:tie rod ends",
@@ -2651,8 +2659,9 @@ def test_the_cradle_box_racks_on_its_tie_rods():
     assert rigid.stiffness > 5 * k[0]                   # the plates give
     for h in cs.BOX_HOLDS:
         res = cs.box_frame(links, rods, [M], hold=h)
-        assert sum(float(res.twist[n][0]) for n in TIES) > 0.55 * M    # mostly in twist
-        #                     (the 1/2 in 6061 rods' G: 0.60 held, 0.74 pinned, 0.82 free)
+        assert sum(float(res.twist[n][0]) for n in TIES) > 0.5 * M     # mostly in twist
+        #                     (the 1/2 in 6061 rods' G: 0.52 held, 0.69 pinned, 0.77 free on
+        #                      round 2's links, wider at the rear; 0.60, 0.74, 0.82 before)
         f = {n: res.ends[n] @ cs.rod_k(rods[n], L).T for n in TIES}  # the links' on the rods
         about = sum(TIES[n][0] * f[n][0, 7] - TIES[n][1] * f[n][0, 6] + f[n][0, 11]
                     for n in TIES)
@@ -2687,6 +2696,63 @@ def test_a_tie_rods_end_joint_slips_past_its_friction():
         assert float(res.twist[n][1]) == pytest.approx(rod.slip_nmm(SLIP_MU), rel=1e-6)
         assert float(res.twist_stuck[n][1]) > rod.slip_nmm(SLIP_MU)
     assert abs(float(res.theta[1])) > 20 * 2 * abs(float(res.theta[0]))   # far softer
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
+def test_the_racking_brace_carries_the_box_in_torsion():
+    """The cradle box's racking brace (simplification round 2, 2026-10-21; ``decanters.BRACE``,
+    ``cradle_report.box_brace``): a 2 in x 0.065 in 6061-T6 tube across the bay, keyed into
+    both cradle links by 12 teeth, a 3D beam in ``box_frame`` whose twist is free inside its
+    play (the notches over the teeth, 0.47° both ends) and borne past it, never slipping.
+    Held rigid out of their plane, the links fix it as a rod: its torsion and its sway at its
+    radius add to the rods'. Inside its play it carries no twist; at the jam's whole couple
+    it takes most of it, no rod's end joint slips, and its teeth bear under the link's yield
+    over 1.3; the passive link in equilibrium with it. B's only (A's hand crank sweeps where
+    it would go: ``decanters.BRACE``)."""
+    from dataclasses import replace
+
+    from spiderpig import cradle_structure as cs
+    from spiderpig.cradle_report import SLIP_MU, box_brace, box_links, box_rods
+
+    key = "decanter_rcm"
+    assert box_brace(BuildConfig(linkage="decanter_hinge", robot=False)) == {}
+    cfg = BuildConfig(linkage=key, robot=False)
+    braces = box_brace(cfg)
+    assert list(braces) == ["Br"]
+    br = braces["Br"]
+    assert (br.od, br.wall, br.teeth) == (50.8, 1.651, 12)
+    assert math.degrees(br.play) == pytest.approx(0.466, abs=0.001)
+    joints, pts, _ = _box_case(key)
+    L = 274.9
+    links = box_links(cfg, joints, pts, L)
+    assert ("Tr2", "Br") in dict(links.segs)
+    rods = box_rods(cfg)
+    tight = {"Br": replace(br, play=0.0)}
+    M = 20.0e3
+    rigid = cs.box_frame(links, rods, [M], hold="held", rigid_links=True, braces=tight)
+    r = {n: math.hypot(*links.xy[n]) for n in (*TIES, "Br")}
+    k = sum(12 * rods[n].ei() / L ** 3 * r[n] ** 2 + rods[n].gj() / L for n in TIES)
+    k += 12 * br.ei() / L ** 3 * r["Br"] ** 2 + br.gj() / L
+    assert float(rigid.theta[0]) == pytest.approx(M / k, rel=1e-4)
+    assert float(rigid.twist["Br"][0]) == pytest.approx(br.gj() / L * M / k, rel=1e-4)
+    small = cs.box_frame(links, rods, [2.0e3], hold="pinned", braces=braces)
+    assert abs(float(small.theta[0])) < br.play
+    assert not small.engaged["Br"][0]
+    assert float(small.twist["Br"][0]) == pytest.approx(0.0, abs=1e-6)
+    jam = 221.0e3
+    for h in cs.BOX_HOLDS:
+        res = cs.box_frame(links, rods, [jam], hold=h, mu=SLIP_MU, braces=braces)
+        assert res.engaged["Br"][0]
+        assert float(res.twist["Br"][0]) > 0.75 * jam
+        assert not any(res.slipped[n][0] for n in TIES)
+        bear = float(br.tooth_n(res.twist["Br"][0])) / (br.wall * links.t)
+        assert links.yield_mpa / bear >= 1.3
+        ks = {**{n: cs.rod_k(rods[n], L) for n in TIES}, "Br": br.k(L)}
+        f = {n: res.ends[n] @ k_.T for n, k_ in ks.items()}     # the links' on each member
+        about = sum(links.xy[n][0] * f[n][0, 7] - links.xy[n][1] * f[n][0, 6] + f[n][0, 11]
+                    for n in f)
+        assert about == pytest.approx(jam, rel=1e-6)                 # the passive link holds
 
 
 @pytest.mark.no_fabricate

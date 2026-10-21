@@ -363,6 +363,55 @@ register(Item(ROD_HARD[0], "1/2 in hard-anodized 6061-T6511 round rod, 1 ft (McM
               notes="The pivot posts' stock (:data:`ROD_HARD`), sawn to length at home."))
 register_factory("rod6061ha_12p7_m6_", _rod_hard_of)
 
+BRACE_STOCK = {"od": 50.8, "wall": 1.651, "sku": "4604", "per_in": 0.61,
+               "url": "https://www.speedymetals.com/pc-4604-8371-2-od-x-065-wall-tube-6061-t6-"
+                      "aluminum.aspx", "yield_mpa": 241.3}
+"""The cradle box's racking brace's stock (simplification round 2, 2026-10-21): Speedy Metals'
+'2" OD x 1.870" ID x .065" Wall 6061-T6 Aluminum Tube (Tubing)', by the inch, 'Base Price:
+$0.61', cut 'Plus 1/8", Minus 0"' (the page, 2026-10-21; 12 in USD 10.95; no ASTM spec named,
+as for the rods), in the rods' cart. Rated at 6061-T6's 35 ksi least yield, the Aluminum
+Association's Table 12.1 (extruded tube, 0.249 in wall and under: 38 / 35 ksi;
+aluminum.org/sites/default/files/2022-12/Table_12.1.pdf, fetched 2026-10-21)."""
+
+
+def brace_tube(length: float) -> str:
+    """The catalog key of the racking brace's tube (:data:`BRACE_STOCK`), ``length`` mm, its
+    ends notched for its sockets' teeth (made on first use)."""
+    key = f"tube6061_2in_065_{round(length, 1):g}"
+    CATALOG.get(key)
+    return key
+
+
+def _brace_of(key: str) -> Item | None:
+    import math
+
+    pre = "tube6061_2in_065_"
+    try:
+        n = round(float(key.removeprefix(pre)) * 10)
+    except ValueError:
+        return None
+    L = n / 10
+    if not 1000 <= n <= 6000 or f"{pre}{L:g}" != key:
+        return None
+    s = BRACE_STOCK
+    inches = math.ceil((L + ROD_FACE) / 25.4 - 1e-9)
+    return Item(
+        key, f"2 in x 0.065 in 6061-T6 round tube, {L:g} mm, faced and its ends notched for "
+        "its sockets' teeth on the Carvera (cut to length by Speedy Metals)", "standoff",
+        (Offer("Speedy Metals", s["url"], f"{s['sku']} cut {L + ROD_FACE:.1f} mm",
+               price_usd=round(inches * s["per_in"], 3), verified=True,
+               note=f"2 in OD x 0.065 in wall 6061-T6 tube, cut to {L + ROD_FACE:.1f} mm "
+                    f"(USD {s['per_in']:.2f} an inch in whole inches, the page 2026-10-21): "
+                    f"faced to {L:g} mm square on the Carvera, 12 notches milled in each end"),),
+        dims={"od": s["od"], "wall": s["wall"], "length": L, "yield_mpa": s["yield_mpa"],
+              "material": "aluminium"},
+        notes="A decanting cradle's racking brace (simplification round 2, 2026-10-21): the "
+              "cradle box's twist across the bay crosses in its torsion; rated on 6061-T6's "
+              "35 ksi least yield (the Aluminum Association's Table 12.1).")
+
+
+register_factory("tube6061_2in_065_", _brace_of)
+
 ROD_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(250, 6001))
 """The posts' and tie rods' lengths: 25-600 mm in 0.1 mm steps (each one faced to it)."""
 

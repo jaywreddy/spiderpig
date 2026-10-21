@@ -756,14 +756,16 @@ def journal_share(spec: HandleSpec) -> dict:
     return out
 
 
-DESIGN_START_NM: dict[str, float] = {"decanter_rcm": 2.629, "decanter_hinge": 2.763}
+DESIGN_START_NM: dict[str, float] = {"decanter_rcm": 2.72, "decanter_hinge": 2.763}
 """Per cradle, a sealed full 6 L's worst starting turn at the input (N·m) at the catalogue's
 static efficiency (:data:`NRV050`): ``cradle_report``'s ``handle_torque_nm``, which a test
 holds these to. The clutch is set on the user's own measurement; these draw it (the guide's
 expected reading, ``config.PRODUCT_CLUTCH_NM``). Simplification round 1 (2026-10-21): the
 aluminium posts and tie rods (1.1 kg off each cradle), the rear saddle's aluminium post and
 printed lead screw (0.18 kg off the cradle box) and the aluminium pins, B's from 2.719 and A's
-from 2.858."""
+from 2.858. Simplification round 2 (2026-10-21): B's racking brace (its 2 in tube and its
+cradle links' wider rear, 0.46 kg on the box, most of it behind the saddles), B's from
+2.629."""
 
 
 def drawn_clutch(linkage: str) -> dict:
