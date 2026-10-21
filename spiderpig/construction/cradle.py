@@ -1197,7 +1197,15 @@ class ColumnParts:
     face: str | None = None     # a fender washer between each end and its plate (its key)
 
     def key(self, length: float) -> str:
-        return _standoff12(length) if self.d > SMALL_TIE_D else _standoff(length)
+        """The standoff's catalog key for a ``length`` mm gap: a 12 mm one by the pillars'
+        own rule (``StandoffAxle.segment``: the same length as a pillar's in the same gap, so
+        the side's posts are one part number, bought at its quantity's price)."""
+        if self.d > SMALL_TIE_D:
+            from spiderpig.construction.pivots.standoff import StandoffAxle
+
+            got = StandoffAxle().cradle_shaft().segment(length)
+            return _standoff12(got if got is not None else length)
+        return _standoff(length)
 
 
 POST_HOLE = 6.4         # a 12 mm post's M6 end screw's hole in a frame plate (ISO 273 fine; 6.6

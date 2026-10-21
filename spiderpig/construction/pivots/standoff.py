@@ -148,8 +148,10 @@ class StandoffAxle:
     #                                  12 mm, tapped M6 (MISUMI NETRF12, cradle_shaft)
     outside: float | None = None     # the head room outside a frame plate (None: a layer,
     #                                  the pitch; a cradle's: its side is open there)
-    face_washer: str | None = None   # a washer between its foot and the outer plate's face
-    #                                  (its catalog key; a cradle's: cradle.FACE_WASHER)
+    face_washer: str | None = None   # a washer between each end and its plate's face (its
+    #                                  catalog key; a cradle's: cradle.FACE_WASHER): on the
+    #                                  outer plate in the layer over it, under the inner one
+    #                                  in the clearance gap there
     neck_wall: float | None = None   # a printed neck's thinnest wall where a passing link
     #                                  leaves a layer less room than a ring (None: the
     #                                  rings' ``Params.min_wall``; a cradle's: NECK_WALL)
@@ -412,6 +414,8 @@ class StandoffAxle:
         """The stock length for a ``gap`` mm between two faces (``max_short`` under it to
         ``max_long`` over, the nearest; with ``shims``, up to ``max_shims`` under it, steel
         shims (stock 0.5 mm washers) taking the rest up at its upper end), ``None`` when none is."""
+        if self.stock == "shaft12":     # (a cradle's: its posts one length whatever the
+            gap = round(gap, 2)         # float noise in their gaps, 0.01 mm)
         if self.stock.startswith("shaft"):
             # (the shaft: its lengths, end shims in SHIM_STEP steps only (stock 0.5 mm washers,
             # two to a 1 mm shim), the column within COLUMN_TOL of its gap; goBILDA M4 keeps
@@ -468,8 +472,8 @@ class StandoffAxle:
         axle = self.column_axle(set(links), b, layout.pitch, a, layout, air)
         if axle is None:
             return 0.0
-        span = layout.z(b)[0] - layout.z(a)[1] - air(a + 1, b - 1) - (
-            self.face_t if anchored[0] else 0.0)
+        span = layout.z(b)[0] - layout.z(a)[1] - air(a + 1, b - 1) - self.face_t * (
+            anchored[0] + anchored[1])
         length = axle.segment(span, b - 1 > a and b - 1 not in links)
         return 0.0 if length is None else max(0.0, length - span)
 
@@ -527,7 +531,7 @@ class StandoffAxle:
         if axle is None:
             return []
         span = view.z(b)[0] - view.z(a)[1] - column_air(view, group, a + 1, b - 1) - (
-            self.face_t if anchored[0] else 0.0)
+            self.face_t * (anchored[0] + anchored[1]))
         length = axle.segment(span, b - 1 > a and b - 1 not in col.links)
         return [] if length is None else [axle.segment_key(length)]
 
@@ -610,8 +614,9 @@ class StandoffAxle:
                           "Screw each pillar's standoff column (one piece) to the outer plate: "
                           + "its button head and washer from outside"
                           + (", an 18 mm fender washer on the plate's inner face under the "
-                             "column's foot (matched to the columns' by caliper, within 0.05 "
-                             "mm)" if self.face_washer is not None else "")
+                             "column's foot and another on its top end for the inner plate "
+                             "(matched to the columns' by caliper, within 0.05 mm)"
+                             if self.face_washer is not None else "")
                           + f", threadlocker, to {self.tighten_nm:g} N·m while the column is "
                           "bare to hold.", "columns"))
         if inner:
@@ -655,18 +660,32 @@ class StandoffAxle:
             if col.roles[k][0] == "neck":
                 raise ConstructionError(f"{group.name}: a standoff can't neck down (layer {k})")
         shimmed: dict[int, float] = {}      # face -> the shims' thickness under it
-        trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
         long = 0.0          # how far the stock standoff (and take-up) is off its gap
         z0, z1 = build.z(a)[1], build.z(b)[0]
-        if self.face_washer is not None and anchored[0]:   # its foot on a washer
+        trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
+        if self.face_washer is not None:    # each anchored end on a washer on its plate
             wd = get(self.face_washer).dims
             tw = float(wd["t"])
-            out.bodies.append(hardware(f"{stem}_face{a}",
-                                       bored(disc(xy, float(wd["od"]) / 2, z0, z0 + tw), xy,
-                                             float(wd["id"]), z0, z0 + tw),
-                                       host, fab="purchased", bom_key=self.face_washer,
-                                       color=STEEL))
-            z0 += tw
+            for k, plate in ((a, anchored[0]), (b, anchored[1])):
+                if not plate:
+                    continue
+                if k == b:          # under the inner plate: in the clearance gap there
+                    g = build.plan.gaps.get(b - 1, 0.0) if b - 1 in col.washers else 0.0
+                    if g < tw - EPS:
+                        raise ConstructionError(
+                            f"{group.name}: no {tw:g} mm clearance gap under the inner plate "
+                            f"for its end's washer (layer {b - 1}'s gap {g:g} mm)")
+                    trim[b - 1] = tw
+                lo = z0 if k == a else z1 - tw
+                out.bodies.append(hardware(f"{stem}_face{k}",
+                                           bored(disc(xy, float(wd["od"]) / 2, lo, lo + tw),
+                                                 xy, float(wd["id"]), lo, lo + tw),
+                                           host, fab="purchased", bom_key=self.face_washer,
+                                           color=STEEL))
+                if k == a:
+                    z0 += tw
+                else:
+                    z1 -= tw
         span = z1 - z0 - column_air(build, group, a + 1, b - 1)
         length = self.segment(span, b - 1 > a and b - 1 not in col.links)
         if length is None:
@@ -687,7 +706,7 @@ class StandoffAxle:
                 zs0 = z1 - t
                 g = build.plan.gaps.get(b - 1, 0.0) if b - 1 in col.washers else 0.0
                 if g > 0:
-                    trim[b - 1] = min(t, g)
+                    trim[b - 1] = min(t + trim.get(b - 1, 0.0), g)
                 out.bodies.append(hardware(f"{stem}_shims{b}", ring(xy, self.shim_od(),
                                                                     self.stud_hole, zs0, z1),
                                            host, fab="purchased", bom_key=self.shim_key,

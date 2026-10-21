@@ -1752,7 +1752,12 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
     of it, the side's stiffness across (``stiffness``), the cradle box across the bay
     (``box``), and the strength rows they add (``rated``: the columns, a row per frame plate,
     the tie rods and their end joints) and the pillars' moments (``pillars``) for
-    :func:`loads_doc`."""
+    :func:`loads_doc`. Since design review round 3 (2026-10-20): each post's span from the
+    parts (:func:`check_spans`), the solve exact, both idealizations of the plates (faces and
+    mid-planes, the worse), second order with the side's buckling per angle (``buckling``,
+    a rated row), each plate section's stresses combined, every part on its specified
+    minimum yield (:func:`materials.allowable_mpa`), and the posts' screwed ends
+    (``joints``, :func:`post_joints`)."""
     from spiderpig import cradle_structure as cs
     from spiderpig.materials import allowable_mpa, link_sheets, thickness
 
@@ -2228,9 +2233,11 @@ POST_FACE = (12.0, 6.4)     # a post's end face on its plate (mm): the 12 mm sta
 #                             the plate's 6.4 mm hole
 POST_WASHER = (18.0, 1.6)   # the 18-8 fender washer under each post's foot (OD, its least
 #                             thickness): it spreads the face's edge into the outer plate
-POST_WASHED: dict[str, tuple[str, ...]] = {"pillar": ("foot",), "column": ("foot", "end")}
+POST_WASHED: dict[str, tuple[str, ...]] = {"pillar": ("foot", "end"),
+                                           "column": ("foot", "end")}
 """The post ends a fender washer spreads into its plate, by kind (design review round 3,
-laser-cut parts M1): every post's foot, a column's end too."""
+laser-cut parts M1): both ends of every post (a pillar's inner one in the clearance gap
+under the inner plate), so every post of a side is one length."""
 P_LIMIT_MPA = 269.0         # the frame plate's limiting surface pressure under a post's end
 #                             (VDI 2230 Part 1, Table A9, p_G: 5052 isn't tabulated; AlMg4.5Mn
 #                             F27, 5083, 325 MPa at Rm 260, scaled to 5052-H32's 215 minimum,

@@ -49,6 +49,14 @@ Here, from the vectors:
   (the gearbox's O: the side's own stiffness across there, or the other members there as
   cantilevers, ``k L``).
 
+* **Round 3** (design review round 3, 2026-10-20): the side's solve exact (:func:`_solve`:
+  Jacobi-scaled, no ridge; a frame not held raises :class:`SingularFrame`), the plates
+  optionally at their mid-planes (:class:`SidePlates`' ``mid``), the plates' members'
+  in-plane forces and the posts' axial ones as a geometric stiffness (:func:`_geo4`,
+  :func:`side_frame_solve`): the side's buckling factor per angle and its second-order
+  solve; each plate section's in-plane and out-of-plane stresses combined
+  (:func:`combined_sf`, :func:`grillage_axial`); a link's chord past its boss.
+
 Everything takes the cases' force vectors, so a caller rates any crank torque (a clutch's
 cap) or any angles (the toggles the jam case leaves out: :func:`cradle_report.structure`).
 """
