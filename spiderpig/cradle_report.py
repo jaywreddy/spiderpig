@@ -3205,9 +3205,12 @@ _BOX_OPEN = ("the cradle box as a 3D frame (simplification round 1, 2026-10-21):
              "yield (walking it holds). B's racking brace (simplification round 2, "
              "decanters.BRACE: a 2 in 6061 tube behind the rear saddle, keyed into both cradle "
              "links) can't go on A: A's hand crank (130 mm on a 230 mm reach) sweeps the bay's "
-             "drive end there, the tube 16-28 mm inside a hand on its grip; the user's call "
-             "(a reach of about 300 mm clears the tube and its socket's pad; "
-             "docs/agentlib/DECANTER.md, \"The cradle box across the bay\")")
+             "drive end there, the tube 16-28 mm inside a hand on its grip. A 1-3/4 in tube "
+             "mid-bay under the bottles closes the three (branch r2-a-brace, 2026-10-21) but "
+             "stands behind the decanter's neck at rest, and 5 of the page's 13 vessels no "
+             "longer fit under A's mouth: the user left A's jam open (2026-10-21), its box "
+             "rated for use, a hard jam able to twist it (docs/agentlib/DECISIONS.md, "
+             "\"A's cradle box left open at the jam\")")
 OPEN_AT_CAP: dict[str, dict[str, str]] = {
     "decanter_hinge": dict.fromkeys(("box:tie rods", "box:tie rod ends", "box:cradle link"),
                                     _BOX_OPEN)}

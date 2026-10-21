@@ -3442,3 +3442,23 @@ On the old fit 0d9449b was B 1,007.55 and A 847.47.
 - `spiderpig/cradle_report.py`, `cradle_structure.py`, `cradle_drive.py`, `cradle_pack.py`.
 - `tests/test_cradle.py`, `tests/test_order.py`; `docs/agentlib/DECANTER.md`.
 - The probes: `/root/.cache/spiderpig/tmp/simplify/r2-check/`, `r2-brace/`, `r2-int/`.
+
+### 2026-10-21: A's cradle box left open at the jam (the user's call, after A's brace was built)
+
+- **What:** cradle A keeps its three cradle-box rows open at the clutch's cap
+  (`cradle_report.OPEN_AT_CAP`: the tie rods 0.55, their end screws 1.02, the cradle link
+  0.17), rated for use (walking: rods 10.0, link 4.09).
+- **Why:** A's racking brace was built (branch `r2-a-brace`, not merged: a 1-3/4 in 6061 tube
+  mid-bay under the bottles, keyed into both cradle links; the box at the cap then rods 6.38,
+  screws 15.87, link 1.51, +USD 31.48). But the tube stands behind the decanter's neck at rest,
+  and 5 of the page's 13 vessels (RIEDEL Cabernet Magnum, Ultra Magnum, Veritas, Le Chateau,
+  Zalto Bordeaux) no longer fit under A's mouth at any riser stack, 5 more only lower. The
+  only brace that keeps the decanter's room (B's tube behind the rear saddle on a 300 mm crank
+  reach and 132 mm throw) sits on every margin: the crank 7 mm over MIL-STD-1472H's 125 mm,
+  the grip 21.9 of 22 N, the gearbox on its 1.25 floor. A is the secondary design; B (the main
+  one) has its brace with no decanter lost.
+- **The user, 2026-10-21:** "Leave A's jam open". A hard jam at the clutch's full torque can
+  twist A's box (its two cradle links, about USD 59 to re-cut); the use limits' "nothing under
+  the cradle box" stays the guard.
+- **Where:** `spiderpig/cradle_report.py` (`_BOX_OPEN`); the study
+  `/root/scratch/decant/simplify/r2/study_a_brace.md`; the built brace on `r2-a-brace`.
