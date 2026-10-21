@@ -2507,8 +2507,12 @@ def spacers(g: Grid, rows: Sequence[dict], avoid: np.ndarray | None = None,
     print with it, and goes in with it). Rounds of them until nothing slides or a round adds
     none.
 
-    *Caps*, the same way, for what lifts more than :data:`SPACER_HOLD` cells (:func:`_cap`):
-    a block on its top up to what is over it, or the lid. A spacer that still slides,
+    *Caps*, the same way, for what lifts more than :data:`SPACER_HOLD` cells (:func:`_cap`),
+    after a piece's restraints along the floor: a block on its top up to what is over it, or
+    the lid; where that is past :data:`CAP_REACH`, a column of corrugated to the lid
+    (``"filler +y"``, pack turn 4). A piece slides the more of on its own and with the
+    spacers that stand on it alone (:meth:`_Spacers.free`: a cap rides with it). A spacer
+    that still slides,
     standing on one piece, is taped to it (``Spacer.taped``); so is a piece, resting on one
     other piece (the map ``taped`` gets it). The pieces ``fillers`` names (the
     base board, on the carton's floor) are held by *fillers* instead (:func:`_filler`): a
@@ -2517,7 +2521,10 @@ def spacers(g: Grid, rows: Sequence[dict], avoid: np.ndarray | None = None,
 
     ``avoid``: cells no spacer takes (the clearance round a part nothing may bear on: a
     gauge, a clip, a gearbox, a screw head; :func:`part_cells`, grown a cell; ``bearless``
-    the parts' own). Spacers of one piece that face each other join (:func:`_bridges`); then
+    the parts' own). Spacers of one piece that face each other join (:func:`_bridges`); a
+    restraint that holds nothing the others don't goes (:func:`_prune`), two of one piece
+    that share a face are one print (:func:`_join_touching`); a spacer in two bodies is two
+    (:func:`_fit_bed`); then
     a support that still slides is left out where what it carries rests directly without it
     (:meth:`_Spacers.rests`). The grid's
     cells are the parts' conservative fill, so a spacer meets each part with up to a cell's
