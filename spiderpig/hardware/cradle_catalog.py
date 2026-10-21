@@ -806,3 +806,33 @@ register(
                  "spins on its plain shank.")
       for L, (pn, each, n, bag) in {90: ("5827", 1.68, 100, 109.06)}.items()),
 )
+
+
+# -- simplification round 1 (2026-10-21, the user's materials rule: no steel in a structural
+# part): the link pins cut from 6061-T6 rod (construction.pivots.rod_pin), their ends' washers,
+# the hand crank's knob screws (construction.handcrank.HANDLE_THUMB) --------------------------
+
+SPEEDY = "https://www.speedymetals.com/showproduct.aspx?productid="
+ROD_PINS_PER = 10
+"""Pins cut from one 12 in (304.8 mm) rod: the longest 5/16 in pin about 25 mm, a 2 mm saw
+cut and facing each."""
+
+register(
+    *(Item(key, f"{name} 6061-T6 round rod, 12 in (cut into the link pins)", "misc",
+           (Offer("Speedy Metals", SPEEDY + pid, pid, pack_qty=ROD_PINS_PER, price_usd=usd,
+                  verified=True,
+                  note=f"{name} Rd 6061-T6511 aluminum, extruded, 12 in; the product page "
+                       "fetched 2026-10-21 (the drive brainstorm's and review's): no diameter "
+                       "tolerance stated"),),
+           dims={"d": d, "length": 304.8, "yield_mpa": 241.3},
+           notes="A decanting cradle's link pins (construction.pivots.rod_pin): each cut to "
+                 "its measured stack, its ends tapped M3.")
+      for key, name, pid, usd, d in (("rod_6061_516", "5/16\"", "2436", 2.53, 7.9375),
+                                     ("rod_6061_38", "3/8\"", "2437", 2.59, 9.525))),
+    Item("m4_washer_9021", "M4 fender washer (DIN 9021, 4.3 x 12 x 1.0), 18-8", "washer",
+         (Offer("Bolt Depot", BD + "7321", "7321", price_usd=None, verified=False,
+                note="to fetch: Bolt Depot's 18-8 M4 fender washer"),),
+         dims={"id": 4.3, "od": 12.0, "t": 1.0},
+         notes="Under each rod pin's end screw, clamped on the rod's end face "
+               "(construction.pivots.rod_pin.END_WASHER)."),
+)

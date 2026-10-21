@@ -262,25 +262,27 @@ the defaults. A decanting cradle's links are 22 mm wide (two plate thicknesses o
 its pins' 8.2 mm holes, the 8 mm pivot pin's or the M6 Chicago barrel's: SendCutSend's rule)
 and its frame arms 24 mm; its pins' spacer rings 12.5 mm (the 8 mm pin and a wall)."""
 
-PRODUCT_PINS: dict[str, str] = {CRADLE: "pivot8"}
+PRODUCT_PINS: dict[str, str] = {CRADLE: "rod516"}
 """Per product: the link pin a design gets when it names the default (``chicago``): a
-decanting cradle's 8 mm hardened steel pivot pins (:data:`construction.pivots.pivot_pin.PIVOT8`,
-since 2026-10-13: a 6 L bottle's jam bent the M6 Chicago screw's stainless barrel;
-``chicago6`` is still there, ``--pin chicago6``), but at :data:`PRODUCT_PIN_JOINTS`."""
+decanting cradle's 5/16 in 6061-T6 rod pins, cut to their stacks, an M3 button head and a
+washer on each tapped end (:data:`construction.pivots.rod_pin.ROD516`, simplification round
+1, 2026-10-21: the user's materials rule, no steel in a structural part; the 8 mm hardened
+steel pivot pins of 2026-10-13, ``pivot8``, and ``chicago6`` are still there, ``--pin``), but
+at :data:`PRODUCT_PIN_JOINTS`."""
 
 PRODUCT_PIN_JOINTS: dict[str, dict[str, str]] = {
-    "decanter_rcm": dict.fromkeys(("K", "J2", "X", "Y"), "clevis8"),
+    "decanter_rcm": {"X": "rodclip516", "Y": "rodclip516", "P": "rod38"},
+    "decanter_hinge": {"E": "rod38"},
 }
 """Per product linkage, with its product's own pin (:data:`PRODUCT_PINS`): the joints that take
 another pin instead. B's X and Y, where its cradle link meets each side, take a
-quick-release clevis pin (``clevis8``, 2026-10-13: the passive side panel slides off its
-cradle link once their two clips are out, ``cradle_pack``); so do its K and J2 (design
-review round 1, 2026-10-14: the 18-8 pin holds their jam at SF 1.4 or more, where J2's M6
-Chicago screw had held 1.40 on an unstated alloy, with threadlocker and pliers). Its rod's
-pin P keeps the hardened steel (as a clevis pin it would hold 1.1), as A's one pin E does,
-and so does J: a clevis pin's clip and end stand in the cradle link's layer, and b6's rear
-arm X-Tr1 passes right over J (the planner finds no plan). Two pin types, no Chicago
-screw, nothing threadlocked."""
+quick-release pin (``rodclip516``: a hairpin cotter through the rod's drilled hole; the
+clevis pins' since 2026-10-13: the passive side panel slides off its cradle link once their
+two clips are out, ``cradle_pack``). The rod pins P (B) and E (A) are 3/8 in (``rod38``): in
+5/16 in 6061 they hold the clutch's cap at about 1.0 (the hardened 8 mm pin had held 2.75).
+K, J2 and J take the 5/16 in screw-ended pin (simplification round 1: K and J2 had been
+18-8 clevis pins for their strength alone, design review round 1; a clip at J stands in the
+cradle link's layer under b6's rear arm, no plan)."""
 
 PRODUCT_CHORD_R: dict[str, dict[str, dict[tuple[str, str], float]]] = {
     "decanter_rcm": {"b1": {("M", "P"): 13.0}, "b4": {("X", "K"): 14.0},

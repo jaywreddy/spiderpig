@@ -102,7 +102,7 @@ def test_cradle_defaults_and_the_hand_crank_only_for_cradles():
     assert is_cradle(cfg)
     assert (cfg.crank, cfg.sheet, cfg.frame_sheet, cfg.crank_sheet) == (
         "hand", "al5052_3p2mm", "al5052_4p8mm", "al6061_3p2mm")
-    assert (cfg.pin, cfg.pillar, cfg.params.link_radius) == ("pivot8", "standoff", 12.0)
+    assert (cfg.pin, cfg.pillar, cfg.params.link_radius) == ("rod516", "standoff", 12.0)
     assert BuildConfig(linkage="decanter_hinge", robot=False, pin="chicago6").pin == "chicago6"
     from spiderpig.materials import link_sheets
 
@@ -368,17 +368,17 @@ def test_a_cradle_side_stays_inside_its_claims(key, t, groups):
 
 
 @pytest.mark.construction
-def test_a_cradle_pin_is_a_hardened_pivot_pin_made_to_its_stack():
-    """The pins (``PIVOT8``): MISUMI's hardened 8 mm pivot pin, an E-ring at each end, L
-    made to its stack to the 0.1 mm (no take-up, its play the least and under a step more);
-    every link's hole the running fit (the M6 Chicago barrel's 8.2 mm), nothing bonded,
-    threaded or glued; rated as a solid 8 mm rod at class 8.8's yield."""
+def test_a_cradle_pin_is_a_6061_rod_pin_made_to_its_stack():
+    """The pins (``rod_pin``, simplification round 1: no steel in a structural part): a
+    6061-T6 cold-finished rod cut to its stack to the 0.1 mm (no take-up, its play the least
+    and under a step more), an M3 button head and a wide washer on each tapped end
+    (threadlocker 222); A's rod pin E 3/8 in, its links' holes the rod and the running fit
+    (9.79 mm), nothing bonded or glued; rated as a solid rod at 6061-T6's minimum yield."""
     import math
 
     from spiderpig.construction.axle import AxleGroup
     from spiderpig.construction.base import Build, Realized
-    from spiderpig.construction.pivots.chicago import CHICAGO_M6
-    from spiderpig.construction.pivots.pivot_pin import PIVOT8
+    from spiderpig.construction.pivots.rod_pin import END_SCREW, END_WASHER, LOCK, ROD38
     from spiderpig.fabricate import design_side, template_for
     from spiderpig.hardware.catalog import get
 
@@ -387,23 +387,26 @@ def test_a_cradle_pin_is_a_hardened_pivot_pin_made_to_its_stack():
     design = design_side(tmpl, cfg)
     build = Build(design.ctx, design.plan, tmpl.freeze_at(1.0))
     (pin,) = [g for g in design.groups if isinstance(g, AxleGroup) and not g.pillar]
-    assert pin.construction.key == PIVOT8.key
-    assert PIVOT8.hole() == pytest.approx(CHICAGO_M6.hole())
+    assert pin.construction.key == ROD38.key
+    assert ROD38.hole() == pytest.approx(3 / 8 * 25.4 + 0.2625)
     got = pin.realize(build, Realized())
     assert set(got.cuts) == set(pin.axis.members)
     for m in pin.axis.members:
-        assert [x.d for x in got.cuts[m]] == [pytest.approx(PIVOT8.hole())]
-    assert got.extras == []                     # no epoxy, no threadlocker
-    note = got.notes["pivot_pin"][pin.name]
+        assert [x.d for x in got.cuts[m]] == [pytest.approx(ROD38.hole())]
+    assert [x.key for x in got.extras] == [LOCK]        # no epoxy; threadlocker 222
+    note = got.notes["rod_pin"][pin.name]
     shaft = pin.construction.shaft
     assert shaft.min_play - 1e-9 <= note["play_mm"] < shaft.min_play + 0.1
     assert note["length_mm"] == pytest.approx(note["stack_mm"] + note["play_mm"])
     (body,) = [b for b in got.bodies if b.name.endswith("_pin")]
-    assert body.bom_key == note["item"]
-    assert get(body.bom_key).offer.sku == f"CCGH8-{note['length_mm']:g}-NC2.4"
+    assert body.bom_key == note["item"] == "rod_6061_38"
+    assert get(body.bom_key).offer.vendor
+    ends = [b for b in got.bodies if "_screw_" in b.name or "_washer_" in b.name]
+    assert sorted(b.bom_key for b in ends) == sorted([END_SCREW[2]] * 2 + [END_WASHER] * 2)
     section = got.notes["wobble"][pin.name]["section"]
-    assert section["yield_mpa"] == 640.0
-    assert section["z_bend_mm3"] == pytest.approx(math.pi * 8 ** 3 / 32, abs=1e-3)
+    assert section["yield_mpa"] == 241.3
+    assert section["z_bend_mm3"] == pytest.approx(math.pi * (3 / 8 * 25.4) ** 3 / 32,
+                                                  abs=1e-3)
 
 
 @pytest.mark.construction
@@ -450,7 +453,18 @@ def test_a_clevis_pin_takes_up_its_stack_and_its_clip_a_gap():
     from spiderpig.hardware.catalog import get
     from spiderpig.stack import GAP_MAX
 
-    assert {PRODUCT_PIN_JOINTS["decanter_rcm"][j] for j in "XY"} == {"clevis8"}
+    from spiderpig.construction.pivots.rod_pin import CLIP_STEP, RODCLIP516
+
+    assert {PRODUCT_PIN_JOINTS["decanter_rcm"][j] for j in "XY"} == {"rodclip516"}
+    # the 6061 clip pin (simplification round 1): its usable length to the 0.5 mm, its
+    # spacer the rest; its head the washer and the button head on its tapped end
+    rod = RODCLIP516.shaft
+    f = rod.take_up(13.1)
+    assert f.length == 13.5 and f.length % CLIP_STEP == 0.0
+    assert f.shims_lo + 13.1 + f.play == pytest.approx(13.5)
+    assert rod.outer(13.1) == pytest.approx(13.5 - 13.1 + rod.item()["head_h"])
+    assert rod.section().yield_mpa == 241.3
+    assert rod.key_of(13.5) == "rod_6061_516"
     shaft = CLEVIS8.shaft
     f = shaft.take_up(11.2)
     assert (f.length, f.shims_lo) == (15.0, pytest.approx(3.5))
@@ -474,15 +488,17 @@ def test_a_clevis_pin_takes_up_its_stack_and_its_clip_a_gap():
 
 @pytest.mark.slow
 @pytest.mark.construction
-def test_bs_x_and_y_are_clevis_pins_its_clips_over_the_cradle_link():
-    """B's pins X and Y (``clevis8``): the plan claims the head and spacer in the two layers
-    outside b4 (b5), the clip's whole reach in the gap over the cradle link and the pin's end
-    in the inner plate's open (a seat; the plate keeps off its path); built, the pin, its
-    printed spacer and its clip, every link's hole the M6 barrel's 8.2 mm, the spacer the
-    take-up to the 0.1 mm, the clip over the link by its play, the side within its claims."""
+def test_bs_x_and_y_are_clip_pins_its_clips_over_the_cradle_link():
+    """B's pins X and Y (``rodclip516``: 5/16 in 6061 rod, simplification round 1): the plan
+    claims the head and spacer in the two layers outside b4 (b5), the clip's whole reach in
+    the gap over the cradle link and the pin's end in the inner plate's open (a seat; the plate
+    keeps off its path); built, the rod, its washer and button head, its clip (and its printed
+    spacer where the take-up leaves one), every link's hole 8.2 mm, the usable length the
+    stack, the spacer and the play, the clip over the link by its play."""
     from spiderpig.construction.axle import AxleGroup
     from spiderpig.construction.base import Build, Realized
-    from spiderpig.construction.pivots.clevis import CLEVIS8, CLIP_REACH
+    from spiderpig.construction.pivots.clevis import CLIP_REACH
+    from spiderpig.construction.pivots.rod_pin import END_SCREW, END_WASHER, LOCK, RODCLIP516
     from spiderpig.fabricate import design_side, template_for
 
     cfg = BuildConfig(linkage="decanter_rcm", robot=False)
@@ -493,7 +509,7 @@ def test_bs_x_and_y_are_clevis_pins_its_clips_over_the_cradle_link():
     link = cr.cradle_link(cfg.lk)
     for j, bar in (("X", "b4"), ("Y", "b5")):
         (g,) = [g for g in design.groups if isinstance(g, AxleGroup) and g.name == f"pin:{j}"]
-        assert g.construction.key == CLEVIS8.key
+        assert g.construction.key == RODCLIP516.key
         k0, k1 = plan.layers[bar], plan.layers[link]
         assert k1 == plan.top - 1
         mine = plan.shapes(group=g.name)
@@ -505,19 +521,21 @@ def test_bs_x_and_y_are_clevis_pins_its_clips_over_the_cradle_link():
         assert (tip.layer, tip.seat) == (plan.top, True)
         got = g.realize(build, Realized())
         stem = g.name.replace(":", "_")
-        assert {b.name for b in got.bodies} >= {f"{stem}_pin", f"{stem}_spacer_lo",
-                                                f"{stem}_clip"}
+        assert {b.name for b in got.bodies} >= {f"{stem}_pin", f"{stem}_washer_lo",
+                                                f"{stem}_screw_lo", f"{stem}_clip"}
         keys = {b.name: b.bom_key for b in got.bodies}
-        assert keys[f"{stem}_pin"] == "clevis_pin8_15"
+        assert keys[f"{stem}_pin"] == "rod_6061_516"
+        assert (keys[f"{stem}_washer_lo"], keys[f"{stem}_screw_lo"]) == (END_WASHER,
+                                                                          END_SCREW[2])
         assert keys[f"{stem}_clip"] == "hairpin_cotter_2x50"
-        assert got.extras == []                 # nothing threaded, glued or locked
+        assert [x.key for x in got.extras] == [LOCK]
         for m in g.axis.members:
             assert [x.d for x in got.cuts[m]] == [pytest.approx(8.2)]
-        note = got.notes["clevis_pin"][g.name]
-        assert note["usable_mm"] == 15.0
-        assert note["spacer_mm"] + note["stack_mm"] + note["play_mm"] == pytest.approx(15.0)
-        assert 0.25 - 1e-9 <= note["play_mm"] < 0.35
-        assert got.notes["wobble"][g.name]["section"]["yield_mpa"] == 205.0
+        note = got.notes["rod_clip_pin"][g.name]
+        assert note["spacer_mm"] + note["stack_mm"] + note["play_mm"] == pytest.approx(
+            note["usable_mm"])
+        assert 0.25 - 1e-9 <= note["play_mm"] < 0.25 + 0.5 + 0.1
+        assert got.notes["wobble"][g.name]["section"]["yield_mpa"] == 241.3
 
 
 @pytest.mark.construction
