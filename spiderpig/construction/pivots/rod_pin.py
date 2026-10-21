@@ -1,13 +1,14 @@
-"""``rod516``, ``rod38``, ``rodclip516``: a decanting cradle's link pins cut from 6061-T6
-cold-finished round rod (simplification round 1, 2026-10-21: the user's materials rule, no
-steel in a structural part; they replace the hardened MISUMI CCGH8 pivot pins and the 18-8
-McMaster clevis pins: :mod:`construction.pivots.pivot_pin`, :mod:`construction.pivots.clevis`,
-still there).
+"""``rod516``, ``rod38``, ``rodclip516``: a decanting cradle's link pins cut from hard-anodized
+6061-T6 round rod (simplification round 1, 2026-10-21: the user's materials rule, no steel in
+a structural part, and the user's choice that every surface a link turns on be hard anodized
+and greased; they replace the hardened MISUMI CCGH8 pivot pins and the 18-8 McMaster clevis
+pins: :mod:`construction.pivots.pivot_pin`, :mod:`construction.pivots.clevis`, still there).
 
 **The parts.** A pin is a length of 6061-T6 round rod (:data:`ROD_D`: 5/16 in, or 3/8 in where
-the 5/16 in doesn't hold the clutch's cap: B's rod pin P, A's E), cold-finished (ASTM B211,
-its diameter within :data:`ROD_TOL`), cut to its stack plus the least play (to 0.1 mm,
-+0.1/-0: faced on the Carvera in a printed fixture, or filed to a caliper), and
+the 5/16 in doesn't hold the clutch's cap: B's rod pin P, A's E), McMaster's hard-anodized
+extruded rod (ASTM B221, a 0.001 in hard coat, its diameter within :data:`ROD_TOL`), cut to its
+stack plus the least play (to 0.1 mm, +0.1/-0: faced on the Carvera, or filed to a caliper),
+and
 
 * ``rod516`` / ``rod38``: each end drilled and tapped M3 (:data:`END_TAP`), an M3 x 6 ISO 7380
   button head (A2) through a wide washer (:data:`END_WASHER`, DIN 9021 M4: 12 mm across over
@@ -55,21 +56,38 @@ from spiderpig.shapes import difference, disc, ring, union
 IN = 25.4
 ROD_D: dict[str, float] = {"516": 5 / 16 * IN, "38": 3 / 8 * IN}
 """The pins' rod (mm): 5/16 in, 3/8 in."""
-ROD_KEY: dict[str, str] = {"516": "rod_6061_516", "38": "rod_6061_38"}
-"""Each rod's catalog key: a 12 in length, cut into pins (its pack)."""
+ROD_KEY: dict[str, str] = {"516": "rod6061ha_516_305", "38": "rod6061ha_38_305"}
+"""Each rod's catalog key: a 1 ft length of McMaster's hard-anodized 6061 (6750K14, 6750K15),
+cut into pins (its pack; Alcobra's bare cold-finished ``rod_6061_516`` / ``rod_6061_38`` until
+the user's choice of 2026-10-21)."""
 ROD_YIELD = 241.3
-"""MPa: 6061-T6's minimum yield, 35 ksi (the sheets' ``sheet_catalog.MIN_YIELD``; ASTM B211's
-cold-finished rod and B221's extruded the same)."""
-ROD_TOL = 0.0381
-"""A cold-finished rod's diameter tolerance either way (mm): +-0.0015 in at 0.125-0.500 in
-(Online Metals' aluminum tolerance table for 6061-T6 cold finish, ASTM B211, archived
-2025-08-08; Alcobra Metals' table for its B211 6061 rod from 0.375 in, fetched 2026-10-21).
-An extruded rod (ASTM B221, ANSI H35.2's Table 11.2) is +-0.008 in at 0.250-0.499: a laser's
-8.2 mm hole could jam on it."""
+"""MPa: 6061-T6's minimum yield, 35 ksi (the sheets' ``sheet_catalog.MIN_YIELD``; ASTM B221's
+extruded rod 0.250 in and over, the Aluminum Association's Table 11.1; B211's cold-finished
+the same)."""
+ROD_TOL = 0.2032
+"""The hard-anodized rod's diameter tolerance either way (mm): +-0.008 in (McMaster's 6750K14
+and 6750K15, ANSI H35.2's Table 11.2 for extruded rod 0.250-0.499 in); Alcobra's bare
+cold-finished rod had held +-0.0015 in. A rod at its top won't go into a laser's 8.2 mm hole at
+its bottom, so the guide calipers each stick on arrival (:data:`PIN_OVER`)."""
+COAT = 0.0254
+"""The hard coat's growth on the diameter (mm): its 0.001 in finish thickness, half of it
+outward on each side, taken over :data:`ROD_TOL` (McMaster doesn't say if its tolerance is the
+coated rod's)."""
+MATCH_TOL = 0.0381
+"""A keeper's pin as its bore is printed for it (mm either way): the stick calipered and the
+keeper printed to it (``construction.cradle.KEEPER``'s bore for the nominal rod, scaled by the
+reading), so a caliper's reading and the rod's roundness, the cold-finished rod's tolerance
+before (:data:`ROD_TOL` is the sticks' spread, not one stick's)."""
 ROD_FIT = 0.2625
 """A link's (and a printed ring's) hole over the rod: 8.2 mm for 5/16 in, the 8 mm pins' holes
-unchanged (diametral play 0.26 nominal, 0.10-0.43 with the laser's +-0.127 and the rod's
-:data:`ROD_TOL`, against the g6 pin's 0.08-0.34)."""
+unchanged (diametral play 0.26 nominal; with the laser's +-0.127 and the rod's :data:`ROD_TOL`
+and :data:`COAT`, -0.09 to 0.59: a stick over :data:`PIN_OVER`'s has its links' holes
+opened)."""
+PIN_OVER: dict[str, tuple[float, float, str]] = {"516": (8.05, 8.33, "21/64 in"),
+                                                 "38": (9.64, 9.92, "25/64 in")}
+"""Per rod: a stick calipered over the first (mm: the hole's least, 8.073 and 9.663, less a
+running clearance) has the holes of the links its pins go through opened with the drill (its
+mm, its size): by hand, in the drill press, the link clamped on scrap."""
 END_SCREW = (3.0, 6.0, "m3_bhcs_6")
 """Each tapped end's screw: M3 x 6 ISO 7380 A2 (thread, length, catalog key); through the
 washer, 5 mm into the rod."""
@@ -102,8 +120,35 @@ def _clip_lengths() -> tuple[float, ...]:
 
 
 def _section(d: float, what: str) -> Section:
-    return Section.rod(d, ROD_YIELD, name=f"{d:.2f} mm 6061-T6 rod pin ({what}, cold-finished, "
+    return Section.rod(d, ROD_YIELD, name=f"{d:.2f} mm 6061-T6 rod pin ({what}, hard-anodized, "
                                           f"solid, {ROD_YIELD:g} MPa)")
+
+
+STOCK_WORDS = (
+    "the hard-anodized rods (McMaster: 5/16 in 6750K14 and 3/8 in 6750K15 for the link pins, "
+    "1/2 in 6750K16 for the pivot posts and the crankpin; each +-0.008 or 0.009 in) and the "
+    "plain 1/2 in pieces (Speedy Metals, +-0.009 in). Write each stick's reading on it.")
+"""The arrival step's first sentence (``construction.cradle.shop_ops``)."""
+ARRIVAL_WORDS = (
+    "A pin stick reading over " + " or ".join(
+        f"{lo:g} mm ({'5/16' if k == '516' else '3/8'} in)" for k, (lo, _, _) in
+        PIN_OVER.items()) + " won't go into its links' laser-cut holes at their least: open "
+    "those links' holes with a " + " or ".join(f"{name} ({mm:g} mm)" for lo, mm, name in
+                                                 PIN_OVER.values())
+    + " drill, by hand in the drill press, each link clamped flat on scrap. The keepers "
+    "(B's TPU rings on its clip pins) are printed for the 5/16 in stick as read: scale their "
+    "STL in X and Y by (the reading - 0.56) / 7.38 in the slicer (7.38 mm is the bore drawn for "
+    "a 7.94 mm rod).")
+"""The arrival step's pins' check (:data:`PIN_OVER`, :data:`MATCH_TOL`)."""
+PIN_STOCK_WORDS = "its hard-anodized stick (the 5/16 in, or the 3/8 in for P and E)"
+"""What the pins' step cuts them from."""
+PIN_LINES = (
+    "Each pin's cut ends are bare and the hard coat is on its journal, where the links turn: "
+    "handle it by its ends, and grease the journal (the food-grade grease, a thin film) as it "
+    "goes in.",
+    "Each pin's ends are drilled and tapped M3 next (its M3 x 6 button heads go in with a "
+    "drop of threadlocker 222 as the stack goes up).")
+"""The pins' step's items."""
 
 
 @dataclass(frozen=True)
@@ -199,7 +244,7 @@ class RodPinAxle(PivotPinAxle):
     printed rings between (pins only)."""
 
     key: str = "rod516"
-    label: str = ("5/16 in 6061-T6 rod pin (cold-finished, cut to its stack) through the stack, "
+    label: str = ("5/16 in 6061-T6 rod pin (hard-anodized, cut to its stack) through the stack, "
                   "an M3 button head and a wide washer on each tapped end; printed rings (pins "
                   "only): a decanting cradle's")
     running_fit: float = ROD_FIT
@@ -242,8 +287,9 @@ class RodPinAxle(PivotPinAxle):
         k_hi = view.slot(view.z[hi[0]][0]) if hi else k_lo
         on = ("Each rod pin, on the bench: its lower washer and M3 button head into one end "
               "(a drop of threadlocker 222), snug with a 2 mm hex key; the pin up through its "
-              "lowest link from under it (the washer under the link), greased (the food-grade "
-              "grease: aluminium on aluminium); the link goes on with the pin standing in it.")
+              "lowest link from under it (the washer under the link), its journal greased (the "
+              "food-grade grease on its hard coat); the link goes on with the pin standing in "
+              "it.")
         top = ("Each rod pin's upper washer and M3 button head once its highest link is on "
                "(threadlocker 222), snug: the links must turn freely and lift their play (a few "
                "tenths of a mm; the worm can't be turned from the links: turn the gearbox's "
@@ -339,7 +385,7 @@ class RodClipAxle(ClevisPinAxle):
     over a printed spacer outside the lowest link, a hairpin cotter past the highest."""
 
     key: str = "rodclip516"
-    label: str = ("5/16 in 6061-T6 rod pin (cold-finished), its head an M3 button head and a "
+    label: str = ("5/16 in 6061-T6 rod pin (hard-anodized), its head an M3 button head and a "
                   "wide washer on its tapped end inside the stack over a printed spacer, a "
                   "hairpin cotter (R-clip) through its drilled hole from the bay: a decanting "
                   "cradle's quick-release pin (pins only)")
@@ -379,7 +425,7 @@ class RodClipAxle(ClevisPinAxle):
 
 ROD516 = RodPinAxle()
 ROD38 = RodPinAxle(key="rod38",
-                   label=("3/8 in 6061-T6 rod pin (cold-finished, cut to its stack) through the "
+                   label=("3/8 in 6061-T6 rod pin (hard-anodized, cut to its stack) through the "
                           "stack, an M3 button head and a wide washer on each tapped end; "
                           "printed rings (pins only): a decanting cradle's rod pin"),
                    shaft=RodPinShaft(family="rod38", rod="38",

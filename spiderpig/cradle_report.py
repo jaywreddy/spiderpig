@@ -762,12 +762,13 @@ KEEPER_PUSH_MAX_N = 120.0   # its push on, at the bore's nominal interference: b
 KEEPER_BORE_TOL = 0.15      # the keeper's bore as printed, either way (cradle.KEEPER's least
 #                             interference is the pin's least less the bore's most)
 def _pin_most() -> float:
-    """The quick-release pin's most diameter (mm): the 5/16 in cold-finished rod's nominal and
-    its tolerance (:mod:`construction.pivots.rod_pin`; McMaster's 8 mm clevis pin's 7.99
-    before simplification round 1)."""
-    from spiderpig.construction.pivots.rod_pin import ROD_TOL, RODCLIP516
+    """The quick-release pin's most diameter (mm), as its keeper is printed for it: the 5/16
+    in rod's nominal and its keeper's match (:data:`construction.pivots.rod_pin.MATCH_TOL`:
+    the hard-anodized stick calipered and the keeper printed to it; McMaster's 8 mm clevis
+    pin's 7.99 before simplification round 1)."""
+    from spiderpig.construction.pivots.rod_pin import MATCH_TOL, RODCLIP516
 
-    return RODCLIP516.shaft.d + ROD_TOL
+    return RODCLIP516.shaft.d + MATCH_TOL
 
 
 PIN_MOST = round(_pin_most(), 4)

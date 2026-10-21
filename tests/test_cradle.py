@@ -302,6 +302,13 @@ def test_a_cradles_cutting_fit_holds_to_the_live_quotes():
     assert totals["A"][0] == pytest.approx(573.82)
     for live, fit in totals.values():
         assert fit == pytest.approx(live, rel=0.02)
+    # and the frame plates' live quotes of 2026-10-21 (simplification round 1), checked, not
+    # fitted: the outer +8.2 %, the inner -7.2 %
+    from spiderpig.hardware.bom import CRADLE_LIVE_QUOTES
+
+    for _, key, part, q, area, cut, n, long_, short, usd in CRADLE_LIVE_QUOTES:
+        got = cut_estimate(key, [CutPart(area, q, cut, n, long_, short)], CRADLE_CUT_FITS[key])
+        assert got == pytest.approx(usd, rel=0.11), part
 
 
 @pytest.mark.no_fabricate
@@ -370,7 +377,7 @@ def test_a_cradle_side_stays_inside_its_claims(key, t, groups):
 @pytest.mark.construction
 def test_a_cradle_pin_is_a_6061_rod_pin_made_to_its_stack():
     """The pins (``rod_pin``, simplification round 1: no steel in a structural part): a
-    6061-T6 cold-finished rod cut to its stack to the 0.1 mm (no take-up, its play the least
+    6061-T6 hard-anodized rod cut to its stack to the 0.1 mm (no take-up, its play the least
     and under a step more), an M3 button head and a wide washer on each tapped end
     (threadlocker 222); A's rod pin E 3/8 in, its links' holes the rod and the running fit
     (9.79 mm), nothing bonded or glued; rated as a solid rod at 6061-T6's minimum yield."""
@@ -399,7 +406,7 @@ def test_a_cradle_pin_is_a_6061_rod_pin_made_to_its_stack():
     assert shaft.min_play - 1e-9 <= note["play_mm"] < shaft.min_play + 0.1
     assert note["length_mm"] == pytest.approx(note["stack_mm"] + note["play_mm"])
     (body,) = [b for b in got.bodies if b.name.endswith("_pin")]
-    assert body.bom_key == note["item"] == "rod_6061_38"
+    assert body.bom_key == note["item"] == "rod6061ha_38_305"
     assert get(body.bom_key).offer.vendor
     ends = [b for b in got.bodies if "_screw_" in b.name or "_washer_" in b.name]
     assert sorted(b.bom_key for b in ends) == sorted([END_SCREW[2]] * 2 + [END_WASHER] * 2)
@@ -464,7 +471,7 @@ def test_a_clevis_pin_takes_up_its_stack_and_its_clip_a_gap():
     assert f.shims_lo + 13.1 + f.play == pytest.approx(13.5)
     assert rod.outer(13.1) == pytest.approx(13.5 - 13.1 + rod.item()["head_h"])
     assert rod.section().yield_mpa == 241.3
-    assert rod.key_of(13.5) == "rod_6061_516"
+    assert rod.key_of(13.5) == "rod6061ha_516_305"
     shaft = CLEVIS8.shaft
     f = shaft.take_up(11.2)
     assert (f.length, f.shims_lo) == (15.0, pytest.approx(3.5))
@@ -524,7 +531,7 @@ def test_bs_x_and_y_are_clip_pins_its_clips_over_the_cradle_link():
         assert {b.name for b in got.bodies} >= {f"{stem}_pin", f"{stem}_washer_lo",
                                                 f"{stem}_screw_lo", f"{stem}_clip"}
         keys = {b.name: b.bom_key for b in got.bodies}
-        assert keys[f"{stem}_pin"] == "rod_6061_516"
+        assert keys[f"{stem}_pin"] == "rod6061ha_516_305"
         assert (keys[f"{stem}_washer_lo"], keys[f"{stem}_screw_lo"]) == (END_WASHER,
                                                                           END_SCREW[2])
         assert keys[f"{stem}_clip"] == "hairpin_cotter_2x50"
@@ -1100,8 +1107,9 @@ def test_the_base_board_is_rounded_offset_and_locates_its_riser():
     assert ear is not None                               # its ear
     assert sum(p.volume for p in ear.solids()) > 1.0
     cleats = cr._cleats([-110.0, 386.0], y_top, 209.7, 1, 4.775)
-    assert len(cleats) == 2
+    assert len(cleats) == 4         # (two 452 mm cleats, each in two for the Carvera's bed)
     for c in cleats:
+        assert c.bounding_box().size.X <= cr.CARVERA_LONGEST
         b = c.bounding_box()
         assert -110.0 + cr.BRACKET[0] / 2 <= b.min.X
         assert 386.0 - cr.BRACKET[0] / 2 >= b.max.X
@@ -1880,8 +1888,8 @@ def test_b_stands_turns_easily_and_holds():
     assert k["load_ratio"] >= k["load_bar"] == 1.5
     assert all(x["push_on_n"] <= k["push_on_bar_n"] == 120.0 for x in k["rows"])
     # the packing review's m1 (pack turn 2): at the tight end too (the bore 0.15 mm under,
-    # the pin at its most, the cold-finished rod's 7.976 mm: 0.75 mm), still by hand with a
-    # tube over the pin
+    # the pin at its most as its keeper is printed for it, 7.976 mm: 0.75 mm), still by hand
+    # with a tube over the pin
     assert k["tight_mm"] == pytest.approx(0.75)
     assert all(x["push_on_tight_n"] <= k["push_on_bar_n"] for x in k["rows"])
     # and its M2: the box onto the drive side lying down, pin X first: its centre of mass
@@ -2635,9 +2643,9 @@ def test_a_tie_rods_end_joint_slips_past_its_friction():
     """A tie rod's end joint (``cradle_structure.TieRod``): its twist held by its face's and,
     its screw threadlocked into the rod, its head's friction on the cradle link (the M6 class
     10.9 button head at 6 N·m: 3.8 kN at friction 0.2, 7.0 N·m on the 1/2 in rod's face; the
-    face alone 3.7), its face shut to the preload over its kern (7.5 N·m). Past that twist the joint turns on the
-    link (``box_frame``): the rod carries no more, the rest of the moment goes into bending
-    the links out of their plane, and the box racks far more."""
+    face alone 3.7), its face shut to the preload over its kern (7.5 N·m). Past that twist the
+    joint turns on the link (``box_frame``): the rod carries no more, the rest of the moment
+    goes into bending the links out of their plane, and the box racks far more."""
     from spiderpig import cradle_structure as cs
     from spiderpig.cradle_report import SLIP_MU, box_links, box_rods
 
@@ -4188,10 +4196,15 @@ def test_the_boards_bay_points_the_locators_ears_and_the_cleats_ends_are_rounded
                 assert not solid_at(part, x0 + e * 3.0, s * (edge + 1.0), yl)
         inter = part & board
         assert inter is None or sum(p.volume for p in inter.solids()) < 1e-3
-    for c in cr._cleats([-110.0, 386.0], y_top, 209.7, 1, 4.775):
+    pieces = cr._cleats([-110.0, 386.0], y_top, 209.7, 1, 4.775)
+    ends = (min(c.bounding_box().min.X for c in pieces),
+            max(c.bounding_box().max.X for c in pieces))
+    for c in pieces:        # a cleat's own ends rounded, its pieces' joint ends square
         b = c.bounding_box()
         assert pytest.approx(cr.CLEAT[0]) == b.max.Z - b.min.Z
         yc = y_top + cr.BASE_T / 2
-        assert not solid_at(c, b.min.X + 0.5, b.min.Z + 0.5, yc)
-        assert solid_at(c, b.min.X + cr.CLEAT_END_R, b.min.Z + 0.5, yc)
-        assert solid_at(c, b.min.X + 0.5, (b.min.Z + b.max.Z) / 2, yc)
+        for x, e in ((b.min.X, 1), (b.max.X, -1)):
+            outer = min(abs(x - ends[0]), abs(x - ends[1])) < 1e-6
+            assert solid_at(c, x + e * 0.5, b.min.Z + 0.5, yc) is not outer
+            assert solid_at(c, x + e * cr.CLEAT_END_R, b.min.Z + 0.5, yc)
+            assert solid_at(c, x + e * 0.5, (b.min.Z + b.max.Z) / 2, yc)

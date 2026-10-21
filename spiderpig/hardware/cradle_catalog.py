@@ -519,10 +519,18 @@ register(
       for n, (pn, each, per100) in M6_BHCS_BD.items()),
     *(Item(f"m6_bhcs109_{n}", f"M6 x {n} button head socket screw (ISO 7380), class 10.9 "
            "steel, unplated", "fastener",
-           (Offer("Accu", ACCU + "socket-button-screws/" + path, sku, price_usd=tiers[0][1],
+           (Offer("Fastenal", FASTENAL + "1139912", "1139912", pack_qty=50, price_usd=9.93,
+                  verified=True,
+                  note="M6-1.0 x 16mm L 4mm Hex Drive Class 10.9 Black Oxide Alloy Steel Button "
+                       "Head Socket Cap Screw, package of 50, USD 9.93 (its search page rendered "
+                       "2026-10-21, 05:09Z; the page names no standard, the head is ISO 7380's; "
+                       "black oxide, not electroplated: no hydrogen embrittlement, ISO 4042). "
+                       "In Fastenal's cart with the A2-70 screws: Accu's cart goes "
+                       "(simplification round 1)"),
+            Offer("Accu", ACCU + "socket-button-screws/" + path, sku, price_usd=tiers[0][1],
                   verified=True, tiers=tiers,
                   note="class 10.9 steel (High Tensile), ISO 7380, finish Natural (unplated), "
-                       "4 mm key; sold singly; page rendered 2026-10-20"),),
+                       "4 mm key; sold singly; page rendered 2026-10-20")),
            dims={"d": 6.0, "length": float(n), "head_d": 10.5, "head_h": 3.3,
                  "property_class": "10.9", "proof_n": 0.8 * 830.0 * 20.1})
       for n, (path, sku, tiers) in M6_BHCS_109.items()),
@@ -584,11 +592,17 @@ register(
                "and never again: the insert holds it where a hand can't check it."),
     Item("grease_h1", "Food-grade synthetic grease (NSF H1), PTFE, 3 oz tube: Super Lube "
          "21030", "misc",
-         (Offer("Altex", "https://altex.com/products/super-lube-multi-purpose-synthetic-grease-"
+         (Offer("McMaster-Carr", "https://www.mcmaster.com/1378K31/", "1378K31",
+                price_usd=9.14, verified=True,
+                note="Food-Grade Grease with Silica, 3 fl oz tube, NSF H1, synthetic oil with "
+                     "PTFE, NLGI 2, -45 to 450 °F (the page names no brand; its specs are Super "
+                     "Lube 21030's); page rendered 2026-10-21. In McMaster's cart with the hard "
+                     "rods: Altex's cart goes (simplification round 1)"),
+          Offer("Altex", "https://altex.com/products/super-lube-multi-purpose-synthetic-grease-"
                 "with-syncolon-3oz-21030", "21030", price_usd=11.99, verified=True,
                 note="Super Lube multi-purpose synthetic grease with Syncolon (PTFE), 3 oz, "
                      "NSF H1 (registration 096790); page fetched 2026-10-20 (design review "
-                     "round 3, the stand and use's m10)"),),
+                     "round 3, the stand and use's m10)")),
          notes="Every greased face of a decanting cradle (hardware.bom.CRADLE_GREASE_NOTE): "
                "the front saddle's box guide and thumbscrew and the rear lead screw sit in the "
                "wine's path, so the grease is one rated for incidental food contact; the same "
@@ -946,11 +960,18 @@ register(
          dims={"id": 8.0, "od": 12.0, "length": 20.0, "e_mpa": 193000.0, "yield_mpa": 205.0},
          notes="The gearbox riser's sleeves (construction.handcrank.RISER_SLEEVE): one on "
                "each stud, the ring to the shims, clamped."),
-    Item("shim_8x14x0p5", "304 stainless flat shim 8 x 14 x 0.5 mm (pack of 20)", "washer",
-         (Offer("Harfington (uxcell)", "https://www.harfington.com/products/p-1378778",
+    Item("shim_8x14x0p5", "18-8 stainless ring shim 8 x 14 x 0.5 mm (pack of 25)", "washer",
+         (Offer("McMaster-Carr", "https://www.mcmaster.com/98089A336/", "98089A336",
+                pack_qty=25, price_usd=8.44, verified=True,
+                note="18-8 stainless steel ring shim, 8 mm ID, 14 mm OD, 0.5 mm thick "
+                     "(+-0.064 mm), pack of 25; page rendered 2026-10-21 (no aluminium ring "
+                     "shim of 8 mm bore at McMaster: its aluminium ones are 6, 10, 12 mm and up, "
+                     "the alloy unnamed). In McMaster's cart: Harfington's goes "
+                     "(simplification round 1)"),
+          Offer("Harfington (uxcell)", "https://www.harfington.com/products/p-1378778",
                 "a23040700ux0239", pack_qty=20, price_usd=6.14, verified=True,
                 note="20 pcs M8 304 ultra-thin flat washers 8 x 14 x 0.5 mm; the product JSON "
-                     "fetched 2026-10-20 (2026-10-10 the same)"),),
+                     "fetched 2026-10-20 (2026-10-10 the same)")),
          dims={"id": 8.0, "od": 14.0, "t": 0.5, "e_mpa": 193000.0, "yield_mpa": 205.0},
          notes="The gearbox riser's go/no-go shims (construction.handcrank.RISER_SHIM), over "
                "each sleeve under the outer plate."),
@@ -1058,26 +1079,52 @@ register(
            2.75, 9.525, ROD_PINS_PER, "the link pins"),
           ("rod_6061_12", "1/2\"", "1-2-6061t651-alum-round-cold-finish/", ".5\" 6061T651",
            4.21, 12.7, 7, "the crankpins"))),
-    Item("m4_washer_9021", "M4 fender washer (DIN 9021, 4.3 x 12 x 1.0), A2 stainless",
+    *(Item(key, f"{name} hard-anodized 6061-T6 round rod, 1 ft (McMaster {sku}; cut into "
+           "the link pins)", "misc",
+           (Offer("McMaster-Carr", f"https://www.mcmaster.com/{sku}/", sku, pack_qty=ROD_PINS_PER,
+                  price_usd=usd, verified=True,
+                  note=f"Anodized Multipurpose 6061 Aluminum Rod, {name}, Anodize Type Hard, "
+                       "gray, finish thickness 0.001 in, extruded, T6, ASTM B221, diameter "
+                       "+-0.008 in; 1 ft (3 ft USD " + f"{usd3:.2f}); the family page rendered "
+                       "2026-10-21 (no tighter hard-anodized rod at McMaster: its ceramic-coated "
+                       "ground shafts aren't made in 5/16 in)"),),
+           dims={"d": d, "length": 304.8, "yield_mpa": 241.3, "tol_mm": 0.2032,
+                 "coat_mm": 0.0254, "material": "aluminium"},
+           notes="A decanting cradle's link pins (construction.pivots.rod_pin, simplification "
+                 "round 1, 2026-10-21: the user's choice, every surface a link turns on hard "
+                 "anodized and greased; Alcobra's bare cold-finished rod before): each cut to its "
+                 "stack, its ends tapped M3, its cut ends bare.")
+      for key, name, sku, usd, usd3, d in (
+          ("rod6061ha_516_305", "5/16\"", "6750K14", 11.81, 26.25, 7.9375),
+          ("rod6061ha_38_305", "3/8\"", "6750K15", 12.32, 27.38, 9.525))),
+    Item("m4_washer_9021", "M4 fender washer (4.3 x 12 x 1.0, DIN 9021's), 18-8 stainless",
          "washer",
-         (Offer("Belmetric", "https://belmetric.com/fender-washer-a2-stainless-din-9021/",
+         (Offer("Bolt Depot", BD + "7313", "7313", price_usd=0.08, verified=True,
+                tiers=((1, 0.08), (100, 0.0518)),
+                note="M4 x 12 mm fender washer, 18-8, 0.9-1.1 mm thick (its table; DIN 9021's "
+                     "size, the page names no standard); page rendered 2026-10-21"),
+          Offer("Belmetric", "https://belmetric.com/fender-washer-a2-stainless-din-9021/",
                 "WFE4X12SS", price_usd=0.10, verified=True,
                 tiers=((1, 0.10), (25, 0.07)),
                 note="A2 stainless DIN 9021 M4, 12 mm OD; its price lookup fetched 2026-10-21 "
-                     "(Bolt Depot refused scripts that day; free shipping from USD 99)"),),
+                     "(Bolt Depot refused scripts that day; free shipping from USD 99)")),
          dims={"id": 4.3, "od": 12.0, "t": 1.0},
          notes="Under each rod pin's end screw, clamped on the rod's end face "
                "(construction.pivots.rod_pin.END_WASHER)."),
     *(Item(f"m3_shcs_a2_{L}", f"M3 x {L} socket head cap screw (DIN 912 / ISO 4762), A2 "
            "stainless", "fastener",
-           (Offer("Belmetric", "https://belmetric.com/m3x0-5-a2-stainless-din-912-allen-socket-"
+           (Offer("Bolt Depot", BD + bd, bd, price_usd=0.06, verified=True,
+                  tiers=((1, 0.06), (100, per100 / 100)),
+                  note="M3 x " + f"{L} socket cap screw, 18-8 (A-2), head 5.32-5.68 x 2.86-3.00 "
+                       "mm (ISO 4762's; the page names no standard); page rendered 2026-10-21"),
+            Offer("Belmetric", "https://belmetric.com/m3x0-5-a2-stainless-din-912-allen-socket-"
                   "head-cap-screw/", f"BSH3X{L}SS", price_usd=0.09, verified=True,
                   tiers=((1, 0.09), (25, 0.07)),
                   note="A2 stainless DIN 912 M3; its price lookup fetched 2026-10-21 (Bolt "
-                       "Depot refused scripts that day)"),),
+                       "Depot refused scripts that day)")),
            dims={"d": 3.0, "length": float(L), "head_d": 5.5, "head_h": 3.0,
                  "clearance_d": 3.4},
            notes="A decanting cradle's hand crank's thumb screws, a printed knob pressed over "
                  "the head (construction.handcrank.HANDLE_THUMB, CAP_SCREW).")
-      for L in (8, 10)),
+      for L, bd, per100 in ((8, "6379", 4.07), (10, "6380", 4.27))),
 )

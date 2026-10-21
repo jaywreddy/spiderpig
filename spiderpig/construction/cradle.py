@@ -104,6 +104,7 @@ from spiderpig.shapes import (
     cut_holes,
     difference,
     disc,
+    intersection,
     moved,
     pill,
     pills,
@@ -552,6 +553,16 @@ CLEAT_LEAD = 2.0                # a lead-in sanded at 45° on each cleat's top e
 #                                 so the rails find their slots blind (round 2: 0.15 mm a side)
 CLEAT_END_R = 5.0               # a cleat's four corners rounded (design review round 2,
 #                                 2026-10-15: no square birch ends)
+HOME_SHEET = "birch_3_8_panel"  # the cleats and the riser locator: Woodcraft's 3/8 in (9 mm)
+#                                 Baltic birch panels, cut at home on the Makera Carvera
+#                                 (simplification round 1, 2026-10-21, the user's choice;
+#                                 SendCutSend's routed BASE_SHEET before: the board stays)
+CARVERA_LONGEST = 285.0         # a part's longest side cut on the Carvera: a 12 in panel's
+#                                 300 mm nest (sheet_catalog.CARVERA_PANEL) less the packer's
+#                                 3 mm margins, with room
+CLEAT_JOINT = 1.0               # a cleat longer than that comes in equal pieces butted end to
+#                                 end on its pencil marks, this far apart, each glued along its
+#                                 length (B's 452 mm ones in two), their joint ends square
 BOARD_WINDOW = (285.0, 390.0, 105.0, 20.0)
 """A window through the base board under the base stop's lowest sweep (design review round
 2, 2026-10-14): from and to (x behind the mouth), its half-width across the bay's middle and
@@ -1075,7 +1086,7 @@ class CradleTies(Group):
                    f"(threadlocker, {TIE_TIGHTEN_NM:g} N·m on the key: closed, the joint holds "
                    "the box's walking moment without working); the rods "
                    "stand up from its bay side. It goes onto the stack rods up, its bores "
-                   "down over the steel and the pins it rides.", "cradle_link",
+                   "down over the posts and the pins it rides.", "cradle_link",
                    sub=True), *ops]
 
     def motion(self, got: Realized) -> Motion:
@@ -3136,10 +3147,19 @@ def _cleats(xs: list[float], y_top: float, face: float, sign: int, t_frame: floa
     xs = sorted(xs)
     for xa, xb in itertools.pairwise(xs):
         a, b = xa + BRACKET[0] / 2 + gap, xb - BRACKET[0] / 2 - gap
+        n = math.ceil((b - a) / CARVERA_LONGEST - 1e-9)       # its pieces (the Carvera's bed)
+        each = (b - a - (n - 1) * CLEAT_JOINT) / n
         for z0, z1 in ((face + sign * play, face + sign * (play + width)),
                        (inner - sign * play, inner - sign * (play + width))):
             za, zb = sorted((z0, z1))
-            out.append(_rounded(a, b, za, zb, y_top, y_top + BASE_T, CLEAT_END_R))
+            whole = _rounded(a, b, za, zb, y_top, y_top + BASE_T, CLEAT_END_R)
+            if n == 1:
+                out.append(whole)
+                continue
+            for i in range(n):          # the whole cleat's outline, cut square between
+                x0 = a + i * (each + CLEAT_JOINT)
+                out.append(intersection(whole, _box(x0, x0 + each, y_top - 1.0,
+                                                    y_top + BASE_T + 1.0, za - 1.0, zb + 1.0)))
     return out
 
 
@@ -3225,10 +3245,11 @@ KEEPER = (7.38, 0.36)
 turn 1, 2026-10-14): the printed ring each clip pin's plan puts in the gap between its
 lowest link (b4, b5) and the cradle link, printed in TPU 95A with its bore (mm) under the
 pin, so it grips the pin (:func:`spiderpig.cradle_report.keepers`); and the least
-interference a print may come out with (mm, on the diameter: the 5/16 in cold-finished 6061
-rod 7.899-7.976 mm since simplification round 1, 2026-10-21, and the bore printed to within
-0.15 mm; it was 7.4 and 0.4 on McMaster's 8 mm clevis pin, 7.95-7.99: the rod's wider
-tolerance keeps the tight end's push on under 120 N). A side lying down with its pins' clips
+interference a print may come out with (mm, on the diameter: the 5/16 in hard-anodized 6061
+stick as calipered, within 0.038 mm, the keeper printed to it, ``rod_pin.MATCH_TOL``, since
+simplification round 1, 2026-10-21, and the bore printed to within 0.15 mm; it was 7.4 and 0.4
+on McMaster's 8 mm clevis pin, 7.95-7.99: the rod's wider tolerance keeps the tight end's push
+on under 120 N). A side lying down with its pins' clips
 out holds them by their keepers: each pin's head is under its link with nothing under it,
 and a bare pin drops out. So the cradle box lifts off the drive side as it lies
 (:func:`module_steps`), and the passive panel lifts off with its pins and their keepers on
@@ -3560,14 +3581,14 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                                        fab="purchased" if key else "printed", bom_key=key,
                                        color=TIE_COLOR if key else KNOB_COLOR))
         cleats += [hardware(f"base_cleat_{s}{i}", part, frame_host, fab="laser",
-                            sheet=BASE_SHEET, color=BOARD_COLOR)
+                            sheet=HOME_SHEET, color=BOARD_COLOR)
                    for i, part in enumerate(_cleats([xy[0] for xy in feet_xy.values()], y_top,
                                                     face, sign, t_frame))]
     plate_part, foot_xz = _base_plate(cf.lip, stand, y_top, base_holes, base_z(lk))
     extras.append(hardware("base_plate", plate_part, frame_host, fab="laser",
                            sheet=BASE_SHEET, color=BOARD_COLOR))
     extras += cleats
-    extras += [hardware(f"riser_locator_{k}", part, frame_host, fab="laser", sheet=BASE_SHEET,
+    extras += [hardware(f"riser_locator_{k}", part, frame_host, fab="laser", sheet=HOME_SHEET,
                         color=BOARD_COLOR)
                for k, part in enumerate(_riser_locator(cf.lip, y_top - BASE_T - FOOT_PAD_H))]
     glue = [BomLine(WOOD_GLUE, 1, "the base board's cleats and the riser locator's layers"),
@@ -3844,7 +3865,160 @@ def assembly(view) -> list:
                               (intro if tag == "pack" and i == 1 else "") + m.text,
                               f"{tag}_{i:02d}", count=False, lines=m.lines,
                               scene=cast(Scene | None, m.scene)))
+    return ops + shop_ops(view)
+
+
+ARRIVAL_LEAST_T: dict[str, dict[str, float]] = {"decanter_rcm": {"b1": 5.79}}
+"""Per cradle, a link's least thickness on arrival (mm, calipered at its middle): B's rod b1,
+0.250 in 5052, buckles at the clutch's cap at 1.72 on its nominal thickness, and Euler's load
+goes as its cube, so 1.3 needs 0.756 of it cubed (SendCutSend's 0.250 in may come 0.027 in
+thin: 1.22 there; simplification round 1's drive check). Thinner: ask SendCutSend for a
+remake."""
+POST_OVER = (12.85, 13.10, "33/64 in")
+"""A pivot post calipered over the first (mm: ANSI H35.2's +-0.009 in on the 1/2 in rod, and
+the laser's +-0.127 on its link's 13.05 mm bore: a post at its top won't go into a bore at
+its bottom) has its link's bore opened with this drill (mm, its size; simplification round
+1's stand check, C3)."""
+FACE_SQUARE_DEG = 0.1
+"""Each rod's ends faced square on the Carvera to this (degrees: 0.02 mm across a 12.7 mm
+face, a machinist's square shows no light under it): an end face 0.25° out takes most of a
+tie rod's end joint's gap moment (simplification round 1's box review)."""
+
+
+def shop_ops(view) -> list:
+    """The cradle's shop work before its first part goes on (``construction.assembly``'s
+    ``SHOP`` stage; simplification round 1, 2026-10-21: the posts, tie rods, pins and the
+    crankpin are 6061 rod made at home, and the cleats and the riser locator are cut on the
+    Carvera): the arrival checks, the rods cut to length and faced, drilled and tapped, the
+    pins cut to their calipered stacks, the Carvera's birch. No part goes on in them: each
+    says what it makes, from the bodies' catalog keys (``view.keys``)."""
+    import re
+
+    from spiderpig import linkage
+    from spiderpig.construction.assembly import SHOP, Op, Scene
+    from spiderpig.construction.pivots import rod_pin as rp
+    from spiderpig.hardware.order import PIN_TAKE_UP_MM
+
+    key = str(view.meta.get("cradle_linkage") or "")
+    if not key:
+        return []
+    lk = linkage.get(key)
+    keys = {n: str(k or "") for n, k in view.keys.items()}
+    crankpin = [n for n in keys if n.endswith(".crankpin")]
+    hard = sorted(n for n, k in keys.items() if k.startswith("rod6061ha_12p7_m6_")
+                  and n not in crankpin)
+    plain = sorted(n for n, k in keys.items() if k.startswith("rod6061_"))
+    pins = sorted(n for n, k in keys.items() if k in rp.ROD_KEY.values()
+                  and re.fullmatch(r"[LR]\.pin_\w+_pin", n))
+    clips = [n for n in pins if f"{n[:-4]}_clip" in view.z]
+    ops: list = []
+    # the arrival checks
+    least = ARRIVAL_LEAST_T.get(key, {})
+    lines = [f"{link}: caliper its thickness at its middle, away from its bosses: at least "
+             f"{t:g} mm (its buckling at the clutch's cap goes as its thickness cubed; "
+             "SendCutSend's 0.250 in may come 0.69 mm thin). Thinner: ask SendCutSend for a "
+             "remake before anything is drilled to it." for link, t in least.items()]
+    lines.append(rp.ARRIVAL_WORDS)
+    ops.append(Op(SHOP, (0,), (), "Arrival checks", "Caliper the rods as they arrive (three "
+                  "places along each, a micrometer or the caliper's jaws square on it): "
+                  f"{rp.STOCK_WORDS}", "arrival", count=False, lines=tuple(lines)))
+    # the rods to length, faced
+    pivots = {j: [n for n, (js, _) in lk.links.items() if j in js] for j in lk.frame
+              if j != lk.crank[0]}
+    lo, drill_mm, drill = POST_OVER
+    bores = "; ".join(f"{j}'s {' and '.join(ls)}" for j, ls in pivots.items())
+    rods_text = (
+        f"Saw the pivot posts ({len(hard)}: the pillars a link turns on, {', '.join(pivots)}) "
+        "from the hard-anodised 1/2 in rod, each 1.5 mm over its length (the BOM's cut list), "
+        "a fine-tooth hacksaw in the vise, the rod wrapped in tape where the jaws hold it. "
+        f"The plain posts and tie rods ({len(plain)}) and the riser's sleeves come cut, 1.5 "
+        "mm over (Speedy Metals, +1/8 -0 in).")
+    rod_lines = (
+        "Face every piece square to its length on the Carvera: the pieces lying along X in "
+        "the vise against one stop, a batch a setup, an end mill's flank across the end, then "
+        "re-clamped once for the other end. Each to its length within 0.05 mm (a side's "
+        "posts all one length: they set its plates' gap), each end square to "
+        f"{FACE_SQUARE_DEG:g}° (a machinist's square on it shows no light under it; 0.02 mm "
+        "across the face). Break the edges with a file.",
+        f"Caliper each pivot post at its journal, where its link turns: over {lo:g} mm, open "
+        f"that link's bore with a {drill} ({drill_mm:.2f} mm) drill, in the drill press, the "
+        f"link clamped flat on scrap ({bores}). Its sawn and faced ends are bare (the hard "
+        "coat is on its journal), and so are its taps. The crankpin likewise (sawn from the "
+        f"same stick, the pins' step): over {lo:g} mm, open the rod b1's bore and the crank "
+        "block's plates' holes for it with the same drill.",
+        "The riser's studs: saw the heads off four M8 x 60 A2-70 hex screws (Fastenal's), "
+        "each cut to 45 mm, its end filed and a nut run off it; drill the four sleeves 8.0 mm "
+        "through, square, in the drill press.")
+    ops.append(Op(SHOP, (1,), (), "Rods to length, faced", rods_text, "rods", count=False,
+                  lines=rod_lines,
+                  scene=Scene("built", show=("*",),
+                              marks=(r"[LR]\.pillar_\w+", r"[LR]\.stand_column_\w+",
+                                     r"tie_T[a-z]+\d"))))
+    # drilled and tapped
+    m6 = 2 * (len(hard) + len(plain)) + 2 * len(crankpin) + 1      # (+ the rear post's foot)
+    m3 = 2 * (len(pins) - len(clips)) + len(clips)
+    tap_lines = (
+        f"M6 ({m6} ends: each post and tie rod both ends, the crankpin both ends, the rear "
+        "saddle's post's foot): a 5.0 mm drill 14 mm deep, then the M6 x 1 plug tap and the "
+        "bottoming tap 12 mm deep, by the T-handle wrench, Tap Magic for aluminium, backed "
+        "off half a turn each turn. The drill press square to the face (the rod in a "
+        "V-block), or a printed drilling guide over the end.",
+        f"M3 ({m3} ends: each screw-ended pin both ends, each clip pin its head end): a 2.5 mm "
+        "drill 8 mm deep, the M3 x 0.5 tap 6 mm; blow the chips out. Each clip pin's cross "
+        "hole: 2 mm through, at the length the pins' step gives, in a V-block.",
+        "The rear saddle's post: its two wrench flats milled on the Carvera, 13 mm across, "
+        "10 mm long at its top.")
+    ops.append(Op(SHOP, (3,), (), "Drilled and tapped", "Every rod's tapped ends, on the "
+                  "bench drill and by hand, once each piece is to its length:", "taps",
+                  count=False, lines=tap_lines))
+    # the pins to their stacks
+    if pins or crankpin:
+        stock = rp.PIN_STOCK_WORDS
+        ops.append(Op(SHOP, (2,), (), "Pins cut to their stacks",
+                      f"Each link pin cut from {stock} to its own stack: caliper its links "
+                      "and the printed spacers between them, as the stack steps put them on "
+                      "(the arrival's figures), add them up, and cut the pin at that stack + "
+                      f"{PIN_TAKE_UP_MM:g} mm (+0.1/-0: a hacksaw 1 mm over, then faced on "
+                      "the Carvera in the vise, or filed to the caliper), its ends square; "
+                      f"{len(pins)} pins" + (f", {len(clips)} of them clip pins" if clips
+                                             else "") + ". The crankpin likewise, to its "
+                      "drawn length (its plates' stack and its washer).", "pins",
+                      count=False, lines=rp.PIN_LINES,
+                      scene=Scene("built", show=("*",),
+                                  marks=(r"[LR]\.pin_\w+_pin", r"L\.crankpin"))))
+    # the birch on the Carvera
+    homes = sorted(n for n in view.z if re.fullmatch(r"base_cleat_\w+|riser_locator_\d+", n))
+    if homes:
+        ops.append(Op(SHOP, (4,), (), "The cleats and the riser locator, on the Carvera",
+                      CARVERA_TEXT[0], "carvera", count=False, lines=CARVERA_TEXT[1:],
+                      scene=Scene("built", show=("board",),
+                                  marks=(r"base_cleat_\w+", r"riser_locator_\d+"))))
     return ops
+
+
+CARVERA_TEXT = (
+    "From the 3/8 in Baltic birch panels (ORDER.md: Woodcraft): saw each 12 x 12 in panel to "
+    "about 238 mm wide, square, to go under the Carvera's 240 mm (its bed is 360 x 240 mm).",
+    "Workholding: the panel flat on the wasteboard, double-sided tape over its whole underside "
+    "and pressed down with a roller or a block (or four screws through it outside the parts); "
+    "zero the bit on the panel's top, its X and Y on the panel's sawn corner.",
+    "Each panel's nest is ORDER.md's Carvera list's sheet (`*_sheet_Carvera_*.dxf`: the parts "
+    "laid out on 300 x 235 mm, 3 mm in from its edges): the outlines with a 1/8 in (3.175 mm) "
+    "single-flute end mill "
+    "for wood, through in three or four passes, a tab or two on each part (tape alone can let "
+    "a narrow cleat shift on the last pass); the files are the parts' nominal size, Makera CAM "
+    "offsets the bit.",
+    f"The lead-in: a 90° chamfer bit along each cleat's long top edges, {CLEAT_LEAD:g} mm (the "
+    "rail finds its slot blind on the way back; either edge can go to the rail), before the "
+    "parts are cut free.",
+    "Cut the tabs and sand them flush, each cleat's long faces before all (a nub there takes "
+    "up the rail's play). A cleat longer than the bed comes in pieces (B's 452 mm ones in "
+    f"two): they go onto the board end to end on its pencil line, {CLEAT_JOINT:g} mm apart, "
+    "each glued along its length.",
+)
+"""The Carvera's step (``carvera``: :func:`shop_ops`), the cleats and the riser locator cut at
+home from Woodcraft's 3/8 in Baltic birch (simplification round 1, 2026-10-21, the user's
+choice; SendCutSend's routed birch before, its tabs sanded)."""
 
 
 SIDES_LR = ("L", "R")
@@ -4074,25 +4248,36 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
 
 TOOLS = (
     "Turning: a torque wrench (4 to 15 N·m: the drive's M6 screws, the posts' and tie rods' "
-    "screws, the gearbox's riser, its end screw), hex keys (2.5 to 6 mm, and one for the "
+    "screws, the gearbox's riser, its end screw), hex keys (2 to 6 mm, and one for the "
     "clutch plungers' backs), 8, 10 and two 13 mm wrenches and a 3/4 in one (the plungers' jam "
-    "nuts), E-ring pliers",
-    "Measuring: a caliper with a depth rod (the links' thickness on arrival, the gearbox's "
-    "go/no-go), a luggage scale (the clutch's start and setting, the empty grip, the board "
-    "brackets' nuts on a wrench), a kitchen scale (the keepers)",
+    "nuts)",
+    "Measuring: a caliper with a depth rod (the links' thickness on arrival, b1's least, each "
+    "rod stick and pivot post, the pins' stacks, the gearbox's go/no-go), a machinist's "
+    "square (the rods' faced ends), a luggage scale (the clutch's start and setting, the "
+    "empty grip, the board brackets' nuts on a wrench), a kitchen scale (the keepers)",
+    "Cutting and tapping the rod: a fine-tooth hacksaw (the pivot posts, the pins and the "
+    "crankpin from their hard-anodized sticks, the riser's studs from A2-70 screws), the "
+    "Carvera with its vise and an aluminium end mill (every rod's ends faced square, the rear "
+    "post's flats), M3 x 0.5 and M6 x 1 taps (plug and bottoming) in a T-handle tap wrench, "
+    "Tap Magic for aluminium, drills 2.0 mm (the clip pins' cross holes), 2.5 and 5.0 mm (the "
+    "taps), 8.0 mm (the riser's sleeves), 21/64 and 25/64 in (a pin stick over its size) and "
+    "33/64 in (a pivot post over its size), a drill press with a V-block (or a printed "
+    "drilling guide)",
+    "The Carvera's birch: a saw to take each 12 in panel under the bed's 240 mm, double-sided "
+    "tape, a 1/8 in single-flute end mill for wood and a 90° chamfer bit (the cleats' "
+    "lead-ins)",
     "Shaping: a deburring tool with a countersink blade, a flat file and fine sandpaper on a "
     "flat block (the links that arrive as cut, the laser-cut edges, the router's tabs on the "
-    "birch, the keyed plates' slots, the lead screw's flat, the cleats' lead-ins), a 14 mm "
-    "drill bit (the hand crank's hub, by hand) and a 7 mm one (its shank under sandpaper: a "
-    "tight pin hole), a drill (the gearbox's run-in, before it goes on the cradle, never "
-    "after), a hacksaw (the gearbox riser's studs, from a threaded rod)",
+    "board, the Carvera's tabs, the keyed plates' slots), a 14 mm drill bit (the hand crank's "
+    "hub, by hand), a drill (the gearbox's run-in, before it goes on the cradle, never after)",
     "A vise (the knobs' nuts, the hand crank's knobs onto their screws' heads, the clutch "
     "plungers' nuts)",
-    "Clamps or weights for the glue; a short tube over an 8 mm pin (the keepers)",
+    "Clamps or weights for the glue; a short tube over a 5/16 in pin (the keepers)",
     "Marking and handling: paper, a pencil, a paint pen and red paint (the pack marks, the "
-    "gearbox's toggle arcs), masking tape, a folded towel",
-    "Also: the food-grade grease (the BOM's: the saddles, the clutch, and wiped thin on the "
-    "steel standoffs), a clear polyurethane and a brush (the base board)",
+    "gearbox's toggle arcs, each stick's reading), masking tape, a folded towel",
+    "Also: the food-grade grease (the BOM's: the saddles, the clutch, and wiped thin on every "
+    "hard-anodized journal a link turns on), a clear polyurethane and a brush (the base "
+    "board)",
 )
 """The tools the cradle's guide names, grouped (design review round 2's m10: some 24, named
 only inside the steps): the guide's cover and ``ASSEMBLY.md`` list them."""
@@ -4101,10 +4286,11 @@ BOARD_TEXT = (
     "The board stays bare until both sides stand on it: wood glue holds bare wood, not a "
     "finish, so its cleats are glued first and it is finished after (the cleats and its "
     "finish: the last step before it's used).",
-    "First sand the router's tabs flush on every routed edge: SendCutSend's router leaves "
-    "small tabs where it held the board, the riser locator's layers and the cleats (about "
-    "4.8 mm wide, half the birch deep; it can't detab birch), the cleats' long faces before "
-    f"all: a nub there takes up the rail's {CLEAT[1]:g} mm of play.",
+    "First sand the router's tabs flush on the board's routed edges: SendCutSend's router "
+    "leaves small tabs where it held the board (about 4.8 mm wide, half the birch deep; it "
+    "can't detab birch). The cleats and the riser locator's layers come off the Carvera "
+    "with their own tabs sanded already (the shop step), the cleats' long faces before all: "
+    f"a nub there takes up the rail's {CLEAT[1]:g} mm of play.",
     "The riser locator's two layers glued face to face, bare, their outlines flush (wood "
     "glue, weighted 30 minutes); it drops into the notch, its ears in the notch's bays.",
     "The TPU feet pushed up into the board's corner holes (a twist helps them through).")
@@ -4419,9 +4605,12 @@ def _board_finish(key: str, modules: bool) -> tuple[str, str, tuple[str, ...]]:
                 "2.5 mm over the bolt); the washers and the thumb knobs on, by hand, the "
                 "passive side's only started."))
     lines += [
-        "Each rail's cleats (a pair between each two of its brackets): slide one against each "
-        "face of the rail, nothing between (the rail is their gauge: it drops back in under "
-        "a hand's press), and pencil round them.",
+        "Each rail's cleats (a pair between each two of its brackets), their chamfered "
+        f"lead-in ({CLEAT_LEAD:g} mm, cut on the Carvera) up and to the rail, so the rails find "
+        "their slots blind on the way back: slide one against each face of the rail, nothing "
+        "between (the rail is their gauge: it drops back in under a hand's press), and pencil "
+        "round them. A cleat in pieces (B's, two each) goes end to end on its line, "
+        f"{CLEAT_JOINT:g} mm apart.",
         "The hand crank off (its thumb screw); " + (
             "loosen the knobs a few turns (two at least) and lift the cradle straight up off "
             "its brackets (they stay on the board, finished round)" if board else
@@ -4434,10 +4623,9 @@ def _board_finish(key: str, modules: bool) -> tuple[str, str, tuple[str, ...]]:
             if key in LAY_BLOCKS else
             "; stand it on the bench or the floor beside the board on its brackets' feet, as "
             "it stood on the board: it stands there while the glue and the finish cure."),
-        "Glue the cleats on their marks to the bare board (Titebond II, a thin bead, "
-        "weighted or clamped 30 minutes); wipe off the squeeze-out.",
-        f"Once dry, sand a {CLEAT_LEAD:g} mm lead-in at 45° along each cleat's top edge by "
-        "its rail, so the rails find their slots blind on the way back.",
+        "Glue the cleats on their marks to the bare board, each piece along its whole length "
+        "(Titebond II, a thin bead, weighted or clamped 30 minutes); wipe off the "
+        "squeeze-out, out of the lead-in above all.",
         "Then the finish, on bare wood only after the glue (Titebond's FAQ: its glues bond "
         "bare wood, and over a finish a bond holds only as well as the finish holds the "
         f"wood; {TITEBOND_FAQ}): polyurethane every face and edge of the board, the cleats "

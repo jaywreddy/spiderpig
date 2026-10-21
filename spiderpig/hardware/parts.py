@@ -260,7 +260,11 @@ register(
          notes="Water-thin, applied by capillary with a needle bottle: 1-2 min working, "
                "3 min fixture (SCIGRIP 4 TDS). Acrylic to acrylic only."),
     Item("wood_glue", "Titebond II Premium wood glue, 8 oz (5003)", "adhesive",
-         (Offer("The Home Depot", "https://homedepot.com/p/Titebond-8-oz-Titebond-II-Premium-"
+         (Offer("Woodcraft", "https://www.woodcraft.com/products/titebond-ii-premium-wood-glue",
+                "08L42", price_usd=5.99, verified=True,
+                note="Titebond II Premium, 8 oz, item 08L42; page rendered 2026-10-21 (in "
+                     "Woodcraft's cart with a cradle's birch panels: the Home Depot cart goes)"),
+          Offer("The Home Depot", "https://homedepot.com/p/Titebond-8-oz-Titebond-II-Premium-"
                 "Wood-Glue-5003/202180087", "202180087", price_usd=5.49, note=SEARCHED),
           Offer("Amazon", "https://www.amazon.com/dp/B0000223US", "B0000223US"),
           Offer("Titebond", "https://www.titebond.com/product/glues/"

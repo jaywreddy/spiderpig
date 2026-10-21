@@ -289,12 +289,14 @@ keyway, a 25 mm bore with an 8 mm keyway, backlash 1/2°, made in China, HTS 848
 BOXES = {b.key: b for b in (NRV030, NRV040, NRV050)}
 
 
-CRANKPIN_D = 12.7       # the crankpin: 1/2 in 6061-T6 cold-finished rod (simplification round 1,
-#                         2026-10-21, the user's materials rule: the NETRF12 steel standoff went),
-#                         cut to length, each end drilled 5.0 mm and tapped M6 x 12 deep as the
-#                         standoff was (CRANKPIN_KEY); the 6 L's jam bends a 10 mm steel one
-#                         (SF 1.13, cradle_report)
-CRANKPIN_KEY = "rod_6061_12"    # its rod (hardware.cradle_catalog: a 12 in length makes seven)
+CRANKPIN_D = 12.7       # the crankpin: 1/2 in hard-anodized 6061 rod (simplification round 1,
+#                         2026-10-21, the user's materials rule: the NETRF12 steel standoff went;
+#                         hard anodized where the rod b1 turns on it, the user's choice), sawn
+#                         to length from the pivot posts' stick, each end drilled 5.0 mm and
+#                         tapped M6 x 12 deep as the standoff was (hardware.cradle_catalog.
+#                         al_rod_hard); the 6 L's jam bends a 10 mm steel one (SF 1.13,
+#                         cradle_report)
+CRANKPIN_KEY = "rod6061ha_12p7_305"     # its stick (McMaster 6750K16: the BOM's cut list)
 CRANKPIN_YIELD = 241.3  # MPa: 6061-T6's minimum (the NETRF12's 1018 at 235)
 CRANKPIN_BORE = 5.0     # its rating's bore: the M6 tap drill, as if tapped through
 SOCKET_FIT = 0.3        # the block's holes over it (the rod +-0.038 mm; a laser's hole
@@ -1350,7 +1352,9 @@ class HandCrank(Group):
         pin_part, pin_len = crankpin_rod(tuple(mxy), a0, rod_top + CRANKPIN_PLAY)
         if pin_len < 2 * NETRF12_THREAD + 2.0:
             raise ConstructionError(f"a {pin_len:g} mm crankpin has no room for its two M6 taps")
-        pin_key = CRANKPIN_KEY
+        from spiderpig.hardware.cradle_catalog import al_rod_hard
+
+        pin_key = al_rod_hard(pin_len)      # (cut from CRANKPIN_KEY, the posts' stick)
         out.bodies.append(hardware("crankpin", pin_part, crank, fab="purchased",
                                    bom_key=pin_key, color="#c4c8cc"))
         pin_top = a0 + pin_len
@@ -1545,9 +1549,8 @@ class HandCrank(Group):
                "outer plate, the riser's thin nuts or its studs' ends.", "layer"),
             Op(STACK, (ARM_LAYER, 2), whole("crankpin_spacer"), "",
                "The crankpin's printed spacer down over the crankpin onto the block; grease "
-               "the crankpin where the rod turns on it (aluminium on aluminium: the "
-               "food-grade grease, a full film; at every set-up look for scoring, and regrease)."
-               , "layer"),
+               "the crankpin where the rod turns on it (its hard coat: the food-grade grease, "
+               "a full film; at every set-up look for scoring, and regrease).", "layer"),
             Op(STACK, (k_rod, 2), whole("crankpin_washer", "crankpin_screw_hi"), "",
                "With the rod on the crankpin: the wide washer and the M6 button head into "
                f"the crankpin's top (threadlocker 243), {SCREW_NM:g} N·m. The rod must turn "

@@ -64,9 +64,11 @@ class Sheet:
     @property
     def label(self) -> str:
         """``"5052-H32 aluminium 3.175 mm (SendCutSend)"``."""
-        alloy = get(self.key).dims.get("alloy")
+        d = get(self.key).dims
+        alloy = d.get("alloy")
         what = f"{alloy} aluminium" if alloy else self.material
-        return f"{what} {self.thickness:g} mm ({self.service})"
+        by = self.service or (f"{d['home']}, at home" if d.get("home") else "")
+        return f"{what} {self.thickness:g} mm ({by})"
 
 
 def _pair(values) -> tuple[float, float]:

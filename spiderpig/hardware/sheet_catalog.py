@@ -283,6 +283,39 @@ def _plywood(key: str, inch: float, mm: float) -> Item:
     )
 
 
+WOODCRAFT_BB = ("https://www.woodcraft.com/products/woodcraft-woodshop-baltic-birch-plywood"
+                "?variant=44190127980682")
+CARVERA_BED = (360.0, 240.0)
+"""The Makera Carvera's work area (mm, x by y: 360 x 240 x 140, the user's machine)."""
+CARVERA_PANEL = (300.0, 235.0)
+"""What a 12 x 12 in panel nests parts on, on the Carvera (mm): the panel (Woodcraft: 305 mm
++-1/8 in) sawn to about 238 mm wide to go under the bed's 240, taped down over its whole face
+(no clamp at its edges); the packer keeps every part 3 mm in from the nest's edges
+(``layout.pack``'s margin)."""
+
+
+def _carvera_panel() -> Item:
+    """Woodcraft's 3/8 in (9 mm) Baltic birch, 12 x 12 in, for the parts cut at home on the
+    Carvera (simplification round 1, 2026-10-21, the user's choice: a decanting cradle's cleats
+    and riser locator, off SendCutSend's routed birch): no service cuts it, so its panels are
+    bought like any part (``hardware.bom.cut_by``) and its files are the Carvera's
+    (``dims["home"]``)."""
+    return Item(
+        "birch_3_8_panel", "Baltic birch plywood 3/8 in (9 mm), 12 x 12 in panel (cut at home "
+        "on the Carvera)", "sheet",
+        (Offer("Woodcraft", WOODCRAFT_BB, "131140", price_usd=3.97, verified=True,
+               note="Woodcraft Woodshop Baltic Birch Plywood, item #131140, 3/8 in (9 mm) x 12 "
+                    "x 12 in, 7 plies, USD 3.97 (was 6.99; the page rendered 2026-10-21); "
+                    "dimensions nominal, +-1/8 in, \"may be slightly undersized\"; standard "
+                    "shipping USD 13.99 to 94103 for one panel (its cart's rates, 2026-10-21)"),),
+        dims={"thickness": 9.0, "material": "plywood", "density": 0.692, "yield_mpa": 30.0,
+              "home": "Carvera", "process": "Makera Carvera, a 1/8 in single-flute end mill",
+              "min_hole": 0.125 * IN, "corner_r": 0.0625 * IN, "metal": False,
+              "kerf_mm": 0.0, "sheet_mm": CARVERA_PANEL, "edge_mm": 0.354 * IN},
+        notes="Cut at home on the Carvera (its CAM offsets the bit: the files are nominal "
+              "size); a saw cut first takes each panel under the bed's 240 mm.")
+
+
 AL_THIN: dict[str, float] = {"al5052_1mm": 0.040, "al5052_1p6mm": 0.063,
                              "al5052_2mm": 0.080, "al5052_2p3mm": 0.090,
                              "al5052_2p5mm": 0.100}
@@ -306,6 +339,8 @@ register(
     _al("al6061_3p2mm", 0.125, alloy="6061", price=32.0),
     # a decanting cradle's base board (2026-10-13, the user's "the bottom board in wood")
     _plywood("birch_9mm", 0.354, 9.0),
+    # its cleats and riser locator, cut at home (simplification round 1, the user's choice)
+    _carvera_panel(),
     *(_al(k, v, price=18.0) for k, v in AL_THIN.items()),
     *(_al(k, v, alloy="6061", price=21.0) for k, v in AL6061_THIN.items()),
     *(_acrylic(k, v, price=9.0) for k, v in ACRYLIC_THIN.items()),

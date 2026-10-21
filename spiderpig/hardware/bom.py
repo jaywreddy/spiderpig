@@ -227,7 +227,22 @@ add nothing the cut's length doesn't say (their term came out at or under 0). Th
 between (a file of 4, 6 or 8 within 4 %); SendCutSend's discount at two runs x0.65-0.72 in
 0.187 in 5052, 0.77-0.78 in 7075, 0.72 in 6061, 0.70-0.78 in the birch. On the reviewed
 snapshot's files (4583390) B's come to USD 760.28 (quoted 758.19) and A's to 580.03
-(573.82). A sheet with no fit here takes the walkers' per-area rate."""
+(573.82). A sheet with no fit here takes the walkers' per-area rate.
+
+Checked again on SendCutSend's live quotes of 2026-10-21 (simplification round 1's stand
+check, two at a time in 0.187 in 5052): B's outer frame plate FR576x477 quotes USD 175.72 the
+pair where the fit says 190.12 (+8.2 %), its inner plate FR525x312 104.54 where it says 97.00
+(-7.2 %): the pair 280.26 against 287.12 (+2.4 %). Not refitted: the fit is one law per sheet
+(its 14 files of 2026-10-14 within -6 to +11 %), and these two err either way, so a ``k``
+taken down to the outer plate's quote would take the inner one 15 % under its own (a file's
+quote, not its fit, is what an order pays: upload the files)."""
+CRADLE_LIVE_QUOTES = (
+    ("decanter_rcm", "al5052_4p8mm", "frame_outer", 2, 1304.7, 3564, 16, 576.0, 476.8, 175.72),
+    ("decanter_rcm", "al5052_4p8mm", "torso", 2, 360.4, 1593, 6, 524.0, 312.6, 104.54),
+)
+"""SendCutSend's live quotes of 2026-10-21 that :data:`CRADLE_CUT_FITS` is checked on, not
+fitted to: (cradle, sheet, part, quantity, area cm^2, cut mm, pierces, blank long, short mm,
+USD for the file); ``tests/test_cradle.py`` holds the fit within 11 % of each."""
 CRADLE_CUT_SOURCE = ("a fit, per sheet, to SendCutSend's live quotes of 2026-10-14 for both "
                      "cradles' files (each file's price from its area, its cut's length and "
                      "its blank, the birch's from its blank, at its quantity's discount: on "
@@ -1161,10 +1176,29 @@ CRADLE_GREASE_NOTE = (
     "the washer only slows it with the knob lifted, dry). The same grease on the hand "
     "crank's clutch: its seat ring's face and "
     "six holes and its thrust washer (the clutch is set greased; dry, it can lock), and "
-    "again at its yearly check; and wiped thin on the bare steel standoffs (the tie rods, "
-    "columns and pillars) for rust.")
+    "again at its yearly check. And wherever a link turns, on its hard-anodised journal: "
+    "the pivot posts (B's O1 and O2, A's G), every link pin and the crankpin, wiped with a "
+    "thin film as each goes in and again at each set-up (aluminium on aluminium galls dry; "
+    "on the hard coat, greased, the bore turns on a surface harder than itself). The bare "
+    "6061 tie rods and columns carry no link and take no grease.")
 """A decanting cradle's (:mod:`construction.cradle`; review round 1, m9; round 2, N5 and the
 drive's B-1)."""
+CRADLE_CARTS_NOTE = (
+    "The carts (simplification round 1, 2026-10-21: folded to seven and the upload). Their "
+    "shipping isn't in the totals; priced only where a page or a cart gave it that day: "
+    "SendCutSend free in the US over USD 39; Woodcraft standard USD 13.99 to 94103 for the "
+    "panels and the glue (its cart's rates). Unpriced: McMaster-Carr (\"applicable shipping "
+    "and tax will be added\", no order minimum), Bolt Depot, Fastenal, Phidgets (from "
+    "Calgary: shipping, duties and brokerage at checkout), Battery Junction, and Speedy "
+    "Metals (FedEx, calculated at checkout with an account). Speedy takes no order under USD "
+    "20 (one cradle's rods come to less: order both cradles' in one cart, or add a stick) and "
+    "adds a process fee of about USD 8 to a line of more than ten pieces (A's twelve posts: "
+    "two lines of six). One cart fewer: McMaster's multipurpose 6061 rod (8974K28, 1/2 in, "
+    "+-0.006 in, 6 ft USD 13.75; 8974K48, 5/8 in, 1/2 ft USD 3.25) in place of Speedy's "
+    "pieces, every piece sawn at home before it is faced.")
+"""A decanting cradle's ORDER.md note on its carts (simplification round 1: McMaster's pages
+rendered 2026-10-21, Woodcraft's cart's shipping rates, Speedy's cart; ``order.py`` lists
+each cart)."""
 # a foot's sock; a decanting cradle's liners, its collar, its lead screw's brake washer, its
 # base plate's feet
 _SOCK = re.compile(r"_sock$|_liner$|_collar$|_brake$|foot_boot_")
@@ -1599,7 +1633,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
         notes.append(f"Printed parts need about {total:.0f} g of filament at 100 % infill "
                      f"({each}); less with sparse infill.")
         if (mech.meta or {}).get("cradle"):
-            notes += [CRADLE_PRINT_NOTE, CRADLE_GREASE_NOTE]
+            notes += [CRADLE_PRINT_NOTE, CRADLE_GREASE_NOTE, CRADLE_CARTS_NOTE]
     lines.extend(mech.bom_extras)
     lines, shim_notes = split_shims(lines, by_name, (mech.meta or {}).get("shim_stacks"))
     notes += shim_notes
