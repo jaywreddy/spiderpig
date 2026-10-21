@@ -1718,15 +1718,18 @@ TRAVEL = {"+x": (0, 1), "-x": (0, -1), "+z": (2, 1), "-z": (2, -1), "+y": (1, 1)
 lid, a cell over the pieces: what lifts is as loose as what slides, packing review 2's M4)."""
 
 
-def free_travel(g: Grid, i: int, owner: np.ndarray | None = None
-                ) -> dict[str, tuple[float, int]]:
+def free_travel(g: Grid, i: int, owner: np.ndarray | None = None,
+                with_: Sequence[int] = ()) -> dict[str, tuple[float, int]]:
     """How far (mm) piece ``i`` of grid ``g`` slides each way of :data:`TRAVEL`, rigid,
     before a cell of it meets another piece's or the box's inside wall (``-1``): the empty
     cells between, a cell each. The cells are the parts' conservative fill (every cell
     their surface touches), so the real travel is that or up to two cells more. Each way:
-    (mm, whose cell it meets: an index into the grid's pieces, -1 the wall)."""
+    (mm, whose cell it meets: an index into the grid's pieces, -1 the wall). ``with_``: the
+    pieces that move with it (taped to it, or it to them)."""
     owner = g.owner() if owner is None else owner
     mine = g.occ[i]
+    for j in with_:
+        mine = mine | g.occ[j]
     if not mine.any():
         return {}
     idx = np.nonzero(mine)
@@ -2057,7 +2060,7 @@ UP = {"+y": (1, 1)}
 """And up: a piece or a spacer that lifts more than :data:`SPACER_HOLD` gets a cap (packing
 review 2's M4: carried upside down, or dropped on its top, a piece free to lift falls onto
 what is over it)."""
-CAP_REACH = 40      # cells (120 mm): the tallest a cap stands, from what it holds down to
+CAP_REACH = 50      # cells (150 mm): the tallest a cap stands, from what it holds down to
 #                     what holds it (a piece over it, or the lid)
 
 
@@ -2426,8 +2429,8 @@ class _Spacers:
 
 
 def spacers(g: Grid, rows: Sequence[dict], avoid: np.ndarray | None = None,
-            fillers: Sequence[str] = ("base",), bearless: np.ndarray | None = None
-            ) -> list[Spacer]:
+            fillers: Sequence[str] = ("base",), bearless: np.ndarray | None = None,
+            taped: dict[str, str] | None = None) -> list[Spacer]:
     """The printed spacers of a judged packing (:func:`metrics`' ``pieces`` rows, in the order
     the pieces go in, on its grid ``g``): each a block of the grid's empty cells, one run a
     column, inside the pieces' bounds, that goes in at its place in the order (its
@@ -2454,8 +2457,9 @@ def spacers(g: Grid, rows: Sequence[dict], avoid: np.ndarray | None = None,
     none.
 
     *Caps*, the same way, for what lifts more than :data:`SPACER_HOLD` cells (:func:`_cap`):
-    a block on its top up to what is over it, or the lid. One that still slides, standing on
-    one piece, is taped to it (``taped``). The pieces ``fillers`` names (the
+    a block on its top up to what is over it, or the lid. A spacer that still slides,
+    standing on one piece, is taped to it (``Spacer.taped``); so is a piece, resting on one
+    other piece (the map ``taped`` gets it). The pieces ``fillers`` names (the
     base board, on the carton's floor) are held by *fillers* instead (:func:`_filler`): a
     slab of corrugated across the piece's whole end, from the floor to what is over it (or
     the lid), in the gap to the wall (``why`` ``"filler +x"`` ..: cut, not printed).
@@ -2558,16 +2562,27 @@ def spacers(g: Grid, rows: Sequence[dict], avoid: np.ndarray | None = None,
         st.occ[cells] = True
         if held:
             st.drop(n)
-    # what still slides, standing on one piece, is taped to it
-    for sp in st.made:
+    # a piece that still moves is taped to a piece it rests on (``taped``: its key -> that
+    # piece's)
+    if taped is not None:
+        for p, r in enumerate(rows):
+            if r["key"] in fillers:
+                continue
+            free = st.slide(st.owner == p, up=True)
+            on = [o for o in r.get("on", ()) if o in st.keys and o != r["key"]]
+            if max(free.values(), default=0) > SPACER_HOLD and on:
+                taped[r["key"]] = on[0]
+    out = [q for sp in st.made
+           for q in ([sp] if sp.why.startswith("filler") else _fit_bed(st, sp))]
+    # what still moves (a spacer cut for the bed too), standing on a piece, is taped to it
+    for sp in out:
         if sp.why.startswith("filler"):
             continue
         free = st.slide(st.mask(sp.cols), up=True)
-        on = [o for o in sp.on if o != "floor"]
-        if max(free.values()) > SPACER_HOLD and len(on) == 1 and on[0] in st.keys:
+        on = [o for o in sp.on if o != "floor" and o in st.keys]
+        if max(free.values()) > SPACER_HOLD and on:
             sp.taped = on[0]
-    return [q for sp in st.made
-            for q in ([sp] if sp.why.startswith("filler") else _fit_bed(st, sp))]
+    return out
 
 
 def _bridges(st: _Spacers) -> None:
@@ -2644,11 +2659,11 @@ def _corridor(st: _Spacers, ca: np.ndarray, cb: np.ndarray, wall: np.ndarray, be
         sl[ax] = slice(g0, g1)
         sl[o] = slice(w0, w1)
         sl[1] = slice(y0, y1)
-        free = ~wall[tuple(sl)].any(axis=(0, 2))       # (each layer clear across it)
+        clear = np.asarray(~wall[tuple(sl)].any(axis=(0, 2)), bool)   # (each layer clear)
         # the longest run of clear layers that touches both spacers' ends
         best = None
         j = 0
-        layers = free.tolist()
+        layers: list[bool] = [bool(v) for v in clear]
         while j < len(layers):
             if not layers[j]:
                 j += 1
@@ -2724,7 +2739,7 @@ def _fit_bed(st: _Spacers, sp: Spacer, bed: float = SPACER_BED) -> list[Spacer]:
         floor = any(j0 <= 1 for _, _, j0, _ in cols.tolist())
         on = sorted({st.name(o) for o in under}) + (["floor"] if floor else [])
         got.append(Spacer(f"{sp.key}_{'abcdefghij'[j]}", sp.under, tuple(on), sp.pads, cols,
-                          sp.org, sp.cell, sp.bears, sp.rank, sp.why))
+                          sp.org, sp.cell, sp.bears, sp.rank, sp.why, sp.taped))
     return got
 
 
@@ -3053,7 +3068,8 @@ def pad_id(order: int, n: int) -> str:
 
 def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | None = None,
             cell: float = CELL, fine: float = FINE, bands: int = 12,
-            grid: Grid | None = None, bearless: np.ndarray | None = None) -> dict:
+            grid: Grid | None = None, bearless: np.ndarray | None = None,
+            taped: dict[str, str] | None = None) -> dict:
     """What a packing is worth, from the pieces where it put them (in the order they go
     in): the box (``inside``, default :func:`box_of`; its outside with :data:`WALL`), the
     true fill (the parts' own volumes over the box's inside), its cells' fill, the air per
@@ -3071,8 +3087,16 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
     height. ``bearless``: the grid's cells of the parts nothing may bear on
     (:func:`part_cells`): a piece doesn't rest where its bottom is one of them, nor on one
     (packing review 2's B1: a panel on its gearbox or a screw head, the cradle box on its
-    gauge)."""
+    gauge). ``taped``: a piece's key -> the piece it is taped to; the two slide as one."""
     g = grid or occupancy(pieces, inside, cell)
+    keys_ = [p.key for p in pieces]
+    bound: dict[str, set[str]] = {}         # (each piece: the ones taped with it, together)
+    for a, b in (taped or {}).items():
+        if a in keys_ and b in keys_:
+            group = bound.get(a, {a}) | bound.get(b, {b})
+            for k in group:
+                bound[k] = group
+    bound = {k: v - {k} for k, v in bound.items()}
     lo, hi = g.lo, g.hi
     size = hi - lo
     ny = g.count.shape[1]
@@ -3132,7 +3156,7 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
                                         - float(lo[0]), 1),
                                   round((p["footprint"][1] + p["footprint"][3]) / 2
                                         - float(lo[2]), 1)]
-        free = free_travel(g, i, owner)
+        free = free_travel(g, i, owner, [names.index(k) for k in bound.get(pc.key, ())])
         rows.append({"key": pc.key, "label": pc.label, "order": i + 1,
                      "mass_kg": round(pc.mass, 3), "volume_l": round(pc.volume / 1e6, 3),
                      "com_height_mm": round(float(pc.com[1] - lo[1]), 1),

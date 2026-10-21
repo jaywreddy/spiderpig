@@ -45,6 +45,9 @@ class Carton:
     per: int
     scores: tuple[float, ...] = ()
     url: str = ""
+    lb: float = 4.0
+    """A box's weight (lb: its page's bundle weight over the boxes in it; 4 where the page
+    gives none)."""
 
     def at(self, depth: float) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
         """Its inside and outside cut down to ``depth`` (in, a score line): the walls'
@@ -57,15 +60,15 @@ class Carton:
 ULINE = "https://www.uline.com/Product/Detail/"
 CARTONS: tuple[Carton, ...] = (
     Carton("S-12613", (30, 24, 12), (30.75, 24.75, 13), "275# double wall", 80.0, 11.71, 10,
-           url=ULINE + "S-12613"),
+           url=ULINE + "S-12613", lb=5.4),
     Carton("S-4417", (30, 24, 12), (30.375, 24.375, 12.625), "200# single wall", 40.0, 6.23,
-           15, url=ULINE + "S-4417"),
+           15, url=ULINE + "S-4417", lb=3.4),
     Carton("S-13330", (30, 24, 10), (30.375, 24.375, 10.625), "200# single wall", 40.0, 5.94,
-           15, url=ULINE + "S-13330"),
+           15, url=ULINE + "S-13330", lb=3.1),
     Carton("S-11248", (30, 24, 12), (30.375, 24.375, 12.625), "200# single wall", 40.0, 6.90,
            15, (12, 10, 8, 6, 4), ULINE + "S-11248"),
     Carton("S-4509", (30, 24, 24), (30.5, 24.5, 24.75), "275# single wall", 65.0, 11.64, 10,
-           (24, 22, 20, 18, 16, 14), ULINE + "S-4509"),
+           (24, 22, 20, 18, 16, 14), ULINE + "S-4509", lb=6.5),
 )
 """The stock cartons in the cradles' 30 x 24 in footprint (Uline, fetched 2026-10-21)."""
 
@@ -121,9 +124,8 @@ def usps(outside_in: tuple[float, float, float], lb: float) -> dict:
 
 
 CARTON_LB = 4.0
-"""lb a 30 x 24 in carton and its tape weigh (Uline's bundle weights: S-12613's 10 boxes 54
-lb, S-4417's 15 51 lb, S-4509's 10 65 lb: 3.4-6.5 lb a box; 4 the mean of the ones that
-fit)."""
+"""lb a 30 x 24 in carton weighs where its page gives no bundle weight (``Carton.lb``:
+S-12613's 10 boxes 54 lb, S-4417's 15 51 lb, S-13330's 15 47 lb, S-4509's 10 65 lb)."""
 
 
 def carton_for(inside_mm: tuple[float, float, float], kg: float) -> dict | None:
@@ -131,11 +133,12 @@ def carton_for(inside_mm: tuple[float, float, float], kg: float) -> dict | None:
     its parts' bounds and their clearance; any way round on the floor, the height its depth),
     cut down to the least score line that does, rated for its weight (``kg`` and
     :data:`CARTON_LB`); None when none is. Its carton, the depth it is cut to (None: as it
-    is), the spare room each way (mm), the weight (lb) and the postage (:func:`usps`)."""
+    is), the spare room each way (mm), the weight (lb, its own box's: ``Carton.lb``) and
+    the postage (:func:`usps`)."""
     x, h, z = inside_mm
-    lb = kg / 0.45359237 + CARTON_LB
     best = None
     for c in CARTONS:
+        lb = kg / 0.45359237 + c.lb
         plan = sorted((x, z), reverse=True)
         if plan[0] > c.inside[0] * IN or plan[1] > c.inside[1] * IN or lb > c.rated_lb:
             continue

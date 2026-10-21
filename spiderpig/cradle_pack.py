@@ -674,17 +674,33 @@ PACK_PLANS: dict[str, vp.Plan] = {
         "open triangles",
         steps=(
             vp.Step("passive", down="outer",
-                    why="its plates flat on the board, its pillars up (foam pads level it)"),
+                    why="its plates flat on the board, its pillars up (printed spacers level "
+                        "it)"),
+            vp.Step("ties", after=("passive",),
+                    why="the four tie rods taped in a bundle, on the board beside the passive "
+                        "panel: under the drive panel, which holds them down (pack turn 3: "
+                        "loose on top, four rods had been free to lift 186-204 mm)"),
+            vp.Step("light", on="ties", after=("ties",),
+                    why="on the tie rods' bundle, under the drive panel"),
+            vp.Step("hand_crank", after=("passive",),
+                    why="under the drive panel"),
+            vp.Step("front_saddle", after=("passive",),
+                    why="under the drive panel"),
             vp.Step("drive", down="outer", spin=90,
+                    after=("ties", "light", "hand_crank", "front_saddle"),
                     why="turned a quarter: its plates lie across the passive panel's, their "
-                        "pillars between each other's links, both on the board (end for end "
-                        "until the side frames' redesign of 2026-10-20: its gearbox then "
-                        "lands on the passive panel's wider outer plate, 107 L)"),
+                        "pillars between each other's links, on printed spacers round its "
+                        "gearbox, over the tie rods, the light, the hand crank and the front "
+                        "saddle (end for end until the side frames' redesign of 2026-10-20: "
+                        "its gearbox then lands on the passive panel's wider outer plate, "
+                        "107 L)"),
         ),
         note="A's pieces: the board, the side panels, the inner plates, the cradle links, "
-             "the tie rods, the saddles, the light, the base stop, the hand crank; what the "
-             "plan leaves free (the saddles, the base stop, the links, the ties, the plates, "
-             "the light, the crank) drops into the panels' openings, the largest first."),
+             "the tie rods (a taped bundle since pack turn 3), the saddles, the light, the base "
+             "stop, the hand crank; the bundle, the light, the hand crank and the front saddle "
+             "under the drive panel (pack turn 3: what went in last lay free to lift to the "
+             "lid), what the plan leaves free (the rear saddle, the base stop, the links, the "
+             "inner plates, the riser) drops in after, the largest first."),
 }
 """Each cradle's pack plan (:class:`spiderpig.voxpack.Plan`): the human packer's intent, per
 piece (its face down, where it goes, what goes in first); what a plan leaves free the packer
@@ -1108,9 +1124,14 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
     bearless = keep_clear_cells(packed, grid, inp["linkage"])
     judged = {r["key"]: r for r in vp.metrics(packed, (lo, hi), cell, grid=grid,
                                               bearless=bearless)["pieces"]}
+    taped: dict[str, str] = {}
     kit = (vp.spacers(grid, [judged[m["key"]] for m in mods],
-                      avoid=vp.grown(bearless, KEEP_CLEAR_CELLS), bearless=bearless)
+                      avoid=vp.grown(bearless, KEEP_CLEAR_CELLS), bearless=bearless,
+                      taped=taped)
            if not layout.missing else [])   # (a packing its plan stopped: no spacers for it)
+    for mod in mods:
+        if mod["key"] in taped:         # (taped to the piece it rests on: moves with it)
+            mod["taped"] = taped[mod["key"]]
     _number(kit, len(mods))
     for mod in mods:
         mod["pads"] = [{k: v for k, v in q.items() if k != "piece"}
@@ -1436,6 +1457,10 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str
                     + ".")
             items.append("Then " + text if placed else text[0].upper() + text[1:])
             placed = True
+            if d.get("taped"):
+                items.append(f"Tape {labels[d['key']]} to "
+                             f"{labels.get(d['taped'], part_words(d['taped']))} with packing "
+                             "tape, two strips across: nothing else holds it there.")
             if d["key"] == "base" and STUB in d.get("parts", ()):
                 items.append("Its clutch check stub in the riser locator's pocket, its post "
                              "up, a strip of tape across the pocket over it.")
@@ -1480,21 +1505,16 @@ def spacer_packed(d: dict) -> vp.Packed:
 
 def judged_pieces(inp: dict, layout: dict) -> list[vp.Packed]:
     """A payload's pieces and spacers as a judge moves them (:func:`in_order`, each piece
-    by :func:`module_packed`, each spacer by :func:`spacer_packed`), a taped spacer one with
-    the piece it is taped to (``voxpack.Spacer.taped``: it moves with it)."""
-    out: list[vp.Packed] = []
-    by: dict[str, vp.Packed] = {}
-    for kind, d in in_order(layout):
-        pc = module_packed(inp, d) if kind == "piece" else spacer_packed(d)
-        if kind == "spacer" and d.get("taped") in by:
-            host = by[d["taped"]]
-            host.meshes = [*host.meshes, *pc.meshes]
-            host.parts = [*host.parts, *pc.parts]
-            host.volume += pc.volume
-            continue
-        by[d["key"]] = pc
-        out.append(pc)
-    return out
+    by :func:`module_packed`, each spacer by :func:`spacer_packed`)."""
+    return [module_packed(inp, d) if kind == "piece" else spacer_packed(d)
+            for kind, d in in_order(layout)]
+
+
+def taped_of(layout: dict) -> dict[str, str]:
+    """A payload's pieces and spacers taped to another (``taped``: it moves with it), each
+    key -> that one's: ``voxpack.metrics``' ``taped``."""
+    return {d["key"]: d["taped"] for d in [*layout["modules"], *(layout.get("spacers") or [])]
+            if d.get("taped")}
 
 
 def in_order(layout: dict) -> list[tuple[str, dict]]:

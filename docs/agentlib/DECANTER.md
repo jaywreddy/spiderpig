@@ -1614,6 +1614,27 @@ take a hex key, the tie screws threadlocker, pin E's E-ring pliers (round 1).
    - the other link off. Each tie rod travels with its two screws back in its ends, and
      each cradle link with the loose spacers that sat over it.
 
+**A in its pack** (pack turn 3; A keeps no racking brace, the user's call of 2026-10-21, so
+its box is round 2's): 700 x 252 x 607 mm outside, 106.9 L, 17.1 kg with its spacers, every
+piece and spacer held each way, up too, to a cell (3 mm), nothing resting on its gearbox, a
+gauge, a pin or a screw head. Its plan (`cradle_pack.PACK_PLANS`): the passive panel outer
+plate down on the board; the four tie rods taped in one bundle (`cradle_pack._bundle`, two
+by two: the review's lead A-2, four pieces become one), the light on the bundle, the hand
+crank and the front saddle, all where the drive panel comes down over them; the drive panel
+outer plate down, turned a quarter, on printed spacers round its gearbox 64 to 120 mm over
+the passive panel (`voxpack.PAD_TALL`: pads to 120 mm where none to 60 would hold a piece);
+the rest after, the largest first, the passive side's cradle link taped to the drive side's
+(`voxpack.spacers`' `taped`: nothing else held it along). Loose on top until turn 3, the
+four tie rods and the light had been free to lift 153-210 mm (the review's M4). 26 printed
+spacers, none over the 250 mm bed (`SPACER_BED`: two of A's had been 255 and 306), about
+1.13 kg by the model. Its carton (`hardware.shipping`): S-12613, 30 x 24 x 12 in, 275#
+double wall, rated to 80 lb, $11.71 a box in tens, 43.1 lb packed: 72, 63 and 13 mm spare.
+Cut to 8 in it doesn't take A (203 mm inside, the pack 242: the drive panel's plate stands
+on its gearbox's height; the review's 8 in was for round 2's 213 mm pack), and at 10 in
+(S-13330, or S-11248 at its score) the 200# board is rated to 40 lb, under A's 40.8 with
+that box. USPS Ground Advantage retail, zones 1 / 4 / 5 / 8: $99.00 / $133.50 / $165.70 /
+$235.30 (73 lb dimensional, the 70 lb price and the 30 in and 2 cubic feet fees).
+
 A link left hanging on one joint once its cradle link is off swings into its panel
 (`cradle_pack.tuck`).
 
@@ -1769,9 +1790,8 @@ Uline's table rates (UPS's guideline) for the pack's weight with its carton (4 l
   $133.50 / $165.70 / $235.30 (95 lb dimensional, the 70 lb price, the 30 in and 2 cubic
   feet fees). A box cut to the pack, 745 x 394 x 600 mm: $93.50 / $128.00 / $160.20 /
   $229.80 (83 lb dimensional; the 22 in fee).
-- **A** (pre-brace, 700 x 253 x 607 mm, about 37 lb): S-13330 (30 x 24 x 10 in, 200# single
-  wall, rated to 40 lb, $5.94 a box in fifteens), or S-11248 (30 x 24 x 12 in, 200#, scored
-  at 12, 10, 8, 6 and 4 in, $6.90) cut at 10 in.
+- **A:** S-12613 ("A in its pack" above): the 200# boxes that would take it at 10 in are
+  rated to 40 lb, under its 40.8.
 - The review's carrier option, the carton inside an outer one with 2 in of foam all round:
   Uline stocks no outer carton that size (34 x 27 x 18 in or so; the nearest double walls
   are 36 x 24 x 18, too narrow, and 36 x 36 x 18, past USPS's 130 in): a custom box,

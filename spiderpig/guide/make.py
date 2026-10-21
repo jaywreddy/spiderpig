@@ -243,7 +243,7 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
                 digest.update(k.encode() + arrays[k].tobytes())
             path = img / f"extra-{digest.hexdigest()[:20]}.npz"
             if not path.is_file():
-                np.savez(path, **arrays)
+                np.savez(path, **arrays)        # type: ignore[arg-type]
             pictures[st.number] = job([(p, f, (0, 0, 0), mark, None, m) for p, f, mark, m in got],
                                       list(st.scene.views), PICTURE, extra=str(path))
             continue

@@ -427,7 +427,8 @@ def judge(inp: dict, layout: dict, name: str, out: Path, draw: bool = True,
     grid = vp.occupancy(pieces, said if fits else None, cell or vp.CELL)
     # (nothing rests on a gauge, a clip, the gearbox or a screw head: packing review 2's B1)
     m = vp.metrics(pieces, grid=grid,
-                   bearless=cradle_pack.keep_clear_cells(pieces, grid, inp.get("linkage", "")))
+                   bearless=cradle_pack.keep_clear_cells(pieces, grid, inp.get("linkage", "")),
+                   taped=cradle_pack.taped_of(layout))
     if said is not None:          # a box the layout claims, its pieces past it (an edit's)
         m["claimed_box_inside_mm"] = [round(float(v), 1) for v in said[1] - said[0]]
         m["past_claimed_box"] = bool((grid.lo < said[0] - 0.5).any()
