@@ -466,9 +466,11 @@ def rail_y(rail_r: float) -> float:
     return _FOOT_Y + rail_r - 12.0
 
 
-_RAIL_B = 22.0          # B's rail: 44 mm (its columns E1 and E2 on it)
-_RAIL_A = 20.0          # A's rail: 40 mm (its column E1 on it; the inner leg to E1 40 mm wide,
-#                         its edge 0.5 mm over the board as the rail's)
+_RAIL_B = 30.0          # B's rail: 60 mm (its columns E1 and E2 on it; 44 before design
+#                         review round 3, whose model put the rail at E2's foot at 1.16)
+_RAIL_A = 30.0          # A's rail: 60 mm (its columns E1 and E2 on it; the inner leg to them
+#                         60 mm wide, its edge 0.5 mm over the board as the rail's; 40 before
+#                         round 3, the rail at E1's foot 0.39 on its model)
 
 STANDS: dict[str, Stand] = {
     # A: the hinge G at the mouth, the crank O 173 behind and 202 under it. The outer plate
@@ -492,14 +494,17 @@ STANDS: dict[str, Stand] = {
                                                                     ("D3", 0.68))},
                # (the side frames' redesign, 2026-10-20) a column on the rail under D3, the
                # inner plate's leg down to it: the posts no longer stand on one line, so the
-               # inner plate holds their ends across it (DECANTER.md, "The side frames")
-               "E1": (-80.0, rail_y(_RAIL_A))},
+               # inner plate holds their ends across it (DECANTER.md, "The side frames");
+               # (design review round 3, 2026-10-20) a second, E2, under the mouth, the
+               # inner chord along the rail to it: the side buckled out of its plates at
+               # 1.35 x the clutch's cap, and its rail at E1 held 0.39
+               "E1": (-80.0, rail_y(_RAIL_A)), "E2": (10.0, rail_y(_RAIL_A))},
         outer=(("G", "Ff"), ("G", "O"), ("Ff", "O"), ("O", "Fm"), ("O", "Fr"),
                ("Ff", "Fm"), ("Fm", "Fr"), ("G", "C1"), ("G", "C2"), ("C1", "C2"),
                ("C2", "D1")),
         inner=(("G", "C1"), ("G", "C2"), ("C1", "C2"), ("C2", "D1"), ("D1", "D2"),
-               ("G", "D1"), ("D2", "D3"), ("D3", "E1")),
-        columns=("C1", "C2", "D1", "D2", "D3", "E1"),
+               ("G", "D1"), ("D2", "D3"), ("D3", "E1"), ("E1", "E2")),
+        columns=("C1", "C2", "D1", "D2", "D3", "E1", "E2"),
         feet=("Ff", "Fm", "Fr"),
         # the strut from the hinge back to the gearbox: the gearbox's node O leans on it
         # across the plate (the legs from O buckled sideways at walking SF 3.0), and with the
@@ -507,10 +512,17 @@ STANDS: dict[str, Stand] = {
         # legs 40 (the side frames' redesign, 2026-10-20: at 48 and 24 the strut held the
         # clutch's cap at 0.63 at O on the side as one frame); the rail 40 mm; the inner
         # plate's G-D1 23.6 mm, so the 12 mm front tie rod Tf1 passes it by the plan's margin
-        # (design review round 2's M1, 2026-10-15: at 24 it came 6.9 mm from it)
-        wide={("G", "O"): 48.0, ("Ff", "O"): 20.0, ("O", "Fm"): 20.0, ("O", "Fr"): 20.0,
+        # (design review round 2's M1, 2026-10-15: at 24 it came 6.9 mm from it). Design
+        # review round 3 (2026-10-20: on 5052's minimum yield, the side as one frame second
+        # order, its buckling): the strut 140 mm at O, the legs from O 56, the front leg 48,
+        # the triangles round G 40 and their leg to D1 34 (both plates: as wide as the front
+        # tie rod Tf1 passing it leaves), the inner leg 40 down
+        # to D3 and 60 to the rail columns, the rail 60
+        wide={("G", "O"): 70.0, ("Ff", "O"): 28.0, ("O", "Fm"): 28.0, ("O", "Fr"): 28.0,
               ("Ff", "Fm"): _RAIL_A, ("Fm", "Fr"): _RAIL_A, ("G", "D1"): 11.8,
-              ("D3", "E1"): 20.0},
+              ("G", "Ff"): 24.0, ("G", "C1"): 20.0, ("G", "C2"): 20.0, ("C1", "C2"): 20.0,
+              ("C2", "D1"): 17.0, ("D1", "D2"): 20.0, ("D2", "D3"): 20.0,
+              ("D3", "E1"): 30.0, ("E1", "E2"): 30.0},
         column_d=12.0,
         base=(-200.0, 482.0),
     ),
@@ -549,10 +561,13 @@ STANDS: dict[str, Stand] = {
         # out of its plane at 0.44-0.8; layer 0 only: cradle_report.structure) The side
         # frames' redesign (2026-10-20): the rail 44 mm (the rear column's foot), the rear
         # leg 56 and O1-O 40 (the gearbox's turn at O), O2-Fr 32 (its buckling), the inner
-        # chord 40 and its leg D1-D2 32
-        wide={("O2", "O"): 32.0, ("O2", "Ff"): 20.0, ("Ff", "Fr"): _RAIL_B, ("O", "Fr"): 28.0,
-              ("O1", "O"): 20.0, ("O2", "Fr"): 16.0, ("D2", "E1"): 20.0, ("E1", "E2"): 20.0,
-              ("D1", "D2"): 16.0},
+        # chord 40 and its leg D1-D2 32. Design review round 3 (2026-10-20: on 5052's minimum
+        # yield, the side as one frame second order, its buckling): the rail 60, the rear leg
+        # 80, O1-O 72, O2-O 88, O2-Fr 40, the inner chord 60, its leg 44, O1-D1 27 (as wide as
+        # the front tie rod Tf2 passing it leaves)
+        wide={("O2", "O"): 44.0, ("O2", "Ff"): 20.0, ("Ff", "Fr"): _RAIL_B, ("O", "Fr"): 40.0,
+              ("O1", "O"): 36.0, ("O2", "Fr"): 20.0, ("D2", "E1"): 30.0, ("E1", "E2"): 30.0,
+              ("D1", "D2"): 22.0, ("O1", "D1"): 13.5},
         column_d=12.0,
         # (round 1, 2026-10-14: with the corrected centre of mass and the board 40 mm
         # toward the drive side, BASE_Z, the rear edge binds: 682 mm is the least board

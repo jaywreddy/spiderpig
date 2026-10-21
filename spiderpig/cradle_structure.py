@@ -186,7 +186,8 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
                  sections: Mapping[str, LinkSection], holes: Mapping[str, float],
                  load_nodes: Mapping[str, Sequence[str]] | None = None,
                  skip: np.ndarray | None = None,
-                 width: Callable[[str, str, str], float] | None = None) -> dict[str, dict]:
+                 width: Callable[[str, str, str], float] | None = None,
+                 bosses: Mapping[str, Mapping[str, float]] | None = None) -> dict[str, dict]:
     """Every link of ``lk`` (``lk.links``) as a plane frame of its chords under one case's
     joint force vectors ``vecs`` (``cradle_report.statics_vectors``: ``joints`` its
     ``(point, body, other)``, ``pts`` the joints' world paths): per link, its worst chord end
@@ -195,7 +196,10 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
     least Euler factor of a chord in compression (out of the plane, pinned at its ends:
     the whole chord, a joint on it no brace). What holds the link besides its pins is spread
     over ``load_nodes[link]`` (default: all its joints). ``width(link, a, b)``: a chord's
-    width where it isn't its section's."""
+    width where it isn't its section's. ``bosses`` (per link, a joint's boss radius,
+    ``config.PRODUCT_BOSS_R``): a chord end at a boss rated through its hole at the boss's
+    width and, past it, where the boss meets the chord's edges, on the chord without a hole
+    at the moment there."""
     load_nodes = load_nodes or {}
     keep = np.ones(len(vecs), bool) if skip is None else ~np.asarray(skip, bool)
     out: dict[str, dict] = {}
@@ -246,18 +250,28 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
         res = frame2d(xy, elems, loads, fixed=[0, 1, 2])
         worst = {"safety": math.inf}
         comp: dict[tuple[str, str], float] = {}
+        own = (bosses or {}).get(name, {})
         for e, (p, q) in enumerate(segs):
             N = res[:, e, 0]
             w = wide[(p, q)]
+            L_pq = float(np.hypot(*(xy[idx[q]] - xy[idx[p]])))
             for end, M in ((p, res[:, e, 1]), (q, res[:, e, 2])):
-                sig, sf = _section_sf(N, M, w, sec.t, holes.get(end, 0.0), sec.yield_mpa)
-                i = int(np.argmin(sf))
-                if sf[i] < worst["safety"]:
-                    worst = {"safety": float(sf[i]), "chord": f"{p}-{q}", "at": end,
-                             "width_mm": w, "moment_nm": round(float(abs(M[i])) / 1000.0, 2),
-                             "axial_n": round(float(N[i]), 1),
-                             "stress_mpa": round(float(sig[i]), 1),
-                             "hole_mm": holes.get(end, 0.0)}
+                r_b = float(own.get(end.rsplit(".", 1)[-1], 0.0))
+                cuts = [(M, w, holes.get(end, 0.0), 0.0)]
+                if 2 * r_b > w:         # through its hole at the boss, and past the boss
+                    s_b = min(math.sqrt(r_b * r_b - w * w / 4), L_pq)
+                    x = s_b if end == p else L_pq - s_b
+                    m_b = -res[:, e, 1] + (res[:, e, 1] + res[:, e, 2]) * x / L_pq
+                    cuts = [(M, 2 * r_b, holes.get(end, 0.0), 0.0), (m_b, w, 0.0, s_b)]
+                for M_, w_, d_, s_ in cuts:
+                    sig, sf = _section_sf(N, M_, w_, sec.t, d_, sec.yield_mpa)
+                    i = int(np.argmin(sf))
+                    if sf[i] < worst["safety"]:
+                        worst = {"safety": float(sf[i]), "chord": f"{p}-{q}", "at": end,
+                                 "width_mm": w_, "moment_nm": round(float(abs(M_[i])) / 1000.0, 2),
+                                 "axial_n": round(float(N[i]), 1),
+                                 "stress_mpa": round(float(sig[i]), 1),
+                                 "hole_mm": d_, "from_mm": round(s_, 1)}
             c_ = parent[(p, q)]
             comp[c_] = max(comp.get(c_, 0.0), float(max(-N.min(), 0.0)))
         buckle = {"safety": math.inf}
@@ -347,17 +361,94 @@ class SidePlates:
     inner: Sequence[tuple[tuple[str, str], float]]
     t: float
     feet: Sequence[str] = ()
+    mid: bool = False           # the plates bending about their mid-planes, each post's end a
+    #                             rigid t / 2 off it at the plate's face, so its shear bends the
+    #                             plate too (design review round 3's minor 2); False: the
+    #                             plates at their faces. A caller rates both (cradle_report)
 
 
 def _post_node(p: Post) -> str:
     return p.name.split(":", 1)[-1]
 
 
+class SingularFrame(ValueError):
+    """A side frame that isn't held: its stiffness singular (a mechanism) or so near it that
+    its solve can't be trusted (design review round 3's M4: a ridge on the diagonal had
+    propped A's frame, its sway 1.11 mm where it is 1.91)."""
+
+
+COND_MAX = 1e12         # the side frame's stiffness, Jacobi-scaled, at most this conditioned
+RESIDUAL_MAX = 1e-6     # its solve's equilibrium residual over its loads, at most (the ridge
+#                         it replaced had left A's inner plate 1.7 % out of equilibrium)
+
+
+def _scale(K: np.ndarray) -> np.ndarray:
+    """The Jacobi scaling of a stiffness (``1 / sqrt(diag)``); a dof with nothing holding it
+    raises :class:`SingularFrame`."""
+    d = np.abs(np.diag(K))
+    if (d <= 0.0).any():
+        raise SingularFrame(f"{int((d <= 0.0).sum())} of the side frame's degrees of freedom "
+                            "have no stiffness")
+    return 1.0 / np.sqrt(d)
+
+
+def _solve(K: np.ndarray, F: np.ndarray, what: str = "the side frame") -> np.ndarray:
+    """``K x = F`` exactly (``F`` (n, cases)), Jacobi-scaled, no ridge: a singular or
+    ill-conditioned ``K`` raises :class:`SingularFrame`, and so does an equilibrium
+    residual over :data:`RESIDUAL_MAX`."""
+    s = _scale(K)
+    Ks = K * s[:, None] * s[None, :]
+    c = float(np.linalg.cond(Ks))
+    if not math.isfinite(c) or c > COND_MAX:
+        raise SingularFrame(f"{what} is not held (its stiffness, scaled, conditioned {c:.3g}): "
+                            "a mechanism")
+    x = s[:, None] * np.linalg.solve(Ks, s[:, None] * F)
+    x += s[:, None] * np.linalg.solve(Ks, s[:, None] * (F - K @ x))     # (one refinement)
+    _residual(K, x, F, what)
+    return x
+
+
+def _residual(K: np.ndarray, x: np.ndarray, F: np.ndarray, what: str) -> float:
+    """``K x - F`` over the loads (the largest, per case: the frame's equilibrium), raising
+    :class:`SingularFrame` over :data:`RESIDUAL_MAX`."""
+    # (K one stiffness, or one per case: (cases, n, n), x and F (n, cases))
+    r = K @ x - F if K.ndim == 2 else (K @ x.T[:, :, None])[:, :, 0].T - F
+    scale = np.maximum(np.abs(F).max(axis=0), 1e-300)
+    worst = float((np.abs(r).max(axis=0) / scale).max()) if F.size else 0.0
+    if worst > RESIDUAL_MAX:
+        raise SingularFrame(f"{what} out of equilibrium by {worst:.3g} of its loads")
+    return worst
+
+
+def _geo4(L: float) -> np.ndarray:
+    """A beam's consistent geometric stiffness per newton of tension, ``[u_a, s_a, u_b,
+    s_b]`` as :func:`_beam_k` (its axial force times this: P-Delta, and buckling)."""
+    return np.array([[36.0, 3 * L, -36.0, 3 * L], [3 * L, 4 * L * L, -3 * L, -L * L],
+                     [-36.0, -3 * L, 36.0, -3 * L], [3 * L, -L * L, -3 * L, 4 * L * L]]) / (30 * L)
+
+
+@dataclass
+class SideFrame:
+    """:func:`side_frame_solve`'s result: the posts' rows (:func:`_posts`' ``out``), each
+    plate's grillage, per case the side's buckling factor (``buckling``: the least positive
+    ``lambda`` of ``(K + lambda K_G) phi = 0``, the plates' members' in-plane forces and the
+    posts' axial ones times it; ``inf`` with nothing in compression; ``None`` without the
+    members' forces), whether the solve was second order (P-Delta: its stiffness with the
+    forces' ``K_G``), and its equilibrium residual over its loads."""
+
+    posts: dict[str, dict]
+    grillages: dict[str, Grillage]
+    buckling: np.ndarray | None = None
+    second_order: bool = False
+    residual: float = 0.0
+
+
 def _posts(side: Sequence[Post], length: float, vecs: np.ndarray,
            skip: np.ndarray | None = None, plates: SidePlates | None = None,
            push: Mapping[str, float] | None = None,
-           turns: Mapping[str, np.ndarray] | None = None
-           ) -> tuple[dict[str, dict], dict[str, Grillage]]:
+           turns: Mapping[str, np.ndarray] | None = None,
+           axial: Mapping[str, Mapping[tuple[str, str], np.ndarray]] | None = None,
+           second_order: bool = False) -> SideFrame:
     """The posts of one side on the box (the module doc) under one case's joint force
     vectors ``vecs``, over the angles not in ``skip``: one frame solve of every post (a
     beam, its foot fixed in the outer plate's plane and its end moving with the inner plate,
@@ -370,8 +461,15 @@ def _posts(side: Sequence[Post], length: float, vecs: np.ndarray,
     shear, its foot's moment (into the outer plate) and the force its end puts on the inner
     plate; and per angle its force on the outer plate (``forces["box"]["foot"]``) and the
     inner plate's on its end (``["end"]``), for :func:`members`; with ``plates``, each
-    plate's grillage (``["grillage"]``: its members' end forces, :class:`Grillage`).
-    ``length``: between the plates' faces (mm)."""
+    plate's grillage (its members' end forces, :class:`Grillage`).
+    ``length``: between the plates' faces (mm).
+
+    Solved exactly (:func:`_solve`: a frame that isn't held raises :class:`SingularFrame`).
+    With ``axial`` (per plate, each grillage member's in-plane axial force per kept angle, N,
+    tension positive, or its forces ``(cases, 3)``: :func:`grillage_axial`), the side's
+    buckling factor per angle
+    (:class:`SideFrame`), the posts' own axial forces (the first-order solve's) in it too;
+    ``second_order`` then solves with that geometric stiffness (P-Delta) per angle."""
     keep = np.ones(len(vecs), bool) if skip is None else ~np.asarray(skip, bool)
     v = vecs[keep]
     m = len(v)
@@ -412,6 +510,7 @@ def _posts(side: Sequence[Post], length: float, vecs: np.ndarray,
     F = np.zeros((m, n_glob))
     els: dict[str, list] = {}
     fixed: list[int] = []
+    post_ea: list[tuple[float, int, int]] = []
     if plates is not None:
         for plate, segs in (("outer", plates.outer), ("inner", plates.inner)):
             g0 = gnodes[plate]
@@ -430,11 +529,13 @@ def _posts(side: Sequence[Post], length: float, vecs: np.ndarray,
             ea = p.ea or math.sqrt(4 * math.pi * E_STEEL * p.ei)
             wo, wi = gnodes["outer"][_post_node(p)], gnodes["inner"][_post_node(p)]
             K[np.ix_([wo, wi], [wo, wi])] += ea / L * np.array([[1.0, -1.0], [-1.0, 1.0]])
+            post_ea.append((ea, wo, wi))
         for name, f in (push or {}).items():
             F[:, gnodes["outer"][name]] += f
         for name, mv in (turns or {}).items():     # (all angles: kept here)
             g = gnodes["outer"][name]
             F[:, g + 1:g + 3] += np.asarray(mv, float)[keep]
+    off = plates.t / 2 if plates is not None and plates.mid else 0.0
     maps = []
     for i, (p, (zs, free)) in enumerate(zip(side, plans, strict=True)):
         nn = len(zs)
@@ -445,10 +546,13 @@ def _posts(side: Sequence[Post], length: float, vecs: np.ndarray,
         A[4 * (nn - 1), :3] = [1.0, 0.0, -r[1]]
         A[4 * (nn - 1) + 1, :3] = [0.0, 1.0, r[0]]
         if plates is not None:          # the slopes (sx, sy) = (ry, -rx) of its plate's turn
-            for k, plate in ((0, "outer"), (nn - 1, "inner")):
+            for k, plate, sgn in ((0, "outer", 1.0), (nn - 1, "inner", -1.0)):
                 g = gnodes[plate][_post_node(p)]
                 A[4 * k + 2, g + 2] = 1.0
                 A[4 * k + 3, g + 1] = -1.0
+                if off:                 # its end's face t / 2 off the plate's mid-plane:
+                    A[4 * k, g + 2] += sgn * off        # the plate's turn moves it across
+                    A[4 * k + 1, g + 1] -= sgn * off
         Kl = np.zeros((4 * nn, 4 * nn))
         for e in range(nn - 1):
             ke = _beam_k(p.ei, zs[e + 1] - zs[e])
@@ -469,11 +573,69 @@ def _posts(side: Sequence[Post], length: float, vecs: np.ndarray,
         K += A.T @ Kl @ A
         F += fl @ A
         maps.append((A, Kl, fl))
-    free_g = [g for g in range(n_glob) if g not in set(fixed)]
+    # a mode nothing holds and nothing loads (a lone post's inner plate turning about it):
+    # held exactly, as it is indeterminate and moves nothing; one a load moves is a mechanism
+    # (:func:`_solve` raises)
+    fixed += [g for g in range(n_glob) if g not in set(fixed) and not K[g].any()
+              and not F[:, g].any()]
+    fixed_set = set(fixed)
+    free_g = [g for g in range(n_glob) if g not in fixed_set]
     Kf = K[np.ix_(free_g, free_g)]
     U = np.zeros((m, n_glob))
-    U[:, free_g] = np.linalg.solve(Kf + np.eye(len(free_g)) * 1e-12 * np.abs(Kf).max(),
-                                   F[:, free_g].T).T
+    U[:, free_g] = _solve(Kf, F[:, free_g].T).T
+    lam = None
+    second = False
+    if axial is not None and plates is not None and m:
+        # the geometric stiffness per angle: each plate member's in-plane force on its own
+        # bending out of the plate, each post's axial force on its bending across
+        units, forces = [], []
+        for plate in ("outer", "inner"):
+            got = axial.get(plate) or {}
+            for (a, b), _w, Le, dofs, _kl, T in els[plate]:
+                n_ab = got.get((a, b))
+                if n_ab is None:
+                    continue
+                g6 = np.zeros((6, 6))
+                g6[np.ix_([0, 2, 3, 5], [0, 2, 3, 5])] = _geo4(Le)
+                gg = np.zeros((n_glob, n_glob))
+                gg[np.ix_(dofs, dofs)] = T.T @ g6 @ T
+                units.append(gg)
+                n_ab = np.asarray(n_ab, float)
+                forces.append((n_ab[:, 0] if n_ab.ndim == 2 else n_ab).reshape(m))
+        for (ea, wo, wi), (zs, _), (A, _, _) in zip(post_ea, plans, maps, strict=True):
+            nn = len(zs)
+            gl = np.zeros((4 * nn, 4 * nn))
+            for e in range(nn - 1):
+                g4 = _geo4(zs[e + 1] - zs[e])
+                for plane in (0, 1):
+                    idx = [4 * e + plane, 4 * e + 2 + plane, 4 * (e + 1) + plane,
+                           4 * (e + 1) + 2 + plane]
+                    gl[np.ix_(idx, idx)] += g4
+            units.append(A.T @ gl @ A)
+            forces.append(ea / L * (U[:, wi] - U[:, wo]))     # tension positive
+        if units:
+            G = np.stack([u_[np.ix_(free_g, free_g)] for u_ in units])
+            N = np.stack(forces, axis=1)                        # (cases, elements)
+            s = _scale(Kf)
+            Ks = Kf * s[:, None] * s[None, :]
+            Li = np.linalg.inv(np.linalg.cholesky(Ks))
+            # (K + lambda K_G) phi = 0 as the symmetric L^-1 (-S K_G S) L^-T y = y / lambda,
+            # K_G linear in the forces: each element's matrix once, then summed per case
+            Be = -(Li[None, :, :] @ (G * s[None, :, None] * s[None, None, :])
+                   @ Li.T[None, :, :])
+            mu = np.linalg.eigvalsh(np.tensordot(N, Be, axes=(1, 0))).max(axis=1)
+            lam = np.where(mu > 1e-12, 1.0 / np.maximum(mu, 1e-300), np.inf)
+            # P-Delta where the side stands (an angle at or past its buckling keeps the
+            # first-order solve: its buckling factor, under 1, is its rating there)
+            up = lam > 1.0 + 1e-6
+            if second_order and up.any():
+                Kc = Kf[None, :, :] + np.tensordot(N[up], G, axes=(1, 0))
+                Uc = np.linalg.solve(Kc * s[None, :, None] * s[None, None, :],
+                                     (s[:, None] * F[up][:, free_g].T).T[:, :, None])[:, :, 0]
+                U[np.ix_(np.nonzero(up)[0], free_g)] = Uc * s[None, :]
+                _residual(Kc, U[np.ix_(np.nonzero(up)[0], free_g)].T, F[up][:, free_g].T,
+                          "the side frame (P-Delta)")
+                second = True
     out: dict[str, dict] = {}
     for p, (zs, _), (A, Kl, fl) in zip(side, plans, maps, strict=True):
         nn = len(zs)
@@ -523,15 +685,20 @@ def _posts(side: Sequence[Post], length: float, vecs: np.ndarray,
         else:
             foot_m = -res[:, 2:4] @ _TURN.T
             tip_m = -res[:, 4 * (nn - 1) + 2:4 * nn] @ _TURN.T
-        out[p.name] = {"moment_nm": round(float(M.max()) / 1000.0, 2),
-                       "ends_nm": round(float(ends.max()) / 1000.0, 2),
-                       "mid_nm": round(float(mid.max()) / 1000.0, 2),
-                       "shear_n": round(float(V.max()), 1),
-                       "foot_nm": round(float(np.hypot(*foot_m.T).max()) / 1000.0, 2),
-                       "tip_nm": round(float(np.hypot(*tip_m.T).max()) / 1000.0, 2),
-                       "end_n": round(float(np.hypot(*end_f.T).max()), 1),
-                       "forces": {"box": {"foot": -foot_f, "end": end_f},
-                                  "turn": {"foot": foot_m, "end": tip_m}}}
+        row = {"moment_nm": round(float(M.max(initial=0.0)) / 1000.0, 2),
+               "ends_nm": round(float(ends.max(initial=0.0)) / 1000.0, 2),
+               "mid_nm": round(float(mid.max(initial=0.0)) / 1000.0, 2),
+               "shear_n": round(float(V.max(initial=0.0)), 1),
+               "foot_nm": round(float(np.hypot(*foot_m.T).max(initial=0.0)) / 1000.0, 2),
+               "tip_nm": round(float(np.hypot(*tip_m.T).max(initial=0.0)) / 1000.0, 2),
+               "end_n": round(float(np.hypot(*end_f.T).max(initial=0.0)), 1),
+               "forces": {"box": {"foot": -foot_f, "end": end_f},
+                          "turn": {"foot": foot_m, "end": tip_m}}}
+        if plates is not None:                  # its axial force (tension positive)
+            wo, wi = gnodes["outer"][_post_node(p)], gnodes["inner"][_post_node(p)]
+            ea = p.ea or math.sqrt(4 * math.pi * E_STEEL * p.ei)
+            row["forces"]["axial"] = ea / L * (U[:, wi] - U[:, wo])
+        out[p.name] = row
     grills: dict[str, Grillage] = {}
     if plates is not None:
         for plate in ("outer", "inner"):
@@ -540,7 +707,10 @@ def _posts(side: Sequence[Post], length: float, vecs: np.ndarray,
                 members[(a, b)] = (w, Le, (U[:, dofs] @ T.T) @ kl.T)
             grills[plate] = Grillage(members, {q: U[:, g:g + 3]
                                                for q, g in gnodes[plate].items()})
-    return out, grills
+    resid = 0.0
+    if m and not second:
+        resid = _residual(Kf, U[:, free_g].T, F[:, free_g].T, "the side frame")
+    return SideFrame(out, grills, lam, second, resid)
 
 
 def posts(side: Sequence[Post], length: float, vecs: np.ndarray,
@@ -548,7 +718,7 @@ def posts(side: Sequence[Post], length: float, vecs: np.ndarray,
     """The posts of one side on the box, each end held by its plate's springs
     (``Post.foot_k``, ``end_k``: :func:`plate_spring`); :func:`side_frame` holds them by the
     plates themselves."""
-    return _posts(side, length, vecs, skip)[0]
+    return _posts(side, length, vecs, skip).posts
 
 
 def side_frame(side: Sequence[Post], length: float, vecs: np.ndarray, plates: SidePlates,
@@ -560,7 +730,20 @@ def side_frame(side: Sequence[Post], length: float, vecs: np.ndarray, plates: Si
     vectors in the outer plate's plane at its nodes, per angle (N·mm, every angle: ``skip``
     applies), what else turns it: the gearbox at the crank, its shaft carrying the rod's
     force at the rod's height."""
-    return _posts(side, length, vecs, skip, plates, push, turns)
+    got = _posts(side, length, vecs, skip, plates, push, turns)
+    return got.posts, got.grillages
+
+
+def side_frame_solve(side: Sequence[Post], length: float, vecs: np.ndarray,
+                     plates: SidePlates, skip: np.ndarray | None = None,
+                     turns: Mapping[str, np.ndarray] | None = None,
+                     axial: Mapping[str, Mapping[tuple[str, str], np.ndarray]] | None = None,
+                     second_order: bool = True) -> SideFrame:
+    """:func:`side_frame` with the plates' members' in-plane forces (``axial``: per plate,
+    per grillage member, N per kept angle, :func:`grillage_axial`): the side's buckling
+    factor per angle (design review round 3's M2) and, ``second_order``, the solve with
+    their geometric stiffness (P-Delta: its minor 1)."""
+    return _posts(side, length, vecs, skip, plates, None, turns, axial, second_order)
 
 
 # -- a frame plate out of its plane ------------------------------------------------------
@@ -660,16 +843,39 @@ def strip_root(n: str, far: str, w: float, others: Sequence[tuple[str, float]],
 _ROOTS: dict = {}       # strip_root by its inputs (the plate's shape: the same every call)
 
 
+def combined_sf(N: np.ndarray, M_in: np.ndarray, M_out: np.ndarray, T: np.ndarray,
+                w: float, t: float, hole: float, yield_mpa: float
+                ) -> tuple[np.ndarray, np.ndarray]:
+    """A plate strip ``w`` x ``t`` with a hole ``hole`` across it under its in-plane axial
+    force ``N`` and moment ``M_in`` and its moment ``M_out`` across its weak axis and twist
+    ``T`` out of the plane (N, N·mm, per case), on the net section (design review round 3's
+    minor 1: they had been rated apart): at its edge, where the twist's shear is nothing,
+    ``|N| / A + |M_in| / Z_in + |M_out| / Z_out``; at its face's middle, where the in-plane
+    moment is nothing, the von Mises of ``|N| / A + |M_out| / Z_out`` and the twist's
+    ``3 T / (w_n t^2)``; the larger, and the safety factor."""
+    wn = max(w - hole, 1e-9)
+    s_n = np.abs(N) / (wn * t)
+    s_out = np.abs(M_out) / (wn * t * t / 6.0)
+    s_in = np.abs(M_in) / (t * (w ** 3 - hole ** 3) / (6.0 * w))
+    tau = 3.0 * np.abs(T) / (wn * t * t)
+    vm = np.maximum(s_n + s_in + s_out, np.sqrt((s_n + s_out) ** 2 + 3.0 * tau ** 2))
+    return vm, yield_mpa / np.maximum(vm, 1e-9)
+
+
 def plate_rows(g: Grillage, segs: Sequence[tuple[tuple[str, str], float]],
                xy: Mapping[str, np.ndarray], t: float, yield_mpa: float,
-               holes: Mapping[str, float], web: float) -> dict[str, dict]:
+               holes: Mapping[str, float], web: float,
+               inplane: Mapping[tuple[str, str], np.ndarray] | None = None) -> dict[str, dict]:
     """Each member end of a frame plate rated out of its plane from its grillage ``g``
     (:func:`side_frame`): its bending across its weak axis and its twist (von Mises,
     :func:`out_of_plane_sf`) where it is weakest near the end, on the cut plate: at a node on
     a straight run (a column's on a leg, a foot's screw) the net section through the hole
     (``holes`` by node; the boss round it, ``web`` past the hole, where wider than the
     strip); at a node where members meet, at its strip's root (:func:`strip_root`: where it
-    leaves the others and the boss), on the strip, at the moment there. Per member end
+    leaves the others and the boss), on the strip, at the moment there. With ``inplane``
+    (per grillage member ``(a, b)``, its in-plane axial force and end moments per case,
+    ``(cases, 3)``: :func:`grillage_axial` of :func:`members`' ``forces``), the member's
+    in-plane stress at that section with it (:func:`combined_sf`). Per member end
     (``"a-b at n"``): the worst over the cases, its stress, safety factor, moment and twist
     (N·m) and the section."""
     out: dict[str, dict] = {}
@@ -699,13 +905,63 @@ def plate_rows(g: Grillage, segs: Sequence[tuple[tuple[str, str], float]],
                 s, ww, h = _ROOTS[key], w, 0.0
                 where = "its strip's root"
             M = g.moment_at(n, far, s)
-            vm, sf = out_of_plane_sf(M, T, ww, t, h, yield_mpa)
+            f = (inplane or {}).get((a, b))
+            N_ = M_in = None
+            if f is None:
+                vm, sf = out_of_plane_sf(M, T, ww, t, h, yield_mpa)
+            else:
+                x = s if n == a else L - s          # (the beam's moment from a: -m_a + ...)
+                N_ = f[:, 0]
+                M_in = -f[:, 1] + (f[:, 1] + f[:, 2]) * x / L
+                vm, sf = combined_sf(N_, M_in, M, T, ww, t, h, yield_mpa)
             i = int(np.argmin(sf))
-            out[f"{a}-{b} at {n}"] = {
-                "member": f"{a}-{b} at {n} (out of the plate)", "width_mm": round(ww, 1),
-                "at_mm": round(s, 1), "section": where, "moment_nm": round(float(M[i]) / 1000, 2),
-                "twist_nm": round(float(T[i]) / 1000, 2), "stress_mpa": round(float(vm[i]), 1),
-                "safety": round(float(sf[i]), 2), "compression_n": 0.0, "buckling": None}
+            row = {"member": f"{a}-{b} at {n} (out of the plate"
+                             + (", with its in-plane stress)" if f is not None else ")"),
+                   "width_mm": round(ww, 1), "at_mm": round(s, 1), "section": where,
+                   "moment_nm": round(float(M[i]) / 1000, 2),
+                   "twist_nm": round(float(T[i]) / 1000, 2),
+                   "stress_mpa": round(float(vm[i]), 1),
+                   "safety": round(float(sf[i]), 2), "compression_n": 0.0, "buckling": None}
+            if N_ is not None and M_in is not None:
+                row.update(axial_n=round(float(N_[i]), 1),
+                           inplane_nm=round(float(abs(M_in[i])) / 1000, 2))
+            out[f"{a}-{b} at {n}"] = row
+    return out
+
+
+def grillage_axial(segs: Sequence[tuple[tuple[str, str], float]],
+                   xy: Mapping[str, np.ndarray],
+                   forces: Mapping[tuple[str, str], np.ndarray], tol: float = 1.0
+                   ) -> dict[tuple[str, str], np.ndarray]:
+    """Each grillage member's in-plane forces (``segs``: a plate's, :class:`SidePlates`) from
+    :func:`members`' (``forces``: its own segments' axial force and end moments per case,
+    ``(cases, 3)``, which may be split elsewhere): per member ``(a, b)``, ``(cases, 3)``,
+    its axial force (the same along a segment) and its end moments at ``a`` and ``b`` (the
+    segment holding it, its moment linear between its ends; a member on none is left
+    out)."""
+    out: dict[tuple[str, str], np.ndarray] = {}
+    for (a, b), _w in segs:
+        pa, pb = np.asarray(xy[a], float), np.asarray(xy[b], float)
+        for (p, q), f in forces.items():
+            pp, pq = np.asarray(xy[p], float), np.asarray(xy[q], float)
+            d = pq - pp
+            Lpq = float(np.hypot(*d))
+            u = []
+            for c in (pa, pb):
+                t_ = float((c - pp) @ d) / (Lpq * Lpq)
+                if not -1e-6 <= t_ <= 1 + 1e-6 or float(np.hypot(*(pp + t_ * d - c))) > tol:
+                    break
+                u.append(t_)
+            if len(u) < 2:
+                continue
+            # the segment's beam moment along it, -m_p + (m_p + m_q) x, at a and at b, back
+            # to the end moments of a member a-b (m_a = -M(a), m_b = M(b)); flipped (and the
+            # moments' sense with it) when the member runs q to p
+            Ma = -f[:, 1] + (f[:, 1] + f[:, 2]) * u[0]
+            Mb = -f[:, 1] + (f[:, 1] + f[:, 2]) * u[1]
+            out[(a, b)] = (np.stack([f[:, 0], -Ma, Mb], axis=-1) if u[1] >= u[0] else
+                           np.stack([f[:, 0], Ma, -Mb], axis=-1))
+            break
     return out
 
 
@@ -786,4 +1042,4 @@ def members(xy: Mapping[str, np.ndarray], pairs: Sequence[tuple[str, str]],
                      "compression_n": round(comp, 1), "euler_n": round(pcr, 1),
                      "untied": free, "sway_n": round(sway, 1) if sway is not None else None,
                      "buckling": round(pcr / comp, 2) if comp > 1e-6 else None})
-    return {"members": rows}
+    return {"members": rows, "forces": {s_: res[:, e] for e, s_ in enumerate(segs)}}

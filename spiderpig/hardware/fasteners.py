@@ -73,6 +73,33 @@ SCREWS: dict[tuple[str, str], Screw] = {(s.kind, s.size): s for s in (
 )}
 
 
+TR_TORQUES = ("https://www.trfastenings.com/knowledge-base/metric-screws/"
+              "stainless-steel-pre-load-and-tightening-torques")
+BUTTON_A2_70_NM: dict[str, float] = {"6": 4.0, "10": 15.0}
+"""An ISO 7380 button head's most tightening torque in A2-70 (N·m): its low head carries less
+than the thread (ISO 7380-1:2022: about 80 %), so under A2-70's own M6 5.9 N·m (friction
+0.1). TR Fastenings' socket screws page (the drive review's helper, 2026-10-20: A2-70 / A4-70
+M6 4 N·m, M10 15; 10.9 M6 8, M10 30). A decanting cradle's M6 button heads (its pillars',
+stand columns' and tie rods') are tightened to this (design review round 3's M5)."""
+A2_70_PRELOAD: dict[str, tuple[tuple[float, float, float], ...]] = {
+    "6": ((0.1, 6850.0, 5.9), (0.2, 5540.0, 8.8), (0.3, 4490.0, 10.4)),
+    "10": ((0.1, 20000.0, 30.0), (0.2, 16200.0, 44.0), (0.3, 13100.0, 51.0)),
+}
+"""A2-70 coarse threads' preload (N) at the tightening torque (N·m) TR Fastenings tabulates
+for each friction (:data:`TR_TORQUES`, the drive review's helper's fetch of 2026-10-20):
+``(friction, preload, torque)``. :func:`preload_band` scales a row to another torque."""
+
+
+def preload_band(size: str, nm: float, frictions: tuple[float, float] = (0.1, 0.2)
+                 ) -> tuple[float, float]:
+    """The least and the most preload (N) an A2-70 screw of ``size`` takes at ``nm`` N·m over
+    ``frictions`` (:data:`A2_70_PRELOAD`'s rows, each its preload per N·m times ``nm``: the
+    torque's share that stretches the screw stays the same at one friction)."""
+    rows = {mu: f / t for mu, f, t in A2_70_PRELOAD[size]}
+    got = [rows[mu] * nm for mu in frictions]
+    return min(got), max(got)
+
+
 def screw(kind: str, size: str) -> Screw:
     return SCREWS[kind, size]
 

@@ -283,15 +283,16 @@ arm X-Tr1 passes right over J (the planner finds no plan). Two pin types, no Chi
 screw, nothing threadlocked."""
 
 PRODUCT_CHORD_R: dict[str, dict[str, dict[tuple[str, str], float]]] = {
-    "decanter_rcm": {"b1": {("M", "P"): 13.0}, "b6": {("X", "Tr1"): 20.0, ("X", "Y"): 16.0}},
+    "decanter_rcm": {"b1": {("M", "P"): 13.0}, "b6": {("X", "Tr1"): 24.0, ("X", "Y"): 16.0}},
     "decanter_hinge": {"b1": {("M", "E"): 13.0}, "b2": {("E", "Tr1"): 16.0}},
 }
 """Per product linkage, per link: a chord (a pair of its joints, either way round) cut wider
 than ``Params.link_radius``, its own half-width (mm), each from the cradle's links rated
 in bending (design review round 1, 2026-10-14; ``cradle_report.structure``):
-- B's cradle link b6: its rear arm X-Tr1, a cantilever off X carrying the rear saddle, 40
-  mm wide (24 held the jam's couple at SF 0.3 in 0.125 in); its chord X-Y, 284 mm in
-  compression under the jam, 32 mm wide against buckling out of its plane.
+- B's cradle link b6: its rear arm X-Tr1, a cantilever off X carrying the rear saddle, 48
+  mm wide (24 held the jam's couple at SF 0.3 in 0.125 in; 40 held the clutch's cap at 1.15
+  on 5052's minimum, design review round 3); its chord X-Y, 284 mm in compression under the
+  jam, 32 mm wide against buckling out of its plane.
 - A's cradle link b2: its chord E-Tr1, in compression from the rod's pin to the rear tie
   under the jam, 32 mm wide against buckling.
 - Each rod b1 (0.250 in), 26 mm wide (design review round 2, 2026-10-15, laser-cut parts
@@ -300,7 +301,9 @@ in bending (design review round 1, 2026-10-14; ``cradle_report.structure``):
 The planner claims each at its width (:class:`construction.plates.LinkPlates`)."""
 
 PRODUCT_BOSS_R: dict[str, dict[str, dict[str, float]]] = {
-    "decanter_rcm": {"b1": {"M": 15.8}, "b2": {"O2": 17.0}, "b3": {"O1": 17.0}},
+    "decanter_rcm": {"b1": {"M": 15.8}, "b2": {"O2": 17.0},
+                     "b3": {"O1": 17.0, "J": 14.0, "J2": 14.0},
+                     "b4": {"X": 14.0, "J": 14.0, "K": 14.0}, "b6": {"X": 16.0}},
     "decanter_hinge": {"b1": {"M": 15.8}, "b2": {"G": 17.0}},
 }
 """Per product linkage, per link: a boss (a disc, its radius in mm) round the hole at a
@@ -311,6 +314,12 @@ material from a hole to an edge, in 7075 "to prevent microcracks"):
   26 mm wide);
 - B's arms b2 at O2 and b3 at O1, A's cradle link b2 at G, each a pillar's 12.35 mm bore
   in 0.187-0.190 in: 10.8 mm, 2.2 x (5.8 at 24 mm).
+- B's 7075 links b3 and b4 at every 8.2 mm pin hole, r 14 (design review round 3,
+  2026-10-20, laser-cut parts M3: 9.9 mm, 2.05 x the 0.190 in; at 24 mm wide 7.9, 1.64 x,
+  under SendCutSend's 7075 rule; b4's blank then 28 mm, over the 25.27 mm it deburrs).
+- B's cradle link b6 at X, r 16 (round 3's linkage review, M1: its chord Tf2-X at X held
+  the clutch's cap at 1.12 on 5052's minimum through the 8.2 mm hole; the chord itself can't
+  grow, it passes pillar O1 by the planner's margin).
 Each outline is closed round its boss and the planner claims the boss as a disc
 (:func:`construction.plates.product_bosses`)."""
 

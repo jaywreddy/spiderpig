@@ -110,6 +110,11 @@ def _stock(axle: StandoffAxle) -> tuple[tuple[float, ...], ...]:
 ALU = "#c8ccd0"
 COLUMN_TOL = 0.25    # the column within this of its gap (half the step)
 RUN_PLAY = 0.3       # a cradle's column: its links' axial running play on the standoff
+NECK_WALL = 1.2      # a cradle's printed neck at its thinnest (mm): three 0.4 mm perimeters, a
+#                      sleeve that only locates its links (the standoff carries the clamp), so
+#                      a pillar passes a layer a link sweeps 7.4 mm from its axis (B's O1 under
+#                      b6, design review round 3's B1: with the rings' 1.5 mm wall it ended
+#                      under b6, a cantilever)
 
 
 @dataclass(frozen=True)
@@ -143,6 +148,9 @@ class StandoffAxle:
     #                                  12 mm, tapped M6 (MISUMI NETRF12, cradle_shaft)
     outside: float | None = None     # the head room outside a frame plate (None: a layer,
     #                                  the pitch; a cradle's: its side is open there)
+    neck_wall: float | None = None   # a printed neck's thinnest wall where a passing link
+    #                                  leaves a layer less room than a ring (None: the
+    #                                  rings' ``Params.min_wall``; a cradle's: NECK_WALL)
 
     @property
     def screw_d(self) -> float:
@@ -216,12 +224,13 @@ class StandoffAxle:
         ``cradle_report``), a 10 mm one at the 6 L's (0.78): the 12 mm is 1.73 x the 10 mm.
         Its heads and washers, 4.9 mm, stand outside the plates, where a cradle's side is
         open (the bay; the outside, its gearbox at O)."""
-        from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, NETRF12_ID
+        from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, NETRF12_ROOT
 
-        return replace(self.one_piece(), stock="shaft12", size="M6", od=12.0, id_=NETRF12_ID,
+        return replace(self.one_piece(), stock="shaft12", size="M6", od=12.0, id_=NETRF12_ROOT,
                        yield_mpa=NETRF10_YIELD, end_hole=6.4, stud_hole=6.4,
                        min_engage=6.0, min_segment=24.0, washer_key="m6_washer",
-                       shim_key="m6_washer", tighten_nm=6.0, outside=5.0)
+                       shim_key="m6_washer", tighten_nm=6.0, outside=5.0,
+                       neck_wall=NECK_WALL)
 
     def _running_play(self, build: Build, group: AxleGroup, out: Realized,
                       length: float) -> float:
@@ -325,8 +334,10 @@ class StandoffAxle:
         head = max(w_od, screw[2]) / 2
         from spiderpig.materials import washer_od
 
+        neck = ring_min if self.neck_wall is None else min(
+            ring_min, (self.od + self.ring_fit) / 2 + self.neck_wall)
         return AxleDims(axle=self.od / 2, spacer=max(p.spacer_d / 2, ring_min), head=head,
-                        neck=ring_min, washer=washer_od(self.od) / 2)
+                        neck=neck, washer=washer_od(self.od) / 2)
 
     def ends(self, d: AxleDims, pillar: bool, anchored: tuple[bool, bool], n_layers: int,
              pitch: float, span: float | None = None

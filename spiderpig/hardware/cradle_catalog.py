@@ -64,8 +64,21 @@ M5_BHCS_BD = {8: ("6631", 0.12, 7.76), 10: ("6632", 0.12, 8.03), 12: ("6633", 0.
 NETRF10_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(150, 6001))
 """MISUMI NETRF10's lengths: 15-600 mm in 0.1 mm steps (+-0.1)."""
 NETRF10_ID = 4.2            # the strength check's bore: the M5 tap drill, as if tapped through
-NETRF10_YIELD = 220.0       # MPa: 1018 at its hot-rolled minimum, as NETRF6 (conservative)
+NETRF10_YIELD = 235.0       # MPa: the NETRF10/12 steel's specified minimum (below)
+NETRF_STEEL = ("MISUMI states NETRF's steel as 'EN 1.0038 Equiv.' (its global table, a "
+               "reseller's copy fetched 2026-10-20: famaga.com/catalog/misumi/id1136902) and "
+               "'1018 Carbon Steel or Equivalent' (its 2019 Americas catalogue, "
+               "mx.misumi-ec.com/en/pdf/fa/2019/2019_MX_2216.pdf); EN 1.0038 (S235JR) is "
+               "235 MPa minimum to 16 mm (EN 10025-2, Saarstahl's declaration of performance, "
+               "saarstahl.com/app/uploads/2016/03/S235JR_EN10025-2_2019-FL-D.pdf); 1018 has no "
+               "specified minimum (ASTM A108 sets none; SAE J1397 estimates 220 hot rolled, "
+               "370 cold drawn)")
+"""Where :data:`NETRF10_YIELD` comes from (design review round 3's M1, 2026-10-20: every
+part rated on its specified minimum; the posts had taken 1018's estimated hot-rolled 220
+MPa, a guess under the material MISUMI names)."""
 NETRF10_THREAD = 10.0       # its M5 taps' depth (M x 2)
+NETRF10_ROOT = 5.0          # its tapped ends rated as a tube to the female thread's roots (the
+#                             M5's major diameter: design review round 3's minor 3)
 NETRF10_TIERS: tuple[tuple[float, tuple[tuple[int, float], ...]], ...] = (
     (50.0, ((1, 13.46), (5, 9.76), (10, 4.91))),
     (100.0, ((1, 13.77), (5, 9.98), (10, 5.02))),
@@ -88,6 +101,9 @@ NETRF12_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(250, 1001))
 lengths priced."""
 NETRF12_ID = 5.0            # the strength check's bore: the M6 tap drill, as if tapped through
 NETRF12_THREAD = 12.0       # its M6 taps' depth (M x 2)
+NETRF12_ROOT = 6.0          # its tapped ends rated as a tube to the female thread's roots (the
+#                             M6's major diameter, not the 5.0 mm tap drill: design review
+#                             round 3's minor 3, Z 159.0 mm^3 against 164.5)
 NETRF12_TIERS: tuple[tuple[float, tuple[tuple[int, float], ...]], ...] = (
     (50.0, ((1, 15.62), (5, 11.37), (10, 5.74))),
     (100.0, ((1, 16.30), (5, 11.86), (10, 5.99))),
