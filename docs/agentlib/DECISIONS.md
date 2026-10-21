@@ -3571,3 +3571,35 @@ On the old fit 0d9449b was B 1,007.55 and A 847.47.
   `spiderpig/hardware/order.py`, `spiderpig/hardware/bom.py`, `spiderpig/build.py`,
   `spiderpig/tools/pack_inspect.py`, `viewer/src/decant/`, `tests/test_cradle.py`,
   `docs/agentlib/DECANTER.md`, `docs/agentlib/TESTING.md`.
+
+### 2026-10-21: the cradle page's visual pass (each part drawn as what it is made of)
+
+- **What:** the cradle page draws each part by its material and surface. The bake writes
+  them in each node's extras: a print's `filament` (`hardware.bom.part_filament`: PETG, TPU or
+  PLA) and a bought part's `finish` (`hardware.catalog.finish`: the first finish its catalog
+  name or offer's note names, such as hard-anodized, stainless, zinc, black oxide or
+  aluminium; none for plain steel). The viewer's materials (`viewer/src/decant/realism.ts`):
+  - the 6061 links bead-blasted and the 5052 plates brushed, each with a duller laser-cut edge;
+  - the link pins and pivot rods hard-anodized dark grey; the tie rods, posts and brace bare
+    6061; the screws stainless; the clutch's plungers black oxide;
+  - the board, cleats and locator birch, with plies on their edges;
+  - PETG prints with a soft gloss, PLA matte, TPU black;
+  - the gearbox a cast grey housing (the brief's steel gearbox; `handcrank.GEARBOX_COLOR`'s
+    blue stays the guide's);
+  - the decanter in clear glass, the wine in it lit through (high quality), and a ruby stream.
+  The light: Khronos PBR Neutral tone mapping in place of ACES, so the page's reds and greens
+  stay true; a brighter studio with bounce cards, so upright aluminium no longer reflects a
+  dark floor; and a walnut tabletop that runs into the room.
+- **Why:** the user asked for a fidelity pass and final renders. Before it, the aluminium read
+  as dark steel, the board as plastic, the gearbox as a blue toy, and a full decanter as a
+  maroon ceramic vase.
+- **Kept:** the labels and the colours that explain things (the toggle zones, the gap's line
+  and label, the pack list) are untouched; `?overlays=0` hides the gap's line for a picture.
+  The playback still runs at 60 fps at twice the pixel ratio on the development box's Quadro
+  M2000, as before. The walkers' identity gate is identical against `e6d4373` (all six
+  designs): their parts aren't touched, only their GLB nodes gain the two keys.
+- **Where:** `spiderpig/bake.py` (`_surfaces`), `spiderpig/hardware/catalog.py` (`FINISHES`,
+  `finish`), `viewer/src/decant/realism.ts`, `pour.ts`, `main.ts` (`window.__decant`: the
+  camera on named parts, a pack held part-way, for tests and renders),
+  `tests/test_bake_gltf.py`, `tests/test_seam_hardware.py`, `viewer/src/decant/realism.test.ts`;
+  the renders in `/root/scratch/decant/renders/`.
