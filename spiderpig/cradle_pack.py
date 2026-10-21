@@ -670,8 +670,9 @@ PACK_PLANS: dict[str, vp.Plan] = {
              "passive panel beside the box under the drive panel, 162.1 L, which rests the "
              "drive panel on its gearbox.)"),
     "decanter_hinge": vp.Plan(
-        "A: both side panels face down on the board, end to end, the loose parts in their "
-        "open triangles",
+        "A: the passive panel face down on the board, the drive panel face down across it on "
+        "printed spacers, the tie rods' bundle, the light, the hand crank and the front saddle "
+        "under it",
         steps=(
             vp.Step("passive", down="outer",
                     why="its plates flat on the board, its pillars up (printed spacers level "

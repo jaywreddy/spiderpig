@@ -1240,8 +1240,9 @@ TAPERED: frozenset[str] = frozenset({"decanter_rcm"})
 B's. A's keep the closing's S-steps for now (cosmetic: none is sharp): its flat pack lays both
 panels face down on the board with the loose parts in their open triangles, and the tapers
 (601 mm² more on its outer plate) closed what its printed spacers stood in, one growing to a
-327 mm print and another left loose 66 mm (``tests/test_cradle.py``'s pack test, 2026-10-20);
-the pack's turn 3 takes them up. Every convex corner is rounded on both (:data:`EDGE_R`)."""
+327 mm print and another left loose 66 mm (``tests/test_cradle.py``'s pack test, 2026-10-20).
+Pack turn 3 (2026-10-21) left A's plates as they are: no part changed, its spacers shaped to
+them. Every convex corner is rounded on both (:data:`EDGE_R`)."""
 
 
 def plate_part(pads, cuts, z0: float, z1: float, web: float, fillet: float = 0.0,
