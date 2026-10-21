@@ -628,16 +628,19 @@ def _posts(side: Sequence[Post], length: float, vecs: np.ndarray,
             Be = -(Li[None, :, :] @ (G * s[None, :, None] * s[None, None, :])
                    @ Li.T[None, :, :])
             mu = np.linalg.eigvalsh(np.tensordot(N, Be, axes=(1, 0))).max(axis=1)
-            lam = np.where(mu > 1e-12, 1.0 / np.maximum(mu, 1e-300), np.inf)
+            lam_c = np.where(mu > 1e-12, 1.0 / np.maximum(mu, 1e-300), np.inf)
+            lam = lam_c
             # P-Delta where the side stands (an angle at or past its buckling keeps the
             # first-order solve: its buckling factor, under 1, is its rating there)
-            up = lam > 1.0 + 1e-6
-            if second_order and up.any():
+            up = lam_c > 1.0 + 1e-6
+            rows_up = np.nonzero(up)[0]
+            if second_order and len(rows_up):
                 Kc = Kf[None, :, :] + np.tensordot(N[up], G, axes=(1, 0))
                 Uc = np.linalg.solve(Kc * s[None, :, None] * s[None, None, :],
                                      (s[:, None] * F[up][:, free_g].T).T[:, :, None])[:, :, 0]
-                U[np.ix_(np.nonzero(up)[0], free_g)] = Uc * s[None, :]
-                _residual(Kc, U[np.ix_(np.nonzero(up)[0], free_g)].T, F[up][:, free_g].T,
+                fg = np.asarray(free_g, dtype=np.intp)
+                U[np.ix_(rows_up, fg)] = Uc * s[None, :]
+                _residual(Kc, U[np.ix_(rows_up, fg)].T, F[up][:, free_g].T,
                           "the side frame (P-Delta)")
                 second = True
     out: dict[str, dict] = {}
