@@ -448,9 +448,10 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     # the gearbox's riser walking (its cap's: jam_capped's rows; design review round 3's M2)
     out["drive"]["riser"] = {
         "walk": riser_rating(box, notes, f_rod, peak),
-        "basis": "a clamped stack (ring, sleeve, shims, plate) on each of four class 8.8 M8 "
-                 "studs: the stud's tension and shear, the sleeve's bending, the ring's "
-                 "bearing; its slip at the faces' friction (cradle_drive.riser_rating)"}
+        "basis": "a clamped stack (ring, sleeve, shims, plate) on each of four A2-70 M8 "
+                 "studs: the stud's tension and shear, the 6061 sleeve's crush and bending, "
+                 "the ring's bearing; its slip at the faces' friction "
+                 "(cradle_drive.riser_rating)"}
     # the crankpin: a NETRF12 standing in the crank block, the rod's force at the rod's
     # mid-plane over the block's top (a cantilever that long out of its socket): it bends at
     # the block's top, taken as the 12 x 5.0 tube its tapped end may be there, at 1018's

@@ -1805,10 +1805,11 @@ def test_b_stands_turns_easily_and_holds():
                                                                 for j in "XY"}
     assert k["least_ratio"] >= k["bar"] == 10.0
     # design review round 2's M3: against the most the way back can put on a pin's tip,
-    # half the 3.6 kg cradle box, the bench push screens each keeper 1.5 x over it; printed
+    # half the 3.1 kg cradle box, the bench push screens each keeper 1.5 x over it; printed
     # at 7.4 mm, at least 0.4 mm of grip; still on by hand, a tube over the pin
     assert cr.KEEPER == (7.4, 0.4)
-    assert 3.3 < k["box_kg"] < 3.9          # (the 12 mm tie rods since round 2: 3.2 before)
+    assert 2.8 < k["box_kg"] < 3.3          # (the 1/2 in 6061 tie rods since the simplification
+    #                                         round 1: 3.6 on round 2's 12 mm steel, 3.2 before)
     assert 13.0 < k["load_n"] < 18.0
     assert k["load_ratio"] >= k["load_bar"] == 1.5
     assert all(x["push_on_n"] <= k["push_on_bar_n"] == 120.0 for x in k["rows"])

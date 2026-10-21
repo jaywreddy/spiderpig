@@ -19,7 +19,7 @@ the whole turn, the crank-rocker's toggles included (design review rounds 1 and 
   wear, and dry (``handcrank.clutch_drift``), with the cap it would give; the plungers'
   settings and their reach (``handcrank.plunger_setting``, ``plunger_reach``), the grip's
   couple on the journal (``handcrank.journal_share``).
-* **The riser** (:func:`riser_rating`): the gearbox's clamped stack on four class 8.8 studs,
+* **The riser** (:func:`riser_rating`): the gearbox's clamped stack on four A2-70 studs,
   walking and at the cap over the whole turn (design review round 3's M2).
 * **The worm's efficiency band** (round 2's M-5): the grip at the worst start run in and new
   (``handcrank.RUNIN_LOSS``); the clutch's margin over the start, set on a measurement, is the
@@ -53,7 +53,8 @@ RISER_MU = 0.15
 """The riser's faces' friction for its slip (steel, 6061, 5052, the gearbox's die-cast face,
 bare but perhaps oiled by a weeping seal): RoyMech's greasy mild steel's middle (0.09-0.19);
 dry steel on aluminium is 0.47-0.61 (``handcrank.DRY_MU``)."""
-SS304_YIELD = 205.0     # MPa: the riser's sleeves, 304 annealed (ASTM A276's minimum)
+SS304_YIELD = 205.0     # MPa: 304 annealed (ASTM A276's minimum): a riser part's whose item
+#                         names no yield
 E_STEEL, E_ALU_ = 200000.0, 69000.0
 
 
@@ -68,7 +69,7 @@ def riser_rating(box, notes: dict, f, t_nm) -> dict:
     columns' end moments, ``m = V H / 2`` (fixed at the face and at the plate: the four keep
     the housing from tilting). The clamp from the thin nut's torque over the nut factor's band
     (``handcrank.RISER_NUT_K``), the stud's share of the pull ``phi`` (its stiffness and the
-    stack's). Rated: the stud (class 8.8's proof, its tension with the joint closed or, open,
+    stack's). Rated: the stud (A2-70's proof, its tension with the joint closed or, open,
     the column's moment on the sleeve's radius, with the side load's shear if it slips: von
     Mises), the sleeve's bending (open), the ring's bearing under the sleeve; and its slip at
     :data:`RISER_MU` (the friction; the snug sleeve and the stud's shear hold it if it does).
@@ -92,7 +93,13 @@ def riser_rating(box, notes: dict, f, t_nm) -> dict:
     d = RISER_STUD[0]
     a_s = 36.6                                      # M8's stress area (ISO 898-1)
     a_minor = math.pi / 4 * (d - 1.22687 * 1.25) ** 2
-    sl_od, sl_id, sl_len, _ = RISER_SLEEVE
+    from spiderpig.hardware.catalog import get
+
+    sl_od, sl_id, sl_len, sl_key = RISER_SLEEVE
+    sleeve = get(sl_key).dims
+    e_sl = float(sleeve.get("e_mpa", 193000.0))
+    y_sl = float(sleeve.get("yield_mpa", SS304_YIELD))
+    e_shim = float(get(RISER_SHIM[3]).dims.get("e_mpa", 193000.0))
     a_sl = math.pi / 4 * (sl_od ** 2 - sl_id ** 2)
     z_sl = math.pi * (sl_od ** 4 - sl_id ** 4) / (32 * sl_od)
     kern = (sl_od ** 2 + sl_id ** 2) / (8 * sl_od)
@@ -100,8 +107,8 @@ def riser_rating(box, notes: dict, f, t_nm) -> dict:
     shims = float(notes.get("riser_shims_mm", h - t_ring - sl_len))
     t_plate = float(notes.get("plate_inner_z_mm", 4.75)) - (face + h)
     k_b = E_STEEL * a_s / (h + t_plate)
-    k_m = 1.0 / (sl_len / (193000.0 * a_sl) + t_ring / (E_ALU_ * a_sl)
-                 + shims / (193000.0 * math.pi / 4 * (RISER_SHIM[0] ** 2 - RISER_SHIM[1] ** 2))
+    k_m = 1.0 / (sl_len / (e_sl * a_sl) + t_ring / (E_ALU_ * a_sl)
+                 + shims / (e_shim * math.pi / 4 * (RISER_SHIM[0] ** 2 - RISER_SHIM[1] ** 2))
                  + t_plate / (E_ALU_ * math.pi / 4 * (13.0 ** 2 - (d + 0.6) ** 2)))
     phi = k_b / (k_b + k_m)
     p_lo = RISER_NUT_NM * 1000.0 / (RISER_NUT_K[1] * d)
@@ -114,8 +121,12 @@ def riser_rating(box, notes: dict, f, t_nm) -> dict:
     t_stud = np.maximum(p_hi + phi * n, n + m / (sl_od / 2))
     vm = np.sqrt((t_stud / a_s) ** 2 + 3 * (v / a_minor) ** 2)
     sf_stud = STUD_PROOF_MPA / vm
-    sf_sleeve = np.where(opens, SS304_YIELD / np.maximum(m / z_sl, 1e-9), np.inf)
     bearing = (p_hi + (1 - phi) * n) / a_sl + m / z_sl
+    # the sleeve: in bending once the joint opens, and crushed by the clamp and the column's
+    # moment at its most (the simplification round 1, 2026-10-21: unrated before, 304's
+    # annealed 205 MPa took 222 at B's cap)
+    sf_sleeve = np.minimum(np.where(opens, y_sl / np.maximum(m / z_sl, 1e-9), np.inf),
+                           y_sl / bearing)
     sf_ring = HAND_CRANK.bearing_mpa / bearing
     least = np.minimum(np.minimum(sf_stud, sf_sleeve), sf_ring)
     slip = RISER_MU * np.maximum(clamp, 0.0) / np.maximum(v, 1e-9)

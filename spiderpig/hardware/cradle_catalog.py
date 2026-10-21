@@ -925,7 +925,7 @@ register(
                 "a24101800ux1328", pack_qty=5, price_usd=7.53, verified=True,
                 note="5 pcs, 304 stainless, 8 ID x 12 OD x 20 mm, 'for 5/16\" or M8 screw'; "
                      "the product JSON fetched 2026-10-20"),),
-         dims={"id": 8.0, "od": 12.0, "length": 20.0},
+         dims={"id": 8.0, "od": 12.0, "length": 20.0, "e_mpa": 193000.0, "yield_mpa": 205.0},
          notes="The gearbox riser's sleeves (construction.handcrank.RISER_SLEEVE): one on "
                "each stud, the ring to the shims, clamped."),
     Item("shim_8x14x0p5", "304 stainless flat shim 8 x 14 x 0.5 mm (pack of 20)", "washer",
@@ -933,7 +933,7 @@ register(
                 "a23040700ux0239", pack_qty=20, price_usd=6.14, verified=True,
                 note="20 pcs M8 304 ultra-thin flat washers 8 x 14 x 0.5 mm; the product JSON "
                      "fetched 2026-10-20 (2026-10-10 the same)"),),
-         dims={"id": 8.0, "od": 14.0, "t": 0.5},
+         dims={"id": 8.0, "od": 14.0, "t": 0.5, "e_mpa": 193000.0, "yield_mpa": 205.0},
          notes="The gearbox riser's go/no-go shims (construction.handcrank.RISER_SHIM), over "
                "each sleeve under the outer plate."),
     Item("m8_thin_nut", "M8 hex jam nut, 18-8 (13 x 4 mm)", "nut",
@@ -979,4 +979,34 @@ register(
            notes="A hand crank's grip pin (construction.handcrank.HANDLES): the printed grip "
                  "spins on its plain shank.")
       for L, (pn, each, n, bag) in {90: ("5827", 1.68, 100, 109.06)}.items()),
+)
+
+register(
+    Item("m8_stud_a270_45", "M8 x 45 stud, A2-70, sawn from an M8 x 60 full-thread hex screw "
+         "(DIN 933, Fastenal M82580060A20000)", "fastener",
+         (Offer("Fastenal", FASTENAL + "M82580060A20000", "M82580060A20000", price_usd=1.12,
+                verified=True,
+                note="M8-1.25 x 60 full-thread hex cap screw, 18-8 stainless, \"Grade A2-70\", "
+                     "ISO 3506-1; page rendered 2026-10-21. Its head sawn off and the stud cut "
+                     "to 45 mm (a hacksaw), the cut end filed and a nut run off it"),),
+         dims={"d": 8.0, "length": 45.0, "proof_mpa": 450.0},
+         notes="The gearbox's riser studs (construction.handcrank.RISER_STUD) since the "
+               "simplification round 1 (2026-10-21, the materials rule: class 8.8 steel "
+               "before): a stated A2-70, its 450 MPa stress at 0.2 % (ISO 3506-1) the proof "
+               "the riser is rated on (an 18-8 of no stated class is A2-50's 210 MPa: the stud "
+               "0.83 at the clutch's cap). A2 under an 18-8 nut galls: threadlocker 243 on the "
+               "thread, as before."),
+    Item("m8_sleeve_6061_12p7x20", "1/2 in 6061-T6511 riser sleeve, 12.7 x 20 mm, drilled 8.0 mm "
+         "(a 1 in piece cut by Speedy Metals)", "misc",
+         (Offer("Speedy Metals", ROD_STOCK[ROD_HALF]["url"], ROD_STOCK[ROD_HALF]["sku"],
+                price_usd=ROD_STOCK[ROD_HALF]["per_in"], verified=True,
+                note="a 1 in piece of the posts' 1/2 in round (USD 0.192 an inch, whole inches, "
+                     "the cart 2026-10-21), faced to 20 mm on the Carvera and drilled 8.0 mm "
+                     "through on a drill press"),),
+         dims={"id": 8.0, "od": ROD_HALF, "length": 20.0, "material": "aluminium",
+               "e_mpa": ROD_E, "yield_mpa": ROD_YIELD},
+         notes="The gearbox riser's sleeves (construction.handcrank.RISER_SLEEVE) since the "
+               "simplification round 1 (2026-10-21, the materials rule: 304 stainless before, "
+               "whose annealed 205 MPa the clamp and the column's moment took past at the "
+               "clutch's cap): one on each stud, the ring to the shims, clamped."),
 )
