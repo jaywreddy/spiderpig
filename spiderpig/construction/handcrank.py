@@ -452,9 +452,9 @@ A's (design review round 2's M-3) is 130 mm on a 230 mm reach: the reach puts it
 hand on its grip behind A's cradle link b2 and its rear tie Tr2 over the whole turn (round
 1's 85 mm crank on a 100 mm reach had the hand through them for 64.5° of crank) and in
 front of the base stop's rails behind the cradle (``cradle_report.hand_sweep``). A full 6
-L's worst start is 21.97 N at 130 mm run in, at the 22 N bar since design review round 2's
-12 mm tie rods (21.5 before; open: ``cradle_report.OPEN_GRIP``); at Figure 13's light-load
-maximum, 125 mm, it is 22.8 N, and a heavy-load crank (190 mm or more) meets A's bottle and
+L's worst start is 21.5 N at 130 mm run in, under the 22 N bar (21.97, at it, from design
+review round 2's 12 mm steel tie rods to the simplification round 1's 6061 ones); at Figure
+13's light-load maximum, 125 mm, it is 22.8 N, and a heavy-load crank (190 mm or more) meets A's bottle and
 the base stop's rails at every reach to 300 mm: so 5 mm over the light row's radius
 (:data:`HANDLE_OVER_RADIUS`). Its tube is long, so its hub prints in two pieces
 (:data:`HUB_PRINT_MAX`)."""

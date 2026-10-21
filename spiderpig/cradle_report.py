@@ -2740,8 +2740,8 @@ VERDICT = {
                        "red arcs, the use limits), its side frames "
                        "included since their redesign (2026-10-20: a rail column under the "
                        "front leg, the strut to the gearbox widened), the gearbox carries the "
-                       "bottle and the cap within its maximum, its 130 mm crank turns at the "
-                       "22 N bar once the gearbox is run in, about 25 N new (OPEN_GRIP), the "
+                       "bottle and the cap within its maximum, its 130 mm crank turns under "
+                       "the 22 N bar once the gearbox is run in, about 24 N new, the "
                        "stand tips past 15° (its bar)."),
 }
 """Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why: the
@@ -2769,18 +2769,14 @@ ISO 7380's 4 N·m in A2-70, and both cradles' tie rods' end joints stood at thei
 the tie rods' ends and that foot take class 10.9 button heads at 6 N·m
 (``construction.cradle.TIE_M``, ``STEEL_FEET``): the same heads, no plan changed."""
 
-OPEN_GRIP: dict[str, str] = {
-    "decanter_hinge": "A's 130 mm crank, kept (design review round 3's m5): a full 6 L's "
-                      "worst start is 21.97 N run in, at the 22 N bar, and 24.98 N while the "
-                      "gearbox is new, over it, as B's 24.7 N new (21.7 run in); 132.5 mm "
-                      "gives 21.55 N for 2.5 mm less hand room (-2.85 mm for a large hand), "
-                      "125 mm 22.85 N; no radius in Figure 13's light row brings a new box "
-                      "under the bar (B would need 140 mm, A 148)"}
+OPEN_GRIP: dict[str, str] = {}
 """Per cradle, a grip at MIL-STD-1472H's light-load bar (``handcrank.LIGHT_LOAD_N``) run in:
 the user's call (``docs/agentlib/DECANTER.md``, "The drive"), settled in design review round
 3 (both cranks are over the bar while the gearbox is new, the report's
 ``handle_force_band_n``; a hand crank never runs a box in, ``handcrank.RUNIN_LOSS``). The
-tests hold it no worse than the bar, then xfail on it."""
+tests hold it no worse than the bar, then xfail on it. None since the simplification round 1
+(2026-10-21): the 6061 posts and tie rods took a kilogram off, and A's 130 mm crank's worst
+start run in fell from 21.97 N, at the bar, to 21.5 (24.4 new; B 21.3 and 24.2)."""
 
 
 def motion(config: BuildConfig, n: int = 360) -> dict:
