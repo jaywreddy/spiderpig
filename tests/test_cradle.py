@@ -2621,7 +2621,8 @@ def test_the_cradle_box_racks_on_its_tie_rods():
     assert rigid.stiffness > 5 * k[0]                   # the plates give
     for h in cs.BOX_HOLDS:
         res = cs.box_frame(links, rods, [M], hold=h)
-        assert sum(float(res.twist[n][0]) for n in TIES) > 0.7 * M     # mostly in twist
+        assert sum(float(res.twist[n][0]) for n in TIES) > 0.55 * M    # mostly in twist
+        #                     (the 1/2 in 6061 rods' G: 0.60 held, 0.74 pinned, 0.82 free)
         f = {n: res.ends[n] @ cs.rod_k(rods[n], L).T for n in TIES}  # the links' on the rods
         about = sum(TIES[n][0] * f[n][0, 7] - TIES[n][1] * f[n][0, 6] + f[n][0, 11]
                     for n in TIES)
@@ -2633,8 +2634,8 @@ def test_the_cradle_box_racks_on_its_tie_rods():
 def test_a_tie_rods_end_joint_slips_past_its_friction():
     """A tie rod's end joint (``cradle_structure.TieRod``): its twist held by its face's and,
     its screw threadlocked into the rod, its head's friction on the cradle link (the M6 class
-    10.9 button head at 6 N·m: 3.8 kN at friction 0.2, 6.8 N·m; the face alone 3.6), its
-    face shut to the preload over its kern (7.3 N·m). Past that twist the joint turns on the
+    10.9 button head at 6 N·m: 3.8 kN at friction 0.2, 7.0 N·m on the 1/2 in rod's face; the
+    face alone 3.7), its face shut to the preload over its kern (7.5 N·m). Past that twist the joint turns on the
     link (``box_frame``): the rod carries no more, the rest of the moment goes into bending
     the links out of their plane, and the box racks far more."""
     from spiderpig import cradle_structure as cs
@@ -2643,9 +2644,9 @@ def test_a_tie_rods_end_joint_slips_past_its_friction():
     cfg = BuildConfig(linkage="decanter_rcm", robot=False)
     rod = box_rods(cfg)["Tr2"]
     assert rod.preload == pytest.approx(3777, abs=1)
-    assert rod.slip_nmm(SLIP_MU) / 1000 == pytest.approx(6.84, abs=0.01)
-    assert rod.slip_nmm(SLIP_MU, locked=False) / 1000 == pytest.approx(3.58, abs=0.01)
-    assert rod.gap_nmm() / 1000 == pytest.approx(7.28, abs=0.01)
+    assert rod.slip_nmm(SLIP_MU) / 1000 == pytest.approx(6.99, abs=0.01)
+    assert rod.slip_nmm(SLIP_MU, locked=False) / 1000 == pytest.approx(3.74, abs=0.01)
+    assert rod.gap_nmm() / 1000 == pytest.approx(7.52, abs=0.01)
     joints, pts, _ = _box_case()
     links = box_links(cfg, joints, pts, 274.9)
     rods = box_rods(cfg)
