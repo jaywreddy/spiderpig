@@ -51,12 +51,13 @@ from spiderpig.construction.handcrank import (
     HANDLE_R,
     LIGHT_LOAD_N,
     NRV050,
+    TOGGLE_TURNS,
     HandCrank,
     WormBox,
     drawn_clutch,
     handle_spec,
 )
-from spiderpig.cradle_drive import JAM_FLOOR, clutch_case, drive_limits, verdict
+from spiderpig.cradle_drive import JAM_FLOOR, clutch_case, drive_limits, riser_rating, verdict
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware import mass as mass_mod
 from spiderpig.hardware.cradle_catalog import (
@@ -437,6 +438,12 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     outp = out["drive"]["output_overhung"]
     outp["walk_n"] = round(f_rod, 1)
     outp["sf_walk"] = round(outp["allowed_n"] / max(f_rod, 1e-9), 2)
+    # the gearbox's riser walking (its cap's: jam_capped's rows; design review round 3's M2)
+    out["drive"]["riser"] = {
+        "walk": riser_rating(box, notes, f_rod, peak),
+        "basis": "a clamped stack (ring, sleeve, shims, plate) on each of four class 8.8 M8 "
+                 "studs: the stud's tension and shear, the sleeve's bending, the ring's "
+                 "bearing; its slip at the faces' friction (cradle_drive.riser_rating)"}
     # the crankpin: a NETRF12 standing in the crank block, the rod's force at the rod's
     # mid-plane over the block's top (a cantilever that long out of its socket): it bends at
     # the block's top, taken as the 12 x 5.0 tube its tapped end may be there, at 1018's
@@ -461,7 +468,15 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     cap = out["drive"]["clutch"]["crank_cap_nm"]
     out["jam_capped"] = clutch_case(config, mech, ts, tilt, cap, out["rod"], out["crankpin"],
                                     out["drive"]["jam_push_nm"],
-                                    out["drive"]["output_overhung"]["allowed_n"])
+                                    out["drive"]["output_overhung"]["allowed_n"],
+                                    riser=(box, notes))
+    # at a fast spin the same slip puts more on the crank (design review round 3's M1): the
+    # parts' least there, scaled from the cap's 30° from the toggles
+    clutch_row = out["drive"]["clutch"]
+    clutch_row["fast_cap_least_sf"] = round(
+        out["jam_capped"]["away"][0] * cap / clutch_row["fast_cap_nm"], 2)
+    out["drive"]["riser"]["cap"] = riser_rating(
+        box, notes, out["jam_capped"]["by_band"][-1]["rod_n"], cap)
     out["blocked_capped"] = blocked(config, mech, ts=ts, crank_nm=cap, thresholds=True,
                                     rod_euler_n=out["rod"]["euler_n"])
     out["verdict"] = verdict(lk.key, out)
@@ -2184,27 +2199,29 @@ VERDICT = {
                      "cradle about a point with nothing there, so nothing stands at the "
                      "mouth; its pivots hang under the mouth, its crank behind. It comes apart "
                      "by hand for the trip. With a full 6 L: a slip clutch in the hand crank, "
-                     "set on the bench and checked at each set-up, caps the crank's torque "
-                     "however hard the push, every joint holds that cap at SF 1.3 or more away "
-                     "from the ends of the swing (in the first and last two and a half handle "
-                     "turns it doesn't: the gearbox's marks, the use limits), its side frames "
+                     "set under a ceiling and checked at each set-up and every month, caps the "
+                     "crank's torque however hard the push while its check holds, every joint "
+                     "holds that cap at SF 1.3 or more away from the ends of the swing (in the "
+                     "first and last two and a half handle turns it doesn't: the gearbox's red "
+                     "arcs, the use limits), its side frames "
                      "included since their redesign (2026-10-20: two rail columns, a box "
                      "toward the rear), the gearbox carries the bottle and the cap within its "
                      "maximum, its light-load crank turns under 22 N once the gearbox is run "
-                     "in, the stand tips past 25°."),
+                     "in (about 25 N new), the stand tips past 25°."),
     "decanter_hinge": ("build", "Builds too (B is the main design): a four-bar crank-rocker "
                        "whose rocker is the cradle, hinged at the bottle's mouth. From 50° "
                        "neck up (an opened full bottle goes in) to 30° neck down, a 750 ml to "
-                       "a 6 L. With a full 6 L: a slip clutch in the hand crank, set on the "
-                       "bench and checked at each set-up, caps the crank's torque however hard "
-                       "the push, every joint holds that cap at SF 1.3 or more away from the "
-                       "ends of the swing (in the first and last two and a half handle turns "
-                       "it doesn't: the gearbox's marks, the use limits), its side frames "
+                       "a 6 L. With a full 6 L: a slip clutch in the hand crank, set under a "
+                       "ceiling and checked at each set-up and every month, caps the crank's "
+                       "torque however hard the push while its check holds, every joint holds "
+                       "that cap at SF 1.3 or more away from the ends of the swing (in the "
+                       "first and last two and a half handle turns it doesn't: the gearbox's "
+                       "red arcs, the use limits), its side frames "
                        "included since their redesign (2026-10-20: a rail column under the "
                        "front leg, the strut to the gearbox widened), the gearbox carries the "
                        "bottle and the cap within its maximum, its 130 mm crank turns at the "
-                       "22 N bar once the gearbox is run in (open since design review round "
-                       "2's structure: OPEN_GRIP), the stand tips past 15° (its bar)."),
+                       "22 N bar once the gearbox is run in, about 25 N new (OPEN_GRIP), the "
+                       "stand tips past 15° (its bar)."),
 }
 """Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why: the
 bars ``tests/test_cradle.py`` holds, not a copied number; :func:`report`'s ``verdict`` adds its
@@ -2222,14 +2239,17 @@ outer plate (0.6), pillar O2 (0.73) and column D2 (0.97), A's outer plate (0.41)
 (0.83), inner plate (1.09) and pillar G (1.25) under it."""
 
 OPEN_GRIP: dict[str, str] = {
-    "decanter_hinge": "a full 6 L's worst start at A's 130 mm grip, run in, is 21.97 N: at "
-                      "the 22 N bar to the report's tenth since round 2's structure (the 12 mm "
-                      "tie rods, 0.3 kg on the cradle box) met round 2's drive; 132.5 mm gives "
-                      "21.6 N and 12.2 mm of hand room, 7.5 mm over Figure 13's 125 (the 5 mm "
-                      "over is the user's call of 2026-10-15)"}
-"""Per cradle, a grip open at MIL-STD-1472H's light-load bar (``handcrank.LIGHT_LOAD_N``):
-the user's call (``docs/agentlib/DECANTER.md``, "The drive"). The tests hold it no worse
-than the bar, then xfail on it."""
+    "decanter_hinge": "A's 130 mm crank, kept (design review round 3's m5): a full 6 L's "
+                      "worst start is 21.97 N run in, at the 22 N bar, and 24.98 N while the "
+                      "gearbox is new, over it, as B's 24.7 N new (21.7 run in); 132.5 mm "
+                      "gives 21.55 N for 2.5 mm less hand room (-2.85 mm for a large hand), "
+                      "125 mm 22.85 N; no radius in Figure 13's light row brings a new box "
+                      "under the bar (B would need 140 mm, A 148)"}
+"""Per cradle, a grip at MIL-STD-1472H's light-load bar (``handcrank.LIGHT_LOAD_N``) run in:
+the user's call (``docs/agentlib/DECANTER.md``, "The drive"), settled in design review round
+3 (both cranks are over the bar while the gearbox is new, the report's
+``handle_force_band_n``; a hand crank never runs a box in, ``handcrank.RUNIN_LOSS``). The
+tests hold it no worse than the bar, then xfail on it."""
 
 
 def motion(config: BuildConfig, n: int = 360) -> dict:
@@ -2280,6 +2300,9 @@ def motion(config: BuildConfig, n: int = 360) -> dict:
         "rest": rest, "full": full, "n": n,
         "rest_deg": round(float(tilt[rest]), 1), "full_deg": round(float(tilt[full]), 1),
         "turns_to_full": round(float(turns[full]), 1), "ratio": ratio,
+        # the toggle zones (handcrank.TOGGLE_TURNS either side of rest and of full tilt): the
+        # page's slider shows them (design review round 3's stand and use M4)
+        "toggle_turns": TOGGLE_TURNS,
         "mouth_wander_mm": round(wander, 3),
         "bottle": {"key": cr.SHOWN.key, "name": cr.SHOWN.name,
                    "outline": r2(outline_of(cr.SHOWN)), "setting": _setting_row(cr.SHOWN)},

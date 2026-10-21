@@ -2501,3 +2501,141 @@ plate at O. Both are fixed; `OPEN_AT_CAP` is empty and the tests assert again (A
   `spiderpig/hardware/bom.py` (`extra`), `spiderpig/mesh.py` (`write_stl`),
   `spiderpig/guide/make.py` (`with_box_steps`), `spiderpig/tools/pack_inspect.py`,
   `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`, `docs/agentlib/TESTING.md`.
+
+### 2026-10-20: the cradles' drive, round 3 (design review round 3's drive; the stand and use review's drive items)
+
+- **What:** the fixes to round 3's drive review (`/root/scratch/decant/review5/r3/drive.md`:
+  B1, M1, M2, m1-m9) and the stand and use review's drive items (`r3/stand_use.md`: M2, M4,
+  m12), both cradles, B first ([DECANTER.md](DECANTER.md): "The drive", "The clutch's cap",
+  "Building one").
+- **B1, the guide's first setting locked the clutch** (`handcrank.SET_BACK`, `NEAR_STOP`,
+  `plunger_setting`). "Turn each plunger in until its back stands flush with its jam nut's
+  top" pushed each 1.98 mm; its nose lands on the seat ring at 1.352 mm (the 1.83 mm travel
+  less the ball's 0.478 mm climb out of its hole), the ball still down: no clutch.
+  - Now a felt stop: the arm at a click, each plunger in until it stops hard (its nose on
+    the ring, wherever its nuts are), out half a turn (0.977 mm: a push of 0.375 mm, 32.2 N,
+    0.98 mm of room for the climb), never nearer the stop than an eighth (0.24 mm of room,
+    over the code's 0.2). A plunger whose ball bottoms first only stops sooner: the safe
+    side. The plungers are drawn at that start; a test measures the drawn parts on B's and
+    A's crank (the body's nose over the ring's face by its room, the room at the limit).
+  - No hard stop was added: a printed lip in the plunger's bore would have to hang 0.4 mm
+    under the boss's face, into its 0.6 mm gap over the ring, to stop the nose 0.2 mm short
+    of the lock; not printable. The felt stop is the ring itself.
+- **M1, the honest cap: 63.7 N·m on B, 67.1 on A, unchanged** (`config.PRODUCT_CLUTCH_NM`,
+  `PRODUCT_JAM_NM`), now a bound on the clutch's setting, held by:
+  - **a ceiling** (`handcrank.clutch_ceiling`): no pull of the check may read over the drawn
+    6 L's window top, 30.5 N on B's grip, 30.8 on A's, whatever the start read. Set on a new
+    box and run in after, 1.3 x had let 72.5 / 76.3 N·m through (the gearbox 1.17 / 1.11
+    under its 85); under the ceiling it stays 63.7 / 67.1, and a new box's sealed 6 L still
+    turns at 1.05 x its start at the window's bottom (`new_box_margin`). The start reading's
+    angle and scale errors fall under it too.
+  - **a check with no vise** (the stand and use review's m12; `handcrank.check_stub`, a PETG
+    tool the build prints, `build._cradle_tools`): a 100 x 30 mm bar in the riser locator's
+    pocket and a 14 mm keyed post, the hub on it; the bar turns under 2° and jams. Not a
+    body of the model, so the flat pack doesn't place it yet (100 x 30 x 42 mm: the packing
+    stream's).
+  - **a schedule:** the last build step, every set-up (the trip's way back names it), after
+    greasing, after a hot car, and every month or ten pours standing set up.
+  - What it doesn't bound, reported (`cradle_drive.drive_limits`): spun at 200 rpm
+    (`handcrank.HAND_FAST_RPM`, an empty cradle cranked back), the worm passes 67.9 / 71.5
+    N·m (the least part 1.26 / 1.28 there, the gearbox 1.25 / 1.19): the use limits say turn
+    it, don't spin it, about a turn a second at most. A hand at the grip's outer end, the
+    journal greased, 2 % over the checked slip (dry 6 %; m6). Unchecked, the grease's drift
+    takes it to 86.8 / 91.4 N·m: only the check bounds that.
+  - Weighed and not built:
+    - A run-in procedure: SEW's run-in is about 48 h under load; a drill on the input turns
+      the worm unloaded, and the cradle offers no load path for it. The box stays "new" for
+      a hand crank's life, which the ceiling now covers.
+    - Rating everything at the higher cap (72.5 / 76.3): the side frames' least part 1.18 /
+      1.20 and the gearbox 1.17 / 1.11 there; the structure stream reports SFs at it, but the
+      ceiling makes it unnecessary.
+    - A spring force limiter in the rod (round 2's M-4 cure, the one bound on every jam, the
+      toggles' included): a preloaded double-acting cartridge at about 820 N (2 x B's walking
+      rod force) in a rod that crosses O over the crank block: 20-25 mm deep against the rod's
+      6.35 mm, so a re-plan of the stack, the structure's rod and the pack; two die springs, a
+      guide and its ends, roughly USD 30-50 (unpriced). The user's call.
+    - A clutch whose slip doesn't move with friction: a roller detent (a bearing rolling into
+      a notch) would drift about 1.1 x where the balls drift 1.4 x (an estimate: the seat's
+      sliding friction gone, the plunger's guide's left); a new clutch, its spring's
+      tolerance unstated too. Not built. No ball-seat angle helps (20-45°: the drift within a
+      few per cent of 1.4 x).
+- **M2, the gearbox's riser is a clamped stack** (`handcrank.riser_for`, `RISER_STUD`,
+  `RISER_RING`, `RISER_SLEEVE`, `RISER_SHIM`; rated by `cradle_drive.riser_rating`, walking in
+  the report's `drive.riser` and at the cap a row of `jam_capped`):
+  - Four class 8.8 M8 studs, cut 45 mm from one 200 mm zinc-plated DIN 976 rod (McMaster
+    99067A279, USD 5.11, the listing rendered 2026-10-20), threaded in until they stop: an
+    18-8 set screw's class is for a headless screw not loaded in tension (TR Fastenings).
+  - A ring of the crank sheet on the face, centred on the 70 mm spigot ring (the side load
+    into it through the spigot), out to the 100 mm boss, an 8.3 mm hole per stud (its web to
+    the bore 3.2 mm, over the sheet's 3.175).
+  - A 304 sleeve on each stud, 8 x 12 x 20 mm (Harfington p-1579935, five for USD 7.53, the
+    product JSON fetched 2026-10-20): the stock size that clears the spigot (1.5 mm) and sits
+    inside the boss (1.5 mm); its 8.0 bore snug on the stud.
+  - The go/no-go's shims over the sleeves: 0.5 mm, 8 x 14 (Harfington p-1378778, twenty for
+    USD 6.14, fetched 2026-10-20), about four a stud drawn, four DIN 125 washers as coarse
+    ones: a millimetre either way. They replace the nuts under the plate and the printed
+    setting sleeves.
+  - The plate and a thin nut over it at 10 N·m (6.25-8.33 kN of clamp over a nut factor of
+    0.15-0.2). The rating: four fixed-guided columns under the rigid housing, a quarter of the
+    force and a share of the turn each, the moment as push-pull pairs, the stud's share of
+    them 0.45 (its stiffness and the stack's). B / A walking: no slip at an oiled friction of
+    0.15 by 2.92 / 2.72, every row 2.35 / 2.32 or more. At the cap 30° from the toggles: the
+    stud (tension and, if it slips, shear) SF 2.33 / 2.29 on class 8.8's proof, the ring's
+    bearing under a sleeve 1.73 / 1.63, A's columns' feet open a little (the sleeve then 2.28);
+    it holds 1.3 outside 15° of a toggle. Oiled it may slip at the cap (0.96 / 0.83): the
+    snug sleeve puts the side load into the stud in shear, which its row takes.
+  - Round 2's studs at the cap: 314-383 MPa in bending, SF 0.55-0.62 as A2-50 (the review's).
+  - Not made: the cheaper stack without the ring (-USD 12.97): the 14 mm shims then bear on
+    the gearbox's die-cast face at 100-140 MPa at the cap, against an alloy whose limit
+    neither Phidgets nor Motovario states.
+- **Minors:**
+  - m1: `END_SCREW_NM` 15 and `SCREW_NM` 4: TR Fastenings' maxima for ISO 7380 button heads in
+    A2-70 at M10 and M6 (its socket screws' table). The torque wrench is 4-15 N·m
+    (`cradle.TOOLS`). The structure's own ISO 7380 screws at 5 N·m are the structure
+    stream's.
+  - m2: the plunger nuts are pressed in from the boss's inner face, their pocket 0.15 mm over
+    (`handcrank.NUT_POCKET`): its floor takes the springs' push and the jam nut's clamp.
+  - m3: the clutch test holds every plunger force at the guide's limit (42.9 N), not the lock;
+    a 10 % weak spring at the greased friction's low end can't reach A's setting (39.7 N
+    needed, 38.6 there: `plunger_reach`), and the guide leaves the slip there, under the
+    target, while it clears 1.1 x the start.
+  - m4: the ring is replaced at any bright land you can see round a hole's edge
+    (`SEAT_WEAR`, 0.1 mm), the balls on its laser entry face.
+  - m5: A's crank stays 130 mm (`cradle_report.OPEN_GRIP`, settled): at the 22 N bar run in
+    (21.97 N), over it new (24.98), as B's (21.7 / 24.7); 132.5 mm gives 21.55 N for 2.5 mm
+    less hand room (-2.85 mm for a large hand), 125 mm 22.85 N.
+  - m6: the journal is greased (the guide); its share of the slip reported
+    (`handcrank.journal_share`).
+  - m7: the use limits, the guide and the verdicts say "set and checked" and the ceiling.
+  - m8: ORDER.md's Phidgets note adds the page's own example brokerage, USD 31.99: about USD
+    172 landed before shipping, still not in the total (an account's checkout).
+  - m9: each stud's end filed to 0.8 mm or less over its thin nut (`STUD_PAST_MAX`, held in
+    `riser_for`): the crank block's lowest plate 2.2 mm over the four drawn, 0.59 mm with the
+    go/no-go's window and the six plates under the seat at their thickest (1.45 drawn before);
+    the guide's whole-turn check names the studs.
+- **The stand and use review's M2, M4:**
+  - The clutch's setting, the worm's hold and the toggle marks move to a last build step,
+    "Before the first pour" (`construction.assembly.FIRST_POUR`,
+    `handcrank.HandCrank.first_pour`), after the board's finish: the hand crank's step only
+    builds it and sets its plungers' start. "Before you use it" and the trip's last step
+    name it.
+  - The toggles are found by the crank and the rod (at rest the arm folded under the rod in
+    one line, at full tilt the two end to end), not the bottle; an arrow on the hub's end and
+    the housing's rim painted red 2.5 turns either side of each toggle (a radius line had
+    left the return to rest unmarked). Rule 3: hands out, and nothing added under the box,
+    while the arrow is in a red arc; the decanter stays put. The cradle page's slider shows
+    the three zones red and its readout says so (`cradle_report.motion`'s `toggle_turns`,
+    `viewer/src/decant/motion.ts`' `toggleZones`).
+- **A BOM fix:** the passive side had kept the drive's pack-bought lines (`cradle.DRIVE_WHERE`):
+  the threadlocker had been counted twice (one bottle either way).
+- **Costs** (the builds' BOMs): **B USD 1,374.22 to 1,401.53 (+27.31)**, **A USD 1,056.74 to 1,084.05 (+27.31)**:
+  the studs' rod +5.11 for the set screws' 4.08, the sleeves +7.53, the shims +6.14, four
+  coarse washers +0.32, the nuts under the plate -0.68: purchases +14.34; the ring's cutting
+  in 6061 +12.97 on either; the check stub prints in PETG on hand. Harfington is a new cart on both (free shipping over USD 30, USD 3.99 under it; not in the totals).
+- **Not changed:** the walkers (the identity gate against `planner-f667d6b`, in two chunks:
+  identical); the frame's members (the structure stream's).
+- **Where:** `spiderpig/construction/handcrank.py`, `spiderpig/cradle_drive.py`,
+  `spiderpig/cradle_report.py`, `spiderpig/config.py`, `spiderpig/construction/cradle.py`,
+  `spiderpig/construction/assembly.py`, `spiderpig/build.py`,
+  `spiderpig/hardware/cradle_catalog.py`, `spiderpig/hardware/order.py`,
+  `viewer/src/decant/`, `viewer/decant.html`, `tests/test_cradle.py`.

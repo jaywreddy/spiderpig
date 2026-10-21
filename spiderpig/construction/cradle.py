@@ -2640,6 +2640,7 @@ STUDIES: dict[str, str] = {}
 
 DRIVE_PARTS = ("gearbox", "riser_", "crank_", "crankpin", "handle")
 """The hand crank's parts by name (:mod:`construction.handcrank`): the drive side's only."""
+DRIVE_WHERE = "the drive"       # the drive's BOM lines' ``where`` (handcrank's extras)
 
 GROUPS = {"drive": ("gearbox", "riser_", "handle"), "crank": ("conn",),
           "box": ("tie_", "front_saddle", "rear_saddle", "led", "base_stop"),
@@ -2675,7 +2676,10 @@ def passive_side(side: Mechanism, design) -> Mechanism:
 
     keep = [b for b in side.bodies if not drive(b.name)]
     names = {b.name for b in keep}
-    return replace(side, bodies=keep, connections=[
+    # (the drive's bought-by-the-pack lines too: its threadlocker, the riser's shims had
+    # been counted twice)
+    extras = [x for x in side.bom_extras if not x.where.startswith(DRIVE_WHERE)]
+    return replace(side, bodies=keep, bom_extras=extras, connections=[
         c for c in side.connections if c[0][1] in names and c[1][1] in names])
 
 
@@ -3309,10 +3313,16 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
     for reference. The guide's steps and the cradle page's "Using it" panel
     (``cradle_report.motion``'s ``use``) read the same lines."""
     from spiderpig.construction.assembly import Scene
-    from spiderpig.construction.handcrank import CLUTCH_SET, TOGGLE_TURNS, handle_r
+    from spiderpig.construction.handcrank import (
+        CLUTCH_SET,
+        TOGGLE_TURNS,
+        drawn_clutch,
+        handle_r,
+    )
 
     r = handle_r(key)
     slip = grip_at_slip_n(key)
+    ceil = drawn_clutch(key)["hi_grip_n"]
     turns = f"{TOGGLE_TURNS:g}"
     out = [UseStep("where", "Before you use it", (
         "Headroom: 950 mm over the table (a 6 L's base at full tilt reaches about 910 mm).",
@@ -3326,7 +3336,10 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
         "PETG.",
         "Nothing on the board round the riser: under the base stop the board has a window, so "
         "at rest the base stop comes down to 43 mm over the table there, not 26 over a cork "
-        "left on the board."),
+        "left on the board.",
+        "The clutch checked on its stub, and the gearbox's red arcs painted (the last build "
+        "step, \"Before the first pour\"): at every set-up, and every month or ten pours "
+        "while it stands set up."),
         Scene("rest", show=("*", "bottle", "decanter"),
               marks=(r"foot_bracket_\w+_knob", "base_plate")))]
     if saddles:
@@ -3416,14 +3429,14 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
         "front saddle's drains let out what runs into it)."),
         Scene("full", show=("*", "bottle", "decanter", "risers"),
               marks=("decanter", "bottle"))))
-    zone = ("while the gearbox hub's paint line is between a pair of its marks (the first and "
-            f"last {turns} handle turns)")
+    zone = (f"while the gearbox hub's arrow is in a red arc (the {turns} turns either side of "
+            "rest and of full tilt)")
     out.append(UseStep("limits", "The use limits", (
         "1. Room: 950 mm of headroom and 100 mm free behind the board.",
         f"2. The decanter on its riser, set once at rest, its rim {RISER_CLEAR[0]:g} mm or "
         "more under the light's clip; once set, nothing raised or added under the cradle "
         "box.",
-        f"3. Hands out, and nothing under the cradle box or the bottle, {zone}.",
+        f"3. Hands out, and nothing added under the box, {zone}; the decanter stays put.",
         "4. The bottle uncorked before it goes in; the gate's knob tight (tug the gate) and "
         "the rear knob down on its teeth whenever a bottle is in.",
         "5. The handle off (its thumb screw) when you leave it: nothing turns without it.",
@@ -3433,12 +3446,18 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
         "gearbox, in front of the hand crank. A trapped finger: the worm holds what it has "
         "caught, so turn the handle back the way it came; never pull.",
         "Never force the handle: if it stiffens, stop and look. Its clutch clicks round past "
-        f"its bench setting ({CLUTCH_SET:g} times the start you measured: about {slip:.0f} N "
-        f"at the grip on its {r:g} mm crank for a full 6 L), so a hard push can't break the "
-        "drive away from the ends of the swing; a click means something is in the way. Check "
-        "the setting with the luggage scale at every set-up, after greasing it and after a "
-        f"trip in a hot car. In the first and last {turns} turns (the gearbox's marks) no "
-        "clutch bounds the force: there only the clearance protects.",
+        f"its setting ({CLUTCH_SET:g} times the start you measured: about {slip:.0f} N at the "
+        f"grip on its {r:g} mm crank for a full 6 L, and never over {ceil:g} N), so, set and "
+        "checked, a hard push can't break the drive away from the ends of the swing; a click "
+        "means something is in the way.",
+        "Check the setting on its stub in the riser "
+        "locator's pocket (the last build step, \"Before the first pour\") at every set-up, "
+        "after greasing it, after a trip in a hot car, and every month or ten pours while it "
+        "stands set up: unchecked, the grease's drift can carry the slip over what the parts "
+        f"are rated at. Within {turns} turns of rest and of full tilt (the gearbox's red "
+        "arcs) no clutch bounds the force: there only the clearance protects.",
+        "Turn it, don't spin it: about a turn a second at most, empty or full (spun fast, "
+        "the worm passes more of the clutch's slip to the cradle).",
         "Only the hand crank's arm may turn it: never a drill on its input once it is built, "
         "nor a hand twisting the hub or the clutch's flange (either turns the cradle with no "
         "clutch between).",
@@ -3458,20 +3477,23 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
 
 
 TOOLS = (
-    "Turning: a torque wrench (5 to 20 N·m: the posts' and tie rods' screws, the gearbox's "
-    "riser, its end screw), hex keys (2.5 to 6 mm, and one for the clutch plungers' backs), "
-    "8, 10 and two 13 mm wrenches and a 3/4 in one (the plungers' jam nuts), E-ring pliers",
+    "Turning: a torque wrench (4 to 15 N·m: the drive's M6 screws, the posts' and tie rods' "
+    "screws, the gearbox's riser, its end screw), hex keys (2.5 to 6 mm, and one for the "
+    "clutch plungers' backs), 8, 10 and two 13 mm wrenches and a 3/4 in one (the plungers' jam "
+    "nuts), E-ring pliers",
     "Measuring: a caliper with a depth rod (the links' thickness on arrival, the gearbox's "
     "go/no-go), a luggage scale (the clutch's start and setting, the empty grip), a kitchen "
     "scale (the keepers)",
     "Shaping: a deburring tool, a flat file and fine sandpaper on a flat block (the links that "
     "arrive as cut, the laser-cut edges, the keyed plates' slots, the cleats' lead-ins), a 14 "
     "mm drill bit (the hand crank's hub, by hand), a drill (the gearbox's run-in, before it "
-    "goes on the cradle, never after)",
-    "A soldering iron (the heat-set inserts) and a vise (the knobs' nuts, the clutch)",
+    "goes on the cradle, never after), a hacksaw (the gearbox riser's studs, from a threaded "
+    "rod)",
+    "A soldering iron (the heat-set inserts) and a vise (the knobs' nuts, the clutch "
+    "plungers' nuts)",
     "Clamps or weights for the glue; a short tube over an 8 mm pin (the keepers)",
-    "Marking and handling: paper, a pencil, a paint pen (the pack marks, the gearbox's "
-    "toggle marks), masking tape, a folded towel",
+    "Marking and handling: paper, a pencil, a paint pen and red paint (the pack marks, the "
+    "gearbox's toggle arcs), masking tape, a folded towel",
     "Also: grease, light oil, a clear polyurethane and a brush (the base board)",
 )
 """The tools the cradle's guide names, grouped (design review round 2's m10: some 24, named
@@ -3643,8 +3665,8 @@ def _board_finish(key: str, modules: bool) -> tuple[str, str, tuple[str, ...]]:
             "they stay there, and every trip after drops the studs into the same slots."
             if board else ""),
         "Then a whole pour and back, the bottle out: both cradle links swing freely and the "
-        f"handle turns evenly, under {EMPTY_GRIP_N:g} N at the grip (the luggage scale from "
-        f"the hand crank's step hooked on the grip: under {EMPTY_GRIP_N / 9.81:.1f} kg); and "
+        f"handle turns evenly, under {EMPTY_GRIP_N:g} N at the grip (the luggage scale "
+        f"hooked on the grip: under {EMPTY_GRIP_N / 9.81:.1f} kg); and "
         "the rod's paper check again (the hand crank's step), now that the tie rods are held "
         "at both ends."]
     return lines[0], "board", tuple(lines[1:])
@@ -4049,7 +4071,10 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
             ("Stiffer, the two sides fight each other: loosen the passive side's knobs and "
              "settle them again at level.",
              "Then the rod's paper check (the hand crank's step). All four clips in, the four "
-             "knobs snug."),
+             "knobs snug.",
+             "Then the clutch's check on its stub and the worm's hold, with the heaviest bottle "
+             "you'll pour (the last build step, \"Before the first pour\"): every set-up, "
+             "before the first pour."),
             Scene("rest", show=("*",), marks=(r"L\.handle_grip",))),
     ]
     return breakdown, reassembly
