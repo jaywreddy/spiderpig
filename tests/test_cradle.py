@@ -2792,9 +2792,10 @@ def test_the_cradle_box_racks_on_its_tie_rods():
 @pytest.mark.no_fabricate
 def test_a_tie_rods_end_joint_slips_past_its_friction():
     """A tie rod's end joint (``cradle_structure.TieRod``): its twist held by its face's and,
-    its screw threadlocked into the rod, its head's friction on the cradle link (the M6 class
-    10.9 button head at 6 N·m: 3.8 kN at friction 0.2, 7.0 N·m on the 1/2 in rod's face; the
-    face alone 3.7), its face shut to the preload over its kern (7.5 N·m). Past that twist the
+    its screw threadlocked into the rod, its head's friction on the cradle link (B's M6 A2-70
+    button head at ISO 7380's 4 N·m since simplification round 2's P8: 2.5 kN at friction 0.2,
+    4.7 N·m on the 1/2 in rod's face; the face alone 2.5), its face shut to the preload over its
+    kern (5.0 N·m; A's class 10.9 at 6 N·m: 3.8 kN, 7.0, 3.7, 7.5). Past that twist the
     joint turns on the link (``box_frame``): the rod carries no more, the rest of the moment
     goes into bending the links out of their plane, and the box racks far more."""
     from spiderpig import cradle_structure as cs
@@ -2802,10 +2803,14 @@ def test_a_tie_rods_end_joint_slips_past_its_friction():
 
     cfg = BuildConfig(linkage="decanter_rcm", robot=False)
     rod = box_rods(cfg)["Tr2"]
-    assert rod.preload == pytest.approx(3777, abs=1)
-    assert rod.slip_nmm(SLIP_MU) / 1000 == pytest.approx(6.99, abs=0.01)
-    assert rod.slip_nmm(SLIP_MU, locked=False) / 1000 == pytest.approx(3.74, abs=0.01)
-    assert rod.gap_nmm() / 1000 == pytest.approx(7.52, abs=0.01)
+    assert rod.preload == pytest.approx(2518, abs=1)
+    assert rod.slip_nmm(SLIP_MU) / 1000 == pytest.approx(4.66, abs=0.01)
+    assert rod.slip_nmm(SLIP_MU, locked=False) / 1000 == pytest.approx(2.49, abs=0.01)
+    assert rod.gap_nmm() / 1000 == pytest.approx(5.01, abs=0.01)
+    steel = box_rods(BuildConfig(linkage="decanter_hinge", robot=False))["Tr2"]   # A's 10.9
+    assert steel.preload == pytest.approx(3777, abs=1)
+    assert steel.slip_nmm(SLIP_MU) / 1000 == pytest.approx(6.99, abs=0.01)
+    assert steel.gap_nmm() / 1000 == pytest.approx(7.52, abs=0.01)
     joints, pts, _ = _box_case()
     links = box_links(cfg, joints, pts, 274.9)
     rods = box_rods(cfg)
@@ -2827,9 +2832,10 @@ def test_the_racking_brace_carries_the_box_in_torsion():
     play (the notches over the teeth, 0.47° both ends) and borne past it, never slipping.
     Held rigid out of their plane, the links fix it as a rod: its torsion and its sway at its
     radius add to the rods'. Inside its play it carries no twist; at the jam's whole couple
-    it takes most of it, no rod's end joint slips, and its teeth bear under the link's yield
-    over 1.3; the passive link in equilibrium with it. B's only (A's hand crank sweeps where
-    it would go: ``decanters.BRACE``)."""
+    it takes most of it, each rod's end joint holding its twist to its friction (B's A2-70
+    ends at 4 N·m, simplification round 2's P8, reach it and slip; class 10.9 ones at 6 didn't),
+    and its teeth bear under the link's yield over 1.3; the passive link in equilibrium with
+    it. B's only (A's hand crank sweeps where it would go: ``decanters.BRACE``)."""
     from dataclasses import replace
 
     from spiderpig import cradle_structure as cs
@@ -2865,7 +2871,8 @@ def test_the_racking_brace_carries_the_box_in_torsion():
         res = cs.box_frame(links, rods, [jam], hold=h, mu=SLIP_MU, braces=braces)
         assert res.engaged["Br"][0]
         assert float(res.twist["Br"][0]) > 0.75 * jam
-        assert not any(res.slipped[n][0] for n in TIES)
+        assert all(float(res.twist[n][0]) <= rods[n].slip_nmm(SLIP_MU) * (1 + 1e-9)
+                   for n in TIES)
         bear = float(br.tooth_n(res.twist["Br"][0])) / (br.wall * links.t)
         assert links.yield_mpa / bear >= 1.3
         ks = {**{n: cs.rod_k(rods[n], L) for n in TIES}, "Br": br.k(L)}

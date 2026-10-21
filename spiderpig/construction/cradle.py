@@ -179,8 +179,10 @@ TIE_M = M6_109          # the tie rods' end screws: M6 x 16 button heads, class 
 #                         OPEN_JOINTS). The same 3.3 mm head under the cradle link: a full-
 #                         strength A2-70 head (an ISO 4017 hex's 4.15, an ISO 4762's 6) needs a
 #                         clearance gap over the planner's 4 mm there, a layer that neither
-#                         cradle's plan has (B's pin K's clevis pin would span 19.1 mm)
-TIE_ROD_SCREW = 16.0    # through the cradle link's 4.75 mm: 11.25 mm in the rod's 12 mm tap
+#                         cradle's plan has (B's pin K's clevis pin would span 19.1 mm). A's
+#                         only since simplification round 2's P8: B's braced box takes A2-70
+#                         again (TIE_SCREWS, tie_screw)
+TIE_ROD_SCREW = 16.0   # through the cradle link's 4.75 mm: 11.25 mm in the rod's 12 mm tap
 TIE_ROD_HOLE = 6.4      # their clearance holes in the cradle link (ISO 273 fine)
 TIE_TIGHTEN_NM = 6.0    # the tie rods' screws tightened (the guide), and STEEL_FEET's: 3/4 of
 #                         ISO 7380's most in 10.9 (fasteners.BUTTON_10_9_NM, 8), 3.8-7.0 kN of
@@ -206,15 +208,48 @@ BRACE_SHORT = 0.25             # its ends short of the links' outer faces (nothi
 #                               side's next layer)
 BRACE_GAP = 0.1                # its notches' bottoms off the teeth at each end (it doesn't
 #                               take the tie rods' clamp: the screws close the links on the rods)
+TIE_SCREWS: dict[str, Screw] = {"decanter_rcm": M6}
+"""Per cradle, its tie rods' end screws where not :data:`TIE_M`'s class 10.9 (simplification
+round 2's P8, 2026-10-21, the materials rule: the structural steel's last part on B): B's
+racking brace takes 87 % of the jam's twist across the bay, so the same ISO 7380 head in A2-70
+at its 4 N·m (:data:`TIE_NMS`; least preload 2.52 kN) holds the box. Walking every end joint
+stays shut (3.92 x its gap moment) and none slips (0.47 of its friction); at the clutch's cap
+the faces stay shut (1.65), the end joints slip in twist (1.11 x: the rods take 4.66 N·m each,
+the brace 195.9 of 223.6), and the rows hold (``cradle_report.box_racking``: the rods 9.12,
+their screws 18.9, the brace 4.45, its teeth 1.87, the link 1.40). A has no brace: its 10.9
+stays (its end joints stood at their gap walking in A2-70 at 4 N·m, 2026-10-20)."""
+TIE_NMS: dict[str, float] = {"decanter_rcm": BUTTON_A2_70_NM["6"]}
+"""Per cradle, its tie rods' screws' torque where not :data:`TIE_TIGHTEN_NM` (N·m;
+:data:`TIE_SCREWS`): B's A2-70 at ISO 7380's most, 4."""
+
+
+def tie_screw(key: str) -> Screw:
+    """Cradle ``key``'s tie rods' end screw family (:data:`TIE_SCREWS`, else :data:`TIE_M`)."""
+    return TIE_SCREWS.get(key, TIE_M)
+
+
+def tie_nm(key: str) -> float:
+    """Cradle ``key``'s tie rods' screws' torque, N·m (:data:`TIE_NMS`, else
+    :data:`TIE_TIGHTEN_NM`)."""
+    return TIE_NMS.get(key, TIE_TIGHTEN_NM)
+
+
+def tie_screw_words(key: str) -> str:
+    """The guide's name of cradle ``key``'s tie rods' end screws' grade."""
+    return ("steel button head (class 10.9, from its own bag: not a stainless one)"
+            if tie_screw(key).kind == "bhcs109" else "stainless button head (A2-70)")
+
+
 STEEL_FEET: dict[str, tuple[str, ...]] = {}
 """The pillars whose foot (its end on the outer plate) takes the tie rods' class 10.9 button head
 at :data:`TIE_TIGHTEN_NM` in both sides, not an A2-70 one at ISO 7380's 4 N·m: none since the
 simplification round 1 (2026-10-21, the materials rule). A's pillar G, whose foot had lifted
 walking at the A2-70 head's least preload on its 12 mm steel post (1.06 x its decompression,
-2026-10-20), stays shut on the 1/2 in 6061 one (``cradle_report.post_joints``). The tie rods'
-heads stay class 10.9 (:data:`TIE_M`): outside the bay the wine runs in (on the cradle links'
-outer faces), unplated (an electroplated 10.9 risks hydrogen embrittlement), greased or
-threadlocked into the aluminium rods."""
+2026-10-20), stays shut on the 1/2 in 6061 one (``cradle_report.post_joints``). A's tie rods'
+heads stay class 10.9 (:data:`TIE_M`; B's A2-70 since simplification round 2's P8,
+:data:`TIE_SCREWS`): outside the bay the wine runs in (on the cradle links' outer faces),
+unplated (an electroplated 10.9 risks hydrogen embrittlement), greased or threadlocked into the
+aluminium rods."""
 SMALL_TIE_D = 10.0      # a 10 mm standoff (MISUMI NETRF10, M5 x 10 deep each end): a base or
 #                         bay tie, a 10 mm column
 TIE_SCREW = 12.0        # M5 x 12 button heads through a 3.2-4.8 mm plate: 7.2-8.8 mm in the tie
@@ -1059,7 +1094,8 @@ class CradleTies(Group):
         braces = list(brace_points(ctx.topo, lk).values())
         r = TIE_D / 2 + 0.3
         r_brace = BRACE_TUBE[0] / 2 + 0.3
-        head = TIE_M.head_d / 2 + 0.3
+        tie_s = tie_screw(lk.key)
+        head = tie_s.head_d / 2 + 0.3
 
         def make(L: Layout):
             k = L.layers[link]
@@ -1079,7 +1115,7 @@ class CradleTies(Group):
                 # (the rod under it is held off it by its washer on the crankpin: its play,
                 # handcrank.CRANKPIN_PLAY, is less than the 0.4 mm left)
                 out.append(Placed(k - 1, Disc(name, head), self.name, "tie screw head",
-                                  gap=True, height=TIE_M.head_h + 0.25, toward=-1))
+                                  gap=True, height=tie_s.head_h + 0.25, toward=-1))
             for name in braces:     # the racking brace's tube, as a tie rod (no screw head)
                 out.extend(Placed(j, Disc(name, r_brace), self.name, "brace tube")
                            for j in range(k + 1, L.top))
@@ -1135,10 +1171,10 @@ class CradleTies(Group):
                  "no screw holds it, the teeth key it and the rods' screws close the box on it."
                  if any(j.startswith("B") for j in lk.links[link][0]) else "")
         return [Op(STACK, (k, 0, "ties"), whole(link), "Cradle link and tie rods",
-                   f"The four tie rods onto the cradle link, an M{TIE_M.d:g} x "
-                   f"{TIE_ROD_SCREW:g} steel button head (class 10.9, from its own bag: not "
-                   "a stainless one) through the link from its leg side into each "
-                   f"(threadlocker, {TIE_TIGHTEN_NM:g} N·m on the key: closed, the joint holds "
+                   f"The four tie rods onto the cradle link, an M{tie_screw(lk.key).d:g} x "
+                   f"{TIE_ROD_SCREW:g} {tie_screw_words(lk.key)} through the link from its "
+                   "leg side into each "
+                   f"(threadlocker, {tie_nm(lk.key):g} N·m on the key: closed, the joint holds "
                    "the box's walking moment without working); the rods "
                    f"stand up from its bay side.{brace} It goes onto the stack rods up, its "
                    "bores down over the posts and the pins it rides.", "cradle_link",
@@ -3519,8 +3555,10 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                                bom_key=_rod(tie_len), color=TIE_COLOR))
         for s, sign in (("L", -1), ("R", 1)):
             face = sign * (z_mid - link_bottom)      # the link's outer face
-            extras.append(hardware(f"tie_{n}_screw{s}", _screw(xy, face, sign), host,
-                                   fab="purchased", bom_key=TIE_M.key(TIE_ROD_SCREW),
+            extras.append(hardware(f"tie_{n}_screw{s}",
+                                   _screw(xy, face, sign, s=tie_screw(lk.key)), host,
+                                   fab="purchased",
+                                   bom_key=tie_screw(lk.key).key(TIE_ROD_SCREW),
                                    color=TIE_COLOR))
     # the racking brace's tube (simplification round 2): its ends in the cradle links'
     # sockets, BRACE_SHORT short of their outer faces, its notches on their teeth
@@ -3820,8 +3858,9 @@ def assembly(view) -> list:
     right = view.named(r"tie_\w+_screwR")
     if right:
         ops.append(Op(UNIT, (99,), whole(*right), "",      # (after the link: its key)
-                      f"The cradle link's M{TIE_M.d:g} steel button heads (class 10.9) from "
-                      f"its outside into the rods' ends (threadlocker, {TIE_TIGHTEN_NM:g} N·m "
+                      f"The cradle link's M{tie_screw(key).d:g} "
+                      f"{tie_screw_words(key).replace('head (', 'heads (')} from "
+                      f"its outside into the rods' ends (threadlocker, {tie_nm(key):g} N·m "
                       "on the key).",
                       "tie_screws", side="R", scene=lying))
     if modules and key in PACK_POSES:   # its passive panel onto the cradle link (its pins'
@@ -4398,11 +4437,15 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
         "with the bottle out, and press it down on its teeth after.",
         "Keep your hands off the decanter and the bottle while the handle turns.",
         "Lift the cradle by its base board, never by the hand crank or the cradle box.",
-        f"After the clutch has slipped against a block (a click under load), take every "
-        f"post's stainless M6 button head back to {BUTTON_A2_70_NM['6']:g} N·m and every steel "
-        "one (the tie rods'" + (", pillar " + " and ".join(STEEL_FEET[key]) + "'s foot"
-                                if key in STEEL_FEET else "")
-        + f") to {TIE_TIGHTEN_NM:g}: the slip may have set the plates under the posts' ends.",
+        (f"After the clutch has slipped against a block (a click under load), take every "
+         f"post's stainless M6 button head back to {BUTTON_A2_70_NM['6']:g} N·m and every steel "
+         "one (the tie rods'" + (", pillar " + " and ".join(STEEL_FEET[key]) + "'s foot"
+                                 if key in STEEL_FEET else "")
+         + f") to {tie_nm(key):g}: the slip may have set the plates under the posts' ends."
+         if tie_screw(key).kind == "bhcs109" or key in STEEL_FEET else
+         f"After the clutch has slipped against a block (a click under load), take every "
+         f"post's and tie rod's stainless M6 button head back to {BUTTON_A2_70_NM['6']:g} N·m: "
+         "the slip may have set the plates under the posts' ends."),
         "Keep it out of the sun and under 50 °C (a hot car too), and hand-wash the printed "
         "parts: the PETG ones that carry the bottle bear up to 11 MPa as long as a bottle "
         "rests in it, and PETG's resin deflects at 64 °C under 1.8 MPa (Eastman's Eastar "

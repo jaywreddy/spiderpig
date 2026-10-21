@@ -2326,8 +2326,8 @@ CARRIER_PLAY = 0.15     # a carrier's bores on its tie rods, each side (cradle.S
 def box_rods(config: BuildConfig, stock: str | None = None, d: float | None = None,
              nm: float | None = None) -> dict:
     """The cradle box's four tie rods as :class:`cradle_structure.TieRod`, by tie point: as
-    built (``construction.cradle.TIE_D``, :data:`TIE_STOCK`, each end's ``TIE_M`` at
-    ``TIE_TIGHTEN_NM``: its least preload, friction 0.2), or ``stock`` / ``d`` / ``nm``
+    built (``construction.cradle.TIE_D``, :data:`TIE_STOCK`, each end's ``tie_screw`` at
+    ``tie_nm``: its least preload, friction 0.2), or ``stock`` / ``d`` / ``nm``
     instead (a probe's)."""
     from spiderpig import cradle_structure as cs
     from spiderpig.hardware.fasteners import BUTTON_10_9_PROOF_N, preload_band
@@ -2335,14 +2335,15 @@ def box_rods(config: BuildConfig, stock: str | None = None, d: float | None = No
 
     e, g, yld, what = TIE_STOCKS[stock or TIE_STOCK]
     d = cr.TIE_D if d is None else d
-    s = cr.TIE_M
+    s = cr.tie_screw(config.linkage)
     size = f"{s.d:g}"
     proof = BUTTON_10_9_PROOF_N[size] if s.kind == "bhcs109" else TIE_PROOF_N
     root = (ROD_ROOT if (stock or TIE_STOCK) == "6061" else NETRF12_ROOT) if d > 10.0 \
         else NETRF10_ROOT
     rod = cs.TieRod(d=d, bore=root, e=e, g=g,
                     yield_mpa=yld,
-                    preload=preload_band(size, cr.TIE_TIGHTEN_NM if nm is None else nm)[0],
+                    preload=preload_band(size, cr.tie_nm(config.linkage) if nm is None
+                                         else nm)[0],
                     hole=cr.TIE_ROD_HOLE, head_d=s.head_d, proof=proof,
                     stock=f"{d:g} mm {what}")
     return dict.fromkeys(TIES, rod)
@@ -2532,6 +2533,7 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
     mouth = pts[cr.mouth_name(lk)]
     links = box_links(config, joints, pts, tie_mm, holes)
     rods = rods or box_rods(config)
+    tie_s = cr.tie_screw(config.linkage)
     braces = box_brace(config) if braces is None else braces
     stock = sorted({r.stock for r in rods.values()})
     width = dict(links.segs)
@@ -2550,8 +2552,8 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
                      "what": "the cradle box's tie rods racking across the bay, the box a 3D "
                              "frame (cradle_report.box_racking)"}
     joint_row: dict = {"joint": "box:tie rod ends", "kind": "box", "links": [],
-                       "section": f"the tie rods' M{cr.TIE_M.d:g} end screws (ISO 7380, class "
-                                  f"{'10.9' if cr.TIE_M.kind == 'bhcs109' else 'A2-70'}) "
+                       "section": f"the tie rods' M{tie_s.d:g} end screws (ISO 7380, class "
+                                  f"{'10.9' if tie_s.kind == 'bhcs109' else 'A2-70'}) "
                                   "prying a gapped end joint",
                        "what": "the tie rods' end joints", "walk": None}
     link_row: dict = {"joint": "box:cradle link", "kind": "box", "links": [link],
@@ -2762,7 +2764,7 @@ def post_engaged(config: BuildConfig) -> float:
 def tie_threads(config: BuildConfig, box: dict) -> dict:
     """The tie rods' tapped ends (the simplification round 1, 2026-10-21: 6061, tapped at home):
     each end's M6 thread (``construction.cradle.TIE_ROD_SCREW`` through the cradle link) against
-    the most its screw pulls: its preload's top at ``TIE_TIGHTEN_NM`` walking, the prying of a
+    the most its screw pulls: its preload's top at ``tie_nm`` walking, the prying of a
     gapped end at the jam (:func:`box_racking`'s), and against the screw's head proof (the
     screw, not the thread, should go first). Strip SF at the rod's shear yield."""
     from spiderpig.hardware.fasteners import BUTTON_10_9_PROOF_N, preload_band
@@ -2772,9 +2774,9 @@ def tie_threads(config: BuildConfig, box: dict) -> dict:
     t = thickness(config, sheet_of(config, "link", link))
     engaged = cr.TIE_ROD_SCREW - t
     strip_y, strip_u = thread_strip(engaged)
-    top = preload_band(f"{cr.TIE_M.d:g}", cr.TIE_TIGHTEN_NM)[1]
-    proof = (BUTTON_10_9_PROOF_N[f"{cr.TIE_M.d:g}"] if cr.TIE_M.kind == "bhcs109"
-             else TIE_PROOF_N)
+    s = cr.tie_screw(config.linkage)
+    top = preload_band(f"{s.d:g}", cr.tie_nm(config.linkage))[1]
+    proof = BUTTON_10_9_PROOF_N[f"{s.d:g}"] if s.kind == "bhcs109" else TIE_PROOF_N
     out = {"engaged_mm": round(engaged - LEAD_THREAD, 2), "strip_yield_n": round(strip_y),
            "strip_ultimate_n": round(strip_u), "screw_proof_n": round(proof),
            "over_proof": round(strip_y / proof, 2)}
@@ -3211,7 +3213,9 @@ xfail on it. None since 2026-10-20: design review round 3's M5 had put every M6 
 ISO 7380's 4 N·m in A2-70, and both cradles' tie rods' end joints stood at their gap walking
 (0.98 of it at the least preload) and A's pillar G's foot lifted (1.06 x its decompression);
 the tie rods' ends and that foot take class 10.9 button heads at 6 N·m
-(``construction.cradle.TIE_M``, ``STEEL_FEET``): the same heads, no plan changed."""
+(``construction.cradle.TIE_M``, ``STEEL_FEET``): the same heads, no plan changed. B's tie rods'
+ends A2-70 again at 4 N·m since simplification round 2's racking brace (P8,
+``construction.cradle.TIE_SCREWS``): shut walking at 3.92 x their gap moment."""
 
 OPEN_GRIP: dict[str, str] = {}
 """Per cradle, a grip at MIL-STD-1472H's light-load bar (``handcrank.LIGHT_LOAD_N``) run in:
