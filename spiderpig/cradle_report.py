@@ -64,7 +64,6 @@ from spiderpig.hardware import mass as mass_mod
 from spiderpig.hardware.cradle_catalog import (
     NETRF10_ROOT,
     NETRF10_YIELD,
-    NETRF12_ID,
     NETRF12_ROOT,
     ROD_E,
     ROD_ROOT,
@@ -452,17 +451,19 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                  "studs: the stud's tension and shear, the 6061 sleeve's crush and bending, "
                  "the ring's bearing; its slip at the faces' friction "
                  "(cradle_drive.riser_rating)"}
-    # the crankpin: a NETRF12 standing in the crank block, the rod's force at the rod's
-    # mid-plane over the block's top (a cantilever that long out of its socket): it bends at
-    # the block's top, taken as the 12 x 5.0 tube its tapped end may be there, at 1018's
-    # hot-rolled minimum yield
+    # the crankpin: a 1/2 in 6061-T6 rod standing in the crank block (a NETRF12's 1018 until
+    # simplification round 1), the rod's force at the rod's mid-plane over the block's top (a
+    # cantilever that long out of its socket): it bends at the block's top, taken as the
+    # 12.7 x 5.0 tube its tapped end may be there, at 6061-T6's minimum yield
     note = mech.meta.get("hand_crank") or {}
     rod_mid = design.plan.z(design.plan.layers[rider])[0] + design.ctx.sheet_t(
         "link", rider) / 2
     lever = float(note.get("crankpin_lever_mm", rod_mid - (note.get("arm_z_mm") or
                                                            [0.0, 0.0])[1]))
-    od, bore = CRANKPIN_D, NETRF12_ID
-    cap = math.pi * (od ** 4 - bore ** 4) / (32 * od) * NETRF10_YIELD / 1000.0  # N·m
+    from spiderpig.construction.handcrank import CRANKPIN_BORE, CRANKPIN_YIELD
+
+    od, bore = CRANKPIN_D, CRANKPIN_BORE
+    cap = math.pi * (od ** 4 - bore ** 4) / (32 * od) * CRANKPIN_YIELD / 1000.0  # N·m
     out["crankpin"] = {"lever_mm": round(lever, 2), "capacity_nm": round(cap, 2),
                        "bottle_nm": round(f_rod * lever / 1000.0, 2),
                        "jam_nm": round(f_rod_jam * lever / 1000.0, 2),
@@ -735,8 +736,9 @@ TPU_E = 26.0            # MPa: TPU 95A's tensile modulus, the least published fo
 #                         (UltiMaker's TDS v5.00, ASTM D638: 26 MPa; its v2.01 of 2025-09-15,
 #                         ASTM D3039: 56-67 MPa by the print's orientation)
 TPU_NU = 0.45           # its Poisson's ratio (an elastomer: under 0.5)
-TPU_STEEL_FRICTION = 0.3    # a keeper's grip on a stainless pin: under the 0.5 of TPU on
-#                             aluminium and PLA dry (TPU_FRICTION), for an oiled pin
+TPU_STEEL_FRICTION = 0.3    # a keeper's grip on its pin (the 6061 rod since simplification
+#                             round 1; stainless before): under the 0.5 of TPU on aluminium
+#                             and PLA dry (TPU_FRICTION), for a greased pin
 KEEPER_LEAST_RATIO = 10.0   # the keepers' bar: the least grip over the pin's own weight
 KEEPER_LOAD_RATIO = 1.5     # and the bench push (cradle.KEEPER_PUSH_N) over the most the steps
 #                             can put on a pin's tip: half the cradle box's weight
@@ -745,7 +747,16 @@ KEEPER_PUSH_MAX_N = 120.0   # its push on, at the bore's nominal interference: b
 #                             tight end too (the packing review's m1, pack turn 2)
 KEEPER_BORE_TOL = 0.15      # the keeper's bore as printed, either way (cradle.KEEPER's least
 #                             interference is the pin's least less the bore's most)
-PIN_MOST = 7.99             # the clevis pin's most (McMaster's 8 mm, -0.05/-0.01)
+def _pin_most() -> float:
+    """The quick-release pin's most diameter (mm): the 5/16 in cold-finished rod's nominal and
+    its tolerance (:mod:`construction.pivots.rod_pin`; McMaster's 8 mm clevis pin's 7.99
+    before simplification round 1)."""
+    from spiderpig.construction.pivots.rod_pin import ROD_TOL, RODCLIP516
+
+    return RODCLIP516.shaft.d + ROD_TOL
+
+
+PIN_MOST = round(_pin_most(), 4)
 
 
 def keepers(config: BuildConfig, mech) -> dict:
@@ -762,13 +773,13 @@ def keepers(config: BuildConfig, mech) -> dict:
     keep off (they hold a piece's weight until both pins are in). Its push on: the same at
     the bore's nominal interference, TPU's highest modulus and dry friction. Empty for a
     cradle with none (A)."""
-    from spiderpig.construction.pivots.clevis import CLEVIS8
+    from spiderpig.construction.pivots.rod_pin import RODCLIP516
 
     names = list(mech.meta.get("keepers") or [])
     if not names:
         return {}
     by = {b.name: b for b in mech.bodies}
-    d = CLEVIS8.shaft.d
+    d = RODCLIP516.shaft.d
     link = cr.cradle_link(config.lk)
     box_kg = sum(part_mass_kg(config, b) for b in mech.bodies
                  if b.part is not None and b.fab != "display"

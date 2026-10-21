@@ -127,10 +127,13 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     "decanter_hinge": {"b2": "al5052_4p8mm"},
     # (design review round 3, 2026-10-20: b2 back to 0.187 in 5052, its worst stress at the
     # clutch's cap 36 MPa, SF 4.4 on 5052's minimum; its 8.2 mm holes at 1.66 t, under 7075's
-    # 2 t "to prevent microcracks", the 2 t only guidance in 5052; b4 stays 7075: its rear
-    # block 0.88 in 5052)
+    # 2 t "to prevent microcracks", the 2 t only guidance in 5052)
+    # (simplification round 1, 2026-10-21: b4 in 0.187 in 5052, its chord X-K 28 mm wide,
+    # config.PRODUCT_CHORD_R, inside the 335 x 28 blank its bosses already made: its jam is
+    # the chord's buckling out of its plane, E t^3 x its width, not the alloy; b3 stays
+    # 7075, its bending at O1: wider in 5052 it meets b2 or K in their layer, no plan)
     "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al5052_4p8mm", "b3": "al7075_4p8mm",
-                     "b4": "al7075_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_4p8mm"},
+                     "b4": "al5052_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_4p8mm"},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links
 (:func:`default_link_sheets`); ``BuildConfig.link_sheets`` overrides the lot."""

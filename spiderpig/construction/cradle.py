@@ -3123,13 +3123,15 @@ def passive_side(side: Mechanism, design) -> Mechanism:
         c for c in side.connections if c[0][1] in names and c[1][1] in names])
 
 
-KEEPER = (7.4, 0.4)
+KEEPER = (7.38, 0.36)
 """The keepers of the cradle link's quick-release pins (B's X and Y, both sides; the pack's
-turn 1, 2026-10-14): the printed ring each clevis pin's plan puts in the gap between its
+turn 1, 2026-10-14): the printed ring each clip pin's plan puts in the gap between its
 lowest link (b4, b5) and the cradle link, printed in TPU 95A with its bore (mm) under the
-8 mm pin, so it grips the pin (:func:`spiderpig.cradle_report.keepers`); and the least
-interference a print may come out with (mm, on the diameter: the pin 7.95-7.99 mm, McMaster's
--0.05/-0.01, and the bore printed to within 0.15 mm). A side lying down with its pins' clips
+pin, so it grips the pin (:func:`spiderpig.cradle_report.keepers`); and the least
+interference a print may come out with (mm, on the diameter: the 5/16 in cold-finished 6061
+rod 7.899-7.976 mm since simplification round 1, 2026-10-21, and the bore printed to within
+0.15 mm; it was 7.4 and 0.4 on McMaster's 8 mm clevis pin, 7.95-7.99: the rod's wider
+tolerance keeps the tight end's push on under 120 N). A side lying down with its pins' clips
 out holds them by their keepers: each pin's head is under its link with nothing under it,
 and a bare pin drops out. So the cradle box lifts off the drive side as it lies
 (:func:`module_steps`), and the passive panel lifts off with its pins and their keepers on
@@ -3984,7 +3986,7 @@ TOOLS = (
     "drill bit (the hand crank's hub, by hand) and a 7 mm one (its shank under sandpaper: a "
     "tight pin hole), a drill (the gearbox's run-in, before it goes on the cradle, never "
     "after), a hacksaw (the gearbox riser's studs, from a threaded rod)",
-    "A soldering iron (the heat-set inserts) and a vise (the knobs' nuts, the clutch "
+    "A vise (the knobs' nuts, the hand crank's knobs onto their screws' heads, the clutch "
     "plungers' nuts)",
     "Clamps or weights for the glue; a short tube over an 8 mm pin (the keepers)",
     "Marking and handling: paper, a pencil, a paint pen and red paint (the pack marks, the "

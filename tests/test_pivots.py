@@ -35,7 +35,8 @@ from spiderpig.stack import verify_plan
 from tests import cache
 from tests._construction import overlapping_pairs
 
-KEYS = ("chicago", "standoff", "chicago6", "pivot8", "clevis8")
+KEYS = ("chicago", "standoff", "chicago6", "pivot8", "clevis8", "rod516", "rod38",
+        "rodclip516")
 T = 1.0
 
 
