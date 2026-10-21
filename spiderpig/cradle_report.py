@@ -474,10 +474,14 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                                     out["drive"]["output_overhung"]["allowed_n"],
                                     riser=(box, notes))
     # at a fast spin the same slip puts more on the crank (design review round 3's M1): the
-    # parts' least there, scaled from the cap's 30° from the toggles
+    # parts' least there, scaled from the cap's 30° from the toggles (the parts open at the
+    # cap aside, OPEN_AT_CAP: the verdict names them)
     clutch_row = out["drive"]["clutch"]
-    clutch_row["fast_cap_least_sf"] = round(
-        out["jam_capped"]["away"][0] * cap / clutch_row["fast_cap_nm"], 2)
+    open_ = OPEN_AT_CAP.get(lk.key, {})
+    held = [v for k, v in (out["jam_capped"]["by_band"][-1].get("parts") or {}).items()
+            if k not in open_]
+    least = min(held) if open_ and held else out["jam_capped"]["away"][0]
+    clutch_row["fast_cap_least_sf"] = round(least * cap / clutch_row["fast_cap_nm"], 2)
     out["drive"]["riser"]["cap"] = riser_rating(
         box, notes, out["jam_capped"]["by_band"][-1]["rod_n"], cap)
     out["blocked_capped"] = blocked(config, mech, ts=ts, crank_nm=cap, thresholds=True,
