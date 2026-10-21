@@ -3518,6 +3518,9 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
         "with the bottle out, and press it down on its teeth after.",
         "Keep your hands off the decanter and the bottle while the handle turns.",
         "Lift the cradle by its base board, never by the hand crank or the cradle box.",
+        f"After the clutch has slipped against a block (a click under load), take every "
+        f"post's and tie rod's M6 button head back to {TIE_TIGHTEN_NM:g} N·m: the slip may "
+        "have set the plates under the posts' ends.",
         "Hand-wash the printed parts: PLA softens at about 55 °C, PETG (the parts that carry "
         "the bottle, and the hand crank) at 68 (a hot car too)."),
         Scene("rest", show=("*", "bottle", "decanter"),
@@ -3526,9 +3529,10 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
 
 
 TOOLS = (
-    "Turning: a torque wrench (5 to 20 N·m: the posts' and tie rods' screws, the gearbox's "
-    "riser, its end screw), hex keys (2.5 to 6 mm, and one for the clutch plungers' backs), "
-    "8, 10 and two 13 mm wrenches and a 3/4 in one (the plungers' jam nuts), E-ring pliers",
+    "Turning: a torque wrench (4 to 15 N·m: the drive's M6 screws, the posts' and tie rods' "
+    "screws, the gearbox's riser, its end screw), hex keys (2.5 to 6 mm, and one for the "
+    "clutch plungers' backs), 8, 10 and two 13 mm wrenches and a 3/4 in one (the plungers' jam "
+    "nuts), E-ring pliers",
     "Measuring: a caliper with a depth rod (the links' thickness on arrival, the gearbox's "
     "go/no-go), a luggage scale (the clutch's start and setting, the empty grip), a kitchen "
     "scale (the keepers)",

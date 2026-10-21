@@ -1907,7 +1907,7 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
                                                     for k, f in row["forces"].items()}}
                     continue
                 for k in ("moment_nm", "ends_nm", "mid_nm", "shear_n", "foot_nm", "tip_nm",
-                          "end_n"):
+                          "end_n", "drift_mm"):
                     old[k] = max(old[k], row[k])
                 for part in ("foot", "end"):        # the larger end moment per angle
                     a_, b_ = old["forces"]["turn"][part], row["forces"]["turn"][part]

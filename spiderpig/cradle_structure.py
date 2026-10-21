@@ -698,6 +698,13 @@ def _posts(side: Sequence[Post], length: float, vecs: np.ndarray,
                "end_n": round(float(np.hypot(*end_f.T).max(initial=0.0)), 1),
                "forces": {"box": {"foot": -foot_f, "end": end_f},
                           "turn": {"foot": foot_m, "end": tip_m}}}
+        # its links' nodes against its end (the inner plate there), in the plates' plane:
+        # how far what rides on it moves past the inner plate (a tie rod passing its bar)
+        drift = np.zeros(m)
+        for k in range(1, nn - 1):
+            drift = np.maximum(drift, np.hypot(ul[:, 4 * k] - ul[:, 4 * (nn - 1)],
+                                               ul[:, 4 * k + 1] - ul[:, 4 * (nn - 1) + 1]))
+        row["drift_mm"] = round(float(drift.max(initial=0.0)), 3)
         if plates is not None:                  # its axial force (tension positive)
             wo, wi = gnodes["outer"][_post_node(p)], gnodes["inner"][_post_node(p)]
             ea = p.ea or math.sqrt(4 * math.pi * E_STEEL * p.ei)
