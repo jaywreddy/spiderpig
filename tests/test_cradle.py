@@ -1321,6 +1321,12 @@ def test_a_frame_plate_s_steps_are_tapered_and_its_cut_corners_rounded():
     assert ("+", cr.EDGE_R) in kinds
     assert new.volume > 0.98 * old.volume
     assert len(new.solids()) == 1
+    # A's plates keep their steps for its flat pack (cradle.TAPERED), their corners rounded
+    assert frozenset({"decanter_rcm"}) == cr.TAPERED
+    plain = cr.plate_part(pads, cuts, 0.0, t, web, fillet, taper=False)
+    breaks, kinds = _outline_turns(plain)
+    assert _s_steps(kinds, fillet)
+    assert breaks == []
 
 
 @pytest.mark.construction
@@ -3413,7 +3419,7 @@ def test_the_cradle_packs_in_one_box(key):
     base = set(by["base"]["parts"])
     assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_nut1")} <= base
     assert {shipped[n].bom_key for n in base if n.startswith("foot_bracket")} == {
-        "m6_carriage_25", "m6_washer_wide", "m6_nut", None}         # (None: the knobs)
+        "m6_carriage_25", "m6_washer_wide", "m6_nylon_nut", None}   # (None: the brackets)
     assert {n for n in shipped if n.startswith(("base_cleat", "riser_locator"))} <= base
     assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_knob")} <= base
     assert 5.0 <= p["pose"]["turns_from_rest"] <= 6.5
@@ -3431,8 +3437,9 @@ def test_the_cradle_packs_in_one_box(key):
     assert text.index("on its drive side") < text.index("R-clip") < text.index(
         "lift it straight up") < text.index("Cradle box: lift it straight up")
     back = " ".join(p["reassembly"])
-    for words in ("paint marks", "pin X into its hole first", "Lower the cradle box onto it",
-                  "Both R-clips in", "cleats", "knobs loose", "paper check",
+    for words in ("paint marks", "(its paint X), into its hole first",
+                  "Lower the cradle box onto it", "Both R-clips in", "cleats", "knobs loose",
+                  "paper check",
                   "Pin X first, always", "press each one's tip with a thumb",
                   "down into its bracket's slot"):
         assert words in back, (words, p["reassembly"])

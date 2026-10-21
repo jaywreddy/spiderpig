@@ -1028,7 +1028,8 @@ class CradlePlates(FramePlates):
             if key == FRAME_INNER:
                 _tips_clear_the_inner_plate(build, done)
                 keep_out = _keep_out(build)
-            part = plate_part(pads, cuts, z0, z1, web, fillet, keep_out)
+            part = plate_part(pads, cuts, z0, z1, web, fillet, keep_out,
+                              taper=build.ctx.config.linkage in TAPERED)
             out.bodies.append(hardware(name, part, frame, fab="laser", color=FRAME_COLOR,
                                        sheet=build.ctx.sheet("frame")))
         return out
@@ -1038,10 +1039,17 @@ STEP_MAX = 4.5          # a boss or a member's end this far or less proud of a s
 STEP_TURN = 30.0        # two members this far or less off a straight line run straight on
 TAPER_RUN = 10.0        # a taper from a proud station into its plain strip: 1 in this
 EDGE_R = 3.0            # the outline's convex corners (where the board cut meets a member)
+TAPERED: frozenset[str] = frozenset({"decanter_rcm"})
+"""The cradles whose frame plates' members are tapered station to station (:func:`_tapered`):
+B's. A's keep the closing's S-steps for now (cosmetic: none is sharp): its flat pack lays both
+panels face down on the board with the loose parts in their open triangles, and the tapers
+(601 mm² more on its outer plate) closed what its printed spacers stood in, one growing to a
+327 mm print and another left loose 66 mm (``tests/test_cradle.py``'s pack test, 2026-10-20);
+the pack's turn 3 takes them up. Every convex corner is rounded on both (:data:`EDGE_R`)."""
 
 
 def plate_part(pads, cuts, z0: float, z1: float, web: float, fillet: float = 0.0,
-               keep_out=()) -> Shape3D:
+               keep_out=(), taper: bool = True) -> Shape3D:
     """A cradle frame plate: its members (pills, tapered where a boss or a straight-on
     member stands a little proud of them: :func:`_tapered`), a boss round every round
     hole, the inside corners rounded ``fillet`` (a closing: the outline grown and shrunk
@@ -1050,13 +1058,14 @@ def plate_part(pads, cuts, z0: float, z1: float, web: float, fillet: float = 0.0
     cut meets a member, or a keep-out the edge), less the holes. Memoized (the keep-outs by
     identity: :func:`_keep_out` gives the same solid for the same paths; each entry holds its
     keep-outs, so their ids stay theirs)."""
-    memo = (tuple(pads), tuple(cuts), z0, z1, web, fillet, tuple(map(id, keep_out)))
+    memo = (tuple(pads), tuple(cuts), z0, z1, web, fillet, tuple(map(id, keep_out)), taper)
     hit = _PLATE_MEMO.get(memo)
     if hit is not None:
         return hit[0]
     bosses = [(c.xy, c.d / 2 + web) for c in cuts if isinstance(c, Cut) and web > 0]
     away = union(list(keep_out)) if keep_out else None
-    parts = _tapered(pads, bosses, z0, z1, away)
+    parts = (_tapered(pads, bosses, z0, z1, away) if taper      # (not: :data:`TAPERED`)
+             else [pill(a, b, r, z0, z1) for a, b, r in pads])
     parts += [disc(xy, r, z0, z1) for xy, r in bosses]
     part = union(parts)
     if fillet > 0:
@@ -3704,9 +3713,10 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
             "until the screw boss is on the body's diameter on the tower's face (every 10 mm), "
             "or a listed size's groove (one dot a 750 ml to five a methuselah, whose V blocks "
             "sit on their rods; 9 turns end to end); let it drop and press it down until it "
-            "seats: it holds the block where it is. Now and then, the knob down, try to turn "
-            "the lead screw by its collar under the block and press the block down hard: "
-            "neither may move (a set screw that has let go: snug it, threadlocked).",
+            "seats: it holds the block where it is.",
+            "Now and then, the rear knob down, try to turn the lead screw by its collar under "
+            "the block and press the block down hard: neither may move (a set screw that has "
+            "let go: snug it, threadlocked).",
             "Lay the bottle in base first, its label up: hold it by the neck and the body, its "
             "base low, set its heel on the rails (or the rear V) just in front of the gate and "
             "slide it back against the gate, then lower the neck into the front V, the rim "
