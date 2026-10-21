@@ -1579,7 +1579,7 @@ def test_the_cradle_stands_turns_easily_and_holds():
     # frames too since their redesign (2026-10-20: the column E1 under the front leg)
     _holds_the_jam(r, "decanter_hinge")
     _the_structure_is_rated(r, ("b2",), {"pillar:G"},
-                            {"column:C1", "column:C2", "column:D1", "column:D2", "column:D3",
+                            {"column:C1", "column:D1", "column:D2", "column:D3",
                              "column:E1", "column:E2"})
     _holds_the_clutchs_cap(r, "decanter_hinge")
     _the_grip_is_open(_the_drive_keeps_its_bars(r) + _open_joints(r, "decanter_hinge"))
@@ -1665,6 +1665,14 @@ def _holds_the_jam(r: dict, key: str) -> None:
     joints = r["structure"]["joints"]["worst"]
     assert joints["jam"]["screw_sf"] >= 1.3, joints
     assert joints["jam"]["bearing_sf"] >= 1.0, joints
+    # the simplification round 1 (2026-10-21): the posts' and tie rods' M6 threads tapped in
+    # 6061 hold the screws' most at 1.3, and strip only past the screw's proof (the screw
+    # goes first)
+    assert joints["jam"]["strip_sf"] >= 1.3 and joints["walk"]["strip_sf"] >= 1.3, joints
+    assert r["structure"]["joints"]["thread"]["over_proof"] >= 1.0
+    ties = r["structure"]["tie_threads"]
+    assert min(ties["walk"]["strip_sf"], ties["jam"]["strip_sf"]) >= 1.3, ties
+    assert ties["over_proof"] >= 1.0, ties
     assert joints["walk"]["slip_x"] <= 1.0, joints
     assert joints["walk"]["open_x"] <= (1.1 if "posts" in open_ else 1.0), joints
 
@@ -1818,7 +1826,7 @@ def test_b_stands_turns_easily_and_holds():
     assert pour["rear"]["tip_deg"] > r["stand"]["edges"]["rear"]["tip_deg"]
     assert all(e["tip_deg"] >= 25.0 for e in pour.values())
     _the_structure_is_rated(r, ("b2", "b6"), {"pillar:O1", "pillar:O2"},
-                            {"column:D1", "column:D2", "column:E1", "column:E2"})
+                            {"column:D2", "column:E1", "column:E2"})
     # the known limits (not designed for): a block near the mouth multiplies the pins' loads;
     # where the frame starts to give, in newtons at the grip (design review round 2's M2)
     front = r["blocked"]["cases"]["front saddle"]
@@ -2416,9 +2424,13 @@ def test_a_product_is_rated_on_its_alloys_minimum_and_a_walker_on_its_typical():
     """Design review round 3's M1: the cradles had been rated on 5052-H32's typical 193 MPa;
     a product now takes each alloy's specified minimum in its gauge (ASTM B209: 5052-H32
     23.0 ksi, 6061-T6 35.0, 7075-T6 0.190 in 69.0), a walker keeps the typical value its
-    rules were set on (the identity gate holds them), and the posts' steel its stated
-    material's (MISUMI's EN 1.0038 equivalent: 235 MPa)."""
-    from spiderpig.hardware.cradle_catalog import NETRF10_YIELD
+    rules were set on (the identity gate holds them), the crankpin's steel its stated
+    material's (MISUMI's EN 1.0038 equivalent: 235 MPa), and the posts' and tie rods' 6061-T6511
+    rod ASTM B221's (35 ksi, 241.3 MPa; the simplification round 1, 2026-10-21)."""
+    from spiderpig.construction.pivots.standoff import StandoffAxle
+    from spiderpig.cradle_report import column_section
+    from spiderpig.hardware.catalog import get
+    from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, ROD_YIELD, al_rod
     from spiderpig.materials import allowable_mpa, sheet
 
     cradle = BuildConfig(linkage="decanter_rcm", robot=False)
@@ -2429,6 +2441,12 @@ def test_a_product_is_rated_on_its_alloys_minimum_and_a_walker_on_its_typical():
     assert allowable_mpa(cradle, "al7075_4p8mm") == pytest.approx(475.7, abs=0.05)
     assert allowable_mpa(walker, "al5052_2mm") == sheet("al5052_2mm").yield_mpa == 193.0
     assert NETRF10_YIELD == 235.0
+    assert ROD_YIELD == 241.3
+    pillar = StandoffAxle().cradle_shaft()
+    assert pillar.od == 12.7 and pillar.yield_mpa == ROD_YIELD
+    assert get(pillar.segment_key(71.8)).dims["material"] == "aluminium"
+    assert get(al_rod(12.7, 274.9)).dims["yield_mpa"] == ROD_YIELD
+    assert column_section(cr.STANDS["decanter_rcm"])[0] == 12.7
 
 
 @pytest.mark.strength

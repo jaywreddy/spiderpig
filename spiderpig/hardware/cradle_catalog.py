@@ -231,20 +231,19 @@ ROD_BASIS = ("ASTM B221 (Table 2), 6061-T6511 extruded rod and bar to 6.499 in: 
 ROD_ID = 5.0                # the strength check's bore: the M6 tap drill, as if tapped through
 ROD_THREAD = 12.0           # its M6 taps' depth (M x 2), tapped at home
 ROD_ROOT = 6.0              # its tapped ends rated as a tube to the female thread's roots
-ROD_HALF = 12.7             # 1/2 in round: the posts, the front tie rods
-ROD_FIVE_EIGHTHS = 15.875   # 5/8 in round: the rear tie rods
+ROD_HALF = 12.7             # 1/2 in round: the posts and the tie rods
 ROD_FACE = 1.5              # mm over its length each piece is bought, faced off at home
 ROD_STOCK: dict[float, dict] = {
     ROD_HALF: {"in": "1/2", "url": "https://www.speedymetals.com/p-2438-12-rd-6061-t6511-"
-                                   "aluminum-extruded.aspx", "sku": "p-2438", "per_in": 0.19},
-    ROD_FIVE_EIGHTHS: {"in": "5/8", "url": "https://speedymetals.com/p-2439-58-rd-6061-"
-                                           "t6511-aluminum-extruded.aspx", "sku": "p-2439",
-                       "per_in": 0.30},
+                                   "aluminum-extruded.aspx", "sku": "61r.5", "per_in": 0.192},
 }
-"""Speedy Metals' 6061-T6511 extruded rounds, cut to length (pages fetched 2026-10-21: USD per
-inch of a cut length, "NO CUTTING CHARGES and NO MINIMUMS"): each post and tie rod bought as
-its own piece, :data:`ROD_FACE` over its length (faced square on the Carvera), so no piece is
-over 48 in (no carrier's oversize handling) and nothing is sawn at home."""
+"""Speedy Metals' 6061-T6511 extruded rounds cut to length (the page and the cart, 2026-10-21:
+USD 0.192 an inch, each piece billed at its length rounded up to the next whole inch, cut +1/8
+-0 in; ASTM B221, diameter +-0.009 in from 0.500 to under 0.750 in): each post and tie rod
+bought as its own piece, :data:`ROD_FACE` over its length (faced square on the Carvera), so no
+piece is over 48 in and nothing is sawn at home. The cart adds a process fee (about USD 8) to a
+line of more than ten pieces (order a cradle's posts in lines of ten at most) and takes no
+order under USD 20 (one cart with the other rods, or a stick to clear it)."""
 
 
 def _rod_tag(od: float) -> str:
@@ -260,12 +259,12 @@ def al_rod(od: float, length: float) -> str:
 
 
 def _rod_price(od: float, L: float) -> float:
-    """USD of one piece: its length, faced, in whole sixteenths of an inch at the per-inch
-    price (:data:`ROD_STOCK`)."""
+    """USD of one piece: its length and its facing allowance in whole inches (the cart's
+    billing) at the per-inch price (:data:`ROD_STOCK`)."""
     import math
 
-    inches = math.ceil((L + ROD_FACE) / 25.4 * 16 - 1e-9) / 16
-    return round(inches * ROD_STOCK[od]["per_in"], 2)
+    inches = math.ceil((L + ROD_FACE) / 25.4 - 1e-9)
+    return round(inches * ROD_STOCK[od]["per_in"], 3)
 
 
 def _rod_item(od: float, L: float) -> Item:
@@ -277,7 +276,7 @@ def _rod_item(od: float, L: float) -> Item:
         "Metals)", "standoff",
         (Offer("Speedy Metals", s["url"], s["sku"], price_usd=usd, verified=True,
                note=f"{s['in']} in round 6061-T6511 extruded, cut to {L + ROD_FACE:.1f} mm "
-                    f"(USD {s['per_in']:.2f} per inch, cut to length, fetched 2026-10-21): "
+                    f"(USD {s['per_in']:.3f} an inch in whole inches, the cart 2026-10-21): "
                     f"faced to {L:g} mm both ends square on the Carvera, drilled 5.0 mm and "
                     f"tapped M6 x {ROD_THREAD:g} deep each end by hand"),),
         dims={"d": 6.0, "od": od, "length": L, "thread_depth": ROD_THREAD, "id": ROD_ID,
