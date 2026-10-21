@@ -197,9 +197,9 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
     the whole chord, a joint on it no brace). What holds the link besides its pins is spread
     over ``load_nodes[link]`` (default: all its joints). ``width(link, a, b)``: a chord's
     width where it isn't its section's. ``bosses`` (per link, a joint's boss radius,
-    ``config.PRODUCT_BOSS_R``): a chord end at a boss rated through its hole at the boss's
-    width and, past it, where the boss meets the chord's edges, on the chord without a hole
-    at the moment there."""
+    ``config.PRODUCT_BOSS_R``; a wider chord's end disc there counts as one): a chord end at
+    a boss rated through its hole at the boss's width and, past it, where the boss meets the
+    chord's edges, on the chord without a hole at the moment there."""
     load_nodes = load_nodes or {}
     keep = np.ones(len(vecs), bool) if skip is None else ~np.asarray(skip, bool)
     out: dict[str, dict] = {}
@@ -250,7 +250,11 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
         res = frame2d(xy, elems, loads, fixed=[0, 1, 2])
         worst = {"safety": math.inf}
         comp: dict[tuple[str, str], float] = {}
-        own = (bosses or {}).get(name, {})
+        own = dict((bosses or {}).get(name, {}))
+        for p_, q_ in segs:     # a wider chord's end disc round a joint is a boss there too
+            for j_ in (p_, q_):
+                k_ = j_.rsplit(".", 1)[-1]
+                own[k_] = max(own.get(k_, 0.0), wide[(p_, q_)] / 2)
         for e, (p, q) in enumerate(segs):
             N = res[:, e, 0]
             w = wide[(p, q)]

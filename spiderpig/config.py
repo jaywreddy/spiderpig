@@ -303,7 +303,7 @@ The planner claims each at its width (:class:`construction.plates.LinkPlates`)."
 PRODUCT_BOSS_R: dict[str, dict[str, dict[str, float]]] = {
     "decanter_rcm": {"b1": {"M": 15.8}, "b2": {"O2": 17.0},
                      "b3": {"O1": 17.0, "J": 14.0, "J2": 14.0},
-                     "b4": {"X": 14.0, "J": 14.0, "K": 14.0}, "b6": {"X": 16.0}},
+                     "b4": {"X": 14.0, "J": 14.0, "K": 14.0}},
     "decanter_hinge": {"b1": {"M": 15.8}, "b2": {"G": 17.0}},
 }
 """Per product linkage, per link: a boss (a disc, its radius in mm) round the hole at a
@@ -317,9 +317,9 @@ material from a hole to an edge, in 7075 "to prevent microcracks"):
 - B's 7075 links b3 and b4 at every 8.2 mm pin hole, r 14 (design review round 3,
   2026-10-20, laser-cut parts M3: 9.9 mm, 2.05 x the 0.190 in; at 24 mm wide 7.9, 1.64 x,
   under SendCutSend's 7075 rule; b4's blank then 28 mm, over the 25.27 mm it deburrs).
-- B's cradle link b6 at X, r 16 (round 3's linkage review, M1: its chord Tf2-X at X held
-  the clutch's cap at 1.12 on 5052's minimum through the 8.2 mm hole; the chord itself can't
-  grow, it passes pillar O1 by the planner's margin).
+(B's cradle link b6 needs none at X: its rear arm X-Tr1's 48 mm end is one there, which
+:func:`cradle_structure.link_bending` counts for the chord Tf2-X, the one that passes pillar
+O1 by the planner's margin and can't grow.)
 Each outline is closed round its boss and the planner claims the boss as a disc
 (:func:`construction.plates.product_bosses`)."""
 
@@ -351,14 +351,14 @@ PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 material) when the config names the default (:data:`SHEET`): a decanting cradle is all
 aluminium, its links' 0.125 in 5052 (:data:`materials.CRADLE_LINK_SHEET`)."""
 
-PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 67.1, "decanter_rcm": 63.7}
+PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 67.1, "decanter_rcm": 63.9}
 """Per product linkage: the crank torque its joints are rated at in a jam, in place of a
 servo's firmware limit (:func:`torque_limit_nm`): a decanting cradle's, the most its hand
 crank's slip clutch lets through, however hard the push (:data:`PRODUCT_CLUTCH_NM`, since
 design review round 1; a firm 40 N push at the grip had been the case:
 :func:`spiderpig.cradle_report.jam_nm`, which a test holds these to)."""
 
-PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 67.1, "decanter_rcm": 63.7}
+PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 67.1, "decanter_rcm": 63.9}
 """Per product linkage: the most its hand crank's slip clutch lets onto the crank, however
 hard the push (design review round 2's B-1, 2026-10-14): set on the bench to slip at
 ``construction.handcrank.CLUTCH_SET`` x the start the user measures (a full 6 L's, drawn:

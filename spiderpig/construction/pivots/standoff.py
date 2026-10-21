@@ -148,6 +148,8 @@ class StandoffAxle:
     #                                  12 mm, tapped M6 (MISUMI NETRF12, cradle_shaft)
     outside: float | None = None     # the head room outside a frame plate (None: a layer,
     #                                  the pitch; a cradle's: its side is open there)
+    face_washer: str | None = None   # a washer between its foot and the outer plate's face
+    #                                  (its catalog key; a cradle's: cradle.FACE_WASHER)
     neck_wall: float | None = None   # a printed neck's thinnest wall where a passing link
     #                                  leaves a layer less room than a ring (None: the
     #                                  rings' ``Params.min_wall``; a cradle's: NECK_WALL)
@@ -224,13 +226,15 @@ class StandoffAxle:
         ``cradle_report``), a 10 mm one at the 6 L's (0.78): the 12 mm is 1.73 x the 10 mm.
         Its heads and washers, 4.9 mm, stand outside the plates, where a cradle's side is
         open (the bay; the outside, its gearbox at O)."""
+        from spiderpig.construction.cradle import FACE_WASHER
         from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, NETRF12_ROOT
+        from spiderpig.hardware.fasteners import BUTTON_A2_70_NM
 
         return replace(self.one_piece(), stock="shaft12", size="M6", od=12.0, id_=NETRF12_ROOT,
                        yield_mpa=NETRF10_YIELD, end_hole=6.4, stud_hole=6.4,
                        min_engage=6.0, min_segment=24.0, washer_key="m6_washer",
-                       shim_key="m6_washer", tighten_nm=6.0, outside=5.0,
-                       neck_wall=NECK_WALL)
+                       shim_key="m6_washer", tighten_nm=BUTTON_A2_70_NM["6"],
+                       outside=5.0, neck_wall=NECK_WALL, face_washer=FACE_WASHER)
 
     def _running_play(self, build: Build, group: AxleGroup, out: Realized,
                       length: float) -> float:
@@ -268,6 +272,17 @@ class StandoffAxle:
             if got >= excess - 1e-6:
                 break
         return got
+
+    @property
+    def face_t(self) -> float:
+        """The foot washer's thickness (:attr:`face_washer`; 0 without one)."""
+        return 0.0 if self.face_washer is None else float(get(self.face_washer).dims["t"])
+
+    @property
+    def face_r(self) -> float:
+        """The foot washer's radius (0 without one): what it claims in the layer over the
+        outer plate."""
+        return 0.0 if self.face_washer is None else float(get(self.face_washer).dims["od"]) / 2
 
     def washer(self) -> tuple[float, float, float]:
         if self.washer_key is None:
@@ -453,7 +468,8 @@ class StandoffAxle:
         axle = self.column_axle(set(links), b, layout.pitch, a, layout, air)
         if axle is None:
             return 0.0
-        span = layout.z(b)[0] - layout.z(a)[1] - air(a + 1, b - 1)
+        span = layout.z(b)[0] - layout.z(a)[1] - air(a + 1, b - 1) - (
+            self.face_t if anchored[0] else 0.0)
         length = axle.segment(span, b - 1 > a and b - 1 not in links)
         return 0.0 if length is None else max(0.0, length - span)
 
@@ -510,7 +526,8 @@ class StandoffAxle:
                                 lambda x, y: column_air(view, group, x, y))
         if axle is None:
             return []
-        span = view.z(b)[0] - view.z(a)[1] - column_air(view, group, a + 1, b - 1)
+        span = view.z(b)[0] - view.z(a)[1] - column_air(view, group, a + 1, b - 1) - (
+            self.face_t if anchored[0] else 0.0)
         length = axle.segment(span, b - 1 > a and b - 1 not in col.links)
         return [] if length is None else [axle.segment_key(length)]
 
@@ -582,7 +599,7 @@ class StandoffAxle:
 
         stem = re.escape(stem_of(group))
         bottom, top = view.layers[0][0], view.layers[view.top][1]
-        column = view.named(rf"{stem}_standoff\d+")
+        column = view.named(rf"{stem}_standoff\d+") + view.named(rf"{stem}_face\d+")
         ends = view.named(rf"{stem}_(screw|washer)\d+")
         column += [n for n in ends if view.z[n][0] < bottom - 1e-3]
         inner = [n for n in ends if n not in column and view.z[n][1] > top + 1e-3]
@@ -592,6 +609,9 @@ class StandoffAxle:
             ops.append(Op(STACK, (-1, 1), whole(*column), "",
                           "Screw each pillar's standoff column (one piece) to the outer plate: "
                           + "its button head and washer from outside"
+                          + (", an 18 mm fender washer on the plate's inner face under the "
+                             "column's foot (matched to the columns' by caliper, within 0.05 "
+                             "mm)" if self.face_washer is not None else "")
                           + f", threadlocker, to {self.tighten_nm:g} N·m while the column is "
                           "bare to hold.", "columns"))
         if inner:
@@ -638,6 +658,15 @@ class StandoffAxle:
         trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
         long = 0.0          # how far the stock standoff (and take-up) is off its gap
         z0, z1 = build.z(a)[1], build.z(b)[0]
+        if self.face_washer is not None and anchored[0]:   # its foot on a washer
+            wd = get(self.face_washer).dims
+            tw = float(wd["t"])
+            out.bodies.append(hardware(f"{stem}_face{a}",
+                                       bored(disc(xy, float(wd["od"]) / 2, z0, z0 + tw), xy,
+                                             float(wd["id"]), z0, z0 + tw),
+                                       host, fab="purchased", bom_key=self.face_washer,
+                                       color=STEEL))
+            z0 += tw
         span = z1 - z0 - column_air(build, group, a + 1, b - 1)
         length = self.segment(span, b - 1 > a and b - 1 not in col.links)
         if length is None:
@@ -670,8 +699,9 @@ class StandoffAxle:
                 z1 = zs0
         # the printed sleeves (common.sleeve_runs), stopped under the shims where they reach
         # down into the spacer layer under the face
-        slots = [replace(sl, z1=min(sl.z1, z1)) for sl in
-                 column_slots(build, group, col, fill=fill, trim=trim) if sl.z0 < z1 - EPS]
+        slots = [replace(sl, z0=max(sl.z0, z0), z1=min(sl.z1, z1)) for sl in
+                 column_slots(build, group, col, fill=fill, trim=trim)
+                 if sl.z0 < z1 - EPS and sl.z1 > z0 + EPS]
         long += build_sleeves(build, group, slots, out, self.od + self.ring_fit, host, stem)[0]
         bore = max(2.0, self.screw_d / 2)       # (its tapped ends, drawn through)
         seg = disc(xy, self.od / 2 - 0.01, z0, z1) - disc(xy, bore, z0 - 1, z1 + 1)

@@ -157,8 +157,11 @@ M6 = screw("bhcs", "6")
 TIE_M = M6              # the tie rods' end screws: M6 x 16 button heads, A2-70 (ISO 3506-1)
 TIE_ROD_SCREW = 16.0    # through the cradle link's 4.75 mm: 11.25 mm in the rod's 12 mm tap
 TIE_ROD_HOLE = 6.4      # their clearance holes in the cradle link (ISO 273 fine)
-TIE_TIGHTEN_NM = 6.0    # the tie rods' screws tightened (the guide): about 5 kN of preload, the
-#                         end joint closed to 9.6 N·m (cradle_report.box_racking)
+TIE_TIGHTEN_NM = 4.0    # the tie rods' screws tightened (the guide): ISO 7380's most for an M6
+#                         A2-70 button head (TR Fastenings: hardware.fasteners.BUTTON_A2_70_NM;
+#                         6 until design review round 3), 2.5-4.6 kN of preload
+#                         (fasteners.preload_band), the end joint closed to 4.9 N·m at the least
+#                         (cradle_report.box_racking)
 SMALL_TIE_D = 10.0      # a 10 mm standoff (MISUMI NETRF10, M5 x 10 deep each end): a base or
 #                         bay tie, a 10 mm column
 TIE_SCREW = 12.0        # M5 x 12 button heads through a 3.2-4.8 mm plate: 7.2-8.8 mm in the tie
@@ -413,9 +416,16 @@ EAR_FILLET_R = 2.0              # the locator's ears' inside corners (SendCutSen
 #                                 "add fillets to internal corners"; its bit leaves R1.6)
 DOG_BONE_R = 1.6                # a routed square corner's relief: the router's 1/8 in bit
 #                                 (SendCutSend's least hole in 9 mm birch, 3.175 mm)
-CLEAT = (26.0, 0.15, 4.0)       # a rail's two birch cleats, glued to the board either side of
+CLEAT = (26.0, 0.02, 4.0)       # a rail's two birch cleats, glued to the board either side of
 #                                 it: their width across (SendCutSend's least birch part is
-#                                 25.4 mm), the play each side of the rail, the gap to a bracket
+#                                 25.4 mm), the play each side of the rail (glued against the
+#                                 rail itself, nothing between: what the glue-up leaves; 0.15,
+#                                 a sheet of paper's, until design review round 3's M6: the
+#                                 side rocked +-1.3 deg on it, +-9.7 mm at B's O1), the gap to a
+#                                 bracket
+CLEAT_BEAR = BASE_T - 2.0 - 0.5     # the rail's height bearing on its cleats (mm): the cleat's
+#                                 less its lead-in and the rail's 0.5 mm over the board; the
+#                                 side rocks 2 x play over it (cradle_report.side_stiffness)
 CLEAT_LEAD = 2.0                # a lead-in sanded at 45° on each cleat's top edge by the rail,
 #                                 so the rails find their slots blind (round 2: 0.15 mm a side)
 CLEAT_END_R = 5.0               # a cleat's four corners rounded (design review round 2,
@@ -704,7 +714,9 @@ class CradleStand(Group):
         stand = stand_of(ctx.config.lk)
         bay = {pts[n] for n in stand.bay_ties}
         feet = {pts[n] for n in stand.feet}
-        r = column_parts(stand).d / 2 + 0.3
+        col_ = column_parts(stand)
+        r = col_.d / 2 + 0.3
+        r_face = (face_washer()[0] / 2 + 0.3) if col_.face else r   # its end washers
         head = M5.head_d / 2 + 0.3
         nut = M5_NUT[0] / math.sqrt(3) + 0.3
 
@@ -723,10 +735,13 @@ class CradleStand(Group):
             for name in (p for n, p in pts.items() if p not in bay | feet):
                 out += [Placed(k, Disc(name, r), self.name, "stand column", seat=True)
                         for k in (0, L.top)]
-                for k in range(1, L.top):
-                    out.append(Placed(k, Disc(name, r), self.name, "stand column"))
-                    out.append(Placed(k, Disc(name, r), self.name, "stand column", gap=True))
-                out.append(Placed(0, Disc(name, r), self.name, "stand column", gap=True))
+                for k in range(1, L.top):       # its end washers in the layers (and the gaps)
+                    rk = r_face if k in (1, L.top - 1) else r       # on the plates' faces
+                    out.append(Placed(k, Disc(name, rk), self.name, "stand column"))
+                    out.append(Placed(k, Disc(name, r_face if k == L.top - 1 else r),
+                                      self.name, "stand column", gap=True))
+                out.append(Placed(0, Disc(name, r_face), self.name, "stand column",
+                                  gap=True))
             return out
 
         return [Claim("stand", frozenset(), make)]
@@ -765,12 +780,21 @@ class CradleStand(Group):
         for n in stand.bay_ties:
             out.cut(FRAME_INNER, Cut(xy(n), hole))
         col = column_parts(stand)
+        w_od, w_id, w_t = face_washer() if col.face else (0.0, 0.0, 0.0)
         for n in stand.columns:
             p = xy(n)
             out.cut(FRAME_OUTER, Cut(p, col.hole))
             out.cut(FRAME_INNER, Cut(p, col.hole))
-            out.bodies.append(hardware(f"stand_column_{n}", _tie(p, z0, z1, col.d, col.thread),
-                                       frame, fab="purchased", bom_key=col.key(z1 - z0),
+            if col.face:            # a fender washer on each plate's face under its end
+                for tag, lo in (("foot", z0), ("end", z1 - w_t)):
+                    out.bodies.append(hardware(
+                        f"stand_column_{n}_{tag}washer",
+                        difference(disc(p, w_od / 2, lo, lo + w_t),
+                                   disc(p, w_id / 2, lo - 1.0, lo + w_t + 1.0)),
+                        frame, fab="purchased", bom_key=col.face, color=TIE_COLOR))
+            c0, c1 = z0 + w_t, z1 - w_t
+            out.bodies.append(hardware(f"stand_column_{n}", _tie(p, c0, c1, col.d, col.thread),
+                                       frame, fab="purchased", bom_key=col.key(c1 - c0),
                                        color=TIE_COLOR))
             for side, z in ((-1, build.z(0)[0]), (1, build.z(build.top)[1])):
                 if col.washer is not None:
@@ -791,7 +815,9 @@ class CradleStand(Group):
                                            color=TIE_COLOR))
         out.notes["stand"] = {"columns": list(stand.columns), "feet": list(stand.feet),
                               "base_ties": list(stand.base_ties),
-                              "bay_ties": list(stand.bay_ties), "column_mm": round(z1 - z0, 2)}
+                              "bay_ties": list(stand.bay_ties),
+                              "column_mm": round(z1 - z0 - 2 * w_t, 2),
+                              "plates_gap_mm": round(z1 - z0, 2)}
         return out
 
     def assembly(self, view) -> list:
@@ -799,21 +825,31 @@ class CradleStand(Group):
         outer plate from outside first, as the pillars are; its inner screw from the bay
         once the inner plate is on."""
         from spiderpig.construction.assembly import JOIN, STACK, Op, whole
+        from spiderpig.hardware.fasteners import BUTTON_A2_70_NM
 
         columns = view.named(r"stand_column_[A-Za-z0-9]+")
+        faces = view.named(r"stand_column_\w+_(?:foot|end)washer")
         outer = view.named(r"stand_column_\w+_(?:screw|washer)i")
         inner = view.named(r"stand_column_\w+_(?:screw|washer)o")
+        nm = BUTTON_A2_70_NM["6"]
         ops = []
         if columns:
-            ops.append(Op(STACK, (-1, 1), whole(*columns, *outer), "",
+            ops.append(Op(STACK, (-1, 1), whole(*columns, *faces, *outer), "",
                           "Screw the stand's columns to the outer plate, a button head "
                           "(and its washer, on a 12 mm column) from outside into each "
-                          "(threadlocker).", "columns"))
+                          + ("through an 18 mm fender washer on the plate's inner face under "
+                             "the column's end, another on its top end for the inner plate "
+                             "(all of one thickness: caliper them from the bag, within 0.05 "
+                             "mm)" if faces else "")
+                          + f" (threadlocker; {nm:g} N·m, ISO 7380's most in A2-70: TR "
+                          "Fastenings' table).", "columns"))
         if inner:
             ops.append(Op(JOIN, (2,), whole(*inner), "",
                           "The columns' inner button heads (and washers) from the bay side "
-                          "(threadlocker).",
-                          "column_screws"))
+                          f"(threadlocker, {nm:g} N·m). After a clutch slip (a blocked cradle "
+                          f"cranked until the clutch clicks), take every post's screws back to "
+                          f"{nm:g} N·m: the slip may have set the plates under the posts' "
+                          "ends.", "column_screws"))
         return ops
 
     def motion(self, got: Realized) -> Motion:
@@ -1157,6 +1193,7 @@ class ColumnParts:
     screw_len: float
     hole: float
     washer: str | None = None   # a flat washer under each head (its catalog key)
+    face: str | None = None     # a fender washer between each end and its plate (its key)
 
     def key(self, length: float) -> str:
         return _standoff12(length) if self.d > SMALL_TIE_D else _standoff(length)
@@ -1165,6 +1202,21 @@ class ColumnParts:
 POST_HOLE = 6.4         # a 12 mm post's M6 end screw's hole in a frame plate (ISO 273 fine; 6.6
 #                         until design review round 2's m2: a post shifted 0.3 mm in it once its
 #                         joint had gapped)
+FACE_WASHER = "m6_washer_wide"  # the 18-8 M6 fender washer (6.4 x 18 x 1.6, Bolt Depot 7315)
+#                         between a 12 mm post's end and its frame plate: every stand column's
+#                         both ends, every pillar's foot (design review round 3, laser-cut parts
+#                         M1: the 12 mm end's edge bore on the bare 5052 at the clutch's cap past
+#                         VDI 2230's limiting pressure; spread over 18 mm it holds,
+#                         cradle_report.post_joints). Matched by caliper within 0.05 mm (the
+#                         guide: a post's length scatter is the inner plate's locked-in stress)
+
+
+def face_washer() -> tuple[float, float, float]:
+    """:data:`FACE_WASHER`'s OD, ID and thickness (mm)."""
+    from spiderpig.hardware.catalog import get
+
+    d = get(FACE_WASHER).dims
+    return float(d["od"]), float(d["id"]), float(d["t"])
 
 
 def column_parts(stand: Stand) -> ColumnParts:
@@ -1173,7 +1225,7 @@ def column_parts(stand: Stand) -> ColumnParts:
     and DIN 125 washers in 6.4 mm holes (design review round 2's m2: the heads had borne on
     the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated class)."""
     if stand.column_d > SMALL_TIE_D:
-        return ColumnParts(12.0, 12.0, M6, 16.0, POST_HOLE, "m6_washer")
+        return ColumnParts(12.0, 12.0, M6, 16.0, POST_HOLE, "m6_washer", FACE_WASHER)
     return ColumnParts(SMALL_TIE_D, 10.0, M5, TIE_SCREW, TIE_HOLE)
 
 
@@ -3627,7 +3679,8 @@ def _board_finish(key: str, modules: bool) -> tuple[str, str, tuple[str, ...]]:
                 "passive side's only started."))
     lines += [
         "Each rail's cleats (a pair between each two of its brackets): slide one against each "
-        "face of the rail, a sheet of paper between (their play), and pencil round them.",
+        "face of the rail, nothing between (the rail is their gauge: it drops back in under "
+        "a hand's press), and pencil round them.",
         "The hand crank off (its thumb screw); " + (
             "loosen the knobs a few turns and lift the cradle straight up off its brackets "
             "(they stay on the board, finished round)" if board else

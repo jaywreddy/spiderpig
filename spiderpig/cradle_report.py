@@ -801,7 +801,8 @@ def keepers(config: BuildConfig, mech) -> dict:
 
 def take_up(config: BuildConfig, mech) -> dict:
     """Each pin's axial take-up against its links' sheets as they may arrive (design review
-    round 2's M5): a pin (``mech.meta["wobble"]``'s ``pin:`` notes: its links and its
+    round 2's M5): a pin (``mech.meta["wobble"]``'s ``pin:`` notes, and since round 3's
+    laser-cut parts minor 9 its pillars' ``pillar:``, a row ``"pillar O2"``: its links and its
     play, the barrel or the length between the rings less the stack as drawn, the printed
     parts' tolerance already in) takes its links' thickness over the nominal; each link's
     sheet is over by up to its published tolerance (``thickness_tol``, SendCutSend's spec
@@ -817,7 +818,7 @@ def take_up(config: BuildConfig, mech) -> dict:
 
     rows = []
     for name, note in sorted((mech.meta.get("wobble") or {}).items()):
-        if not name.startswith("pin:") or not note.get("links"):
+        if not name.startswith(("pin:", "pillar:")) or not note.get("links"):
             continue
         links, overs = [], []
         for ln in note["links"]:
@@ -827,7 +828,8 @@ def take_up(config: BuildConfig, mech) -> dict:
             links.append({"link": ln["link"], "sheet": key, "over_mm": over})
         play = float(note.get("play_mm") or 0.0)
         worst, rss = sum(overs), math.sqrt(sum(o * o for o in overs))
-        rows.append({"pin": name[4:], "kind": str((note.get("section") or {}).get("name", "")),
+        rows.append({"pin": name[4:] if name.startswith("pin:") else name.replace(":", " "),
+                     "kind": str((note.get("section") or {}).get("name", "")),
                      "play_mm": round(play, 3), "links": links,
                      "growth_worst_mm": round(worst, 3), "growth_rss_mm": round(rss, 3),
                      "margin_worst_mm": round(play - worst, 3),
@@ -1824,7 +1826,16 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
         for n, kv in mid[k].items():
             stiff[k][n] = min(stiff[k][n], kv)
     stiff["least_n_mm"] = min(stiff["pivots_n_mm"].values())
-    stiff["sway_mm"] = round(SWAY_PUSH_N / (2 * stiff["least_n_mm"]), 2)
+    # the side rocks on its rail's play in the cleats before they bear (design review round
+    # 3's M6): 2 x the play over the rail's bearing height, at each pivot's height over the
+    # board; the reported sway is the elastic one and that rocking
+    board = float(pts[cr.mouth_name(lk)][0][1]) + cr.BASE_TOP
+    rock = {n: 2 * cr.CLEAT[1] / cr.CLEAT_BEAR * (float(xy[n][1]) - board)
+            for n in stiff["pivots_n_mm"]}
+    stiff["elastic_mm"] = round(SWAY_PUSH_N / (2 * stiff["least_n_mm"]), 2)
+    stiff["rock_mm"] = {n: round(r, 2) for n, r in rock.items()}
+    stiff["sway_mm"] = round(max(SWAY_PUSH_N / (2 * k) + rock[n]
+                                 for n, k in stiff["pivots_n_mm"].items()), 2)
 
     def in_plane(got_t: dict, v: np.ndarray, sk: np.ndarray, torque: np.ndarray) -> dict:
         """Both plates in their plane: the outer pinned at its feet, the posts' feet and the
@@ -2156,7 +2167,9 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) ->
     k_rot = sum(k_s * ri * ri + k_t for ri in r.values())
     z_tube = math.pi * (d ** 4 - bore ** 4) / (32 * d)
     screw_d = cr.TIE_M.d
-    preload = cr.TIE_TIGHTEN_NM * 1000.0 / (NUT_FACTOR * screw_d)
+    from spiderpig.hardware.fasteners import preload_band
+
+    preload = preload_band(f"{screw_d:g}", cr.TIE_TIGHTEN_NM)[0]   # (its least: friction 0.2)
     kern = (d * d + cr.TIE_ROD_HOLE ** 2) / (8 * d)
     gap_nm = preload * kern / 1000.0
     out: dict = {"rod": f"NETRF{d:g} x {L:g} mm, M{screw_d:g} ends", "share": PASSIVE_SHARE,
@@ -2215,7 +2228,20 @@ POST_FACE = (12.0, 6.4)     # a post's end face on its plate (mm): the 12 mm sta
 #                             the plate's 6.4 mm hole
 POST_WASHER = (18.0, 1.6)   # the 18-8 fender washer under each post's foot (OD, its least
 #                             thickness): it spreads the face's edge into the outer plate
-POST_WASHED = ("foot", "end")   # the post ends a fender washer spreads into its plate
+POST_WASHED: dict[str, tuple[str, ...]] = {"pillar": ("foot",), "column": ("foot", "end")}
+"""The post ends a fender washer spreads into its plate, by kind (design review round 3,
+laser-cut parts M1): every post's foot, a column's end too."""
+P_LIMIT_MPA = 269.0         # the frame plate's limiting surface pressure under a post's end
+#                             (VDI 2230 Part 1, Table A9, p_G: 5052 isn't tabulated; AlMg4.5Mn
+#                             F27, 5083, 325 MPa at Rm 260, scaled to 5052-H32's 215 minimum,
+#                             ASTM B209M; transcribed by FVA's help and Bossard's
+#                             "Flaechenpressung" sheet, fetched 2026-10-20: "short-term values
+#                             at room temperature, guide values"). VDI 2230's R10 holds the
+#                             pressure under it (S_P >= 1)
+P_LIMIT_BASIS = ("VDI 2230-1 (2015) Table A9's limiting surface pressure p_G, AlMg4.5Mn F27 "
+                 "325 MPa scaled to 5052-H32's 215 MPa minimum tensile: 269 MPa; R10's S_P >= "
+                 "1 (adoc.fva-service.de/help/8.0/de/attr/PMID_19259.htm, Bossard's "
+                 "Flaechenpressung sheet 01-2025)")
 SLIP_MU = 0.2               # a post's end face on aluminium, threadlocker on it: the least
 #                             friction a slip is rated at (steel on aluminium dry 0.47-0.61)
 
@@ -2263,13 +2289,13 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
     the least preload (``open_x``: 1 the face's edge lifts, ``kern``), the screw's tension
     once it opens (the moment over the face's radius, its preload at least) over A2-70's
     proof (``screw_sf``), the face's peak pressure on the plate at the most preload (the
-    no-tension contact, :func:`contact_peak`; at the foot spread through its fender washer,
-    ``POST_WASHER``, the plate's share at 45°) over the plate's allowable (``bearing_sf``),
+    no-tension contact, :func:`contact_peak`; at an end with a fender washer,
+    ``POST_WASHED``, spread through it at 45°) over the plate's limiting surface pressure
+    (:data:`P_LIMIT_MPA`, ``bearing_sf``: VDI 2230's S_P),
     and the shear over the face's friction at the least preload (``slip_x``). Walking, every
     face must stay shut and not slip (fretting each pour); at the clutch's cap a face may
     lift (the guide re-tightens them after a slip) if the screw and the plate hold."""
     from spiderpig.hardware.fasteners import BUTTON_A2_70_NM, preload_band
-    from spiderpig.materials import allowable_mpa
 
     nm = BUTTON_A2_70_NM["6"]
     f_lo, f_hi = preload_band("6", nm)
@@ -2278,7 +2304,7 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
     kern = math.pi * (od ** 4 - bore ** 4) / (32 * od) / area
     w_od, w_t = POST_WASHER
     spread = min(w_od, od + 2 * w_t)                # its plate's face under the washer
-    plate = allowable_mpa(config, config.frame_sheet)
+    plate = P_LIMIT_MPA
     rows: dict[str, dict] = {}
     worst: dict[str, dict] = {}
     for p in side:
@@ -2297,7 +2323,8 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                 c_hi = np.maximum(f_hi - pull, 1e-9)
                 open_x = m / np.maximum(c_lo * kern, 1e-9)
                 screw = np.maximum(f_hi, m / (od / 2) + pull)
-                face = spread if end in POST_WASHED else od
+                kind = "column" if p.name.startswith("column:") else "pillar"
+                face = spread if end in POST_WASHED[kind] else od
                 peak = contact_peak(c_hi, m, face, bore)
                 slip = v / np.maximum(SLIP_MU * c_lo, 1e-9)
                 i = int(np.argmax(open_x))
@@ -2323,7 +2350,8 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
     return {"screw": f"M6 x 16 button head A2-70 (ISO 7380), {nm:g} N·m",
             "preload_n": [round(f_lo), round(f_hi)], "kern_mm": round(kern, 2),
             "decompression_nm": [round(f_lo * kern / 1000, 2), round(f_hi * kern / 1000, 2)],
-            "proof_n": round(TIE_PROOF_N), "plate_mpa": plate, "slip_mu": SLIP_MU,
+            "proof_n": round(TIE_PROOF_N), "plate_mpa": plate,
+            "plate_basis": P_LIMIT_BASIS, "slip_mu": SLIP_MU,
             "washer_mm": list(POST_WASHER), "rows": rows, "worst": worst}
 
 
@@ -2393,21 +2421,27 @@ def blocked(config: BuildConfig, mech, *, ts=None, crank_nm: float | None = None
     return out
 
 
-THRESHOLD_STEPS = (0.15, 0.4, 1.0)
+THRESHOLD_STEPS = (0.12, 0.3, 0.55, 1.0)
 """Where :func:`_block_threshold` rates the push beyond turning: these fractions of the most
-the clutch lets past the walking torque (the safety factors' inverses are near linear in it:
-the stresses are, but for the walking loads' offset and the worst angle moving)."""
+the clutch lets past the walking torque at any angle, each angle's push no more than its own
+(the safety factors' inverses are near linear in the push: the stresses are, but for the
+walking loads' offset, the worst angle moving and the angles the clutch caps)."""
 
 
 def _block_threshold(config: BuildConfig, mech, ts, near, rigid, joints, at, cap: float,
                      rod_euler_n: float | None) -> dict:
     """:func:`blocked`'s threshold for a block at ``at``: the loads at a push ``x`` beyond
     turning are the walking ones plus ``x`` times each angle's increment per N·m (the
-    statics are linear in the crank's torque), rated by :func:`structure` and
-    :func:`spiderpig.strength.check` at :data:`THRESHOLD_STEPS` of the clutch's most; each
-    part's ``1 / SF`` interpolated (and extrapolated from the first two below them) to where
-    it reaches ``1 / 1.3`` and ``1``. Returns the first part each way, the push (N·m at the
-    crank, N at the grip through the worm at a hand's speed) and the block's force."""
+    statics are linear in the crank's torque), each angle's push no more than the clutch lets
+    past its own walking torque (``cap - T_walk``: where gravity helps the turn, far more
+    than where it fights it; design review round 3's M3, the search had stopped at the least
+    over every angle), rated by :func:`structure` and :func:`spiderpig.strength.check` at
+    :data:`THRESHOLD_STEPS` of the most any angle takes; each part's ``1 / SF`` interpolated
+    (and extrapolated from the first two below them) to where it reaches ``1 / 1.3`` and
+    ``1``. Returns the first part each way, the push (N·m at the crank, N at the grip through
+    the worm at a hand's speed: the least at any angle), the block's force, and the most
+    push the clutch lets through at any angle (``within_nm``, ``within_grip_n``): a part
+    that reaches neither within it holds the block until the clutch slips."""
     from spiderpig import strength
 
     walk_t, _, walk_v = statics_vectors(config, rigid, joints, ts)
@@ -2416,7 +2450,7 @@ def _block_threshold(config: BuildConfig, mech, ts, near, rigid, joints, at, cap
     d_t = np.maximum(cap - walk_t, 1e-6)
     inc = (bv - walk_v) / d_t[:, None, None]
     per_nm = np.abs(held) / d_t                       # the block's force per N·m pushed
-    most = float(d_t[keep].min())                     # the push every angle can take
+    most = float(d_t[keep].max())                     # the push the clutch lets through
     rider = next(b for b, (js, _) in config.lk.links.items() if config.lk.crank[1] in js)
     rod_jk = next(jk for jk, (j, *_) in enumerate(joints) if j == config.lk.crank[1])
     walk_f = np.linalg.norm(walk_v, axis=-1)
@@ -2424,10 +2458,11 @@ def _block_threshold(config: BuildConfig, mech, ts, near, rigid, joints, at, cap
     inv: dict[str, list[float]] = {}
     xs = [most * s for s in THRESHOLD_STEPS]
     for x in xs:
-        v = walk_v + x * inc
+        x_t = np.minimum(x, d_t)                      # each angle: no more than its clutch
+        v = walk_v + x_t[:, None, None] * inc
         f = np.where(near[:, None], 0.0, np.linalg.norm(v, axis=-1))
         rows = joint_rows(config, rider, joints, walk_f, f)
-        st = structure(config, mech, ts=ts, skip=near, jam=(walk_t + x, v))
+        st = structure(config, mech, ts=ts, skip=near, block=at, jam=(walk_t + x_t, v))
         chk = strength.check(mech.meta.get("wobble") or {}, mech.meta, config,
                              loads_doc(config, rows, peak, st))
         sfs = {r["joint"]: (r.get("jam") or {}).get("safety") for r in chk["rows"]}
@@ -2458,12 +2493,16 @@ def _block_threshold(config: BuildConfig, mech, ts, near, rigid, joints, at, cap
         "are linear in the crank's torque), every part rated as the report rates it")}
     for level, tag in ((JAM_FLOOR, "sf_1p3"), (1.0, "sf_1")):
         hits = [(x, k) for k, ys in inv.items() if (x := reach(ys, level)) is not None]
+        hits = [(x, k) for x, k in hits if x <= most + 1e-9]   # within the clutch
         if not hits:
             out[tag] = None
             continue
         x, part = min(hits)
+        x_t = np.minimum(x, d_t)
         out[tag] = {"part": part, "crank_nm": round(x, 2), "grip_n": round(x / grip, 1),
-                    "block_n": round(float(x * per_nm[keep].max()))}
+                    "block_n": round(float((x_t * per_nm)[keep].max()))}
+    out["within_nm"] = round(most, 2)
+    out["within_grip_n"] = round(most / grip, 1)
     return out
 
 
@@ -2510,6 +2549,17 @@ side frames at the clutch's cap"): design review round 2 (2026-10-15) had rated 
 posts and both frame plates as one frame (``cradle_structure.side_frame``) and found B's
 outer plate (0.6), pillar O2 (0.73) and column D2 (0.97), A's outer plate (0.41), column D3
 (0.83), inner plate (1.09) and pillar G (1.25) under it."""
+
+OPEN_JOINTS: dict[str, str] = {
+    "decanter_hinge": "pillar G's foot joint lifts walking at the least preload (its M6 button "
+                      "head at ISO 7380's 4 N·m, friction 0.2: 1.05 x its decompression, under "
+                      "the walking bound that puts the whole bottle on the drive side); shut at "
+                      "friction 0.17 or less (threadlocker's), and at the bottle's real half; "
+                      "a full-head screw (ISO 4762) there would hold it, a part and a layer of "
+                      "head room more"}
+"""Per cradle, a post's screwed joint open at its walking bar (``post_joints``: every face
+shut walking at its screw's least preload; design review round 3's M5): the user's call, the
+report's ``structure.joints`` names it. The tests hold it within 10 % and xfail on it."""
 
 OPEN_GRIP: dict[str, str] = {
     "decanter_hinge": "a full 6 L's worst start at A's 130 mm grip, run in, is 21.97 N: at "
