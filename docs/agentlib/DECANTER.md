@@ -851,7 +851,9 @@ block travels 15 mm, the rear one 72: a neck from 28 to 48 mm across, a body fro
     knock midway between the nut and the bushing, on its thread's root); its thread bears
     at 0.5 MPa, the nut on its pocket's ceiling at 0.8 MPa under a hung 6 L. A 24 h bench
     hold is the guide's: a 12 kg hang, the knob down, dry and greased, the block mustn't
-    drop 0.2 mm.
+    drop 0.2 mm. Its thread is drawn in its print file only (`meta["print_shapes"]`): the
+    assembly holds its envelope, so the clash checks stay quick (the helical solid had
+    taken B's from 9.6 to 22 s an angle, its bottles' hits from 10 to 55 s).
   - The screw's knob sits at |z| 110, 10 mm outboard of a 6 L's widest as it's laid in.
     A knock at the knob goes into the tower's arm, not the screw, which is held at both
     ends (`saddles`: 5.8 MPa across the tower's layers at 50 N).
@@ -1321,7 +1323,8 @@ of the same day), where the drive side carrying the cradle box had packed in 699
    hand on the cradle box while the other works: lying, the cradle tips past 18.9° and 21.3
    N at its top.
    - **The lifts** (design review round 3's stand and use, M5): off the board onto the
-     blocks and back up onto the board, the cradle is 14.0 kg (`cradle.LIFTS`, held to
+     blocks and back up onto the board, the cradle is 13.8 kg (14.0 until simplification
+     round 1; `cradle.LIFTS`, held to
      `rest_poses`' masses), lifted by its outer plates' 4.75 mm top edges 430 mm apart,
      their tops 465 mm over a counter. The NIOSH lifting equation's recommended limit
      there is 11.7 kg before its distance, asymmetry and coupling multipliers (load
@@ -1833,19 +1836,22 @@ as a beam between both plates) missed. They feed `strength.check` (`loads_doc`'s
     x softer out of its plane than the rods it was to fix (the design review's finding,
     `r1/review_box.md`): the box racks on the rods' twist (B 44-52 N·m/° by the hold; A
     45-50), most of its moment crossing as the rods' torque.
-  - Walking (25.65 N·m across) it holds: B racks 0.50-0.59°, A 0.51-0.57°; each rod's
-    joints take up to 5.83 N·m of twist (A 5.63), under their 6.84 (`slip_x` 0.85, A 0.82:
-    none slips, no fretting); the faces stay shut (B 4.93 x their gapping moment, A 4.28);
-    the rods' tapped ends 7.23 (A 7.53), the cradle link out of its plane with its in-plane
-    stress 5.2 (A 5.64). The mouth doesn't move (both remote centres are on one axis); the
+  - Walking (25.4 N·m across) it holds: B racks 0.49-0.58°, A 0.51-0.56°; each rod's
+    joints take up to 5.77 N·m of twist (A 5.57), under their 6.84 (`slip_x` 0.84, A 0.81:
+    none slips, no fretting); the faces stay shut (B 4.98 x their gapping moment, A 4.33);
+    the rods' tapped ends 7.31 (A 7.61), the cradle link out of its plane with its in-plane
+    stress 5.26 (A 5.70). The mouth doesn't move (both remote centres are on one axis); the
     saddles at mid-bay lag the drive side by about half the angle. The rear carrier's two
-    side blocks turn 0.37-0.44° against each other, and its printed bridge under the V
-    block takes it at SF 5.1-6.0 across its layers (bar 2.5, each pour); the front
+    side blocks turn 0.37-0.43° against each other, and its printed bridge under the V
+    block (`cradle.REAR_BRIDGE`, 6 mm deep since simplification round 1: a forced bar's
+    stress grows with its depth) takes it at SF 8.5-10.1 across its layers (bar 2.5, each
+    pour; 1/2 in 6061 rods 3.87, where the 10 mm bridge had 2.33); the front
     carrier's ends turn 0.19-0.21° on its rods, its bores' play 0.86°.
-  - Jammed it doesn't: every joint's twist passes its friction (B 43-51 N·m stuck against
-    6.84), they slip, and what's left goes into bending the links out of their plane, far
-    past yield (B: the rods 0.40, their screws 0.85, the link 0.17; A 0.38, 0.82, 0.16), the
-    box racking tens of degrees on the linear model. Half the couple (the old case) fails
+  - Jammed it doesn't: every joint's twist passes its friction (B 43-50 N·m stuck against
+    6.84, A 53-59), they slip, and what's left goes into bending the links out of their
+    plane, far past yield (B at its 63.2 N·m cap, 221 N·m across: the rods 0.40, their
+    screws 0.86, the link 0.18; A at 66.4, 268 across: 0.39, 0.83, 0.16), the box racking
+    tens of degrees on the linear model. Half the couple (the old case) fails
     too (the link about 0.5). The box holds about 55 N·m across at SF 1.3 (B and A,
     steel or 1/2 in 6061 rods, the worst hold; 92 with dry faces, steel on aluminium's
     least 0.47), a quarter of the cap's, and slips from 30-36 N·m: an open item at the
@@ -1853,8 +1859,8 @@ as a beam between both plates) missed. They feed `strength.check` (`loads_doc`'s
   - No cheap fix closes it: a second screw doesn't fit a 12-16 mm rod's end with its M6
     tap, and a key there would bear at 200-400 MPa in the 4.75 mm link; threadlocker is
     already on; a wider chord only slows it; dry faces (threadlocker on the thread only)
-    give 92 N·m; a lower cap would have to sit under the running peak (55 / 223.6 of 63.9
-    N·m is 15.6). What would: a racking member that doesn't go through the rods' ends
+    give 92 N·m; a lower cap would have to sit under the running peak (55 / 221.1 of 63.2
+    N·m is 15.7). What would: a racking member that doesn't go through the rods' ends
     (a diagonal tie under the rear saddle, or both sides driven), each a redesign.
   - Rods with stiffer twist attract more of it: rear rods of 5/8 in 6061 on A2-70 screws at
     4 N·m (the stand review's R1) slip walking (their joints hold 5.14 N·m, the rear rods'
@@ -2331,7 +2337,7 @@ side as one frame):
 | swing | −50.0° to +30.0°, the mouth still (0 mm), every bottle's mouth on the pivot |
 | transmission | 36.7° at worst (the rod's); the parallelograms 48.5° and 51.5° |
 | gearbox | NRV050: 35.8 N·m peak, SF 2.37 on its 85 N·m maximum, the clutch's cap 1.33 x under it; 21.7 N at the 125 mm grip at the worst start run in, 24.7 new (the bar 22 N, MIL-STD-1472H) |
-| jam (63.9 N·m, the clutch's cap) | pillar O1 1.37 (on its box, through to the inner plate since design review round 3), column E2 1.46, b6 1.48, b4 1.49 (its chord's buckling), the outer plate 1.52 (the rail at column E2), pin K 1.53 (clevis), the inner plate 1.53, pillar O2 1.55, b2 1.9 (0.187 in 5052 since round 3), b1 1.99, column E1 1.99, pin Y 2.13 (clevis), the side's buckling 2.15, pin J2 2.28 (clevis), the crank's keyway 2.33, b3 2.46, pin X 2.47 (clevis), column D2 2.56, pin P 2.76 (steel), b5 4.46, column D1 8.9, pin J 11.25 (steel): every part 1.3 or more on round 3's model (minimum yields, second order, both plates' idealizations: "The structure model corrected") but the cradle box: rated as a 3D frame since simplification round 1 (all of the couple across it), its rods 0.40, their screws 0.85 and the cradle link out of its plane 0.17, open (`cradle_report.OPEN_AT_CAP`; "The cradle box across the bay") |
+| jam (63.9 N·m, the clutch's cap; 63.2 since simplification round 1's lighter box, every row about 1 % up) | pillar O1 1.37 (on its box, through to the inner plate since design review round 3), column E2 1.46, b6 1.48, b4 1.49 (its chord's buckling), the outer plate 1.52 (the rail at column E2), pin K 1.53 (clevis), the inner plate 1.53, pillar O2 1.55, b2 1.9 (0.187 in 5052 since round 3), b1 1.99, column E1 1.99, pin Y 2.13 (clevis), the side's buckling 2.15, pin J2 2.28 (clevis), the crank's keyway 2.33, b3 2.46, pin X 2.47 (clevis), column D2 2.56, pin P 2.76 (steel), b5 4.46, column D1 8.9, pin J 11.25 (steel): every part 1.3 or more on round 3's model (minimum yields, second order, both plates' idealizations: "The structure model corrected") but the cradle box: rated as a 3D frame since simplification round 1 (all of the couple across it; the cap 63.2 since its lighter box), its rods 0.40, their screws 0.86 and the cradle link out of its plane 0.18, open (`cradle_report.OPEN_AT_CAP`; "The cradle box across the bay") |
 | walking | every joint, link, column and plate 4.13 or more (the crank's keyway; the outer plate 4.51); the output shaft's radial load 8.2 (410 N at the rod's plane, 69.4 mm past the hub, against 3363 N) |
 | rod, crankpin | buckling 1.78 × its jam force (1.9 as a beam-column); the crankpin 2.03 jammed |
 | the clutch's cap over the whole turn | every part 1.34 or more 30° and more from the toggles (pillar O1 and b6); 1.17 at ±25°, 0.96 at ±20° (the outer plate, pillar O1, column E2; round 2's pillar O2 0.6 and 0.49); the gearbox's output shaft 1.3 outside ±25°, 1 outside ±20°; the rod buckles within ±16° of rest, ±9° of full tilt (rounds 1 and 2's drive reviews) |

@@ -3014,22 +3014,23 @@ rear saddle. Products only: the walkers' identity gate is identical.
   the rigid limit it is the old model exactly (a test holds it); the review's grillage
   probe agrees once its ground springs (an identity of 1 N/mm on every dof, 9 % of the box)
   are taken out.
-  - Walking it holds, both cradles: no joint slips (B's twist 5.83 N·m at worst, A's 5.63),
-    the faces shut 4.3-4.9 x, the rods 7.2-7.5, the link with its in-plane stress 5.2-5.6.
-    The box racks 0.5-0.6°, ten times the old figure; the rear carrier's bridge takes its
-    turn at 5.1-6.0 (bar 2.5).
+  - Walking it holds, both cradles: no joint slips (B's twist 5.77 N·m at worst, A's 5.57),
+    the faces shut 4.3-5.0 x, the rods 7.3-7.6, the link with its in-plane stress 5.3-5.7.
+    The box racks 0.5-0.6°, ten times the old figure. The rear carrier's bridge, forced by
+    it, 6 mm deep (`cradle.REAR_BRIDGE`; 10 before): 8.5 (bar 2.5); 1/2 in 6061 rods take a
+    10 mm one to 2.33, a 6 mm one 3.87.
   - **The jam's share settled at all of the couple** (`JAM_SHARE` 1.0): a block on the
     passive side's linkage, or on the bottle or a saddle through the drive half, puts the
     whole couple through some length of the box from the drive link; the twist, which
     governs, is the whole couple's either way. Half the couple over the whole bay (the old
     case) understated the twist by two.
-  - **At the cap the box doesn't hold** (B: the rods 0.40, their screws 0.85, the link 0.17;
-    A 0.38, 0.82, 0.16): the joints slip from 30-36 N·m across and the links bend past
-    yield. It holds about 55 N·m across at SF 1.3 (92 dry), a quarter of the cap's 224
-    (A 271). On the old model B's rods had held 1.73 at half the couple. `OPEN_AT_CAP`
+  - **At the cap the box doesn't hold** (B: the rods 0.40, their screws 0.86, the link 0.18;
+    A 0.39, 0.83, 0.16): the joints slip from 30-36 N·m across and the links bend past
+    yield. It holds about 55 N·m across at SF 1.3 (92 dry), a quarter of the cap's 221
+    (A 268). On the old model B's rods had held 1.73 at half the couple. `OPEN_AT_CAP`
     names the three box rows on both cradles; the tests xfail on them. Today's steel fails
     as 1/2 in 6061 does (55.5 against 54.7 N·m): the materials rule doesn't move it. For the
-    drive area: no cap above the running peak brings the box to 1.3 (15.6 N·m would).
+    drive area: no cap above the running peak brings the box to 1.3 (15.7 N·m would).
     A racking member is the user's call.
   - The stand review's R1 (rear rods 5/8 in 6061 on A2-70 at 4 N·m) slips walking: stiffer
     rods take more of the twist, and A2-70's preload holds less.
@@ -3048,7 +3049,16 @@ rear saddle. Products only: the walkers' identity gate is identical.
   ring on the TPU washer. The knob's teeth hold its turn back counted frictionless (0.6
   MPa); knocked 2.87 across its layers (bar 2.5). ServoCity's cart closes (USD 18.97 and
   its 8.99 shipping). Printing: the screw alone 2:41 (a slender part waits on its layers),
-  1:02 added on the rear carrier's plate (BambuStudio 2.08).
+  1:02 added on the rear carrier's plate (BambuStudio 2.08). Its thread and its nut's are
+  drawn in their print files only (`meta["print_shapes"]`, `build.export_prints`'
+  `shapes`): the assembly holds their envelopes (the helical solid had taken B's clash
+  check from 9.6 to 22 s an angle, its bottles' hits from 10 to 55 s).
+- **The lighter box moves the drive's numbers:** -0.18 kg (the post -128 g, the screw's
+  parts -50 g) takes B's worst start to 2.690 N·m (2.719) and A's to 2.827 (2.858)
+  (`handcrank.DESIGN_START_NM`), the drawn clutch's caps to 63.2 and 66.4 N·m (63.9, 67.2:
+  `config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`), the lifts to 13.8 and 10.8 kg on B, 13.0
+  on A (`cradle.LIFTS`). Every other jam row moves by about 1 % with it (B's pillar O1
+  1.38).
 - **The rail liners' print pose:** on their sheets, pegs up (they had stood on their pegs:
   19 mm² on the bed, 2:52 against 1:38), and a mirrored print posed then mirrored
   (`build.export_prints`: a pose with a turn about Z had stood the mirrored liner 170 mm up,
@@ -3063,4 +3073,6 @@ rear saddle. Products only: the walkers' identity gate is identical.
   -17.45, ServoCity -18.97, the post's screw -0.11, a set screw -0.09).
 - **Where:** `spiderpig/cradle_structure.py`, `spiderpig/cradle_report.py`,
   `spiderpig/construction/cradle.py`, `spiderpig/hardware/cradle_catalog.py`,
-  `spiderpig/build.py`, `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`.
+  `spiderpig/build.py`, `spiderpig/api/`, `spiderpig/config.py` and
+  `spiderpig/construction/handcrank.py` (the caps and starts), `spiderpig/hardware/bom.py`
+  (the print and grease notes), `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`.
