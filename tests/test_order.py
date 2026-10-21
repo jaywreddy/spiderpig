@@ -131,15 +131,15 @@ def test_a_cradles_order_prices_each_file_marks_the_parts_as_cut_and_the_pins_to
     cutting = cutting_rows(made, CRADLE_CUT_FITS)
     bom = Bom(purchased=[pin], made=made, cutting=cutting, cut_source=CRADLE_CUT_SOURCE,
               cut_ranges={}, notes=[deburr_note(hand_deburred(made))])
-    assert [c.usd for c in cutting] == pytest.approx([76.74, 42.66, 25.66], abs=0.02)
+    assert [c.usd for c in cutting] == pytest.approx([77.46, 38.86, 26.40], abs=0.02)
     laser = [{"service": "SendCutSend", "sheet": m.sheet, "material": m.material,
               "thickness_mm": 4.8, "file": f"SendCutSend_{m.sheet}/{m.name}_x2.dxf",
               "qty": 2, "size_mm": m.size_mm, "parts": " ".join(m.names)} for m in made]
     md = order_markdown(bom, laser, [])
     assert "| est. | deburred |" in md
-    assert "| $42.66 | as cut: by hand | L.b3 R.b3 |" in md
-    assert "| $76.74 | yes | L.b6 R.b6 |" in md
-    assert "| $25.66 | — | base_cleat_L0 base_cleat_R0 |" in md
+    assert "| $38.86 | as cut: by hand | L.b3 R.b3 |" in md
+    assert "| $77.46 | yes | L.b6 R.b6 |" in md
+    assert "| $26.40 | — | base_cleat_L0 base_cleat_R0 |" in md
     assert "order once the cut parts are measured" in md
     assert "Order the made-to-length pivot pins (CCGH8-13-NC2.4) last" in md
     assert "L.b3 x 2 (24.0 mm wide)" in md

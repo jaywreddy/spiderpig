@@ -189,7 +189,7 @@ stops there:
     speed (`handcrank.agma_mu`): 0.558 at 100 rpm, MIL-STD-1472H's crank rate. The clutch's
     cap takes it (a cradle blocked while the handle turns stops the worm at that speed).
   - **The riser** (`handcrank.riser_for`, `RISER_STUD`, `RISER_RING`, `RISER_SLEEVE`,
-    `RISER_SHIM`, `RISER_THIN`; round 3's M2): a clamped stack on the face, which stands 25.2
+    `RISER_SLEEVE_RANGE`, `RISER_THIN`; round 3's M2): a clamped stack on the face, which stands 25.2
     mm under the plate's outer face, the spigot ring and the hub's end well under it whatever
     their heights.
     - Four M8 class 8.8 studs, cut 45 mm from one 200 mm zinc-plated DIN 976 rod (McMaster
@@ -204,7 +204,9 @@ stops there:
       clears the spigot by 1.5 mm on the 85 mm PCD, the stock size that does.
     - The go/no-go's shims over the sleeves (0.5 mm, 8 x 14, twenty to a pack, four DIN 125
       washers as coarse ones): about four a stud drawn; a clone's hub prouder or lower than
-      drawn is shimmed out, a millimetre either way.
+      drawn is shimmed out, a millimetre either way. (Until simplification round 2: since,
+      the sleeves are faced to the gearbox's calipered height, 21-23 mm, `RISER_AIM` over
+      the go/no-go window's low end, and no shim is bought.)
     - The plate, and a thin nut over it on each stud at 10 N·m: one stack, clamped. Friction
       carries the gearbox's side load and turn, the sleeves the columns' bending, the studs
       their tension (`cradle_drive.riser_rating`): walking it doesn't slip at an oiled
@@ -234,10 +236,12 @@ stops there:
     - The lowest three are keyed on the 8 mm key's straight flanks (`KEYED_PLATES`; the
       keyseat is end-milled, so the key's ends are round). Their slots are cut 0.25 mm
       under the key (`KEY_SLOT`: a laser's ±0.13 stays under it) and filed together on the
-      key to a slide fit, so each bears (round 2's m4). The three over them, up to the
-      seat, are slotted 0.4 mm wider than the key (`KEY_CLEAR`), clear of it: only the
-      keyed three are filed, and only they bear (round 2's laser-cut review, its minor 2:
-      round 1 had cut all seven slotted plates at the key's width and counted four). One
+      key to a slide fit, so each bears (round 2's m4). Since simplification round 2 every
+      bored plate is the same cut (one file of seven, USD 3.64 less live): all seven are
+      stacked and filed together on the key before the block goes together, and still only
+      the keyed three bear (round 2's laser-cut review, its minor 2: round 1 had cut all seven
+      slotted plates at the key's width and counted four; the three over them had been
+      slotted 0.4 mm wider than the key until simplification round 2). One
       plate alone holds 49.4 N·m at bearing yield on the sheet's thinnest, 3.048 mm
       (`handcrank.PLATE_UNDER`: SendCutSend's 0.125 in 6061, +0.152 / -0.127 mm, its spec
       table fetched 2026-10-15), 1.40 x B's walking peak; the three 148 (2.35 x the cap).
@@ -2521,6 +2525,56 @@ pins' 0.34): the mouth sags a few tenths of a millimetre more at worst, against 
   215 mm).
 
 
+## Simplification round 2 (2026-10-21)
+
+The user kept B as the main design ("keep B", 2026-10-21): no linkage change. The round's
+review quoted 26 files live at SendCutSend; its checker built the survivors and kept what
+passed (`/root/scratch/decant/simplify/r2/check.md`; DECISIONS.md, "simplification round 2").
+
+**What changed:**
+- **The cutting fit** refitted on those quotes (`bom.CRADLE_CUT_FITS`: the deburring a part
+  and the blank's cap; "Things to know before cutting", below).
+- **The cut files** turned to their least-area box (`Body.turn`, a cradle's only): B's b6
+  511 x 168 mm (475 x 222), its inner plate 497 x 239, its outer plate 516 x 464.
+- **B's b3** in 6061-T6 0.187 in at a 25 mm chord: 7075 leaves the order.
+- **The riser's sleeves** faced to the gearbox's calipered height, 21-23 mm (`RISER_AIM`
+  over the go/no-go window's low end, long rather than short): no shims.
+- **B's stand:** the front foot and the board's front 50 mm back (the board 636 x 584 mm),
+  the rail columns E1 and E2 60 mm forward.
+- **The crank block's seven bored plates** one file, filed together on the key.
+- **The posts' DIN 125 washers** only at the pillars' feet (`cradle.HEAD_WASHED`).
+- **The M3 set screws** one length (5 mm), **the M3 socket heads** one (10 mm).
+- **A's M3 x 12** from Bolt Depot.
+- **The rods** sawn from McMaster's sticks (`cradle_catalog.ROD_STICK`): Speedy's cart goes.
+
+**The numbers** (the report on the round's head; 0d9449b's in brackets):
+
+| | B (`decanter_rcm`) | A (`decanter_hinge`) |
+|---|---|---|
+| every cap row but the box's | 1.37 or more (b3; 1.53, b6) | 1.40 or more (b2) |
+| b3 at the cap / walking | 1.37 / 12.57 (2.55 / 23.2 in 7075) | |
+| the frame plates at the cap, outer / inner | 1.64 / 1.64 (1.66 / 1.72) | 1.44 / 1.60 |
+| the side's buckling; column E2 | 2.05; 2.13 (2.13; 2.27) | 2.32 |
+| the post joints walking: `open_x`, `slip_x` (bar 1.0); the bare heads' `head_sf` | 0.90, 0.63 (0.86, 0.51); 2.38 | 0.83, 0.63 (0.83, 0.50); 2.38 |
+| the riser walking, least / slip; at the cap | 1.97 / 2.73; 1.44 | 1.95 / 2.55; 1.37 |
+| tipping front / rear / drive / passive (bar 25°) | 39.4 / 26.3 / 30.0 / 32.1° (42.9 / 27.1 / 30.3 / 32.4) | 39.9 / 28.1 / 26.0 / 34.4° |
+| sway at the bottle, 20 N (bar 5 mm) | 3.89 mm (3.91) | 4.42 mm |
+| clashes, 6 crank angles and both tilt ends | 0 | 0 |
+| the device | 15.80 kg (16.23) | 15.55 kg (15.58) |
+| the lifts (`cradle.LIFTS`) | 12.3 kg the cradle, 9.7 the drive side with the box (12.7, 9.9) | 11.9 kg (12.0) |
+| the stack | 80.95 mm in 15 layers, proven (81.03) | as before |
+
+**The BOM** (`spiderpig build`, the refitted fit): B USD 1,002.06 -> 940.34 (purchases 279.70
+-> 273.88, cutting 722.36 -> 666.46), A 812.04 -> 797.67 (254.50 -> 252.25, 557.54 -> 545.42);
+on the old fit 0d9449b was B 1,007.55 and A 847.47. Six carts and the upload (Speedy's
+gone); 33 fastener SKUs (36); B buys 192 pieces (244), A 168 (235).
+
+**Not taken:** A's front trim (no plan at 50 mm, its front tie rod 1.9 mm off the inner
+plate at 40); the light clip's M5 x 16 and the rear post's M6 x 16. **For later:** the racking
+brace's items (P8, C7, A2), the pack spacers in PETG (the packing turn; B's spacers grew to 17
+with this round's geometry, `PACK_OPEN`).
+
+
 ## Building one
 
 ```bash
@@ -2616,9 +2670,18 @@ named only inside the steps until then).
 
 Things to know before cutting and on the bench:
 - **Get a live SendCutSend quote** (upload the DXFs). The BOM's cutting figure is a fit
-  (`hardware.bom.CRADLE_CUT_FITS`, design review round 2's parts B1) to 40 live quotes of
-  2026-10-14, every file of both cradles at its quantity.
-  - Aluminium: each file's one-off price is `k x area^0.249 x cut length^0.229 x blank^0.326`,
+  (`hardware.bom.CRADLE_CUT_FITS`), refitted in simplification round 2 on SendCutSend's
+  live quotes of 2026-10-21 (`bom.CRADLE_LIVE_QUOTES`: 26 files of both cradles and their
+  variants, one off and at their quantity, and round 1's four) with the 2026-10-14 set it
+  had been fitted on (design review round 2's parts B1, 40 quotes).
+  - Since round 2, aluminium: `k x area^0.186 x cut^0.253 x long^0.336 x short^0.396`, plus
+    USD 1.47 a part SendCutSend deburrs (its default finish, from 0.995 x 3 in: 2.94 a pair
+    on every file quoted with and without it), the blank capped at 2,503 cm² (past it the
+    price stops following the blank: B's outer plate turned 70° quoted 0.00 less). Every
+    2026-10-21 quote at its quantity within -6.7 to +5.7 %, one off -9.8 to +5.2 %; the
+    2026-10-14 set -6.7 to +10.8 %. A 6061-T6 0.187 in fit (b3's sheet since round 2).
+    The 2026-10-14 law had A's outer plate 19 % over its quote and B's b5 20 % under.
+  - Until round 2, aluminium: `k x area^0.249 x cut length^0.229 x blank^0.326`,
     `k` per sheet. 7075 runs 1.87 x 5052 one-off, 2.16 x at two.
   - The birch is fitted on its blank's two sides.
   - The quantity discount is each sheet's as quoted: 5052 0.187 in x0.67 at two, 7075

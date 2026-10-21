@@ -156,7 +156,10 @@ class CutFit:
     """A decanting cradle's sheet's cutting price, fitted on a service's live quotes: one
     part costs ``base + k x area^area_exp x cut^cut_exp x blank^blank_exp x long^long_exp x
     short^short_exp`` (area and blank in cm^2, the cut in m, the blank's sides in mm), and
-    each of a file of ``q`` that times :meth:`factor` ``(q)``; ``quoted`` says on what."""
+    each of a file of ``q`` that times :meth:`factor` ``(q)``, plus ``deburr`` (USD a part,
+    at any quantity) for each part the service deburrs (:func:`deburr_least`: its default
+    finish); a blank over ``blank_cap`` cm^2 (0: none) is priced as one of ``blank_cap``,
+    a square of it (its size and shape no longer count); ``quoted`` says on what."""
 
     k: float
     area_exp: float = 0.0
@@ -167,16 +170,22 @@ class CutFit:
     base: float = 0.0
     qty: tuple[tuple[int, float], ...] = ()
     quoted: str = ""
+    blank_cap: float = 0.0
+    deburr: float = 0.0
 
     def one(self, p: CutPart, least: tuple[float, float] = (0.0, 0.0)) -> float:
-        """One part off (USD); ``least``, the service's smallest part (short, long side mm),
-        bounds what a part given by its area alone is priced as."""
+        """One part off (USD), its deburring left out (:func:`cut_estimate` adds it);
+        ``least``, the service's smallest part (short, long side mm), bounds what a part
+        given by its area alone is priced as."""
         lo, hi = least
         short = max(p.short_mm, lo, 1e-3)
         long_ = max(p.long_mm, hi, short)
         blank = long_ * short / 100.0
         area = max(p.area_cm2, min(blank, lo * hi / 100.0), 1e-6)
         cut = max(p.cut_mm, 2.0 * (lo + hi), 1e-3) / 1000.0
+        if self.blank_cap and blank > self.blank_cap:     # its size and its shape no longer
+            long_ = short = math.sqrt(self.blank_cap * 100.0)   # count: a square of the cap
+            blank = self.blank_cap
         return self.base + self.k * (area ** self.area_exp * cut ** self.cut_exp
                                      * blank ** self.blank_exp * long_ ** self.long_exp
                                      * short ** self.short_exp)
@@ -193,19 +202,23 @@ class CutFit:
         return pts[-1][1]
 
 
-_SCS_2026_10_14 = "SendCutSend's live quotes of 2026-10-14"
-_AL_EXP = {"area_exp": 0.2488, "cut_exp": 0.2293, "blank_exp": 0.3255}
+_SCS_2026_10_21 = "SendCutSend's live quotes of 2026-10-21"
+_AL = {"area_exp": 0.1856, "cut_exp": 0.2533, "long_exp": 0.3362, "short_exp": 0.3960,
+       "blank_cap": 2503.0, "deburr": 1.47}
 CRADLE_CUT_FITS: dict[str, CutFit] = {
-    "al5052_4p8mm": CutFit(1.3457, **_AL_EXP, qty=((2, 0.673), (10, 0.489)),
-                           quoted=_SCS_2026_10_14 + " (14 files)"),
-    "al7075_4p8mm": CutFit(2.5197, **_AL_EXP, qty=((2, 0.777), (10, 0.571)),
-                           quoted=_SCS_2026_10_14 + " (4 files)"),
-    "al5052_6p35mm": CutFit(1.6400, **_AL_EXP, qty=((2, 0.759), (10, 0.547)),
-                            quoted=_SCS_2026_10_14 + " (3 files)"),
-    "al6061_3p2mm": CutFit(1.3024, **_AL_EXP, qty=((2, 0.719), (10, 0.612)),
-                           quoted=_SCS_2026_10_14 + " (7 files)"),
-    "birch_9mm": CutFit(0.009984, long_exp=0.9227, short_exp=0.5536,
-                        qty=((2, 0.751), (10, 0.495)), quoted=_SCS_2026_10_14 + " (6 files)"),
+    "al5052_4p8mm": CutFit(0.2682, **_AL, qty=((2, 0.658), (10, 0.419)),
+                           quoted=_SCS_2026_10_21 + " (17 files) and 2026-10-14 (7)"),
+    "al6061_4p8mm": CutFit(0.3324, **_AL, qty=((2, 0.733), (10, 0.432)),
+                           quoted=_SCS_2026_10_21 + " (2 files)"),
+    "al7075_4p8mm": CutFit(0.5017, **_AL, qty=((2, 0.787), (10, 0.560)),
+                           quoted=_SCS_2026_10_21 + " (1 file) and 2026-10-14 (3)"),
+    "al5052_6p35mm": CutFit(0.3495, **_AL, qty=((2, 0.740), (10, 0.530)),
+                            quoted="SendCutSend's live quotes of 2026-10-14 (2 files)"),
+    "al6061_3p2mm": CutFit(0.2185, **_AL, qty=((2, 0.681), (10, 0.547)),
+                           quoted=_SCS_2026_10_21 + " (3 files) and 2026-10-14 (6)"),
+    "birch_9mm": CutFit(0.010275, long_exp=0.9227, short_exp=0.5536,
+                        qty=((2, 0.751), (10, 0.495)),
+                        quoted=_SCS_2026_10_21 + " (2 boards) and 2026-10-14 (6 files)"),
     # (no cradle cuts it since 2026-10-13: A's old fit, on its area alone, kept for one that
     # takes it again)
     "al5052_3p2mm": CutFit(0.0323, area_exp=1.0, base=12.57, qty=((2, 0.72),),
@@ -213,43 +226,103 @@ CRADLE_CUT_FITS: dict[str, CutFit] = {
 }
 """A decanting cradle's cutting, per sheet: what SendCutSend charges for a file, the material
 and its default deburring included (its parts are big: the walkers' per-area rates priced a
-base plate at USD 488 where SendCutSend quoted 91), **fitted from SendCutSend's live quotes
-of 2026-10-14** (design review round 2's 40 quotes, 22:51 to 23:51: each file of both
-cradles at its quantity with its 2, 10, 50 ... tiers, and five reshaped ones; 34 different
-files and sheets). The aluminium, one off: ``k x area^0.2488 x cut^0.2293 x
-blank^0.3255`` (a power law in the part's area cm^2, its cut's length m and its blank
-cm^2, the exponents shared, ``k`` the sheet's: 7075 at 1.87 x 5052's at about the same
-thickness), one off within -6 to +11 % of every file quoted, at its quantity within -6 to
-+10 % (but the 0.250 in frame plates, an option no order has, +15 % at two); the pierces
-add nothing the cut's length doesn't say (their term came out at or under 0). The birch
-(CNC routed): ``0.009984 x long^0.9227 x short^0.5536``, its blank's sides in mm, within
-0.6 %. Each of ``q`` off: the quotes' median factor at the 2 and 10 tiers, linear in ``q``
-between (a file of 4, 6 or 8 within 4 %); SendCutSend's discount at two runs x0.65-0.72 in
-0.187 in 5052, 0.77-0.78 in 7075, 0.72 in 6061, 0.70-0.78 in the birch. On the reviewed
-snapshot's files (4583390) B's come to USD 760.28 (quoted 758.19) and A's to 580.03
-(573.82). A sheet with no fit here takes the walkers' per-area rate.
+base plate at USD 488 where SendCutSend quoted 91). **Refitted on SendCutSend's live quotes
+of 2026-10-21** (simplification round 2: :data:`CRADLE_LIVE_QUOTES`, 26 files of both
+cradles and their variants, one off and at their quantity, and round 1's 4) together with
+the 2026-10-14 set it had been fitted on (design review round 2's, ``tests/test_cradle.py``'s
+``QUOTED``, weighted 0.7). The aluminium, one off: ``k x area^0.1856 x cut^0.2533 x
+long^0.3362 x short^0.3960`` (the part's area cm^2, its cut's length m, its blank's sides
+mm; the exponents shared, ``k`` the sheet's), with two terms the 2026-10-14 law lacked:
 
-Checked again on SendCutSend's live quotes of 2026-10-21 (simplification round 1's stand
-check, two at a time in 0.187 in 5052): B's outer frame plate FR576x477 quotes USD 175.72 the
-pair where the fit says 190.12 (+8.2 %), its inner plate FR525x312 104.54 where it says 97.00
-(-7.2 %): the pair 280.26 against 287.12 (+2.4 %). Not refitted: the fit is one law per sheet
-(its 14 files of 2026-10-14 within -6 to +11 %), and these two err either way, so a ``k``
-taken down to the outer plate's quote would take the inner one 15 % under its own (a file's
-quote, not its fit, is what an order pays: upload the files)."""
+- **the deburring, USD 1.47 a part** (``deburr``) on each part SendCutSend deburrs (its
+  default finish, from 0.995 x 3 in: :func:`deburr_least`): the same 2.94 a pair on all six
+  files quoted with and without it, from a 26 mm link to a 710 mm plate (1.43 a part at
+  seven off). It is why B's b5, 26 mm wide since round 3, quotes 37 % over its 24 mm
+  forebear of 2026-10-14 (not deburred), which no smooth law fits;
+- **the blank capped at 2,503 cm^2** (``blank_cap``, about a 500 mm square): past it the
+  price stops following the blank. B's outer plate turned 70 deg and the C4+C5 plate turned
+  to its least box quote 0.00 less; A's, turned from 710 x 549 to 603 x 590, 1.9 % less. The
+  2026-10-14 law put A's outer plate 19 % and B's 8 % over their quotes.
+
+Each of ``q`` off: the law's part times ``factor(q)`` (5052 0.187 in 0.658 at two, the
+deburring not discounted), the fee added at any quantity. On every quote of 2026-10-21, at
+its quantity -6.7 to +5.7 % and one off -9.8 to +5.2 %; on the 2026-10-14 set -6.7 to +10.8
+% (that set's B inner plate, an old shape, the most). The 5052 0.250 in's factors and 10-off
+tiers no quote pins are held near the 2026-10-14 tiers. The birch (CNC routed):
+``0.010275 x long^0.9227 x short^0.5536``, its blank's sides in mm (``k`` +2.9 % on
+2026-10-14's, on today's two boards, -0.4 / +0.3 %). A sheet with no fit here takes the
+walkers' per-area rate."""
 CRADLE_LIVE_QUOTES = (
-    ("decanter_rcm", "al5052_4p8mm", "frame_outer", 2, 1304.7, 3564, 16, 576.0, 476.8, 175.72),
-    ("decanter_rcm", "al5052_4p8mm", "torso", 2, 360.4, 1593, 6, 524.0, 312.6, 104.54),
+    ("B", "al5052_4p8mm", "b6", 1, 290.31, 1357, 7, 475.44, 221.89, 57.64),
+    ("B", "al5052_4p8mm", "b6", 2, 290.31, 1357, 7, 475.44, 221.89, 76.62),
+    ("B", "al5052_4p8mm", "b6 turned 26.75", 1, 290.31, 1357, 7, 511.14, 167.83, 53.02),
+    ("B", "al5052_4p8mm", "b6 turned 26.75", 2, 290.31, 1357, 7, 511.14, 167.83, 71.38),
+    ("B", "al6061_4p8mm", "b3 6061", 1, 74.1, 753, 4, 312.0, 34.0, 22.12),
+    ("B", "al6061_4p8mm", "b3 6061", 2, 74.1, 753, 4, 312.0, 34.0, 32.18),
+    ("B", "al7075_4p8mm", "b3", 1, 74.1, 753, 4, 312.0, 34.0, 30.41),
+    ("B", "al7075_4p8mm", "b3", 2, 74.1, 753, 4, 312.0, 34.0, 45.86),
+    ("B", "al5052_4p8mm", "plate a 5052", 1, 29.69, 452, 4, 128.5, 44.3, 10.96),
+    ("B", "al5052_4p8mm", "plate a 5052", 4, 29.69, 452, 4, 128.5, 44.3, 27.44),
+    ("B", "al6061_4p8mm", "plate a 6061", 1, 29.69, 452, 4, 128.5, 44.3, 12.68),
+    ("B", "al6061_4p8mm", "plate a 6061", 4, 29.69, 452, 4, 128.5, 44.3, 35.40),
+    ("B", "al6061_4p8mm", "plate a 6061", 5, 29.69, 452, 4, 128.5, 44.3, 43.25),
+    ("B", "al6061_3p2mm", "plate a", 1, 29.69, 452, 4, 128.5, 44.3, 9.20),
+    ("B", "al6061_3p2mm", "plate a", 4, 29.69, 452, 4, 128.5, 44.3, 26.08),
+    ("B", "al6061_3p2mm", "plate a", 7, 29.69, 452, 4, 128.5, 44.3, 42.21),
+    ("B", "al6061_3p2mm", "plate b", 1, 29.72, 452, 4, 128.5, 44.3, 9.20),
+    ("B", "al6061_3p2mm", "plate b", 3, 29.72, 452, 4, 128.5, 44.3, 19.77),
+    ("A", "al5052_4p8mm", "b2", 1, 225.98, 1059, 7, 389.0, 169.95, 42.72),
+    ("A", "al5052_4p8mm", "b2", 2, 225.98, 1059, 7, 389.0, 169.95, 57.52),
+    ("A", "al5052_4p8mm", "b2 turned 23", 1, 225.98, 1059, 7, 413.89, 105.35, 36.99),
+    ("A", "al5052_4p8mm", "b2 turned 23", 2, 225.98, 1059, 7, 413.89, 105.35, 49.76),
+    ("A", "al5052_4p8mm", "outer", 1, 1429.05, 3564, 19, 710.19, 548.98, 141.20),
+    ("A", "al5052_4p8mm", "outer", 2, 1429.05, 3564, 19, 710.19, 548.98, 182.66),
+    ("A", "al5052_4p8mm", "outer turned 22.75", 1, 1429.07, 3564, 19, 602.68, 590.0, 137.65),
+    ("A", "al5052_4p8mm", "outer turned 22.75", 2, 1429.07, 3564, 19, 602.68, 590.0, 179.22),
+    ("B", "al5052_4p8mm", "outer", 1, 1304.74, 3564, 16, 575.98, 476.78, 133.83),
+    ("B", "al5052_4p8mm", "outer", 2, 1304.74, 3564, 16, 575.98, 476.78, 175.30),
+    ("B", "al6061_3p2mm", "plate c", 1, 34.18, 397, 4, 128.5, 44.3, 8.93),
+    ("B", "al5052_4p8mm", "outer C4+C5", 1, 1267.49, 3444, 16, 611.08, 458.46, 130.52),
+    ("B", "al5052_4p8mm", "outer C4+C5", 2, 1267.49, 3444, 16, 611.08, 458.46, 171.02),
+    ("B", "al5052_4p8mm", "outer C4+C5 turned", 1, 1267.49, 3444, 16, 516.0, 463.75, 130.52),
+    ("B", "al5052_4p8mm", "outer C4+C5 turned", 2, 1267.49, 3444, 16, 516.0, 463.75, 171.02),
+    ("B", "al5052_4p8mm", "torso C4+C5", 1, 293.25, 1420, 6, 497.33, 240.93, 62.95),
+    ("B", "al5052_4p8mm", "torso C4+C5", 2, 293.25, 1420, 6, 497.33, 240.93, 83.50),
+    ("B", "birch_9mm", "board C4", 1, 2730.88, 3542, 10, 636.0, 550.0, 130.95),
+    ("B", "birch_9mm", "board", 1, 3113.12, 3810, 10, 686.0, 584.0, 144.16),
+    ("A", "al5052_4p8mm", "torso", 1, 307.99, 1536, 8, 575.48, 177.37, 57.50),
+    ("A", "al5052_4p8mm", "torso", 2, 307.99, 1536, 8, 575.48, 177.37, 76.62),
+    ("A", "al5052_4p8mm", "torso turned 83.25", 1, 307.99, 1536, 8, 571.36, 158.98, 53.19),
+    ("A", "al5052_4p8mm", "torso turned 83.25", 2, 307.99, 1536, 8, 571.36, 158.98, 71.00),
+    ("B", "al5052_4p8mm", "b5", 1, 31.55, 343, 3, 131.0, 26.0, 9.69),
+    ("B", "al5052_4p8mm", "b5", 2, 31.55, 343, 3, 131.0, 26.0, 13.22),
+    ("B", "al5052_4p8mm", "outer A1", 1, 1175.95, 3493, 14, 564.86, 477.9, 129.71),
+    ("B", "al5052_4p8mm", "outer A1", 2, 1175.95, 3493, 14, 564.86, 477.9, 171.02),
+    ("B", "al5052_4p8mm", "torso A3", 1, 137.36, 858, 5, 361.08, 75.06, 25.98),
+    ("B", "al5052_4p8mm", "torso A3", 2, 137.36, 858, 5, 361.08, 75.06, 35.22),
+    ("B", "al5052_4p8mm", "outer C4+C5+A1", 1, 1138.38, 3393, 15, 606.78, 450.59, 126.70),
+    ("B", "al5052_4p8mm", "outer C4+C5+A1", 2, 1138.38, 3393, 15, 606.78, 450.59, 167.16),
+    # simplification round 1's stand check: B's plates at 0 and turned
+    ("B", "al5052_4p8mm", "outer", 2, 1304.7, 3564, 16, 576.0, 476.8, 175.72),
+    ("B", "al5052_4p8mm", "outer turned 70", 2, 1304.7, 3564, 16, 566.0, 463.7, 175.72),
+    ("B", "al5052_4p8mm", "torso", 2, 360.4, 1593, 6, 524.0, 312.6, 104.54),
+    ("B", "al5052_4p8mm", "torso turned 6.5", 2, 360.4, 1593, 6, 529.9, 289.5, 99.94),
 )
-"""SendCutSend's live quotes of 2026-10-21 that :data:`CRADLE_CUT_FITS` is checked on, not
-fitted to: (cradle, sheet, part, quantity, area cm^2, cut mm, pierces, blank long, short mm,
-USD for the file); ``tests/test_cradle.py`` holds the fit within 11 % of each."""
-CRADLE_CUT_SOURCE = ("a fit, per sheet, to SendCutSend's live quotes of 2026-10-14 for both "
-                     "cradles' files (each file's price from its area, its cut's length and "
-                     "its blank, the birch's from its blank, at its quantity's discount: on "
-                     "the files quoted it says USD 760 for B's, quoted 758.19, and 580 for "
-                     "A's, quoted 573.82, a file off by up to 10 %), the material and "
-                     "SendCutSend's default deburring included, US shipping free over USD 39; "
-                     "upload the files for the real quote")
+"""SendCutSend's live quotes of 2026-10-21 that :data:`CRADLE_CUT_FITS` is fitted on (with
+the 2026-10-14 set): (cradle, sheet, part, quantity, area cm^2, cut mm, pierces, blank long,
+short mm, USD for the file). Simplification round 2's review (its ``scs/results.jsonl``:
+each file one off and at its quantity, 06:52-07:25 EDT; the variants are its stand C4+C5,
+A1 and A3 probes' plates; "turned": the file turned to its least box) and round 1's stand
+check (its four plates at two off). ``tests/test_cradle.py`` holds the fit within 11 % of
+each."""
+CRADLE_CUT_SOURCE = ("a fit, per sheet, to SendCutSend's live quotes of 2026-10-21 (both "
+                     "cradles' files, one off and at their quantity) and of 2026-10-14 (each "
+                     "file's price from its area, its cut's length and its blank's sides, "
+                     "the birch's from its blank, at its quantity's discount, plus USD 1.47 "
+                     "a part SendCutSend deburrs: within -6.7 to +5.7 % of every file quoted "
+                     "on 2026-10-21 at its quantity), the material and SendCutSend's default "
+                     "deburring included, US shipping free over USD 39; upload the files for "
+                     "the real quote")
 """Where a cradle's cutting estimate comes from (its BOM and ORDER.md print it)."""
 CRADLE_CUT_PROXIES: dict[str, tuple[str, float, float, str]] = {}
 """A cradle's sheets that have no fitted price, and what bounds an estimate of their cutting:
@@ -280,7 +353,8 @@ def cut_estimate(key: str, parts: list, fit: CutFit | None = None) -> float | No
     (quoted 49.44), aluminium 68.48 (67.70). ``fit``: a decanting cradle's sheet
     (:data:`CRADLE_CUT_FITS`) instead, each file at its quantity's discount: the parts are
     merged into files by their features first, so a grouped and an ungrouped BOM (verify's,
-    audit's) come to the same."""
+    audit's) come to the same; each part the service deburrs (its blank at least
+    :func:`deburr_least`'s) adds the fit's ``deburr``."""
     if fit is not None:
         files: dict[tuple, int] = {}
         for p in parts:
@@ -289,8 +363,14 @@ def cut_estimate(key: str, parts: list, fit: CutFit | None = None) -> float | No
                  round(c.short_mm, 1))
             files[k] = files.get(k, 0) + c.qty
         least = _least(key)
+        deb = deburr_least(key) if fit.deburr else None
+
+        def fee(lng: float, sht: float) -> float:
+            return fit.deburr if (deb is not None and sht >= deb[0] - 1e-3
+                                  and lng >= deb[1] - 1e-3) else 0.0
+
         return round(sum(q * round(fit.one(CutPart(a, q, cut, n, lng, sht), least)
-                                   * fit.factor(q), 2)
+                                   * fit.factor(q) + fee(lng, sht), 2)
                          for (a, cut, n, lng, sht), q in files.items()), 2)
     d = get(key).dims
     rate, least = d.get("cut_usd_cm2"), d.get("cut_min_usd")
@@ -1184,18 +1264,15 @@ CRADLE_GREASE_NOTE = (
 """A decanting cradle's (:mod:`construction.cradle`; review round 1, m9; round 2, N5 and the
 drive's B-1)."""
 CRADLE_CARTS_NOTE = (
-    "The carts (simplification round 1, 2026-10-21: folded to seven and the upload). Their "
-    "shipping isn't in the totals; priced only where a page or a cart gave it that day: "
-    "SendCutSend free in the US over USD 39; Woodcraft standard USD 13.99 to 94103 for the "
-    "panels and the glue (its cart's rates). Unpriced: McMaster-Carr (\"applicable shipping "
-    "and tax will be added\", no order minimum), Bolt Depot, Fastenal, Phidgets (from "
-    "Calgary: shipping, duties and brokerage at checkout), Battery Junction, and Speedy "
-    "Metals (FedEx, calculated at checkout with an account). Speedy takes no order under USD "
-    "20 (one cradle's rods come to less: order both cradles' in one cart, or add a stick) and "
-    "adds a process fee of about USD 8 to a line of more than ten pieces (A's twelve posts: "
-    "two lines of six). One cart fewer: McMaster's multipurpose 6061 rod (8974K28, 1/2 in, "
-    "+-0.006 in, 6 ft USD 13.75; 8974K48, 5/8 in, 1/2 ft USD 3.25) in place of Speedy's "
-    "pieces, every piece sawn at home before it is faced.")
+    "The carts (simplification round 1, 2026-10-21: folded to seven and the upload; round "
+    "2: six, the rods from McMaster's sticks, sawn at home, in place of Speedy Metals' cut "
+    "pieces, whose cart took no order under USD 20 and shipped FedEx on an account only). "
+    "Their shipping isn't in the totals; priced only where a page or a cart gave it that "
+    "day: SendCutSend free in the US over USD 39; Woodcraft standard USD 13.99 to 94103 for "
+    "the panels and the glue (its cart's rates). Unpriced: McMaster-Carr (\"applicable "
+    "shipping and tax will be added\", no order minimum; its rods 3 ft and under, no "
+    "oversize parcel), Bolt Depot, Fastenal, Phidgets (from Calgary: shipping, duties and "
+    "brokerage at checkout) and Battery Junction.")
 """A decanting cradle's ORDER.md note on its carts (simplification round 1: McMaster's pages
 rendered 2026-10-21, Woodcraft's cart's shipping rates, Speedy's cart; ``order.py`` lists
 each cart)."""

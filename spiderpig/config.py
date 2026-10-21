@@ -285,8 +285,8 @@ K, J2 and J take the 5/16 in screw-ended pin (simplification round 1: K and J2 h
 cradle link's layer under b6's rear arm, no plan)."""
 
 PRODUCT_CHORD_R: dict[str, dict[str, dict[tuple[str, str], float]]] = {
-    "decanter_rcm": {"b1": {("M", "P"): 13.0}, "b4": {("X", "K"): 14.0},
-                     "b5": {("Y", "J2"): 13.0},
+    "decanter_rcm": {"b1": {("M", "P"): 13.0}, "b3": {("O1", "J"): 12.5, ("O1", "J2"): 12.5},
+                     "b4": {("X", "K"): 14.0}, "b5": {("Y", "J2"): 13.0},
                      "b6": {("X", "Tr1"): 24.0, ("X", "Y"): 16.0}},
     "decanter_hinge": {"b1": {("M", "E"): 13.0}, "b2": {("E", "Tr1"): 16.0}},
 }
@@ -304,6 +304,10 @@ in bending (design review round 1, 2026-10-14; ``cradle_report.structure``):
   width already (the blank unchanged); 24 mm in 5052 held the cap at 1.42 nominal.
 - B's cradle link b5, 26 mm wide (the same round; design review round 3's laser-cut parts
   minor 3): at 24 mm it came as cut, not deburred.
+- B's arm b3 (simplification round 2, 2026-10-21: in 6061-T6 0.187 in, out of 7075): its
+  chords O1-J and O1-J2 25 mm wide, its bending at O1 at the clutch's cap SF 1.37 on
+  6061's minimum (1.27 at 24 mm); 26 mm and wider met b2 or pin K's clevis in their shared
+  layer (round 1), 25 plans in B's 15 layers, proven optimal.
 - Each rod b1 (0.250 in), 26 mm wide (design review round 2, 2026-10-15, laser-cut parts
   M3): SendCutSend deburrs a part of at least 1 x 3 in; at 25.2 mm (24 and its crank
   bore's boss) it came as cut, its exit face's dross on its crankpin's spacer.
@@ -326,7 +330,9 @@ material from a hole to an edge, in 7075 "to prevent microcracks"):
   2026-10-20, laser-cut parts M3: 9.9 mm, 2.05 x the 0.190 in; at 24 mm wide 7.9, 1.64 x,
   under SendCutSend's 7075 rule; b4's blank then 28 mm, over the 25.27 mm it deburrs). b4
   needs none since simplification round 1 (2026-10-21): in 5052, its whole chord X-K is 28
-  mm wide (:data:`PRODUCT_CHORD_R`), the bosses' width.
+  mm wide (:data:`PRODUCT_CHORD_R`), the bosses' width. b3 is 6061 since round 2, whose
+  2 t is 7075's rule only: its J and J2 bosses stay (they don't set its 312 x 34 blank,
+  O1's does, and its plan was proven with them).
 (B's cradle link b6 needs none at X: its rear arm X-Tr1's 48 mm end is one there, which
 :func:`cradle_structure.link_bending` counts for the chord Tf2-X, the one that passes pillar
 O1 by the planner's margin and can't grow.)

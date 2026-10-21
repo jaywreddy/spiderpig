@@ -13,21 +13,24 @@ self-locking worm gear reducer instead of a servo:
 * **The riser** (:func:`riser_for`, design review round 3's M2): a clamped stack on the
   gearbox's machined output face. Four class 8.8 M8 studs threaded into the face
   (:data:`RISER_STUD`); a ring of the crank sheet on the face, centred on its raised spigot
-  ring (:data:`RISER_RING`); a steel sleeve on each stud (:data:`RISER_SLEEVE`, 12 mm across:
-  1.5 mm off the 70 mm spigot on the 85 mm PCD); the go/no-go's shims over the sleeves
-  (:data:`RISER_SHIM`); the outer plate; a thin nut over it on each stud. Clamped, friction
-  carries the gearbox's side load and turn, the sleeves the columns' bending, the studs
-  their tension (``cradle_drive.riser_rating``; round 2's studs had carried it all in
-  bending over 18.7 mm of printed setting sleeve). The shims take up the clone's unmeasured
-  hub. The gearbox's stock output shaft (25 mm, its collar on the hub's end, keyed 8 x 7
+  ring (:data:`RISER_RING`); a 6061 sleeve on each stud (:data:`RISER_SLEEVE`, 12.7 mm
+  across: 1.15 mm off the 70 mm spigot on the 85 mm PCD), faced to the gearbox's measured
+  height (:data:`RISER_SLEEVE_RANGE`, :data:`RISER_AIM`); the outer plate; a thin nut over
+  it on each stud. Clamped, friction carries the gearbox's side load and turn, the sleeves
+  the columns' bending, the studs their tension (``cradle_drive.riser_rating``; round 2's
+  studs had carried it all in bending over 18.7 mm of printed setting sleeve). The sleeves'
+  faced length takes up the clone's unmeasured hub (simplification round 2, 2026-10-21: the
+  go/no-go's 304 shims and DIN 125 coarse shims before, the riser's last steel but its
+  studs). The gearbox's stock output shaft (25 mm, its collar on the hub's end, keyed 8 x 7
   ending 5 short of its end, an M10 end tap; 53.5 past the hub's end) reaches into the
   stack: the crank block's keyed plates on its key's straight flanks.
 * **The crank block** (the arm): laser-cut 0.125 in 6061-T6 plates (the crank sheet), each
   the arm's whole outline, :data:`BLOCK_PLATES` of them stacked on the shaft: the lowest
-  :data:`KEYED_PLATES` keyed over the key (cut :data:`KEY_SLOT` under its width and filed
-  together on it to a slide fit), the next bored round the shaft (slotted clear of the key's
-  end), the *seat* on the shaft's steel end face (the riser's nuts set the end under it: the
-  guide's go/no-go; round 1's shim rings went with the fixed spacers), an M10 button head
+  :data:`KEYED_PLATES` keyed over the key, the next bored round the shaft (every bored plate
+  one file since simplification round 2: each slot cut :data:`KEY_SLOT` under the key's width,
+  the seven filed together on it to a slide fit), the *seat* on the shaft's steel end face
+  (the riser's nuts set the end under it: the guide's go/no-go; round 1's shim rings went
+  with the fixed spacers), an M10 button head
   down through it into the shaft's end tap at :data:`END_SCREW_NM` (steel and aluminium only
   in that clamp), and over
   the seat the plates that ring the end screw's head (the block's top stays where round 1 had
@@ -341,14 +344,14 @@ KEYED_PLATES = 3                # the lowest plates, on the key's straight flank
 #                                 peak and 2.37 / 2.26 x the clutch's cap (B / A, on the sheet's
 #                                 thinnest: cradle_report's keyway rows); the fourth would hold
 #                                 the seat over the end screw's M10 head. The plates over them
-#                                 up to the seat are slotted clear of the key (KEY_CLEAR)
+#                                 are slotted as they are (KEY_SLOT, filed with them: one file
+#                                 of seven, simplification round 2) but not counted: the key's
+#                                 rounded end
 KEY_SLOT = -0.25                # the keyed plates' slot under the key's width: cut at 7.75 mm (a
 #                                 laser's +-0.13 stays under the key's 8) and filed together on
 #                                 the key to a slide fit, so every one bears (round 2's m4: a
 #                                 slot cut at the key's width that comes out wide can't be made
 #                                 to bear)
-KEY_CLEAR = 0.4                 # the other plates round the shaft: their slot clear of the key's
-#                                 end (only the keyed plates drive)
 PLATE_UNDER = 0.127             # a 0.125 in 6061 plate's thinnest under its nominal: SendCutSend's
 #                                 table, +0.006 / -0.005 in (its spec table, fetched 2026-10-15);
 #                                 the keyway's bearing is rated on it
@@ -357,7 +360,7 @@ ARM_BORE_FIT = 0.25             # the arm plates' bore over the h6 shaft: over a
 #                                 shaft's end hold the block along the axis)
 RISER_THIN = (13.0, 4.0, "m8_thin_nut")
 """The riser's thin nut over the outer plate on each stud (DIN 439 M8, in the head layer):
-the plate, the shims, the sleeve and the ring clamped between it and the gearbox's face, a 13
+the plate, the sleeve and the ring clamped between it and the gearbox's face, a 13
 mm wrench on it."""
 RISER_NUT_NM = 9.0              # the thin nut's torque: under TR Fastenings' A2-70 M8 14.5 N·m
 #                                 at a friction of 0.1, a thin nut's two-thirds (its stainless
@@ -391,31 +394,34 @@ sleeves stand on it, so the face takes their clamp over the whole ring."""
 RISER_RING_HOLE = 0.3           # its holes over the studs' thread (8.3 mm: the web to its bore
 #                                 stays over a thickness, SendCutSend's least; a stud that won't
 #                                 pass, the hole filed)
-RISER_SLEEVE = (12.7, 8.0, 20.0, "m8_sleeve_6061_12p7x20")
-"""The riser's sleeve on each stud, from the ring up to the shims under the plate (OD, bore,
-length, catalog key): 6061-T6511, a 1 in piece of the posts' 1/2 in round faced to 20 mm and
-drilled 8.0 mm, a snug bore on the M8 stud (the simplification round 1, 2026-10-21, the
-materials rule: Harfington's 304 stainless 8 x 12 x 20 mm spacers before, whose annealed 205 MPa
-the clamp took past at the clutch's cap; 6061's 241 MPa on the wider ring holds it at 1.35,
-``cradle_drive.riser_rating``). 12.7 mm across keeps 1.15 mm off the 70 mm spigot ring on the
-85 mm PCD and 1.15 mm inside the face's 100 mm boss. Clamped, the plate, the shims, the sleeves
-and the ring are one stack on the face: friction carries the gearbox's side load and its turn,
-the sleeve the column's bending, the stud only its tension (round 2's printed sleeves had
-carried nothing, the studs all of it in bending over 18.7 mm)."""
-RISER_SHIM = (14.0, 8.0, 0.5, "shim_8x14x0p5", 20)
-"""The go/no-go's shims over each sleeve, under the plate (OD, bore, thickness, catalog key,
-bought): 0.5 mm 304 flat shims, the drawn stack the riser's height less the ring and the
-sleeve; four DIN 125 M8 washers (1.6 mm, :data:`RISER_COARSE`) as coarse ones."""
-RISER_COARSE = ("m8_washer", 4)
-RISER_SHIMS_RANGE = (1.0, 3.0)  # the drawn shim stack's least and most (mm): the go/no-go moves
-#                                 the shaft's end a millimetre either way with the shims bought
+RISER_SLEEVE = (12.7, 8.0, "m8_sleeve_6061_12p7")
+"""The riser's sleeve on each stud, from the ring up to the plate (OD, bore, catalog key):
+6061-T6511, a 1 in piece of the posts' 1/2 in round drilled 8.0 mm, a snug bore on the M8 stud,
+faced to the gearbox's measured height (simplification round 2, 2026-10-21: to 20 mm, with
+the go/no-go's 0.5 mm 304 shims and DIN 125 coarse shims over it, before; round 1's materials
+rule: Harfington's 304 stainless 8 x 12 x 20 mm spacers before that, whose annealed 205 MPa the
+clamp took past at the clutch's cap; 6061's 241 MPa on the wider ring holds it at 1.35,
+``cradle_drive.riser_rating``). Its drawn length is the riser's height less the ring
+(:attr:`Riser.sleeve`, within :data:`RISER_SLEEVE_RANGE`). 12.7 mm across keeps 1.15 mm off the
+70 mm spigot ring on the 85 mm PCD and 1.15 mm inside the face's 100 mm boss. Clamped, the
+plate, the sleeves and the ring are one stack on the face: friction carries the gearbox's side
+load and its turn, the sleeve the column's bending, the stud only its tension (round 2's
+printed sleeves had carried nothing, the studs all of it in bending over 18.7 mm)."""
+RISER_SLEEVE_RANGE = (21.0, 23.0)  # the drawn sleeve's least and most (mm): a 1 in piece (25.4,
+#                                    +1/8 -0 in) faced down to it, the hub's height a millimetre
+#                                    either way (the 20 mm sleeve and its 1-3 mm of shims before)
+RISER_AIM = 0.15                # mm: the shaft's end over the go/no-go window's low end the
+#                                 sleeves are faced for, from the gearbox's calipered height: a
+#                                 sleeve faced long reads under the window and is faced again; a
+#                                 short one reads over it and can't be fixed (simplification round
+#                                 2's review: the caliper's +-0.03 and the facing's +-0.05 inside)
 RISER_HEAD_R = RISER_THIN[0] / math.sqrt(3)   # its corners' radius
 RISER_CLEAR = 3.0               # the riser holds the plate this far over the face's raised spigot
 #                                 ring and the turning hub's end at least (neither measured)
 STUD_IN = 1.0                   # a stud's least engagement in the face, in diameters
 SEAT_LOW = 0.7                  # how far under the seat plate's drawn place the shaft's end may
 #                                 stand (the block on it sits that much low: the head layer has
-#                                 the room); the go/no-go's window, the riser's shims set it
+#                                 the room); the go/no-go's window, the riser's sleeves set it
 PLATE_OVER = 0.152              # a 0.125 in 6061 plate's thickest over its nominal (SendCutSend's
 #                                 table, +0.006 in): the plates under the seat lower the block
 END_SCREW_NM = 15.0             # the shaft's end screw: an M10 A2-70 ISO 7380 button head through
@@ -501,7 +507,9 @@ HANDLE_THUMB = (10.0, 10.0, 6.0)   # the thumb screw down onto that key: an M3 x
 #                                 the hub to the key (simplification round 1, 2026-10-21: the
 #                                 knurled McMaster 92545A115 and its brass heat-set insert went:
 #                                 no soldering iron; threadlocker 222 on its thread)
-CAP_SCREW = 8.0                 # the cap's: an M3 x 8 socket head and knob into the journal's nut
+CAP_SCREW = 10.0                # the cap's: an M3 x 10 socket head and knob into the journal's
+#                                 nut (8 until simplification round 2: the thumb screw's length,
+#                                 one SKU for the two)
 NUT = "m3_nut"                  # the captured nuts (DIN 934 M3, 18-8): each in a slot trap
 NUT_FIT = 0.15                  # a nut slot's clearance round the nut, each side (as the deck's)
 NUT_ROOF = 2.4                  # PETG between a nut and the face it pulls toward, at least
@@ -815,7 +823,7 @@ class Riser:
     """The riser: how far the gearbox's machined output face stands under the outer plate's
     outer face (``height``) and where it and its output shaft then are (side z, the drawn
     housing's): the hub's end, the key's span and the shaft's end; the stack on the face (the
-    ring ``ring_t`` thick, the sleeve, the drawn shims ``shims`` thick, the plate); the studs'
+    ring ``ring_t`` thick, the sleeve ``sleeve`` long, the plate); the studs'
     cut length, how far each goes into the face, how far its end stands over its thin nut
     once filed (``past``) and its drawn length; the crank block's seat plate's underside (its
     index ``seat_k``) on that end, and how far under it the end may stand (``low``: the keyed
@@ -830,7 +838,7 @@ class Riser:
     engage: float
     past: float
     ring_t: float
-    shims: float
+    sleeve: float
     seat: float
     seat_k: int
     low: float
@@ -857,10 +865,11 @@ def riser_for(z0: float, a0: float, t: float, box: WormBox = NRV050,
     key's straight flanks (its keyseat is end-milled: its ends are round, half its width
     each) still over the keyed plates' whole height with the shaft's end :data:`SEAT_LOW`
     under it; the shaft's end drawn at the seat; the face under it by the shaft's and the
-    hub's lengths; on the face the ring, the sleeve and the shims up to the plate (the
-    shims set it: a hub prouder or lower than drawn is shimmed out, :data:`RISER_SHIMS_RANGE`
-    either way); each stud threaded :data:`STUD_IN` diameters or more into the face, short of
-    its tapped depth, up through the stack and its thin nut, its end filed to at most
+    hub's lengths; on the face the ring and the sleeve up to the plate (the sleeves set it,
+    faced to the gearbox's measured height: a hub prouder or lower than drawn takes a sleeve
+    shorter or longer, within :data:`RISER_SLEEVE_RANGE`); each stud threaded
+    :data:`STUD_IN` diameters or more into the face, short of its tapped depth, up through
+    the stack and its thin nut, its end filed to at most
     :data:`STUD_PAST_MAX` over the nut, so the crank block's lowest plate clears it with the
     go/no-go's window and the plates under the seat at their thickest (design review round
     3's m9). :class:`ConstructionError` if any of it doesn't hold."""
@@ -885,11 +894,11 @@ def riser_for(z0: float, a0: float, t: float, box: WormBox = NRV050,
     if height - max(box.spigot_h, box.hub_out) < RISER_CLEAR:
         raise ConstructionError(f"the gearbox's face {height:.1f} mm under the plate leaves "
                                 f"under {RISER_CLEAR:g} mm over its spigot ring")
-    shims = height - t_ring - RISER_SLEEVE[2]
-    if not RISER_SHIMS_RANGE[0] - 1e-9 <= shims <= RISER_SHIMS_RANGE[1] + 1e-9:
-        raise ConstructionError(f"the riser's {height:.2f} mm leaves {shims:.2f} mm of shims "
-                                f"over its ring and {RISER_SLEEVE[2]:g} mm sleeve, not "
-                                f"{RISER_SHIMS_RANGE[0]:g}-{RISER_SHIMS_RANGE[1]:g}")
+    sleeve = height - t_ring
+    if not RISER_SLEEVE_RANGE[0] - 1e-9 <= sleeve <= RISER_SLEEVE_RANGE[1] + 1e-9:
+        raise ConstructionError(f"the riser's {height:.2f} mm leaves a {sleeve:.2f} mm sleeve "
+                                f"over its ring, not {RISER_SLEEVE_RANGE[0]:g}-"
+                                f"{RISER_SLEEVE_RANGE[1]:g}")
     d, length, _ = RISER_STUD
     thin = RISER_THIN[1]
     over = t_plate + thin                               # the plate's outer face to the nut's top
@@ -906,7 +915,7 @@ def riser_for(z0: float, a0: float, t: float, box: WormBox = NRV050,
                                 "riser's studs' ends at the stack's worst, under 0.5")
     return Riser(round(height, 3), face, hub, (end - box.key_short - key_len,
                                                end - box.key_short), end, float(length),
-                 round(engage, 2), round(past, 3), t_ring, round(shims, 3), seat, seat_k,
+                 round(engage, 2), round(past, 3), t_ring, round(sleeve, 3), seat, seat_k,
                  round(min(SEAT_LOW, seat - lo), 3), over)
 
 
@@ -1187,9 +1196,10 @@ class HandCrank(Group):
         out.pad(FRAME_OUTER, tuple(o), tuple(o), pad)
 
         # the riser, a clamped stack on the gearbox's face (design review round 3's M2): the
-        # ring centred on the spigot, a steel sleeve on each stud, the go/no-go's shims, the
-        # plate, a thin nut over it on each stud; the gearbox (outboard: the frame's)
-        sl_od, sl_bore, sl_len, sl_key = RISER_SLEEVE
+        # ring centred on the spigot, a 6061 sleeve on each stud faced to the gearbox's
+        # measured height (simplification round 2: no shims), the plate, a thin nut over it on
+        # each stud; the gearbox (outboard: the frame's)
+        sl_od, sl_bore, sl_key = RISER_SLEEVE
         if box.pcd / 2 - sl_od / 2 < box.spigot_d / 2 + 1.0 - 1e-9 or \
                 box.pcd / 2 + sl_od / 2 > box.face_d / 2 - 1.0 + 1e-9:
             raise ConstructionError(f"a {sl_od:g} mm sleeve doesn't sit on the face between "
@@ -1204,8 +1214,6 @@ class HandCrank(Group):
         if web < t_ring - 1e-9 or box.face_d / 2 - box.pcd / 2 - ring_hole / 2 < t_ring - 1e-9:
             raise ConstructionError(f"the riser's ring leaves {web:.2f} mm round its studs' "
                                     f"holes, under its {t_ring:g} mm thickness")
-        shim_od, shim_bore = RISER_SHIM[0], RISER_SHIM[1]
-
         def hexnut(xy, af, z_lo, z_hi):
             from build123d import RegularPolygon, extrude
 
@@ -1217,7 +1225,6 @@ class HandCrank(Group):
             ring(tuple(o), box.face_d, ring_bore, face, face + t_ring),
             *[disc(xy, ring_hole / 2, face - 1, face + t_ring + 1) for xy in screws]),
             frame, fab="laser", sheet=ctx.sheet("crank"), color="#9aa3ad"))
-        s0 = face + t_ring + sl_len                     # the sleeve's top, the shims'
         for i, xy in enumerate(screws):
             out.bodies.append(hardware(f"riser_stud{i}", disc(xy, 0.97 * d_stud / 2,
                                                               face - riser.engage,
@@ -1225,21 +1232,11 @@ class HandCrank(Group):
                                                               + riser.stud_drawn),
                                        frame, fab="purchased", bom_key=stud_key, color=STEEL))
             out.bodies.append(hardware(f"riser_sleeve{i}", ring(xy, sl_od, sl_bore,
-                                                                face + t_ring, s0),
+                                                                face + t_ring, z0),
                                        frame, fab="purchased", bom_key=sl_key, color=STEEL))
-            out.bodies.append(hardware(f"riser_shims{i}", ring(xy, shim_od, shim_bore + 0.2,
-                                                               s0, z0),
-                                       frame, fab="purchased", color=STEEL))
             out.bodies.append(hardware(f"riser_thin_nut{i}", hexnut(xy, thin_af, z1,
                                                                     z1 + thin_h),
                                        frame, fab="purchased", bom_key=thin_key, color=STEEL))
-        # the shims and the coarse washers, bought by the pack (a stack is drawn as one)
-        out.extras.append(BomLine(RISER_SHIM[3], RISER_SHIM[4],
-                                  "the drive: the riser's go/no-go shims (0.5 mm), over its "
-                                  "sleeves"))
-        out.extras.append(BomLine(RISER_COARSE[0], RISER_COARSE[1],
-                                  "the drive: the riser's coarse shims (1.6 mm), over its "
-                                  "sleeves"))
         out.bodies.append(hardware("gearbox", self._gearbox(o, face, screws), frame,
                                    fab="purchased", bom_key=box.key, color=GEARBOX_COLOR))
 
@@ -1287,11 +1284,11 @@ class HandCrank(Group):
             pins = [Cut(tuple(mxy), CRANKPIN_D + SOCKET_FIT), Cut(tuple(tie), M6.d + 0.6)]
             if i == riser.seat_k:                   # the seat: the end screw through
                 at_o = [Cut(tuple(o), es.d + 0.6)]
-            else:   # round the shaft, keyed or clear of it; over the seat round the end
-                #     screw's head, the same plate (simplification round 1: three files)
-                fit = KEY_SLOT if i < KEYED_PLATES else KEY_CLEAR
+            else:   # round the shaft, its slot under the key (filed to it); over the seat
+                #     round the end screw's head, the same plate (simplification round 2: one
+                #     file of seven, the keyed and the clear ones alike; three files in round 1)
                 at_o = [Cut(tuple(o), box.shaft_d + ARM_BORE_FIT),
-                        Rect(slot_at, (box.key_proud + 2.6, k_w + fit), key_ang)]
+                        Rect(slot_at, (box.key_proud + 2.6, k_w + KEY_SLOT), key_ang)]
             part = arm_plate(self.hub_r(ctx), self.web_r(ctx), self.throw(ctx), o, mxy, z_lo,
                              z_lo + t, [*at_o, *pins])
             name = crank if i == 0 else f"{crank}_plate{i}"
@@ -1396,7 +1393,7 @@ class HandCrank(Group):
             "gearbox": box.key, "ratio": box.ratio, "riser_height_mm": riser.height,
             "riser_stud_mm": riser.stud, "riser_engage_mm": riser.engage,
             "riser_stud_past_mm": riser.past, "riser_ring_mm": riser.ring_t,
-            "riser_sleeve_mm": RISER_SLEEVE[2], "riser_shims_mm": riser.shims,
+            "riser_sleeve_mm": riser.sleeve,
             "face_z_mm": round(riser.face, 3),
             "plate_inner_z_mm": round(z1, 3),
             "arm_z_mm": [round(a0, 3), round(block_top, 3)],
@@ -1423,18 +1420,20 @@ class HandCrank(Group):
             "throw_mm": round(float(np.linalg.norm(mxy - o)), 3),
             "irreversible": box.irreversible(),
             "petg": list(PETG_PARTS),
-            # the keyed plates' slots cut under the key, filed to it at assembly (round 2's m4)
+            # the bored plates' slots cut under the key, filed to it at assembly (round 2's m4;
+            # every one since simplification round 2's one file of seven)
             "filed": [["crank_shaft", crank if i == 0 else f"{crank}_plate{i}"]
-                      for i in range(KEYED_PLATES)],
+                      for i in range(len(zs)) if i != riser.seat_k],
         }
         return out
 
     def assembly(self, view) -> list:
         """How the drive goes on (:mod:`construction.assembly`, a cradle's
         ``CRADLE_ORDER``): on the bench the shaft through the gearbox from the face's side,
-        the studs in the face, the ring, the sleeves and the shims on them; the outer plate
-        down onto the shims and the thin nuts over it (their heads end up inside the stack, so
-        first), and the go/no-go measurement that sets the shims; the crank block built and
+        the studs in the face, the ring; the gearbox's height calipered and the sleeves faced
+        to it (simplification round 2: no shims), on the studs; the outer plate down onto the
+        sleeves and the thin nuts over it (their heads end up inside the stack, so first), and
+        the go/no-go measurement that checks the sleeves; the crank block built and
         fitted on the bench (its plates, the tie, the crankpin), then down over the shaft onto
         the shaft's end and the end screw; the crankpin's spacer before the rod, its washer and
         screw once the rod is on; the hand crank, its plungers at their felt start; and, the
@@ -1451,7 +1450,6 @@ class HandCrank(Group):
         k_rod = view.slot(view.z[rider][0]) if rider in view.z else ARM_LAYER + 1
         studs = view.named(r"riser_stud\d+")
         sleeves = view.named(r"riser_sleeve\d+")
-        shims = view.named(r"riser_shims\d+")
         thins = view.named(r"riser_thin_nut\d+")
         ring_ = [n for n in ("riser_ring",) if n in view.z]
         plates = view.named(rf"{re.escape(arm)}_plate\d+")
@@ -1470,12 +1468,14 @@ class HandCrank(Group):
         lo = seat - min(SEAT_LOW, seat - (a1 - 0.2 + box.key_short + k[0] / 2))
         d_stud, cut, _ = RISER_STUD
         stand = cut - (box.face_depth - 0.5)            # as cut, in the face until it stops
-        shim_t = RISER_SHIM[2]
-        n_shims = round((view.z[shims[0]][1] - view.z[shims[0]][0]) / shim_t) if shims else 0
-        sl_od, sl_bore, sl_len, _ = RISER_SLEEVE
+        sl_od, sl_bore, _ = RISER_SLEEVE
+        sleeve = (view.z[sleeves[0]][1] - view.z[sleeves[0]][0]) if sleeves else 0.0
+        t_plate = view.layers[0][1] - view.layers[0][0]
+        aim = lo + RISER_AIM                            # the reading the sleeves are faced for
+        h_drawn = sleeve + t_plate + shaft              # the shaft's end over the ring's top
         ops = [
             Op(STACK, (-1, -1, "gearbox"), whole("gearbox", "crank_shaft", *studs, *ring_,
-                                                 *sleeves, *shims),
+                                                 *sleeves),
                "Gearbox on its riser",
                "Wipe the gearbox: a new worm box can weep oil at its seals. Run it in now, "
                "before it goes on the cradle (a drill on the built cradle's input would turn "
@@ -1495,24 +1495,31 @@ class HandCrank(Group):
                "short: cut the stud down to it). The riser's ring (cut with the crank plates) "
                "down over the studs onto the machined face, its bore round the raised spigot "
                "ring: it must lie flat (a stud that won't pass its hole: file the hole, never "
-               f"force it). An aluminium sleeve ({sl_bore:g} x {sl_od:g} x {sl_len:g} mm) "
-               "down "
-               f"each stud onto the ring, and {n_shims} of the {shim_t:g} mm shims on each "
-               "sleeve: the go/no-go may change how many.", "gearbox", sub=True),
+               "force it). Now the sleeves' length, from this gearbox: caliper H, the "
+               "shaft's end over the ring's top (the depth rod beside the shaft, at three "
+               f"places round it; {h_drawn:.2f} mm drawn), and T, the outer plate's thickness "
+               "beside its bore. Face each of the four aluminium sleeves (drilled "
+               f"{sl_bore:g} mm, {sl_od:g} mm across: the shop's) on the Carvera to H - T - "
+               f"{aim:.2f} mm ({sleeve + shaft - aim:.2f} on the drawn gearbox; all four one "
+               "length within 0.05 mm): long "
+               "rather than short, as a long one is faced again and a short one can't be "
+               "fixed. A sleeve down each stud onto the ring.", "gearbox", sub=True),
             Op(STACK, (-1, 2), whole(*thins), "",
-               "The outer plate over the studs onto the shims, its outside down, the shaft up "
+               "The outer plate over the studs onto the sleeves, its outside down, the shaft "
+               "up "
                "through its bore; an M8 thin nut on each stud over the plate, finger tight. The "
                "gearbox now stands the plate up off the bench. Go/no-go: measure the shaft's "
                "end over the plate's inner face (a caliper's depth rod beside the shaft): "
                f"{shaft:.2f} mm drawn, the crank block's seat plate sitting on it. Between "
                f"{lo:.2f} and {seat:.2f} it is right (the block sits on the shaft's end, at "
-               f"most {seat - lo:.1f} mm lower than drawn). Over {seat:.2f} (the hub prouder "
-               "than drawn): the plate off, a shim more on every sleeve (a 1.6 mm washer for "
-               f"three); under {lo:.2f} (lower: the key's straight flanks would fall short of "
-               "the keyed plates): a shim fewer on every sleeve; each shim moves it "
-               f"{shim_t:.2f} mm; and measure again. Then each thin nut, a drop of 243 on its "
+               f"most {seat - lo:.1f} mm lower than drawn); the sleeves were faced for "
+               f"{aim:.2f}. Under {lo:.2f} (the sleeves long: the key's straight flanks would "
+               "fall short of the keyed plates): the plate off, all four sleeves faced down "
+               "by the shortfall and a tenth more, and measure again. Over "
+               f"{seat:.2f} (the sleeves short): four new sleeves from the stick, faced long. "
+               "Then each thin nut, a drop of 243 on its "
                f"thread, {RISER_NUT_NM:g} N·m (a torque wrench), the four in a cross: the "
-               "plate, the shims, the sleeves and the ring one clamped stack on the face. Each "
+               "plate, the sleeves and the ring one clamped stack on the face. Each "
                f"stud's end must stand no more than {STUD_PAST_MAX:g} mm over its thin nut "
                "(the crank block's lowest plate passes over the four): file it down, masking "
                "tape on the plate round it.", "gearbox_studs"),
@@ -1520,23 +1527,22 @@ class HandCrank(Group):
                                             "crankpin", "crankpin_washer_lo",
                                             "crankpin_screw_lo"),
                "Crank block",
-               "On the bench, as one block, three kinds of plate: the "
-               f"{KEYED_PLATES} keyed ones (the narrow slot) at the bottom, then the "
-               f"{n_clear} with a wider slot, the seat (the {es.d + 0.6:.1f} mm hole), and "
-               "the rest of the wider-slot ones over it (their bore rings the end screw's "
-               "head). The tie's M6 button head down through every plate's middle hole into "
-               "its thin nut under the lowest plate (threadlocker 243; a 10 mm wrench on the "
+               "On the bench first the keyways: every plate but the seat (the "
+               f"{es.d + 0.6:.1f} mm hole) is one cut, its slot {-KEY_SLOT:g} mm under the "
+               f"shaft's {k[0]:g} mm key, so each can be filed to it. Stack those "
+               f"{len(plates)} plates square (two clamps), push the key, out of its "
+               "seat, into their slots and file the slots together (a flat file) until it "
+               f"slides through all {len(plates)} with no play: the lowest {KEYED_PLATES} "
+               "drive (until they all bear, the tightest carries the crank alone); the rest, "
+               "one cut with them, only pass over the key's end. Then the block, in order: "
+               f"{KEYED_PLATES} plates, {n_clear} more, the seat, and the rest over it "
+               "(their bore rings the end screw's head). The tie's M6 button head down "
+               "through every plate's middle hole into its thin nut under the lowest plate "
+               "(threadlocker 243; a 10 mm wrench on the "
                f"nut), {SCREW_NM:g} N·m. The crankpin down through every plate's end hole, a "
                "wide washer under the lowest plate and an M6 button head up through it into "
                f"the crankpin (threadlocker 243), {SCREW_NM:g} N·m: it pulls the crankpin "
-               "down flush with the washer. Fit the keyways: the keyed plates' slots are cut "
-               f"{-KEY_SLOT:g} mm under the shaft's {k[0]:g} mm key, so each can be filed to "
-               "it; push the key, out of its seat, up into the block's slots from under it "
-               "and file the narrow slots together (a flat file, the block tied) until it "
-               f"slides through all {KEYED_PLATES} with no play: until then the "
-               f"tightest plate carries the crank alone. The {n_clear} wider slots "
-               f"over them are cut {KEY_CLEAR:g} mm over the key, clear of it: no file. The "
-               "key back in its seat.", "layer"),
+               "down flush with the washer. The key back in its seat.", "layer"),
             Op(STACK, (ARM_LAYER, 1), whole("crank_end_screw"), "",
                "The block down over the shaft, its keyways on the key, its seat plate onto the "
                f"shaft's end; the M{es.d:g} button head down through it into the shaft's end "
@@ -2092,8 +2098,9 @@ class HandCrankConstruction:
         until the keyed plates are filed together on the key (a laser's slot is +-0.127 mm in
         width and place: the tightest bears first; round 1's drive review; cut under the
         key's width since round 2, so each can be filed to it). Only the
-        :data:`KEYED_PLATES` bear: the plates over them up to the seat are slotted
-        :data:`KEY_CLEAR` wider than the key."""
+        :data:`KEYED_PLATES` bear: the plates over them up to the seat, filed with them (one
+        file of seven since simplification round 2), stand on the key's rounded end or past
+        it, so they aren't counted."""
         box = BOXES[self.gearbox]
         proud = box.key_proud
         t = max(self.plate_t - PLATE_UNDER, 0.0)

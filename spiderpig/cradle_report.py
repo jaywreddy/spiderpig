@@ -447,7 +447,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     # the gearbox's riser walking (its cap's: jam_capped's rows; design review round 3's M2)
     out["drive"]["riser"] = {
         "walk": riser_rating(box, notes, f_rod, peak),
-        "basis": "a clamped stack (ring, sleeve, shims, plate) on each of four A2-70 M8 "
+        "basis": "a clamped stack (ring, faced sleeve, plate) on each of four A2-70 M8 "
                  "studs: the stud's tension and shear, the 6061 sleeve's crush and bending, "
                  "the ring's bearing; its slip at the faces' friction "
                  "(cradle_drive.riser_rating)"}
@@ -2625,16 +2625,20 @@ def thread_strip(engaged: float) -> tuple[float, float]:
 
 
 def post_engaged(config: BuildConfig) -> float:
-    """How far a post's M6 x 16 end screw reaches into its tapped end (mm): its length less
-    the DIN 125 washer under its head, the frame plate and the fender washer between the
+    """How far a post's M6 x 16 end screw reaches into its tapped end at the least (mm): its
+    length less the DIN 125 washer under its head where an end keeps one (a pillar's foot,
+    ``construction.cradle.HEAD_WASHED``), the frame plate and the fender washer between the
     plate and the post's end (``construction.cradle.column_parts``; every post's both ends,
     :data:`POST_WASHED`)."""
+    from spiderpig.construction.pivots.standoff import StandoffAxle
     from spiderpig.hardware.catalog import get
     from spiderpig.materials import sheet_of, thickness
 
     col = cr.column_parts(cr.stand_of(config.lk))
     t = thickness(config, sheet_of(config, "frame"))
-    w = float(get(col.washer).dims["t"]) if col.washer else 0.0
+    pillar = StandoffAxle().cradle_shaft()
+    keys = [k for k in (col.washer, pillar.washer_key if pillar.washer_ends else None) if k]
+    w = max((float(get(k).dims["t"]) for k in keys), default=0.0)
     f = float(get(col.face).dims["t"]) if col.face else 0.0
     return col.screw_len - w - t - f
 
@@ -2682,6 +2686,34 @@ P_LIMIT_BASIS = ("VDI 2230-1 (2015) Table A9's limiting surface pressure p_G, Al
                  "Flaechenpressung sheet 01-2025)")
 SLIP_MU = 0.2               # a post's end face on aluminium, threadlocker on it: the least
 #                             friction a slip is rated at (steel on aluminium dry 0.47-0.61)
+HEAD_MU_BARE = 0.3          # the most under-head friction of an 18-8 button head straight on
+#                             the deburred 5052, no washer (simplification round 2's review: on
+#                             bare aluminium it runs higher and scatters more than on a steel
+#                             washer, 0.2-0.3; the washered joint's band is preload_band's 0.1-
+#                             0.2): its least preload at the same torque
+M6_THREAD = (1.0, 5.350)    # ISO 724's M6 x 1: the pitch and the pitch diameter d2 (mm)
+HEAD_BEARING = (10.07, 7.0)  # an ISO 7380-1 M6 head's least diameter (dk min) and its 6.4 mm
+#                             hole's deburred edge (mm): the annulus a bare head bears on
+
+
+def bare_head_factor(mu_thread: float = 0.2, mu_ref: float = 0.2,
+                     mu_head: float = HEAD_MU_BARE) -> float:
+    """A bare head's least preload over the washered one's at the same torque and thread
+    friction (simplification round 2's P6): VDI 2230 Part 1's tightening torque, ``M_A = F_M
+    (0.16 P + 0.58 d2 mu_G + D_Km / 2 mu_K)``, with ``D_Km`` the mean of
+    :data:`HEAD_BEARING`, the head's friction ``mu_head`` against ``mu_ref``."""
+    pitch, d2 = M6_THREAD
+    d_km = sum(HEAD_BEARING) / 2
+
+    def k(mu_k: float) -> float:
+        return 0.16 * pitch + 0.58 * d2 * mu_thread + d_km / 2 * mu_k
+    return k(mu_ref) / k(mu_head)
+
+
+def head_area() -> float:
+    """The bare head's bearing annulus (mm^2, :data:`HEAD_BEARING`)."""
+    od, hole = HEAD_BEARING
+    return math.pi * (od * od - hole * hole) / 4
 
 
 def contact_peak(clamp: np.ndarray, moment: np.ndarray, od: float, bore: float) -> np.ndarray:
@@ -2735,7 +2767,12 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
     (:data:`P_LIMIT_MPA`, ``bearing_sf``: VDI 2230's S_P), what strips the M6 thread tapped
     in the 6061 post's end over the screw's most tension (``strip_sf``, :func:`thread_strip`
     over :func:`post_engaged`: the simplification round 1, 2026-10-21),
-    and the shear over the face's friction at the least preload (``slip_x``). Walking, every
+    and the shear over the face's friction at the least preload (``slip_x``). An end whose
+    head bears on the bare plate (no DIN 125 under it, ``construction.cradle.HEAD_WASHED``:
+    simplification round 2) takes the least preload a bare head's friction leaves
+    (:func:`bare_head_factor`) and a row of its own, the head's pressure on the plate at the
+    screw's most tension over :data:`P_LIMIT_MPA` (``head_sf``, on :data:`HEAD_BEARING`'s
+    annulus); a washered end's is ``None``. Walking, every
     face must stay shut and not slip (fretting each pour); at the clutch's cap a face may
     lift (the guide re-tightens them after a slip) if the screw and the plate hold."""
     from spiderpig.hardware.fasteners import BUTTON_10_9_PROOF_N, BUTTON_A2_70_NM, preload_band
@@ -2767,12 +2804,15 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                 if not len(m):
                     continue
                 is_steel = end == "foot" and p.name in steel
+                kind = "column" if p.name.startswith("column:") else "pillar"
+                bare = end not in cr.HEAD_WASHED[kind]
                 f_lo, f_hi = bands[is_steel]
+                if bare:
+                    f_lo = f_lo * bare_head_factor()
                 c_lo = np.maximum(f_lo - pull, 0.0)
                 c_hi = np.maximum(f_hi - pull, 1e-9)
                 open_x = m / np.maximum(c_lo * kern, 1e-9)
                 screw = np.maximum(f_hi, m / (od / 2) + pull)
-                kind = "column" if p.name.startswith("column:") else "pillar"
                 face = spread if end in POST_WASHED[kind] else od
                 peak = contact_peak(c_hi, m, face, bore)
                 slip = v / np.maximum(SLIP_MU * c_lo, 1e-9)
@@ -2787,6 +2827,8 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                                     if math.isfinite(float(peak.max())) else None),
                        "bearing_sf": round(plate / float(peak.max()), 2),
                        "strip_sf": round(strip_y / float(screw.max()), 2),
+                       "head_sf": (round(plate / (float(screw.max()) / head_area()), 2)
+                                   if bare else None),
                        "slip_x": round(float(slip.max()), 2), "at": int(i)}
                 rows.setdefault(f"{p.name} {end}", {})[tag] = row
                 w = worst.setdefault(tag, {"open_x": 0.0, "slip_x": 0.0, "screw_sf": math.inf,
@@ -2794,12 +2836,20 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                 for k in ("open_x", "slip_x"):
                     if row[k] > w[k]:
                         w[k], w[k + "_at"] = row[k], f"{p.name} {end}"
-                for k in ("screw_sf", "bearing_sf", "strip_sf"):
-                    if row[k] < w[k]:
+                for k in ("screw_sf", "bearing_sf", "strip_sf", "head_sf"):
+                    if row[k] is not None and row[k] < w.get(k, math.inf):
                         w[k], w[k + "_at"] = row[k], f"{p.name} {end}"
     f_lo, f_hi = bands[False]
     out = {"screw": f"M6 x 16 button head A2-70 (ISO 7380), {nm:g} N·m",
            "preload_n": [round(f_lo), round(f_hi)], "kern_mm": round(kern, 2),
+           "bare_head": {"ends": {k: [e for e in ("foot", "end") if e not in v]
+                                  for k, v in cr.HEAD_WASHED.items()},
+                         "head_mu": HEAD_MU_BARE,
+                         "preload_n": [round(f_lo * bare_head_factor()), round(f_hi)],
+                         "bearing_mm2": round(head_area(), 1),
+                         "basis": "VDI 2230-1's tightening torque split (thread 0.2, the "
+                                  "head on the bare 5052 up to 0.3); the head's least "
+                                  "diameter (ISO 7380-1) on the deburred hole's edge"},
            "decompression_nm": [round(f_lo * kern / 1000, 2), round(f_hi * kern / 1000, 2)]}
     if steel:
         h_lo, h_hi = bands[True]

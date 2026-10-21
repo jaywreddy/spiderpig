@@ -225,12 +225,15 @@ def _inch(mm: float) -> str:
 AS_CUT = "<the parts that arrive as cut>"
 """Where :data:`CRADLE_ARRIVAL` names the parts that arrive as cut: :func:`as_cut_words`, from
 the fabrication (:func:`assembly_steps`)."""
+THICK_PINS = "<the pins whose links may outgrow their play>"
+"""Where :data:`CRADLE_ARRIVAL` names the pins whose links, both at their sheets' thickest,
+come out over the pin's play: :func:`thick_pins_words`."""
 
 CRADLE_ARRIVAL = (
     "First the cut parts, as they arrive. Write each one's label on it with the paint pen "
     "(the first word of its file's name in ORDER.md's upload list): some differ only by a "
-    "hole or a slot, the crank block's plates among them (the gearbox's key drops through "
-    "a clear plate's slot, not through a keyed one's: those are filed to it later). "
+    "hole, the crank block's plates among them (the seat plate's small hole for the end "
+    "screw; the seven bored ones are one cut, filed together on the gearbox's key later). "
     f"SendCutSend deburrs only parts of at least {_inch(SCS_DEBURR_MM[0])} x "
     f"{_inch(SCS_DEBURR_MM[1])} in: {AS_CUT} come as cut (ORDER.md's upload list marks them "
     "\"as cut: by hand\"). Deburr each by hand before it is stacked, both faces and each "
@@ -241,7 +244,8 @@ CRADLE_ARRIVAL = (
     "are the clutch's ball seats, and it goes on that face out, to the balls. Caliper every "
     "link at its pin holes and note it: a sheet may run thick (SendCutSend's tables: up to "
     "+0.69 mm at 0.250 in, +0.23 mm at 0.187 in), and the pins are cut from these figures "
-    "(the pins' step: each pin's stack + 0.3 mm). Each pin, once cut, must slide through its "
+    f"(the pins' step: each pin's stack + 0.3 mm). {THICK_PINS}Each pin, once cut, must "
+    "slide through its "
     "links' holes by hand before it goes on: the 0.250 in rod's can come out up to 0.05 mm "
     "under (SendCutSend's +/-0.005 in and its taper on thick sheet, the hole narrowest at "
     "the exit face); open a tight one from that face, fine sandpaper rolled round a drill "
@@ -277,6 +281,44 @@ def as_cut_words(mech) -> str:
         return "the narrower links"
     names.sort()
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def thick_pins_words(mech) -> str:
+    """For :data:`THICK_PINS`: the pins (``mech.meta["wobble"]``'s ``pin:`` notes) whose
+    links, each at its sheet's published most (``thickness_tol``), outgrow the pin's play as
+    drawn (``cradle_report.take_up``'s worst case, simplification round 2: b3 in 6061 0.187
+    in put J and J2 there beside K and P), named with a sentence of what to do; empty when
+    none."""
+    from spiderpig.hardware.catalog import get
+    from spiderpig.layout import laser_bodies, sheet_key
+
+    default = str(mech.meta.get("sheet") or "")
+    sheets = {bare(b.name): sheet_key(b, default) for b in laser_bodies(mech)}
+    short: dict[str, float] = {}
+    for name, note in (mech.meta.get("wobble") or {}).items():
+        if not name.startswith("pin:") or not note.get("links"):
+            continue
+        over = 0.0
+        for ln in note["links"]:
+            key = sheets.get(bare(str(ln.get("link", ""))))
+            if key:
+                over += float((get(key).dims.get("thickness_tol") or (0.0, 0.0))[0])
+        margin = float(note.get("play_mm") or 0.0) - over
+        if margin < 0:
+            short[name[4:]] = margin
+    if not short:
+        return ""
+    pins = sorted(short)
+    words = pins[0] if len(pins) == 1 else ", ".join(pins[:-1]) + " and " + pins[-1]
+    lo, hi = min(short.values()), max(short.values())
+    span = f"{-hi:.2f} mm" if abs(hi - lo) < 0.005 else f"{-hi:.2f} to {-lo:.2f} mm"
+    many = len(pins) > 1
+    return (f"{'Pins' if many else 'Pin'} {words} {'each carry' if many else 'carries'} "
+            "links that, all at their sheets' thickest, outgrow the pin's play as drawn (by "
+            f"{span}): caliper those links first, and where a pin's links bind once its end "
+            "is on, sand the printed ring or spacer between them by the excess. ")
+
+
 CRADLE_FLAT = (
     "Lay the base board on the flat table first: SendCutSend's sheet is flat to +/- 0.030 in "
     "a foot before cutting (about 1.7 mm over the board). If it bows, its concave face goes "
@@ -604,8 +646,10 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
     order = ((CRADLE_MODULE_ORDER if mech.meta.get("cradle_modules") else CRADLE_ORDER)
              if cradle else ROBOT_ORDER if robot else SIDE_ORDER)
     if cradle:
-        words = as_cut_words(mech)
-        order = tuple(replace(st, intro=st.intro.replace(AS_CUT, words)) if AS_CUT in st.intro
+        words, thick = as_cut_words(mech), thick_pins_words(mech)
+        order = tuple(replace(st, intro=st.intro.replace(AS_CUT, words)
+                              .replace(THICK_PINS, thick))
+                      if AS_CUT in st.intro or THICK_PINS in st.intro
                       else st for st in order)
     return _order(ops, order)
 

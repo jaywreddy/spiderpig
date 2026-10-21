@@ -241,7 +241,8 @@ ROD_STOCK: dict[float, dict] = {
                                    "aluminum-extruded.aspx", "sku": "61r.5", "per_in": 0.192},
 }
 """Speedy Metals' 6061-T6511 extruded rounds cut to length (the page and the cart, 2026-10-21;
-each length its own cart line, so its SKU is the stock's with the cut length:
+no cradle buys from it since simplification round 2's P5: :data:`ROD_STICK`; each length had
+been its own cart line, so its SKU the stock's with the cut length:
 USD 0.192 an inch, each piece billed at its length rounded up to the next whole inch, cut +1/8
 -0 in; ASTM B221, diameter +-0.009 in from 0.500 to under 0.750 in): each post and tie rod
 bought as its own piece, :data:`ROD_FACE` over its length (faced square on the Carvera), so no
@@ -249,6 +250,16 @@ piece is over 48 in and only the pivot posts are sawn at home (:data:`ROD_HARD`)
 adds a process fee (about USD 8) to a line of more than ten pieces (order a cradle's posts in
 lines of ten at most) and takes no order under USD 20 (one cart with the other rods, or a stick
 to clear it)."""
+
+
+ROD_STICK = ("rod6061_12p7_914", 914.4, "https://www.mcmaster.com/8974K28/", "8974K28", 7.56)
+"""The plain posts', tie rods' and riser sleeves' stock since simplification round 2 (P5,
+2026-10-21: McMaster's cart in place of Speedy Metals', one cart fewer, Speedy's USD 20
+minimum and FedEx account gone): McMaster's multipurpose 6061-T6511 rod, 1/2 in (+-0.006 in,
+ASTM B221), 3 ft at USD 7.56 (its family table rendered 2026-10-21: 1/2 ft 2.06, 1 ft 3.02, 2
+ft 5.77, 3 ft 7.56, 6 ft 13.75), sawn at home, :data:`ROD_FACE` over (a sleeve a 1 in piece),
+and faced on the Carvera: key, length (mm), URL, SKU, USD. 3 ft, so no parcel is over 48 in;
+the BOM's cut list counts the sticks."""
 
 
 def _rod_tag(od: float) -> str:
@@ -277,16 +288,17 @@ def _rod_item(od: float, L: float) -> Item:
     usd = _rod_price(od, L)
     return Item(
         f"rod6061_{_rod_tag(od)}_m6_{L:g}", f"{s['in']} in ({od:g} mm) 6061-T6511 round, "
-        f"{L:g} mm, faced and tapped M6 x {ROD_THREAD:g} both ends (cut to length by Speedy "
-        "Metals)", "standoff",
-        (Offer("Speedy Metals", s["url"], f"{s['sku']} cut {L + ROD_FACE:.1f} mm",
-               price_usd=usd, verified=True,
-               note=f"{s['in']} in round 6061-T6511 extruded, cut to {L + ROD_FACE:.1f} mm "
-                    f"(USD {s['per_in']:.3f} an inch in whole inches, the cart 2026-10-21): "
-                    f"faced to {L:g} mm both ends square on the Carvera, drilled 5.0 mm and "
-                    f"tapped M6 x {ROD_THREAD:g} deep each end by hand"),),
+        f"{L:g} mm, faced and tapped M6 x {ROD_THREAD:g} both ends (sawn from McMaster "
+        f"{ROD_STICK[3]})", "standoff",
+        (Offer("McMaster-Carr", ROD_STICK[2], ROD_STICK[3], verified=True,
+               note=f"sawn from the 3 ft stick ({ROD_STICK[0]}: the BOM buys the stick) to "
+                    f"{L + ROD_FACE:.1f} mm, faced to {L:g} mm both ends square on the "
+                    f"Carvera, drilled 5.0 mm and tapped M6 x {ROD_THREAD:g} deep each end by "
+                    f"hand (Speedy Metals' cut piece, USD {usd:.2f}, until simplification "
+                    "round 2)"),),
         dims={"d": 6.0, "od": od, "length": L, "thread_depth": ROD_THREAD, "id": ROD_ID,
-              "yield_mpa": ROD_YIELD, "material": "aluminium"},
+              "yield_mpa": ROD_YIELD, "material": "aluminium", "cut_from": ROD_STICK[0],
+              "cut_over": ROD_FACE},
         notes="A decanting cradle's post (a pillar or a stand column) or a cradle box's tie rod "
               "since the simplification round 1 (2026-10-21: the materials rule, no steel in a "
               "structural part; MISUMI's NETRF12 steel before): rated as a tube to its tapped "
@@ -362,6 +374,17 @@ register(Item(ROD_HARD[0], "1/2 in hard-anodized 6061-T6511 round rod, 1 ft (McM
               dims={"od": ROD_HALF, "length": ROD_HARD[1], "material": "aluminium"},
               notes="The pivot posts' stock (:data:`ROD_HARD`), sawn to length at home."))
 register_factory("rod6061ha_12p7_m6_", _rod_hard_of)
+register(Item(ROD_STICK[0], f"1/2 in 6061-T6511 round rod, 3 ft (McMaster {ROD_STICK[3]})",
+              "standoff",
+              (Offer("McMaster-Carr", ROD_STICK[2], ROD_STICK[3], price_usd=ROD_STICK[4],
+                     verified=True, tiers=((1, ROD_STICK[4]),),
+                     note="multipurpose 6061-T6511 extruded rod, 1/2 in, -0.006 to +0.006 in, "
+                          "ASTM B221, plain, 3 ft; the 6061 rods' family table rendered "
+                          "2026-10-21 (simplification round 1's stand check) and the product "
+                          "page the same day (round 2)"),),
+              dims={"od": ROD_HALF, "length": ROD_STICK[1], "material": "aluminium"},
+              notes="The plain posts', tie rods' and riser sleeves' stock (:data:`ROD_STICK`), "
+                    "sawn to length at home."))
 
 ROD_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(250, 6001))
 """The posts' and tie rods' lengths: 25-600 mm in 0.1 mm steps (each one faced to it)."""
@@ -401,14 +424,21 @@ register(
               "L's roll with its share of the moving parts at 5.7 x its yield (12 mm had "
               "been 2.99 x). Its steel taken as the NETRF12's, 1018 or equivalent at 220 "
               "MPa."),
-    Item("rod_6061_5_8_150", "5/8 in round 6061-T6511 aluminium rod, 150 mm (cut 6 in, faced "
-         "to length, its wrench flats milled and its foot tapped M6 on the Carvera)", "standoff",
-         (Offer("Speedy Metals", "https://www.speedymetals.com/showproduct.aspx?productid=2439",
+    Item("rod_6061_5_8_150", "5/8 in round 6061-T6511 aluminium rod, 150 mm (a 1/2 ft stick, "
+         "faced to length, its wrench flats milled and its foot tapped M6 on the Carvera)",
+         "standoff",
+         (Offer("McMaster-Carr", "https://www.mcmaster.com/8974K48/", "8974K48",
+                price_usd=3.25, verified=True,
+                note="multipurpose 6061-T6511 rod, 5/8 in, 1/2 ft, USD 3.25 (simplification "
+                     "round 1's figure of 2026-10-21; the product page rendered the same day by "
+                     "round 2), faced 1.2 mm off each end; its length tolerance unverified. "
+                     "Speedy Metals' 6 in piece (USD 1.80, cut +1/8 -0 in) until round 2's P5"),
+          Offer("Speedy Metals", "https://www.speedymetals.com/showproduct.aspx?productid=2439",
                 "2439", price_usd=1.80, verified=True,
                 note="5/8\" Rd 6061-T6511 Aluminum, Extruded, by the inch: 'Base Price: "
                      "$0.30' an inch, cut 'Plus 1/8\", Minus 0\"' (6 in: $1.80; the cart "
                      "showed it so, 2026-10-21); FedEx, cart-calculated; the cart takes "
-                     "orders over $20.00 only (one cart with the other rods)"),),
+                     "orders over $20.00 only (one cart with the other rods)")),
          dims={"d": 6.0, "od": 15.875, "length": 150.0, "flats": 13.0, "flat_length": 10.0,
                "yield_mpa": 241.3, "material": "aluminium"},
          notes="The rear saddle's post (construction.cradle.POST; simplification round 1, "
@@ -973,8 +1003,9 @@ register(
                 note="20 pcs M8 304 ultra-thin flat washers 8 x 14 x 0.5 mm; the product JSON "
                      "fetched 2026-10-20 (2026-10-10 the same)")),
          dims={"id": 8.0, "od": 14.0, "t": 0.5, "e_mpa": 193000.0, "yield_mpa": 205.0},
-         notes="The gearbox riser's go/no-go shims (construction.handcrank.RISER_SHIM), over "
-               "each sleeve under the outer plate."),
+         notes="The gearbox riser's go/no-go shims, over each sleeve under the outer plate, "
+               "until simplification round 2 (2026-10-21): the sleeves are faced to the "
+               "gearbox's measured height since (construction.handcrank.RISER_SLEEVE_RANGE)."),
     Item("m8_thin_nut", "M8 hex jam nut, 18-8 (13 x 4 mm)", "nut",
          (Offer("Bolt Depot", BD + "13573", "13573", price_usd=0.15, verified=True,
                 tiers=((1, 0.15), (100, 0.0979)), note=BD_2 + ": 13 mm AF, 4 mm"),),
@@ -1035,20 +1066,23 @@ register(
                "the riser is rated on (an 18-8 of no stated class is A2-50's 210 MPa: the stud "
                "0.83 at the clutch's cap). A2 under an 18-8 nut galls: threadlocker 243 on the "
                "thread, as before."),
-    Item("m8_sleeve_6061_12p7x20", "1/2 in 6061-T6511 riser sleeve, 12.7 x 20 mm, drilled 8.0 mm "
-         "(a 1 in piece cut by Speedy Metals)", "misc",
-         (Offer("Speedy Metals", ROD_STOCK[ROD_HALF]["url"],
-                f"{ROD_STOCK[ROD_HALF]['sku']} cut 1 in",
-                price_usd=ROD_STOCK[ROD_HALF]["per_in"], verified=True,
-                note="a 1 in piece of the posts' 1/2 in round (USD 0.192 an inch, whole inches, "
-                     "the cart 2026-10-21), faced to 20 mm on the Carvera and drilled 8.0 mm "
-                     "through on a drill press"),),
-         dims={"id": 8.0, "od": ROD_HALF, "length": 20.0, "material": "aluminium",
-               "e_mpa": ROD_E, "yield_mpa": ROD_YIELD},
+    Item("m8_sleeve_6061_12p7", "1/2 in 6061-T6511 riser sleeve, 12.7 mm, faced to the "
+         "gearbox's height (21-23 mm), drilled 8.0 mm (a 1 in piece of McMaster 8974K28)",
+         "misc",
+         (Offer("McMaster-Carr", ROD_STICK[2], ROD_STICK[3], verified=True,
+                note="a 1 in piece sawn from the posts' 3 ft stick (the BOM buys the stick; "
+                     "Speedy Metals' cut piece until simplification round 2), drilled 8.0 mm "
+                     "through on a drill press and faced on the Carvera to the gearbox's "
+                     "calipered height"),),
+         dims={"id": 8.0, "od": ROD_HALF, "length": 22.0, "material": "aluminium",
+               "e_mpa": ROD_E, "yield_mpa": ROD_YIELD, "cut_from": ROD_STICK[0],
+               "cut_over": 25.4 - 22.0},
          notes="The gearbox riser's sleeves (construction.handcrank.RISER_SLEEVE) since the "
                "simplification round 1 (2026-10-21, the materials rule: 304 stainless before, "
                "whose annealed 205 MPa the clamp and the column's moment took past at the "
-               "clutch's cap): one on each stud, the ring to the shims, clamped."),
+               "clutch's cap): one on each stud, the ring to the plate, clamped; faced to "
+               "the gearbox's measured height since simplification round 2 (2026-10-21: to "
+               "20 mm under 1-3 mm of 304 shims before)."),
 )
 
 # -- simplification round 1 (2026-10-21, the user's materials rule: no steel in a structural

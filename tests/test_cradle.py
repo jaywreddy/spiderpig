@@ -252,6 +252,29 @@ def test_a_cradles_cutting_estimate_is_the_same_grouped_or_not():
         assert fit.factor(3) <= fit.factor(2)
 
 
+@pytest.mark.no_fabricate
+def test_a_cradles_cutting_fit_charges_the_deburring_and_caps_the_blank():
+    """The fit's two terms of simplification round 2's refit: SendCutSend's default
+    deburring, USD 1.47 a part, only on a part it deburrs (from 0.995 x 3 in), at any
+    quantity; and a blank past ``blank_cap`` priced as the cap (a big plate turned within it
+    costs the same, as the live quotes of B's outer plate at 0 and 70 deg did)."""
+    from spiderpig.hardware.bom import CRADLE_CUT_FITS, CutPart, cut_estimate
+
+    key = "al5052_4p8mm"
+    fit = CRADLE_CUT_FITS[key]
+    assert fit.deburr == pytest.approx(1.47)
+    narrow = CutPart(30.0, 2, 340.0, 3, 131.0, 25.0)       # under 0.995 in: arrives as cut
+    wide = narrow._replace(short_mm=25.3)
+    bare = 2 * round(fit.one(wide) * fit.factor(2), 2)
+    assert cut_estimate(key, [wide], fit) == pytest.approx(bare + 2 * 1.47, abs=0.02)
+    assert cut_estimate(key, [narrow], fit) < cut_estimate(key, [wide], fit) - 2.8
+    big = CutPart(1300.0, 2, 3560.0, 16, 576.0, 476.8)
+    assert fit.blank_cap < 576.0 * 476.8 / 100.0
+    turned = big._replace(long_mm=566.0, short_mm=463.7)
+    assert cut_estimate(key, [turned], fit) == pytest.approx(cut_estimate(key, [big], fit),
+                                                             rel=0.005)
+
+
 QUOTED = (
     # SendCutSend's live quotes of 2026-10-14 (design review round 2): B's and A's files at
     # the reviewed snapshot, at their quantities: (cradle, sheet, part, qty, area cm^2, cut
@@ -286,9 +309,11 @@ QUOTED = (
 
 @pytest.mark.no_fabricate
 def test_a_cradles_cutting_fit_holds_to_the_live_quotes():
-    """``CRADLE_CUT_FITS`` against the quotes it was fitted on (design review round 2's B1:
-    the area-only fit had missed by -32 to +53 %, the 7075 and the birch unpriced): each
-    file within 11 %, B's and A's orders within 2 % (quoted USD 758.19 and 573.82)."""
+    """``CRADLE_CUT_FITS`` against the quotes it is fitted on (design review round 2's B1:
+    the area-only fit had missed by -32 to +53 %, the 7075 and the birch unpriced; refitted
+    in simplification round 2 on 2026-10-21's, with the deburring and the blank's cap): each
+    file of 2026-10-14 within 11 %, B's and A's orders then within 2 % (quoted USD 758.19
+    and 573.82); each quote of 2026-10-21, one off and at its quantity, within 11 %."""
     from spiderpig.hardware.bom import CRADLE_CUT_FITS, CutPart, cut_estimate
 
     totals: dict[str, list[float]] = {}
@@ -302,13 +327,14 @@ def test_a_cradles_cutting_fit_holds_to_the_live_quotes():
     assert totals["A"][0] == pytest.approx(573.82)
     for live, fit in totals.values():
         assert fit == pytest.approx(live, rel=0.02)
-    # and the frame plates' live quotes of 2026-10-21 (simplification round 1), checked, not
-    # fitted: the outer +8.2 %, the inner -7.2 %
+    # and the live quotes of 2026-10-21 (simplification rounds 1 and 2): A's outer plate,
+    # 19 % over on the 2026-10-14 law, and B's b5, 20 % under, now within 11 %
     from spiderpig.hardware.bom import CRADLE_LIVE_QUOTES
 
-    for _, key, part, q, area, cut, n, long_, short, usd in CRADLE_LIVE_QUOTES:
+    assert len(CRADLE_LIVE_QUOTES) >= 50
+    for cradle, key, part, q, area, cut, n, long_, short, usd in CRADLE_LIVE_QUOTES:
         got = cut_estimate(key, [CutPart(area, q, cut, n, long_, short)], CRADLE_CUT_FITS[key])
-        assert got == pytest.approx(usd, rel=0.11), part
+        assert got == pytest.approx(usd, rel=0.11), (cradle, part, q)
 
 
 @pytest.mark.no_fabricate
@@ -317,7 +343,8 @@ def test_the_take_up_rates_each_pin_against_its_sheets_tolerances():
     links' sheets at their published over-thickness, worst case and RSS. On B's pins as
     reviewed (their wobble notes' plays), P (b1 0.250 in + b2, 0.187 in 5052 since design
     review round 3), K, X and Y (two 0.187 in 5052 links each since b4 went to 5052 in
-    simplification round 1) come out short worst case; J (b3 7075, b4 5052) keeps 0.04 mm.
+    simplification round 1) come out short worst case, and J since b3 went to 6061 0.187 in
+    (simplification round 2: +0.229 mm against 7075 0.190 in's +0.178, 0.04 mm left before).
     The pillars too (round 3's laser-cut parts minor 9). A rating: the guide and ORDER.md
     carry the fix."""
     from types import SimpleNamespace
@@ -333,13 +360,13 @@ def test_the_take_up_rates_each_pin_against_its_sheets_tolerances():
     got = take_up(cfg, SimpleNamespace(meta={"wobble": wobble}, bodies=[]))
     by = {r["pin"]: r for r in got["rows"]}
     assert set(by) == {*plays, "pillar O1"}
-    assert got["short_worst"] == ["K", "P", "X", "Y"]
+    assert got["short_worst"] == ["J", "K", "P", "X", "Y"]
     assert got["short_rss"] == ["P"]
     assert by["P"]["growth_worst_mm"] == pytest.approx(0.915, abs=1e-3)
     assert by["P"]["margin_worst_mm"] == pytest.approx(-0.541, abs=1e-3)
-    assert by["J"]["margin_worst_mm"] == pytest.approx(0.041, abs=1e-3)
+    assert by["J"]["margin_worst_mm"] == pytest.approx(-0.01, abs=1e-3)
     assert by["K"]["margin_worst_mm"] == pytest.approx(-0.01, abs=1e-3)
-    assert by["pillar O1"]["margin_worst_mm"] == pytest.approx(0.222, abs=1e-3)
+    assert by["pillar O1"]["margin_worst_mm"] == pytest.approx(0.171, abs=1e-3)
     assert [x["sheet"] for x in by["P"]["links"]] == ["al5052_6p35mm", "al5052_4p8mm"]
     assert got["fix"]
 
@@ -884,9 +911,10 @@ def _the_clutch_is_set_slippable(hc, spec, climb: float, setting: dict) -> None:
 def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
     """The riser (design review round 3's M2: a clamped stack, not four studs in bending):
     a ring of the crank sheet on the gearbox's machined face, centred on its spigot ring, its
-    holes' webs a thickness or more; on each stud a steel sleeve that sits on the face's boss
-    between the spigot ring and the boss's edge, the go/no-go's shims over it within their
-    range, the plate over the spigot ring and the turning hub's end by ``RISER_CLEAR``; each
+    holes' webs a thickness or more; on each stud a 6061 sleeve that sits on the face's boss
+    between the spigot ring and the boss's edge, up to the plate, its length within the range
+    a 1 in piece faces to (simplification round 2: no shims), the plate over the spigot ring
+    and the turning hub's end by ``RISER_CLEAR``; each
     class 8.8 stud threaded a diameter or more into the face, short of its thread's depth, its
     end filed to at most ``STUD_PAST_MAX`` over its thin nut, under the crank block's lowest
     plate by half a millimetre with the go/no-go's window and the plates under the seat at
@@ -904,8 +932,8 @@ def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
         RISER_CLEAR,
         RISER_RING,
         RISER_RING_HOLE,
-        RISER_SHIMS_RANGE,
         RISER_SLEEVE,
+        RISER_SLEEVE_RANGE,
         RISER_STUD,
         RISER_THIN,
         SEAT_LOW,
@@ -927,8 +955,8 @@ def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
     hole = box.face_thread + RISER_RING_HOLE
     assert box.pcd / 2 - hole / 2 - (box.spigot_d + RISER_RING) / 2 >= t   # the ring's webs
     assert box.face_d / 2 - box.pcd / 2 - hole / 2 >= t
-    assert r.ring_t + RISER_SLEEVE[2] + r.shims == pytest.approx(r.height)
-    assert RISER_SHIMS_RANGE[0] <= r.shims <= RISER_SHIMS_RANGE[1]
+    assert r.ring_t + r.sleeve == pytest.approx(r.height)
+    assert RISER_SLEEVE_RANGE[0] <= r.sleeve <= RISER_SLEEVE_RANGE[1] < 25.4 - 1.0
     d = RISER_STUD[0]
     assert STUD_IN * d <= r.engage <= box.face_depth - 0.5
     assert 0.0 <= r.past <= STUD_PAST_MAX
@@ -956,12 +984,13 @@ def test_the_riser_holds_the_gearbox_as_a_clamped_stack():
     (``RISER_MU``) by 2 x; at B's and A's capped jam 30° from the toggles (the review's rod
     forces) every strength row holds 1.3 (the stud in A2-70 at its proof, the sleeve in
     bending and crushed, the ring's bearing); the 18-8 set screws round 2 had, carried in
-    bending over 18.7 mm, were SF 0.55-0.62 (the review's)."""
-    from spiderpig.construction.handcrank import NRV050
+    bending over 18.7 mm, were SF 0.55-0.62 (the review's). Simplification round 2: the
+    sleeve faced to the gearbox's height, no shims, at either end of its range."""
+    from spiderpig.construction.handcrank import NRV050, RISER_SLEEVE_RANGE
     from spiderpig.cradle_drive import riser_rating
 
     notes = {"riser_height_mm": 25.2, "face_z_mm": -25.2, "rod_mid_z_mm": 55.0,
-             "riser_ring_mm": 3.175, "riser_shims_mm": 2.025, "plate_inner_z_mm": 4.75}
+             "riser_ring_mm": 3.175, "riser_sleeve_mm": 22.025, "plate_inner_z_mm": 4.75}
     walk = riser_rating(NRV050, notes, 410.0, 35.8)
     assert walk["slip_sf"] >= 2.0, walk
     assert min(walk["sf_stud"], walk["sf_sleeve"], walk["sf_ring_bearing"]) >= 2.0, walk
@@ -971,11 +1000,37 @@ def test_the_riser_holds_the_gearbox_as_a_clamped_stack():
     assert walk["sf_sleeve_crush"] >= 1.5, walk
     assert walk["least"] == min(walk["sf_stud"], walk["sf_sleeve"], walk["sf_ring_bearing"],
                                 walk["sf_sleeve_crush"])
-    for f, cap in ((1931.9, 63.7), (2301.7, 67.1)):
-        got = riser_rating(NRV050, notes, f, cap)
-        assert got["least"] >= 1.3, got
-        assert got["sf_stud"] >= 1.3, got
-        assert got["sf_sleeve_crush"] >= 1.3, got
+    for sleeve in (None, *RISER_SLEEVE_RANGE):
+        at = dict(notes)
+        if sleeve is not None:          # the gearbox's hub a millimetre either way
+            h = sleeve + at["riser_ring_mm"]
+            at.update(riser_height_mm=h, face_z_mm=-h, riser_sleeve_mm=sleeve)
+        assert riser_rating(NRV050, at, 410.0, 35.8)["slip_sf"] >= 2.0
+        for f, cap in ((1931.9, 63.7), (2301.7, 67.1)):
+            got = riser_rating(NRV050, at, f, cap)
+            assert got["least"] >= 1.3, (sleeve, got)
+            assert got["sf_stud"] >= 1.3, (sleeve, got)
+            assert got["sf_sleeve_crush"] >= 1.3, (sleeve, got)
+
+
+@pytest.mark.no_fabricate
+def test_a_post_s_bare_head_is_rated_at_its_own_friction():
+    """Simplification round 2's P6: the posts' DIN 125 washers stay only at the pillars' feet
+    (``cradle.HEAD_WASHED``); a bare head's least preload at the bare 5052's under-head
+    friction (up to 0.3: VDI 2230's torque split, 0.79 of the washered 0.2's) and its
+    pressure on the plate at the most preload within VDI 2230's limit by 2 x; the threads'
+    least engagement the washered foot's."""
+    from spiderpig.construction.pivots.standoff import StandoffAxle
+    from spiderpig.cradle_report import P_LIMIT_MPA, bare_head_factor, head_area, post_engaged
+
+    assert cr.HEAD_WASHED == {"pillar": ("foot",), "column": ()}
+    assert StandoffAxle().cradle_shaft().washer_ends == ("foot",)
+    assert cr.column_parts(cr.STANDS["decanter_rcm"]).washer is None
+    assert bare_head_factor() == pytest.approx(0.793, abs=0.005)
+    assert bare_head_factor(mu_head=0.2) == pytest.approx(1.0)
+    assert P_LIMIT_MPA / (4644.0 / head_area()) >= 2.0
+    cfg = BuildConfig(linkage="decanter_rcm", robot=False)
+    assert post_engaged(cfg) == pytest.approx(16.0 - 1.6 - 4.75 - 1.6, abs=0.05)
 
 
 def p_ok(name: str, pieces) -> bool:
@@ -1196,8 +1251,8 @@ def test_a_cradles_bom_says_what_its_total_leaves_out():
     assert {"al7075_4p8mm", "birch_9mm", "al5052_4p8mm", "al5052_6p35mm",
             "al6061_3p2mm"} <= set(CRADLE_CUT_FITS)
     assert CRADLE_CUT_PROXIES == {}
-    assert "2026-10-14" in CRADLE_CUT_SOURCE
-    assert "758.19" in CRADLE_CUT_SOURCE
+    assert "2026-10-21" in CRADLE_CUT_SOURCE
+    assert "USD 1.47 a part SendCutSend deburrs" in CRADLE_CUT_SOURCE
     proxies = {"al7075_4p8mm": ("al5052_4p8mm", 1.0, 2.0, "a test's basis")}
     made = [MadeRow("L.b2", "laser", "7075", "", 40.0 * 0.4826, 2, sheet="al7075_4p8mm"),
             MadeRow("base_plate", "laser", "birch", "", 3000.0 * 0.9, 1, sheet="birch_9mm"),
@@ -1381,6 +1436,49 @@ def test_the_cradle_passes_the_cut_rules(key):
     assert got["ok"], got
 
 
+def _dxf_box_areas(path, degs) -> list[float]:
+    """A DXF's every entity flattened to points, its bounding box's area (mm^2) turned by
+    each of ``degs``."""
+    import ezdxf
+    from ezdxf import path as dxf_path
+
+    pts = np.array([(v.x, v.y) for e in ezdxf.readfile(str(path)).modelspace()
+                    for v in dxf_path.make_path(e).flattening(0.01)])
+    out = []
+    for d in degs:
+        a = math.radians(d)
+        q = pts @ np.array([[math.cos(a), math.sin(a)], [-math.sin(a), math.cos(a)]])
+        w, h = q.max(0) - q.min(0)
+        out.append(float(w * h))
+    return out
+
+
+@pytest.mark.slow
+@pytest.mark.construction
+@pytest.mark.parametrize("key", CRADLES)
+def test_the_cradles_cut_files_lie_in_their_least_box(key, tmp_path):
+    """Simplification round 2's C1: SendCutSend prices a part by its box (b6 turned 26.75 deg
+    quoted USD 5.24 less the pair), so each of a cradle's per-part DXFs lies within 0.5 deg
+    of its least-area box (``Body.turn`` "least", :func:`layout.least_box_degrees`): no
+    turn of the file, at 0.25 deg steps over a half turn, has a box smaller than the best
+    within 0.5 deg of it as written. b6, the inner plate and b2 do turn (the walkers'
+    files lie as they did: the identity gate)."""
+    from spiderpig.hardware.bom import group_made
+    from spiderpig.layout import save_parts
+
+    cfg = BuildConfig(linkage=key, robot=False)
+    mech = cache.cached_product(cfg, 1.0)
+    assert all(b.turn == "least" for b in mech.bodies if b.fab == "laser")
+    rows = save_parts(group_made(mech.bodies, "laser"), tmp_path, cfg.sheet)
+    assert rows
+    near = [k / 20 for k in range(-10, 11)]
+    every = [k / 4 for k in range(-360, 360)]
+    for row in rows:
+        best_near = min(_dxf_box_areas(tmp_path / row["file"], near))
+        best = min(_dxf_box_areas(tmp_path / row["file"], every))
+        assert best >= best_near * (1 - 1e-4), (row["file"], best, best_near)
+
+
 def _outline_turns(part) -> tuple[list[float], list[tuple[str, float]]]:
     """A plate's top outline (its outer wire), in order: every tangent break's turn (degrees,
     + convex, - re-entrant) and each edge's kind (``L``, ``+`` a convex arc, ``-`` a concave
@@ -1496,6 +1594,18 @@ def test_the_guide_names_the_as_cut_parts_and_the_routed_birch():
                      meta={"sheet": "al5052_3p2mm"})
     assert as_cut_words(mech) == "b4"
     assert AS_CUT in CRADLE_ARRIVAL
+    # and the pins whose links, at their sheets' thickest, outgrow the play (simplification
+    # round 2: b3 in 6061 0.187 in took J and J2 there): 7075 0.190 in + 5052 0.187 in is
+    # +0.178 + 0.229 mm, over a 0.40 mm play, not a 0.425
+    from spiderpig.construction.assembly import THICK_PINS, thick_pins_words
+
+    assert THICK_PINS in CRADLE_ARRIVAL
+    assert thick_pins_words(mech) == ""
+    pin = {"links": [{"link": "b4"}, {"link": "b6"}]}
+    mech.meta["wobble"] = {"pin:J": dict(pin, play_mm=0.40), "pin:K": dict(pin, play_mm=0.425)}
+    words = thick_pins_words(mech)
+    assert words.startswith("Pin J carries links that")
+    assert "(by 0.01 mm)" in words
     names = {t.label[:5]: t.name for t in part_types(mech)}
     assert names["LC300"].startswith("base board, CNC-routed, ")
     assert names["LC128"].startswith("crank block plate, laser-cut, ")
@@ -1720,6 +1830,9 @@ def _holds_the_jam(r: dict, key: str) -> None:
     # goes first)
     assert joints["jam"]["strip_sf"] >= 1.3, joints
     assert joints["walk"]["strip_sf"] >= 1.3, joints
+    # simplification round 2's P6: a head straight on the deburred plate (no DIN 125 but at a
+    # pillar's foot) within VDI 2230's limiting pressure at the screw's most, by 1.3
+    assert joints["jam"]["head_sf"] >= 1.3, joints
     assert r["structure"]["joints"]["thread"]["over_proof"] >= 1.0
     ties = r["structure"]["tie_threads"]
     assert min(ties["walk"]["strip_sf"], ties["jam"]["strip_sf"]) >= 1.3, ties

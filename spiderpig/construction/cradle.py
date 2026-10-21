@@ -564,7 +564,7 @@ CARVERA_LONGEST = 285.0         # a part's longest side cut on the Carvera: a 12
 #                                 3 mm margins, with room
 CLEAT_JOINT = 1.0               # a cleat longer than that comes in equal pieces butted end to
 #                                 end on its pencil marks, this far apart, each glued along its
-#                                 length (B's 452 mm ones in two), their joint ends square
+#                                 length (B's 402 mm ones in two), their joint ends square
 BOARD_WINDOW = (285.0, 390.0, 105.0, 20.0)
 """A window through the base board under the base stop's lowest sweep (design review round
 2, 2026-10-14): from and to (x behind the mouth), its half-width across the bay's middle and
@@ -700,16 +700,19 @@ STANDS: dict[str, Stand] = {
     # the bar at 90.5°, the triangle and the leg in front of it) and the front ones above
     # it. Nothing crosses the bay: the decanter stands under the mouth, between the bars.
     "decanter_rcm": Stand(
-        nodes={"Ff": (-110.0, rail_y(_RAIL_B)), "Fr": (386.0, rail_y(_RAIL_B)),
+        # (simplification round 2, 2026-10-21: the front foot Ff 50 mm back, from x -110, and
+        # the board's front with it, its width kept; E1 and E2 60 mm forward, from 220 and
+        # 280: the outer plate's blank 13 % smaller, the inner plate's chord 60 mm shorter)
+        nodes={"Ff": (-60.0, rail_y(_RAIL_B)), "Fr": (386.0, rail_y(_RAIL_B)),
                # on the front leg O2-Ff, a quarter and 0.6 of the way down it from O2 (O2 is
                # (-2.7, -307))
-               **{n: (-2.7 + (-110.0 + 2.7) * f, -307.0 + (rail_y(_RAIL_B) + 307.0) * f)
+               **{n: (-2.7 + (-60.0 + 2.7) * f, -307.0 + (rail_y(_RAIL_B) + 307.0) * f)
                   for n, f in (("D1", 0.25), ("D2", 0.6))},
                # (the side frames' redesign, 2026-10-20) two columns on the rail toward the
                # rear, the inner plate's bottom chord from D2 to them: a box toward the rear,
                # so the posts no longer stand on one line and the inner plate holds their ends
                # across it (DECANTER.md, "The side frames")
-               "E1": (220.0, rail_y(_RAIL_B)), "E2": (280.0, rail_y(_RAIL_B))},
+               "E1": (160.0, rail_y(_RAIL_B)), "E2": (220.0, rail_y(_RAIL_B))},
         outer=(("O1", "O2"), ("O2", "Ff"), ("O2", "O"), ("O1", "O"), ("O", "Fr"),
                ("Ff", "Fr"), ("O2", "Fr")),
         inner=(("O1", "O2"), ("O2", "D1"), ("O1", "D1"), ("D1", "D2"), ("D2", "E1"),
@@ -738,8 +741,10 @@ STANDS: dict[str, Stand] = {
         # hand crank) took 682's to 24.9°: 684; with round 2's window under the base stop as
         # well, 684's rear stood at 25.0° to the tenth: 686, 2 mm more at the rear. That bound
         # counts a full 6 L at every tilt; with the wine leaving as it pours the rear holds
-        # 28°: cradle_report.stability's "pouring")
-        base=(-160.0, 526.0),
+        # 28°: cradle_report.stability's "pouring"). Simplification round 2: its front 50 mm
+        # back with the front foot (-160 before), so the front pad keeps its carriage bolt's
+        # spacing; the rear stays (a 10 mm trim took the rear to 25.2°)
+        base=(-110.0, 526.0),
     ),
 }
 
@@ -984,11 +989,14 @@ class CradleStand(Group):
         outer = view.named(r"stand_column_\w+_(?:screw|washer)i")
         inner = view.named(r"stand_column_\w+_(?:screw|washer)o")
         nm = BUTTON_A2_70_NM["6"]
+        washed = bool(view.named(r"stand_column_\w+_washer[io]"))
+        head = ("(and its washer, on a 12 mm column)" if washed else
+                "(straight on the deburred plate: no washer under it)")
         ops = []
         if columns:
             ops.append(Op(STACK, (-1, 1), whole(*columns, *faces, *outer), "",
-                          "Screw the stand's columns to the outer plate, a button head "
-                          "(and its washer, on a 12 mm column) from outside into each "
+                          f"Screw the stand's columns to the outer plate, a button head {head} "
+                          "from outside into each "
                           + ("through an 18 mm fender washer on the plate's inner face under "
                              "the column's end, another on its top end for the inner plate "
                              "(all of one thickness: caliper them from the bag, within 0.05 "
@@ -997,7 +1005,8 @@ class CradleStand(Group):
                           "Fastenings' table).", "columns"))
         if inner:
             ops.append(Op(JOIN, (2,), whole(*inner), "",
-                          "The columns' inner button heads (and washers) from the bay side "
+                          "The columns' inner button heads "
+                          + ("(and washers) " if washed else "") + "from the bay side "
                           f"(threadlocker, {nm:g} N·m). After a clutch slip (a blocked cradle "
                           f"cranked until the clutch clicks), take every post's screws back to "
                           f"{nm:g} N·m: the slip may have set the plates under the posts' "
@@ -1516,6 +1525,16 @@ FACE_WASHER = "m6_washer_wide"  # the 18-8 M6 fender washer (6.4 x 18 x 1.6, Bol
 #                         guide: a post's length scatter is the inner plate's locked-in stress)
 
 
+HEAD_WASHED: dict[str, tuple[str, ...]] = {"pillar": ("foot",), "column": ()}
+"""The post ends whose M6 button head keeps a DIN 125 washer under it, by kind (simplification
+round 2, 2026-10-21: every end had one since design review round 2's m2): a pillar's foot on
+the outer plate, where the walking moment opens the face at the least preload a bare head's
+friction on the 5052 leaves (``cradle_report.post_joints``: 1.07 x its decompression on B's
+O1 and O2, 1.05 on A's G, at an under-head friction of 0.3; 0.85 and 0.83 washered), and where
+B's lay-flat block takes O1's head in its relief (:data:`RISER_RELIEF`). Elsewhere the head
+bears on the deburred plate (``cradle_report``'s head rows, VDI 2230's limiting pressure)."""
+
+
 def face_washer() -> tuple[float, float, float]:
     """:data:`FACE_WASHER`'s OD, ID and thickness (mm)."""
     from spiderpig.hardware.catalog import get
@@ -1528,14 +1547,15 @@ def column_parts(stand: Stand) -> ColumnParts:
     """:class:`ColumnParts` of ``stand``'s columns: a NETRF10 on M5 x 12 button heads in
     5.5 mm holes, or a 1/2 in 6061-T6511 round (M6 x 12 deep each end, tapped at home: the
     simplification round 1, 2026-10-21; MISUMI's 12 mm NETRF12 steel before) on M6 x 16
-    button heads (A2-70) and DIN 125 washers in 6.4 mm holes (design review round 2's m2: the
-    heads had borne on the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated
+    button heads (A2-70) in 6.4 mm holes, their heads on the plate (:data:`HEAD_WASHED`:
+    simplification round 2; DIN 125 washers under them since design review round 2's m2, when
+    the heads had borne on the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated
     class)."""
     if stand.column_d > SMALL_TIE_D:
         from spiderpig.hardware.cradle_catalog import ROD_HALF, ROD_THREAD
 
-        return ColumnParts(ROD_HALF, ROD_THREAD, M6, 16.0, POST_HOLE, "m6_washer",
-                           FACE_WASHER)
+        return ColumnParts(ROD_HALF, ROD_THREAD, M6, 16.0, POST_HOLE,
+                           "m6_washer" if HEAD_WASHED["column"] else None, FACE_WASHER)
     return ColumnParts(SMALL_TIE_D, 10.0, M5, TIE_SCREW, TIE_HOLE)
 
 
@@ -1679,8 +1699,9 @@ def seat(size: BottleSize, at: Setting | None = None) -> tuple[float, float, flo
     return yf - xf * math.tan(slope), slope, 0.0
 
 
-SET_SCREW = 6.0            # an M3 cup-point set screw (the light's clip, the rear knob's hub,
-#                            the barrel nut's)
+SET_SCREW = 5.0            # an M3 cup-point set screw (the light's clip, the rear knob's hub,
+#                            the barrel nut's): 5 mm since simplification round 2 (the
+#                            carriers' length, one SKU; 6 before)
 CARRIER_SET_SCREW = 5.0    # the M3 cup-point set screw locking a carrier on each tie: 5 mm
 #                            since the 1/2 in tie rods (the simplification round 1,
 #                            2026-10-21: an M3 x 6 left 5.7 mm under a 12.7 mm rod)
@@ -2121,7 +2142,7 @@ POST = (150.0, -141.0)        # the post: 5/8 in 6061-T6511 rod (simplification 
 #                               length, its flats milled and its foot tapped M6 on the Carvera:
 #                               its length and foot. It takes the roll of a load hung at the
 #                               screw, all of it since the nut floats
-POST_KEY = "rod_6061_5_8_150"       # (hardware.cradle_catalog: Speedy Metals 2439)
+POST_KEY = "rod_6061_5_8_150"       # (hardware.cradle_catalog: McMaster 8974K48)
 POST_D = 15.875
 POST_YIELD = 241.3            # MPa: 6061-T6511 rod's least (the Aluminum Association's Table
 #                               11.1, extruded rod 0.250 in and over: 35 ksi)
@@ -2778,7 +2799,9 @@ CLIP_CUT = 33.0             # the plate's lower front, cut at 45° this far up f
 #                             foot at the saddle's back face (clear of a decanter at rest)
 CLIP_SCREW_X, CLIP_SCREW_Z = 82.5, 7.5   # its two M5 screws (their pilots 1.2 mm clear of
 #                                          the front tie's bore)
-CLIP_BITE = 7.0             # their thread in the saddle
+CLIP_BITE = 7.0             # their thread in the saddle (simplification round 2: 11 for the
+#                             base stop's M5 x 16, one SKU, put each screw's tip into the front
+#                             tie rod Tf2's bore, 4.9 mm^3: the clip keeps its M5 x 12)
 CLIP_SCREW = M5.key(CLIP_FLANGE + CLIP_BITE)    # M5 x 12
 M5_PILOT = 4.2              # a printed pilot an M5 cuts its own thread in
 
@@ -3637,6 +3660,11 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                 board_window=[float(cf.lip[0]) + BOARD_WINDOW[0],
                               float(cf.lip[0]) + BOARD_WINDOW[1], -BOARD_WINDOW[2],
                               BOARD_WINDOW[2], BOARD_WINDOW[3]])
+    for b in bodies + extras:
+        # every cut file turned to its least-area box (simplification round 2's C1:
+        # SendCutSend prices a part by its box; the walkers' files lie as they did)
+        if b.fab == "laser":
+            b.turn = "least"
     return Mechanism(name=f"{side.name}_cradle", bodies=bodies + extras,
                      connections=connections, meta=meta,
                      bom_extras=list(side.bom_extras) + list(passive.bom_extras) + glue)
@@ -3933,10 +3961,14 @@ def shop_ops(view) -> list:
         f"Saw the pivot posts ({len(hard)}: the pillars a link turns on, {', '.join(pivots)}) "
         "from the hard-anodised 1/2 in rod, each 1.5 mm over its length (the BOM's cut list), "
         "a fine-tooth hacksaw in the vise, the rod wrapped in tape where the jaws hold it. "
-        f"The plain posts and tie rods ({len(plain)}) and the riser's sleeves come cut, 1.5 "
-        "mm over (Speedy Metals, +1/8 -0 in).")
+        f"Saw the plain posts and tie rods ({len(plain)}) from McMaster's plain 1/2 in 3 ft "
+        "sticks the same way, 1.5 mm over, and the riser's four sleeves as 1 in (25.4 mm) "
+        "pieces (a mitre box keeps each cut square within the facing's 1.5 mm; the sticks' "
+        "spare is the sleeves' fallback). The sleeves are only drilled here: each is faced at "
+        "the gearbox's step, to the gearbox's calipered height, once it has come.")
     rod_lines = (
-        "Face every piece square to its length on the Carvera: the pieces lying along X in "
+        "Face every piece but the riser's sleeves square to its length on the Carvera: the "
+        "pieces lying along X in "
         "the vise against one stop, a batch a setup, an end mill's flank across the end, then "
         "re-clamped once for the other end. Each to its length within 0.05 mm (a side's "
         "posts all one length: they set its plates' gap), each end square to "
@@ -4014,7 +4046,7 @@ CARVERA_TEXT = (
     "rail finds its slot blind on the way back; either edge can go to the rail), before the "
     "parts are cut free.",
     "Cut the tabs and sand them flush, each cleat's long faces before all (a nub there takes "
-    "up the rail's play). A cleat longer than the bed comes in pieces (B's 452 mm ones in "
+    "up the rail's play). A cleat longer than the bed comes in pieces (B's 402 mm ones in "
     f"two): they go onto the board end to end on its pencil line, {CLEAT_JOINT:g} mm apart, "
     "each glued along its length.",
 )
@@ -4420,8 +4452,8 @@ def _block_xy(key: str) -> tuple[np.ndarray, list[np.ndarray]]:
     return pts[lk.crank[0]][0], at
 
 
-LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 12.7, "drive_box": 9.9},
-                                      "decanter_hinge": {"cradle": 12.0}}
+LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 12.3, "drive_box": 9.7},
+                                      "decanter_hinge": {"cradle": 11.9}}
 """What a person lifts onto and off the lay-flat blocks, or off the board (kg;
 ``cradle_pack.rest_poses``' masses, held to them in ``tests/test_cradle.py``): B's cradle off
 its board, and its drive side with the cradle box (the first build's lay); A's cradle off its

@@ -165,6 +165,10 @@ def _chicago_offers(length: int) -> tuple[Offer, ...]:
 _BOLT_DEPOT = {   # Bolt Depot 18-8 product pages rendered 2026-10-08: key -> (product, USD each
     #               below 100, USD per 100); sold singly, no minimum order
     "m3_bhcs_6": ("7218", 0.06, 3.97), "m3_bhcs_8": ("7219", 0.06, 4.10),
+    # (simplification round 2: A's tube joint's one M3 x 12 had fallen to McMaster's 100-pack,
+    # 92095A183, USD 8.17; Bolt Depot's page rendered 2026-10-21 by the round's parts
+    # brainstorm, its web/bd_7221.txt)
+    "m3_bhcs_12": ("7221", 0.07, 4.58, "2026-10-21"),
     "m3_nut": ("4773", 0.07, 2.39), "m3_washer_9021": ("7319", 0.05, 3.23),
     "m3_washer": ("4513", 0.05, 1.45),       # DIN 125, 3.2 x 7 x 0.5 (the clamped shims)
     # cup-point set screws, 18-8 (Bolt Depot has no flat point), page rendered 2026-10-08
@@ -185,11 +189,11 @@ the user's decision of 2026-10-08, which leaves no Accu cart."""
 def _bolt_depot(key: str) -> tuple[Offer, ...]:
     if key not in _BOLT_DEPOT:
         return ()
-    product, each, per_100 = _BOLT_DEPOT[key]
+    product, each, per_100, *when = _BOLT_DEPOT[key]
     return (Offer("Bolt Depot", f"https://boltdepot.com/Product-Details?product={product}",
                   product, pack_qty=1, price_usd=each, tiers=((1, each), (100, per_100 / 100)),
                   verified=True, note="18-8 stainless (A-2), sold singly; page rendered "
-                                      "2026-10-08"),)
+                                      f"{when[0] if when else '2026-10-08'}"),)
 
 
 SOURCES: dict[str, tuple[Offer, ...]] = {
