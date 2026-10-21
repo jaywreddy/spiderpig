@@ -2248,7 +2248,8 @@ PASSIVE_SHARE = 0.5     # the passive half's share of what the cradle box carrie
 #                         and the box straddle the bay's middle, and a block on a saddle or on
 #                         the bottle comes in there (a decanter's rim under the mouth)
 TIE_PROOF_N = 20.1 * 450.0     # an M6 A2-70 screw's proof load (stress area 20.1 mm^2, ISO
-#                                3506-1's 450 MPa): the tie rods' and the posts' button heads
+#                                3506-1's 450 MPa): the posts' button heads (the tie rods'
+#                                class 10.9 ones: fasteners.BUTTON_10_9_PROOF_N)
 
 
 def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) -> dict:
@@ -2262,8 +2263,9 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) ->
     radius from the mouth, ``G J / L`` in twist). Per case: the moment crossing, each rod's
     shear, end moment and twist, its tapped end's stress (the tube its tap leaves, 1018 at
     its least yield), the end joint's gapping moment (its preload, ``TIE_TIGHTEN_NM`` on the
-    screw, over the end face's kern) and, gapped, the screw's prying tension against its
-    proof load; the strength rows (``"rows"``: the rods, their end joints)."""
+    screw, over the end face's kern) and, gapped, the screw's prying tension against what its
+    head carries (a class 10.9 button head, ``fasteners.BUTTON_10_9_PROOF_N``); the strength
+    rows (``"rows"``: the rods, their end joints)."""
     from spiderpig import cradle_structure as cs
     from spiderpig.linkages.decanters import TIES
 
@@ -2279,23 +2281,25 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) ->
     k_rot = sum(k_s * ri * ri + k_t for ri in r.values())
     z_tube = math.pi * (d ** 4 - bore ** 4) / (32 * d)
     screw_d = cr.TIE_M.d
-    from spiderpig.hardware.fasteners import preload_band
+    from spiderpig.hardware.fasteners import BUTTON_10_9_PROOF_N, preload_band
 
+    proof = BUTTON_10_9_PROOF_N[f"{screw_d:g}"]
     preload = preload_band(f"{screw_d:g}", cr.TIE_TIGHTEN_NM)[0]   # (its least: friction 0.2)
     kern = (d * d + cr.TIE_ROD_HOLE ** 2) / (8 * d)
     gap_nm = preload * kern / 1000.0
     out: dict = {"rod": f"NETRF{d:g} x {L:g} mm, M{screw_d:g} ends", "share": PASSIVE_SHARE,
                  "radii_mm": {n: round(v, 1) for n, v in r.items()},
                  "gap_moment_nm": round(gap_nm, 2), "preload_n": round(preload),
-                 "screw_proof_n": round(TIE_PROOF_N), "cases": {}, "rows": []}
+                 "screw_proof_n": round(proof), "cases": {}, "rows": []}
     rod_row: dict = {"joint": "box:tie rods", "kind": "box", "links": [],
                      "section": f"{d:g} mm steel standoff tie rods across the bay (NETRF{d:g}, "
                                 f"as a {d:g} x {bore:g} tube at their tapped ends)",
                      "what": "the cradle box's tie rods racking across the bay (the passive "
                              "half's moment about the mouth)"}
     joint_row: dict = {"joint": "box:tie rod ends", "kind": "box", "links": [],
-                       "section": f"the tie rods' M{screw_d:g} end screws (A2-70) prying a "
-                                  "gapped end joint", "what": "the tie rods' end joints",
+                       "section": f"the tie rods' M{screw_d:g} end screws (ISO 7380, class "
+                                  "10.9) prying a gapped end joint",
+                       "what": "the tie rods' end joints",
                        "walk": None}
     for tag, (v, sk, _) in cases.items():
         keep = ~np.asarray(sk, bool)
@@ -2331,7 +2335,7 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) ->
                         "moment_nm": top["end_nm"], "safety": round(worst, 2)}
         if tag == "jam":
             joint_row["jam"] = {"load_n": round(prying), "moment_nm": top["end_nm"],
-                                "safety": round(TIE_PROOF_N / max(prying, 1e-9), 2)}
+                                "safety": round(proof / max(prying, 1e-9), 2)}
     out["rows"] = [rod_row, joint_row]
     return out
 
@@ -2396,8 +2400,11 @@ def contact_peak(clamp: np.ndarray, moment: np.ndarray, od: float, bore: float) 
 
 def post_joints(config: BuildConfig, side, got: dict) -> dict:
     """Each post's screwed ends (design review round 3's M5): its end face (``POST_FACE``)
-    clamped to its plate by an M6 A2-70 button head at ``fasteners.BUTTON_A2_70_NM`` (the
-    preload band of ``fasteners.preload_band`` at friction 0.1-0.2), under the moment, shear
+    clamped to its plate by an M6 A2-70 button head at ``fasteners.BUTTON_A2_70_NM``, or at a
+    foot ``construction.cradle.STEEL_FEET`` names the tie rods' class 10.9 one at
+    ``construction.cradle.TIE_TIGHTEN_NM`` (each the preload band of ``fasteners.preload_band``
+    at friction 0.1-0.2; the 10.9's proof its head's, ``fasteners.BUTTON_10_9_PROOF_N``),
+    under the moment, shear
     and pull the side frame gives it there (``got``: per case, :func:`structure`'s posts with
     their per-angle forces). Per end and case: the moment over the face's decompression at
     the least preload (``open_x``: 1 the face's edge lifts, ``kern``), the screw's tension
@@ -2409,10 +2416,12 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
     and the shear over the face's friction at the least preload (``slip_x``). Walking, every
     face must stay shut and not slip (fretting each pour); at the clutch's cap a face may
     lift (the guide re-tightens them after a slip) if the screw and the plate hold."""
-    from spiderpig.hardware.fasteners import BUTTON_A2_70_NM, preload_band
+    from spiderpig.hardware.fasteners import BUTTON_10_9_PROOF_N, BUTTON_A2_70_NM, preload_band
 
-    nm = BUTTON_A2_70_NM["6"]
-    f_lo, f_hi = preload_band("6", nm)
+    nm, steel_nm = BUTTON_A2_70_NM["6"], cr.TIE_TIGHTEN_NM
+    steel = cr.STEEL_FEET.get(config.linkage, ())
+    bands = {False: preload_band("6", nm), True: preload_band("6", steel_nm)}
+    proofs = {False: TIE_PROOF_N, True: BUTTON_10_9_PROOF_N["6"]}
     od, bore = POST_FACE
     area = math.pi * (od * od - bore * bore) / 4
     kern = math.pi * (od ** 4 - bore ** 4) / (32 * od) / area
@@ -2433,6 +2442,8 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                 v = np.hypot(*np.asarray(fo["box"][end], float).T)
                 if not len(m):
                     continue
+                is_steel = end == "foot" and p.name in steel
+                f_lo, f_hi = bands[is_steel]
                 c_lo = np.maximum(f_lo - pull, 0.0)
                 c_hi = np.maximum(f_hi - pull, 1e-9)
                 open_x = m / np.maximum(c_lo * kern, 1e-9)
@@ -2447,7 +2458,7 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                        "pull_n": round(float(pull.max()), 1),
                        "open_x": round(float(open_x.max()), 2),
                        "screw_n": round(float(screw.max())),
-                       "screw_sf": round(TIE_PROOF_N / float(screw.max()), 2),
+                       "screw_sf": round(proofs[is_steel] / float(screw.max()), 2),
                        "peak_mpa": (round(float(peak.max()), 1)
                                     if math.isfinite(float(peak.max())) else None),
                        "bearing_sf": round(plate / float(peak.max()), 2),
@@ -2461,9 +2472,20 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                 for k in ("screw_sf", "bearing_sf"):
                     if row[k] < w[k]:
                         w[k], w[k + "_at"] = row[k], f"{p.name} {end}"
-    return {"screw": f"M6 x 16 button head A2-70 (ISO 7380), {nm:g} N·m",
-            "preload_n": [round(f_lo), round(f_hi)], "kern_mm": round(kern, 2),
-            "decompression_nm": [round(f_lo * kern / 1000, 2), round(f_hi * kern / 1000, 2)],
+    f_lo, f_hi = bands[False]
+    out = {"screw": f"M6 x 16 button head A2-70 (ISO 7380), {nm:g} N·m",
+           "preload_n": [round(f_lo), round(f_hi)], "kern_mm": round(kern, 2),
+           "decompression_nm": [round(f_lo * kern / 1000, 2), round(f_hi * kern / 1000, 2)]}
+    if steel:
+        h_lo, h_hi = bands[True]
+        out["steel_feet"] = {"pillars": list(steel),
+                             "screw": f"M6 x 16 button head class 10.9 (ISO 7380), "
+                                      f"{steel_nm:g} N·m",
+                             "preload_n": [round(h_lo), round(h_hi)],
+                             "proof_n": round(BUTTON_10_9_PROOF_N["6"]),
+                             "decompression_nm": [round(h_lo * kern / 1000, 2),
+                                                  round(h_hi * kern / 1000, 2)]}
+    return {**out,
             "proof_n": round(TIE_PROOF_N), "plate_mpa": plate,
             "plate_basis": P_LIMIT_BASIS, "slip_mu": SLIP_MU,
             "washer_mm": list(POST_WASHER), "rows": rows, "worst": worst}
@@ -2666,26 +2688,15 @@ posts and both frame plates as one frame (``cradle_structure.side_frame``) and f
 outer plate (0.6), pillar O2 (0.73) and column D2 (0.97), A's outer plate (0.41), column D3
 (0.83), inner plate (1.09) and pillar G (1.25) under it."""
 
-_TIES_OPEN = ("the cradle box's tie rods' end joints are at their gap walking, 0.98 of it, at "
-              "their screws' least preload (M6 button heads at ISO 7380's 4 N·m, friction "
-              "0.2; under the walking bound, the whole bottle on the box): shut at friction "
-              "0.19 or less (threadlocker's), and with a full-head screw at 5 N·m or a 10.9 "
-              "button head at 8 N·m, a part each and, for a socket head, its room under the "
-              "cradle link")
-OPEN_JOINTS: dict[str, dict[str, str]] = {
-    "decanter_rcm": {"tie rod ends": _TIES_OPEN},
-    "decanter_hinge": {
-        "tie rod ends": _TIES_OPEN,
-        "posts": "pillar G's foot joint lifts walking at its screw's least preload (its M6 "
-                 "button head at ISO 7380's 4 N·m, friction 0.2: 1.05 x its decompression, "
-                 "under the walking bound that puts the whole bottle on the drive side); shut "
-                 "at friction 0.18 or less (threadlocker's); a full-head screw there would "
-                 "hold it, a part and a layer of head room more"},
-}
+OPEN_JOINTS: dict[str, dict[str, str]] = {}
 """Per cradle, the screwed joints open at their walking bar (every post's face shut walking at
 its screw's least preload, :func:`post_joints`; the tie rods' end joints closed,
-:func:`box_racking`'s ``gap_ratio``; design review round 3's M5, the ISO 7380 heads at their
-4 N·m): the user's call. The tests hold each within 10 % and xfail on it."""
+:func:`box_racking`'s ``gap_ratio``): the user's call; the tests hold each within 10 % and
+xfail on it. None since 2026-10-20: design review round 3's M5 had put every M6 button head at
+ISO 7380's 4 N·m in A2-70, and both cradles' tie rods' end joints stood at their gap walking
+(0.98 of it at the least preload) and A's pillar G's foot lifted (1.06 x its decompression);
+the tie rods' ends and that foot take class 10.9 button heads at 6 N·m
+(``construction.cradle.TIE_M``, ``STEEL_FEET``): the same heads, no plan changed."""
 
 OPEN_GRIP: dict[str, str] = {
     "decanter_hinge": "A's 130 mm crank, kept (design review round 3's m5): a full 6 L's "

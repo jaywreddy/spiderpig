@@ -56,6 +56,17 @@ the class the posts' and the tie rods' end joints need once a jam gaps them (des
 round 2's m2: prying at 4-6 kN, A2-70's proof 9.0 kN; an unclassed 18-8's 210 MPa would yield).
 Their M6 lengths in the cradle (12, 16, 20) buy here; the others stay Bolt Depot's."""
 FASTENAL = "https://www.fastenal.com/product/details/"
+ACCU = "https://accu-components.com/us/"
+M6_BHCS_109 = {16: ("494818-SSB-M6-16-10-9", "SSB-M6-16-10.9",
+                    ((1, 1.45), (2, 0.86), (4, 0.58), (6, 0.44), (12, 0.35), (24, 0.30),
+                     (50, 0.27), (100, 0.25), (200, 0.24)))}
+"""Accu's class 10.9 M6 button heads (the page rendered 2026-10-20: "M6 X 16mm Socket Button
+Screws (ISO 7380) - High Tensile Steel (10.9)", finish "Natural" (unplated), a 4 mm key, USD
+each by quantity, shipping that day): where ISO 7380's 4 N·m in A2-70 leaves a cradle's joint
+too little preload (its tie rods' ends; ``construction.cradle.STEEL_FEET``'s pillar feet). Not
+the zinc-plated one (SSB-M6-16-10.9-Z): an electroplated class 10.9 risks hydrogen
+embrittlement (ISO 4042). Accu's A2-70 ISO 4017 hex heads (SEBF-M6-16-A2-70, USD 0.57 at 12,
+21 days) were weighed: their 4.15 mm heads don't fit under the cradle links (2026-10-20)."""
 M5_BHCS_BD = {8: ("6631", 0.12, 7.76), 10: ("6632", 0.12, 8.03), 12: ("6633", 0.13, 8.60),
               16: ("6634", 0.14, 9.60)}
 """Bolt Depot's 18-8 M5 button heads (pages rendered 2026-10-10: head 9.14-9.50 x 2.50-2.75,
@@ -325,6 +336,15 @@ register(
                  **({"property_class": "A2-70", "proof_n": 9045.0}
                     if n in M6_BHCS_A270 else {})})
       for n, (pn, each, per100) in M6_BHCS_BD.items()),
+    *(Item(f"m6_bhcs109_{n}", f"M6 x {n} button head socket screw (ISO 7380), class 10.9 "
+           "steel, unplated", "fastener",
+           (Offer("Accu", ACCU + "socket-button-screws/" + path, sku, price_usd=tiers[0][1],
+                  verified=True, tiers=tiers,
+                  note="class 10.9 steel (High Tensile), ISO 7380, finish Natural (unplated), "
+                       "4 mm key; sold singly; page rendered 2026-10-20"),),
+           dims={"d": 6.0, "length": float(n), "head_d": 10.5, "head_h": 3.3,
+                 "property_class": "10.9", "proof_n": 0.8 * 830.0 * 20.1})
+      for n, (path, sku, tiers) in M6_BHCS_109.items()),
     *(Item(f"m5_bhcs_{n}", f"M5 x {n} button head socket screw (ISO 7380)", "fastener",
            (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
                   tiers=((1, each), (100, per100 / 100)), note=BD_NOTE),),

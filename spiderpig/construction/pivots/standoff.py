@@ -155,6 +155,10 @@ class StandoffAxle:
     neck_wall: float | None = None   # a printed neck's thinnest wall where a passing link
     #                                  leaves a layer less room than a ring (None: the
     #                                  rings' ``Params.min_wall``; a cradle's: NECK_WALL)
+    foot: str = "bhcs"               # the foot's screw family (on the outer plate): "bhcs109"
+    #                                  a class 10.9 button head (a cradle's pillar in
+    #                                  cradle.STEEL_FEET: :meth:`steel_foot`)
+    foot_nm: float | None = None     # its tightening torque (None: ``tighten_nm``)
 
     @property
     def screw_d(self) -> float:
@@ -238,6 +242,15 @@ class StandoffAxle:
                        shim_key="m6_washer", tighten_nm=BUTTON_A2_70_NM["6"],
                        outside=5.0, neck_wall=NECK_WALL, face_washer=FACE_WASHER)
 
+    def steel_foot(self) -> StandoffAxle:
+        """A cradle's pillar whose foot joint needs more preload than an A2-70 button head
+        takes at ISO 7380's 4 N·m (``construction.cradle.STEEL_FEET``): its foot screw the tie
+        rods' class 10.9 button head at their torque (``construction.cradle.TIE_TIGHTEN_NM``;
+        the same head), its inner end's the A2-70 one."""
+        from spiderpig.construction.cradle import TIE_TIGHTEN_NM
+
+        return replace(self, foot="bhcs109", foot_nm=TIE_TIGHTEN_NM)
+
     def _running_play(self, build: Build, group: AxleGroup, out: Realized,
                       length: float) -> float:
         """A decanting cradle's column (its printed rings fill their layers,
@@ -292,19 +305,20 @@ class StandoffAxle:
         w = get(self.washer_key).dims
         return float(w["od"]), float(w["id"]), float(w["t"])
 
-    def end_screw(self, pitch: float, plate: bool = True
+    def end_screw(self, pitch: float, plate: bool = True, kind: str = "bhcs"
                   ) -> tuple[str, float, float, float] | None:
         """(key, length, head diameter, head height) of the button head (M4, or M3 for an
-        M3 column) through a frame plate (``plate``; else straight into the column's free
-        end, over the last link) and its washer into the standoff's end: the most thread up
-        to its depth (taken as the shortest standoff's)."""
+        M3 column; ``kind`` "bhcs109": a cradle's class 10.9 foot, :meth:`steel_foot`) through a
+        frame plate (``plate``; else straight into the column's free end, over the last link)
+        and its washer into the standoff's end: the most thread up to its depth (taken as the
+        shortest standoff's)."""
         from spiderpig.hardware.crank_catalog import M4_BHCS_LENGTHS, m4_bhcs
         from spiderpig.hardware.fasteners import SCREWS
 
         _, _, wt = self.washer()
         depth = min(self.thread_max, self.min_segment / 2)
         best = None
-        family = SCREWS.get(("bhcs", self.size[1:])) if self.size != "M4" else None
+        family = SCREWS.get((kind, self.size[1:])) if self.size != "M4" else None
         lengths = family.lengths if family is not None else M4_BHCS_LENGTHS
         for L in lengths:
             e = L - (pitch if plate else 0.0) - wt
@@ -331,7 +345,9 @@ class StandoffAxle:
             raise ConstructionError("an M4 pillar screw doesn't fit the frame plate arms")
         ring_min = (self.od + self.ring_fit) / 2 + p.min_wall   # the narrowest ring to cut
         screw = self.end_screw(ctx.sheet_t("frame"))
-        if screw is None or self.end_screw(ctx.pitch, False) is None:
+        if screw is None or self.end_screw(ctx.pitch, False) is None or (
+                self.foot != "bhcs" and self.end_screw(ctx.sheet_t("frame"), True,
+                                                       self.foot) is None):
             raise ConstructionError(f"no stock M4 screw fits a standoff pillar's ends in "
                                     f"{ctx.pitch:g} mm layers")
         w_od, _, w_t = self.washer()
@@ -609,16 +625,20 @@ class StandoffAxle:
         inner = [n for n in ends if n not in column and view.z[n][1] > top + 1e-3]
         ops = []
         cradle = self.stock == "shaft12"        # (a cradle's: its sides open, no servo bay)
+        foot = (f"its M{self.size[1:]} steel button head (class 10.9, from its own bag: not a "
+                f"stainless one; to {self.foot_nm:g} N·m) and washer from outside"
+                if self.foot == "bhcs109" else "its button head and washer from outside")
         if column:
             ops.append(Op(STACK, (-1, 1), whole(*column), "",
                           "Screw each pillar's standoff column (one piece) to the outer plate: "
-                          + "its button head and washer from outside"
+                          + foot
                           + (", an 18 mm fender washer on the plate's inner face under the "
                              "column's foot and another on its top end for the inner plate "
                              "(matched to the columns' by caliper, within 0.05 mm)"
                              if self.face_washer is not None else "")
-                          + f", threadlocker, to {self.tighten_nm:g} N·m while the column is "
-                          "bare to hold.", "columns"))
+                          + (", threadlocker" if self.foot == "bhcs109" else
+                             f", threadlocker, to {self.tighten_nm:g} N·m")
+                          + " while the column is bare to hold.", "columns"))
         if inner:
             ops.append(Op(JOIN, (1,), whole(*inner), "",
                           (f"Each pillar's inner button head and washer from the bay side, "
@@ -732,7 +752,7 @@ class StandoffAxle:
         for k, sign, plate in ends:
             # through the plate (and any shims under it) into the standoff's end
             grip = (build.plan.t(k) if plate else pitch) + shimmed.get(k, 0.0)
-            got = self.end_screw(grip, plate)
+            got = self.end_screw(grip, plate, self.foot if sign < 0 and plate else "bhcs")
             if got is None:
                 raise ConstructionError(f"{group.name}: no stock M4 screw takes a {grip:.2f} mm "
                                         f"grip at layer {k}")

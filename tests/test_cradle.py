@@ -1947,8 +1947,11 @@ def test_the_cradle_has_an_assembly_order(key):
     card = [t for t in use[4].text if t[:2] in ("1.", "2.", "3.", "4.", "5.")]
     assert len(card) == 5
     assert "bottle" in use[1].adds
-    assert set(use[2].adds) == {"decanter", *(f"decanter_riser_plate{p:g}"
-                                               for p in cr.RISER_PLATES)}
+    lays = key in cr.LAY_BLOCKS
+    riser = {"decanter", *(f"decanter_riser_plate{p:g}" for p in cr.RISER_PLATES)}
+    if not lays:            # (its blocks and lifts are only the riser's: below)
+        riser |= {f"decanter_riser_{k}{i}" for k in ("block", "lift") for i in (0, 1)}
+    assert set(use[2].adds) == riser
     assert all(not s.adds for s in use[3:])
     text = " ".join(t for s in use for t in s.text)
     for words in ("lab jack", "jack's height", "finger's width", "take the decanter away "
@@ -1965,11 +1968,14 @@ def test_the_cradle_has_an_assembly_order(key):
         assert len(trip) - n_apart == 11
         assert trip[0].startswith("Taking it apart 1/8")
         assert trip[-1].startswith( "Back together 11/11")
-    # the riser's blocks: B lays its cradle on them in its first build (and on the trip),
-    # A when its board's finish cures
+    # the riser's blocks: B lays its cradle on them in its first build (and on the trip); A
+    # stands on its brackets' feet while its board's finish cures (on the blocks it tipped at
+    # 13.4° since design review round 3's frames), so its blocks come with the riser's step
     blocks = [s for s in steps if "decanter_riser_block0" in s.adds]
     assert len(blocks) == 1
-    assert (blocks[0] is board) == (not modules)
+    assert lays == modules
+    assert (blocks[0] is use[2]) == (not lays)
+    assert blocks[0] is not board
     (saddles,) = [s for s in steps if "front_saddle" in s.adds]
     assert steps.index(base) < steps.index(saddles)
     inner = next(s for s in steps if s.side == "R" and any(a.startswith("R.") and
@@ -3567,28 +3573,19 @@ def test_the_room_under_the_mouth_names_its_lowest_part():
     assert ref["lowest"]["part"] == low["part"]
 
 
-REST_OPEN = {
-    "decanter_hinge": "design review round 3's frames (its strut G-O 140 mm, the wider legs "
-                      "from O) took A's centre of mass toward its gearbox: lying on its drive "
-                      "side on the riser's blocks (its first build only) it tips at 13.4° "
-                      "under the 15° bar, the blocks anywhere on the plate: the stand and use "
-                      "round's",
-}
-"""The rest poses design review round 3's structure broke (an open item)."""
-
-
 @pytest.mark.slow
 @pytest.mark.construction
-@pytest.mark.parametrize("key", [pytest.param(k, marks=pytest.mark.xfail(
-    reason=REST_OPEN[k], strict=False)) if k in REST_OPEN else k for k in CRADLES])
+@pytest.mark.parametrize("key", CRADLES)
 def test_every_pose_the_guide_rests_a_piece_in_is_rated(key):
     """Each pose the guide sets a piece down in (``cradle.REST_POSES``; design review round
     2's M2), rated on the pieces' real shapes (``cradle_pack.rest_poses``): B's cradle and
     its drive side lie level on the riser's two blocks and the gearbox (the drive panel
     alone tipped at 6.8° and 2.5 N on its gearbox and a bracket), its box stands on its
-    links' long edges, its passive panel on its outer plate; A lies on its blocks while its
-    board's finish cures. Each tips only past its bar and takes its push at its top; the
-    blocks stand as far as the gearbox off the outer plate."""
+    links' long edges, its passive panel on its outer plate; A stands on its brackets' feet
+    while its board's finish cures (it had lain on the blocks: design review round 3's frames
+    tipped it at 13.4°, wherever they went). Each tips only past its bar and takes its push at
+    its top; on the blocks, level on them and the gearbox, which they stand as far as off the
+    outer plate."""
     from spiderpig import cradle_pack as cp
 
     inp = cp.cached_input(key)
@@ -3605,10 +3602,15 @@ def test_every_pose_the_guide_rests_a_piece_in_is_rated(key):
         tip, push = bars[pose]
         assert r["tip_deg"] >= tip, r
         assert r["push_n"] >= push, r
-    for pose in ("cradle", "drive_box", "drive"):
-        if pose in rows:
-            assert rows[pose]["tilt_deg"] < 2.0, rows[pose]      # level on the blocks
-            assert {"riser block 0", "riser block 1", "L.gearbox"} <= set(rows[pose]["on"])
+    for rest in cr.REST_POSES[key]:
+        got = rows[rest.key]
+        if rest.blocks:
+            assert got["tilt_deg"] < 2.0, got                       # level on the blocks
+            assert {"riser block 0", "riser block 1", "L.gearbox"} <= set(got["on"])
+        elif rest.down == "feet":                                   # on its brackets alone
+            assert got["tilt_deg"] < 2.0, got
+            assert {n for n in got["on"] if not n.startswith("foot_bracket_")} <= {
+                "L.frame_outer", "R.frame_outer", "L.torso", "R.torso"}, got
     # the blocks on their lifts (and their boss) stand as far as the gearbox off the outer
     # plate (round 2's NRV050: 114.7 mm)
     lo = inp["parts"]["L.frame_outer"]["lo"][2]

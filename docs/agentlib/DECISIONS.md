@@ -2938,19 +2938,54 @@ identity gate against `planner-f667d6b` is identical.
   rock under 20 N, 3.86; A 1.09 and 3.28, 4.37 (the test's bar 5).
 - **Minor 4, Tf2:** under the cap O1's link moves 1.38 mm against the inner plate (0.39
   walking, on the walking bound), inside Tf2's 2.8 mm past the bar at rest.
-- **Open items (the user's):** the tie rods' end joints are at their gap walking at the least
-  preload (0.98, both cradles), and A's pillar G's foot lifts (1.06): ISO 7380's 4 N·m
-  limits the preload (`cradle_report.OPEN_JOINTS`; a full-head screw at 5 N·m or a 10.9
-  button head at 8 N·m holds each). The packs: the wider frames land B's drive panel on the
-  cradle box (unsupported, 157.5 L) and stand A's panels 255 mm tall (`PACK_OPEN`): the
-  packing round re-plans them.
+- **The three open items, closed** (the user's brief, the same day; real fixes, each test
+  holding it, nothing xfailed for them):
+  - **The tie rods' end joints** (both cradles: 0.98 of their gap walking at the least
+    preload, the A2-70 button head at ISO 7380's 4 N·m). Weighed: a full-strength A2-70
+    head at TR Fastenings' table torque (5.9 N·m at friction 0.1) closes them (1.45), but
+    the head hangs under the cradle link in the clearance gap over the rod or b4/b5: an
+    ISO 4017 hex's 4.15 mm needs a 4.4 mm gap, over the planner's 4 mm (`plan_z.GAP_MAX`),
+    and with the layer it then takes neither cradle plans (A none to 61 layers; B's pin K
+    would span 19.1 mm); an ISO 4762's 6 mm more so. A design change: Tr2's end moment goes
+    as its radius over the rods' sum of squares, so only a fifth rod, or the rear ones much
+    farther out, lowers it (a rod, its claims and the rear V block's seats). Built: the
+    same ISO 7380 head in class 10.9 steel (`cradle.TIE_M`, `fasteners.SCREWS`'
+    `bhcs109`), so no claim or part moves, at 6 N·m (`cradle.TIE_TIGHTEN_NM`): 3/4 of
+    ISO 7380's most in 10.9 (8, `fasteners.BUTTON_10_9_NM`), 3.8-7.0 kN, the most 52 % of
+    what its head carries (`BUTTON_10_9_PROOF_N`, 80 % of 10.9's proof: 13.3 kN); 8 would
+    put 9.3 kN into the rods' mild-steel taps and the 5052 for no joint that needs it.
+    Walking 1.48 x the end moment (A 1.47); jammed, the prying 3.73 (A 3.06). Steel by the
+    wine: the rods are bare carbon steel already (oiled), the heads lie outside the bay on
+    the cradle links' outer faces; unplated, as an electroplated 10.9 risks hydrogen
+    embrittlement (ISO 4042), oiled with the rods. Accu SSB-M6-16-10.9 (USD 0.44 each at 6,
+    0.35 at 12; ships the day), a new line; the guide says the plain-steel ones from their
+    own bag, 6 N·m on the key, back to 6 after a clutch slip (the stainless ones to 4).
+  - **A's pillar G's foot** (lifting at 1.06 x its decompression walking): the same 10.9
+    head at 6 N·m, its foot only (`cradle.STEEL_FEET`, `StandoffAxle.steel_foot`; its inner
+    end keeps the A2-70 one, at 0.59). Walking 0.70 (column D3's foot next, 0.63); at the
+    cap its screw 1.92 on the 10.9 head, the 5052 under its washer S_P 2.28 (A's worst now
+    2.16, column D3's end; at the drive review's 76.3 N·m 1.44, where G's foot on A2-70 had
+    been 1.09). One screw for both items: one part number, one torque.
+  - **A's lay-flat pose** (13.4° on the riser's blocks wherever they went, the bar 15°): A
+    doesn't come apart, so nothing needs it on its side. Off its board while the finish
+    cures, it stands on the bench on its six brackets' feet as on the board
+    (`cradle.REST_POSES`' new `"feet"`, `cradle_pack.rest_poses`): 27.0° and 32.3 N, 13.21
+    kg. `LAY_BLOCKS` drops A; the guide's finish step stands it there and gives its lift,
+    13.2 kg, two people (`cradle.LIFTS`). B's lifts re-measured on this structure: the
+    cradle 14.0 kg (12.9 had been the merged base's: the head's slow chunk 4 failed on it),
+    the drive side with the box 11.0 (10.3); B's poses 18.9°, 19.2°, 40.5°, 40.8° and
+    64.7°.
+  - Left for the packing turn: the packs (`PACK_OPEN`): the wider frames land B's drive
+    panel on the cradle box (unsupported, 157.5 L) and stand A's panels 255 mm tall.
 - **The BOM** (`spiderpig build`; on `decanting-cradle` with round 3's drive and use and
   parts merged, B USD 1,412.11 and A 1,094.59): B to USD 1,379.89 (-32.22: the standoffs
   -20.62, 29 fender washers +2.88, the screws +0.16; the cutting -14.64, b2 out of 7075
   -80.44 against the 5052's +65.80 for b2, the wider frames and b6's arm). A to 1,156.93
   (+62.34: its column E2 a side, 2 standoffs, 4 screws and 4 washers, 39 fender washers,
   +17.54; the cutting +44.80 for the wider frames and the inner plate's chord to E2). No new
-  SKU (on the reviewed snapshot: B 1,374.22 to 1,342.12, A 1,056.74 to 1,119.08).
+  SKU (on the reviewed snapshot: B 1,374.22 to 1,342.12, A 1,056.74 to 1,119.08). Then the
+  10.9 heads: B USD 1,380.45 (+0.56, 8 of them), A 1,157.43 (+0.50, 10, bought as 12), a
+  line each (Accu); B 61 lines, A 57.
 - **The drive's numbers moved:** b6's wider arm took B's worst start to 2.719 N·m at the
   input (`handcrank.DESIGN_START_NM`, 2.714 after round 3's saddles), its drawn clutch's cap
   to 63.9 N·m (`config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`; 63.8); A's stay 2.858 and 67.2.
@@ -2961,4 +2996,5 @@ identity gate against `planner-f667d6b` is identical.
   `spiderpig/construction/axle.py`, `spiderpig/materials.py`, `spiderpig/strength.py`,
   `spiderpig/config.py`, `spiderpig/hardware/` (`sheet_catalog.py`, `cradle_catalog.py`,
   `fasteners.py`), `spiderpig/construction/handcrank.py` (`DESIGN_START_NM` only),
-  `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`.
+  `spiderpig/construction/__init__.py` (`STEEL_FEET`'s pillars), `spiderpig/cradle_pack.py`
+  (the `"feet"` rest), `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`.

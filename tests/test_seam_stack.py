@@ -282,23 +282,24 @@ def test_no_workers_with_spiderpig_workers_off(monkeypatch):
 
 
 def _thick_pin(heads: str = "gap", **spec) -> StackProblem:
-    """A decanting cradle's two 0.190 in links (``b2``, ``b4``: 4.826 mm, the pitch 3.175)
-    on its 8 mm pivot pin, made to its stack (10 mm at least between its rings), a third
-    link ``b6`` crossing ``b2`` well clear of the pin: the real axle claim
-    (:class:`construction.axle.AxleGroup`, :data:`construction.pivots.PIVOT8`)."""
+    """A decanting cradle's two 0.190 in links (``b3``, ``b4``: 4.826 mm in 7075, the pitch
+    3.175; ``b2`` until design review round 3 put it in 0.187 in 5052) on its 8 mm pivot pin,
+    made to its stack (10 mm at least between its rings), a third link ``b6`` crossing ``b3``
+    well clear of the pin: the real axle claim (:class:`construction.axle.AxleGroup`,
+    :data:`construction.pivots.PIVOT8`)."""
     from spiderpig.config import BuildConfig
     from spiderpig.construction.axle import AxleGroup
     from spiderpig.construction.pivots import PIVOT8
 
     points = {"A": (0.0, 0.0), "P": (80.0, 0.0), "B": (160.0, 40.0),
               "C": (30.0, -60.0), "D": (30.0, 60.0)}
-    links = {"b2": (("A", "P"),), "b4": (("P", "B"),), "b6": (("C", "D"),)}
-    topo = _ctx.topology(points, links, axles=(("P", "pin", ("b2", "b4")),))
+    links = {"b3": (("A", "P"),), "b4": (("P", "B"),), "b6": (("C", "D"),)}
+    topo = _ctx.topology(points, links, axles=(("P", "pin", ("b3", "b4")),))
     ctx = _ctx.context(topo, BuildConfig(linkage="decanter_rcm", robot=False))
     group = AxleGroup(topo.axes[0], PIVOT8.resolve(ctx))
     claims = [_ctx.link_claim(n, ctx.params.link_radius, topo) for n in links]
     claims += group.claims(ctx)
-    link_t = tuple((n, ctx.sheet_t("link", n)) for n in ("b2", "b4"))
+    link_t = tuple((n, ctx.sheet_t("link", n)) for n in ("b3", "b4"))
     return StackProblem(topo, claims, StackSpec(pitch=ctx.pitch, margin=ctx.params.margin,
                                                 heads=heads, link_t=link_t,
                                                 max_seconds=float("inf"), **spec))
@@ -318,7 +319,7 @@ def test_links_thicker_than_the_pitch_plan_as_the_brute_force_finds():
     assert plan.optimal
     assert (plan.top, plan.layers, round(plan.height, 6)) == (
         best.top, best.layers, round(best.height, 6))
-    assert abs(plan.layers["b2"] - plan.layers["b4"]) == 1      # side by side
+    assert abs(plan.layers["b3"] - plan.layers["b4"]) == 1      # side by side
     assert verify_plan(plan) == []
 
 

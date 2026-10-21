@@ -83,7 +83,7 @@ from spiderpig.construction.base import (
 from spiderpig.construction.plates import FramePlates, boss_web
 from spiderpig.construction.robot import prefixed
 from spiderpig.hardware.bom import BomLine
-from spiderpig.hardware.fasteners import CLEARANCE, Screw, screw
+from spiderpig.hardware.fasteners import BUTTON_A2_70_NM, CLEARANCE, Screw, screw
 from spiderpig.mechanism import Body, Mechanism
 from spiderpig.shapes import (
     Cut,
@@ -154,14 +154,32 @@ TIE_D = 12.0            # the cradle box's tie rods: MISUMI NETRF12 (12 mm, M6 x
 TIE_THREAD = 12.0
 M5 = screw("bhcs", "5")
 M6 = screw("bhcs", "6")
-TIE_M = M6              # the tie rods' end screws: M6 x 16 button heads, A2-70 (ISO 3506-1)
+M6_109 = screw("bhcs109", "6")  # an M6 ISO 7380 button head in class 10.9 steel
+TIE_M = M6_109          # the tie rods' end screws: M6 x 16 button heads, class 10.9 (ISO 7380,
+#                         ISO 898-1; A2-70 until 2026-10-20: at ISO 7380's 4 N·m in A2-70 their
+#                         joints stood at their gap walking, 0.98 of it, cradle_report's
+#                         OPEN_JOINTS). The same 3.3 mm head under the cradle link: a full-
+#                         strength A2-70 head (an ISO 4017 hex's 4.15, an ISO 4762's 6) needs a
+#                         clearance gap over the planner's 4 mm there, a layer that neither
+#                         cradle's plan has (B's pin K's clevis pin would span 19.1 mm)
 TIE_ROD_SCREW = 16.0    # through the cradle link's 4.75 mm: 11.25 mm in the rod's 12 mm tap
 TIE_ROD_HOLE = 6.4      # their clearance holes in the cradle link (ISO 273 fine)
-TIE_TIGHTEN_NM = 4.0    # the tie rods' screws tightened (the guide): ISO 7380's most for an M6
-#                         A2-70 button head (TR Fastenings: hardware.fasteners.BUTTON_A2_70_NM;
-#                         6 until design review round 3), 2.5-4.6 kN of preload
-#                         (fasteners.preload_band), the end joint closed to 4.9 N·m at the least
-#                         (cradle_report.box_racking)
+TIE_TIGHTEN_NM = 6.0    # the tie rods' screws tightened (the guide), and STEEL_FEET's: 3/4 of
+#                         ISO 7380's most in 10.9 (fasteners.BUTTON_10_9_NM, 8), 3.8-7.0 kN of
+#                         preload (fasteners.preload_band), the end joint closed to 7.3 N·m at the
+#                         least (cradle_report.box_racking), at the most 52 % of what its head
+#                         carries (BUTTON_10_9_PROOF_N); 8 would put 9.3 kN on the 5052 under
+#                         a foot's washer and into the rods' mild-steel taps for no joint that
+#                         needs it. (6 N·m on A2-70 button heads until design review round 3;
+#                         4 until 2026-10-20)
+STEEL_FEET: dict[str, tuple[str, ...]] = {"decanter_hinge": ("G",)}
+"""The pillars whose foot (its end on the outer plate) takes the tie rods' class 10.9 button head
+at :data:`TIE_TIGHTEN_NM` in both sides, not an A2-70 one at ISO 7380's 4 N·m: A's pillar G,
+whose foot lifted walking at the A2-70 head's least preload (1.06 x its decompression,
+2026-10-20: ``cradle_report.post_joints``). Steel by the wine: the tie rods themselves are bare
+carbon steel (MISUMI NETRF12, oiled), these heads lie outside the bay the wine runs in (on the
+cradle links' outer faces, outside the outer plate), unplated (an electroplated 10.9 risks
+hydrogen embrittlement), oiled with the rods."""
 SMALL_TIE_D = 10.0      # a 10 mm standoff (MISUMI NETRF10, M5 x 10 deep each end): a base or
 #                         bay tie, a 10 mm column
 TIE_SCREW = 12.0        # M5 x 12 button heads through a 3.2-4.8 mm plate: 7.2-8.8 mm in the tie
@@ -1029,10 +1047,11 @@ class CradleTies(Group):
         if view.side == "R":
             return [Op(STACK, (k, 1), whole(link), "", "", "cradle_link"), *ops]
         return [Op(STACK, (k, 0, "ties"), whole(link), "Cradle link and tie rods",
-                   f"The four tie rods onto the cradle link, an M{TIE_M.d:g} button head "
-                   "through the link from its leg side into each (threadlocker, "
-                   f"{TIE_TIGHTEN_NM:g} N·m on the key: closed, the joint holds the box's "
-                   "walking moment without working); the rods "
+                   f"The four tie rods onto the cradle link, an M{TIE_M.d:g} x "
+                   f"{TIE_ROD_SCREW:g} steel button head (class 10.9, from its own bag: not "
+                   "a stainless one) through the link from its leg side into each "
+                   f"(threadlocker, {TIE_TIGHTEN_NM:g} N·m on the key: closed, the joint holds "
+                   "the box's walking moment without working); the rods "
                    "stand up from its bay side. It goes onto the stack rods up, its bores "
                    "down over the steel and the pins it rides.", "cradle_link",
                    sub=True), *ops]
@@ -3521,8 +3540,9 @@ def assembly(view) -> list:
     right = view.named(r"tie_\w+_screwR")
     if right:
         ops.append(Op(UNIT, (99,), whole(*right), "",      # (after the link: its key)
-                      f"The cradle link's M{TIE_M.d:g} button heads from its outside into "
-                      f"the rods' ends (threadlocker, {TIE_TIGHTEN_NM:g} N·m on the key).",
+                      f"The cradle link's M{TIE_M.d:g} steel button heads (class 10.9) from "
+                      f"its outside into the rods' ends (threadlocker, {TIE_TIGHTEN_NM:g} N·m "
+                      "on the key).",
                       "tie_screws", side="R", scene=lying))
     if modules and key in PACK_POSES:   # its passive panel onto the cradle link (its pins'
         #                                 clips: ``over_link``), as the trip's way back
@@ -3673,14 +3693,15 @@ def assembly(view) -> list:
             ops.append(Op(FINISH, (1,), whole(*brackets["R"], *on_bolt), "",
                           BRACKETS + " The passive side's knobs only started: they're "
                           "snugged last, at level, once the board is finished.", "base_R"))
-        board = (*cleats, *blocks)
+        board = (*cleats, *(blocks if key in LAY_BLOCKS else ()))
     if board and key:
         text, tag, lines = _board_finish(key, modules)
         ops.append(Op(FINISH, (5,), whole(*board), "Cleats, finish, knobs", text, tag,
                       lines=lines))
     for i, u in enumerate(use_steps(key, bool(saddles)), 1):
         parts = {"setting": [n for n in ("bottle",) if n in view.z],
-                 "riser": [*plates, *(n for n in ("decanter",) if n in view.z)]}
+                 "riser": [*(() if key in LAY_BLOCKS else blocks), *plates,   # (A: no lay)
+                           *(n for n in ("decanter",) if n in view.z)]}
         ops.append(Op(USE, (i,), whole(*parts.get(u.tag, ())), u.title, u.lines[0], u.tag,
                       count=False, lines=u.lines[1:], scene=cast(Scene | None, u.scene)))
     if key in PACK_POSES:
@@ -3912,8 +3933,10 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
         "Keep your hands off the decanter and the bottle while the handle turns.",
         "Lift the cradle by its base board, never by the hand crank or the cradle box.",
         f"After the clutch has slipped against a block (a click under load), take every "
-        f"post's and tie rod's M6 button head back to {TIE_TIGHTEN_NM:g} N·m: the slip may "
-        "have set the plates under the posts' ends.",
+        f"post's stainless M6 button head back to {BUTTON_A2_70_NM['6']:g} N·m and every steel "
+        "one (the tie rods'" + (", pillar " + " and ".join(STEEL_FEET[key]) + "'s foot"
+                                if key in STEEL_FEET else "")
+        + f") to {TIE_TIGHTEN_NM:g}: the slip may have set the plates under the posts' ends.",
         "Keep it out of the sun and under 50 °C (a hot car too), and hand-wash the printed "
         "parts: the PETG ones that carry the bottle bear up to 11 MPa as long as a bottle "
         "rests in it, and PETG's resin deflects at 64 °C under 1.8 MPa (Eastman's Eastar "
@@ -4083,11 +4106,13 @@ def _block_xy(key: str) -> tuple[np.ndarray, list[np.ndarray]]:
     return pts[lk.crank[0]][0], at
 
 
-LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 12.9, "drive_box": 10.3}}
-"""What a person lifts onto and off the lay-flat blocks (kg; ``cradle_pack.rest_poses``'
-masses, held to them in ``tests/test_cradle.py``): B's cradle off its board, and its drive
-side with the cradle box (the first build's lay). Two people, one each side, or one in the
-order :func:`lay_down` gives (design review round 3's stand and use, M5: lifted by its outer
+LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 14.0, "drive_box": 11.0},
+                                      "decanter_hinge": {"cradle": 13.2}}
+"""What a person lifts onto and off the lay-flat blocks, or off the board (kg;
+``cradle_pack.rest_poses``' masses, held to them in ``tests/test_cradle.py``): B's cradle off
+its board, and its drive side with the cradle box (the first build's lay); A's cradle off its
+board (its first build: the board's finish). Two people, one each side, or one in the order
+:func:`lay_down` gives (design review round 3's stand and use, M5: lifted by its outer
 plates' 4.75 mm top edges 430 mm apart, 465 mm over a counter, the NIOSH lifting equation's
 recommended limit is 11.7 kg at most)."""
 
@@ -4275,9 +4300,14 @@ def _board_finish(key: str, modules: bool) -> tuple[str, str, tuple[str, ...]]:
             "loosen the knobs a few turns (two at least) and lift the cradle straight up off "
             "its brackets (they stay on the board, finished round)" if board else
             "undo the thumb knobs and lift the cradle off") + " by "
-        "its outer plates' top members; lay it on its drive side on a folded towel, on the "
-        f"riser's two blocks, each on its lift: {_blocks_words(key)}, a hand on it until "
-        f"it settles. {lay_down(key)}",
+        "its outer plates' top members" + (
+            f" ({LIFTS[key]['cradle']:g} kg, two people if you can, one each side)"
+            if key in LIFTS and key not in LAY_BLOCKS else "") + (
+            "; lay it on its drive side on a folded towel, on the riser's two blocks, each on "
+            f"its lift: {_blocks_words(key)}, a hand on it until it settles. {lay_down(key)}"
+            if key in LAY_BLOCKS else
+            "; stand it on the bench or the floor beside the board on its brackets' feet, as "
+            "it stood on the board: it stands there while the glue and the finish cure."),
         "Glue the cleats on their marks to the bare board (Titebond II, a thin bead, "
         "weighted or clamped 30 minutes); wipe off the squeeze-out.",
         f"Once dry, sand a {CLEAT_LEAD:g} mm lead-in at 45° along each cleat's top edge by "
@@ -4348,8 +4378,8 @@ class Rest:
     the hand crank and the riser, the cradle off its board); ``down``: ``"drive"`` the drive
     side's outer plate down, ``"passive"`` the passive side's, ``"top"`` the cradle box
     levelled and turned over, its saddles' open tops down (on its two cradle links' long
-    edges); ``blocks``: on the riser's two blocks under the drive side's outer plate
-    (:data:`LAY_BLOCKS`)."""
+    edges), ``"feet"`` standing as on its board (on its brackets' feet); ``blocks``: on the
+    riser's two blocks under the drive side's outer plate (:data:`LAY_BLOCKS`)."""
 
     key: str
     words: str
@@ -4372,19 +4402,22 @@ REST_POSES: dict[str, tuple[Rest, ...]] = {
              "passive"),
     ),
     "decanter_hinge": (
-        Rest("cradle", "the cradle off its board (the board's finish curing), lying on its "
-                       "drive side on the riser's two blocks", ("*",), "drive", True),
+        Rest("cradle", "the cradle off its board (the board's finish curing), standing on its "
+                       "six brackets' feet on the bench", ("*",), "feet"),
     ),
 }
 """Each cradle's resting poses in the guide (design review round 2's M2, 2026-10-14), rated
 in ``tests/test_cradle.py``. Round 1's had rested B's cradle and its drive panel on the
 gearbox, a screw head and a printed bracket, 14° tilted (the drive panel alone tipped at 6.8°
 and 2.5 N), and its box "as it was, on its other cradle link", on two tie screws' heads
-(10.0°, 2.8 N; its "41 mm margin" was to the link's outline, which it never sat on)."""
+(10.0°, 2.8 N; its "41 mm margin" was to the link's outline, which it never sat on). A's had
+lain on its drive side on the blocks too, under column C1 and the rear leg; design review round
+3's frames took its centre of mass toward its gearbox, and it tipped at 13.4° under the 15° bar
+wherever the blocks went: it stands on its brackets' feet instead (2026-10-20), as on its
+board."""
 
 LAY_BLOCKS: dict[str, tuple[str | tuple[float, float], ...]] = {
     "decanter_rcm": ("O1", "E1"),
-    "decanter_hinge": ("C1", (306.0, -462.0)),
 }
 """Where the riser's two blocks (:data:`RISER_BLOCK`) stand under the drive side's outer plate
 when the cradle lies on its drive side: each centred on a post's screw head on the plate's
@@ -4393,9 +4426,8 @@ block's boss, :data:`RISER_RELIEF`), or at a point (x, y from the mouth), the bl
 along x. With the gearbox at O they make a triangle round the centre of mass
 (:data:`REST_POSES`). B's: under pillar O1 (the plate's top front) and the rail's front
 column E1 (since the side frames' redesign, 2026-10-20: under the front leg's column D2 the
-drive panel alone, heavier low on the rail, tipped at 25.3°; under E1 at 39.7°). A's (its first
-build only: the board's finish curing): under column C1 by the hinge and under the rear leg
-O-Fr just over its foot's bracket."""
+drive panel alone, heavier low on the rail, tipped at 25.3°; under E1 at 39.7°). A has none: off
+its board it stands on its brackets' feet (:data:`REST_POSES`)."""
 RISER_RELIEF = (13.5, 26.0, 3.6)
 """The blocks' bosses' relief over a post's screw head (mm; design review round 3's stand and
 use, M5 and m2): a bore this far across through the block's top into its cup (E1's and O1's
