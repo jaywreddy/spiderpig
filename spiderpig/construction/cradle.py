@@ -3960,7 +3960,7 @@ TOOLS = (
     "drill bit (the hand crank's hub, by hand) and a 7 mm one (its shank under sandpaper: a "
     "tight pin hole), a drill (the gearbox's run-in, before it goes on the cradle, never "
     "after), a hacksaw (the gearbox riser's studs, from a threaded rod)",
-    "A soldering iron (the heat-set inserts) and a vise (the knobs' nuts, the clutch "
+    "A vise (the knobs' nuts, the hand crank's knobs onto their screws' heads, the clutch "
     "plungers' nuts)",
     "Clamps or weights for the glue; a short tube over an 8 mm pin (the keepers)",
     "Marking and handling: paper, a pencil, a paint pen and red paint (the pack marks, the "

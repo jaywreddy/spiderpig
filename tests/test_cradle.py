@@ -685,10 +685,10 @@ def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
     foot's oversize hole (the side settles where the linkage puts it), an 18-8 fender washer
     over the hole, an 18-8 M6 nut in a printed thumb knob, the knob clear of the bracket's
     upright and the upright's M5 screw head, a thread past the nut and the bolt's end in the
-    knob; the hand crank's hub an M3 thumb screw down to the input key through a brass
-    heat-set insert (round 1: a printed thread undone at every pack wears), its head clear of
-    the hub."""
-    from spiderpig.construction.handcrank import HANDLE_THUMB, INSERT, HandCrank
+    knob; the hand crank's hub an M3 socket head in a printed knob down to the input key
+    through a captured M3 nut (round 1: a printed thread undone at every pack wears;
+    simplification round 1: the nut for the brass insert), the knob clear of the hub."""
+    from spiderpig.construction.handcrank import HANDLE_THUMB, NUT, HandCrank
 
     bracket, parts, _ = cr._bracket((0.0, 12.5), 0.0, 0.0, 1, 4.75)   # (its screw 12.5 up)
     by = {suffix: (part, key) for part, key, suffix in parts}
@@ -709,12 +709,17 @@ def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
     got, _ = hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame")
     bodies = {b.name: b for b in got}
     thumb = bodies["handle_thumb_screw"]
-    assert thumb.bom_key == f"m3_thumb_screw_{HANDLE_THUMB[0]:g}"
-    assert bodies["handle_insert"].bom_key == INSERT[2]
-    for part in ("handle", "handle_insert"):
-        inter = thumb.part & bodies[part].part
-        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3, part
-    reach = thumb.part.bounding_box().max.Z
+    assert thumb.bom_key == f"m3_shcs_{HANDLE_THUMB[0]:g}"
+    assert bodies["handle_nut"].bom_key == NUT
+    assert bodies["handle_cap_nut"].bom_key == NUT
+    assert bodies["handle_knob"].fab == "printed"
+    for a, b in (("handle_thumb_screw", "handle"), ("handle_thumb_screw", "handle_knob"),
+                 ("handle_nut", "handle"), ("handle_cap_nut", "handle"),
+                 ("handle_cap_screw", "handle"), ("handle_cap_screw", "handle_cap_knob"),
+                 ("handle_cap_screw", "handle_cap"), ("handle_knob", "handle")):
+        inter = bodies[a].part & bodies[b].part
+        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3, (a, b)
+    reach = bodies["handle_knob"].part.bounding_box().max.Z
     assert reach > hc.box.crank_hub_r + HANDLE_THUMB[2]
 
 

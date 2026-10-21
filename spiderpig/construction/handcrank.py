@@ -40,8 +40,8 @@ self-locking worm gear reducer instead of a servo:
   carries the rod's force a few millimetres off its socket (the 2026-10-10 review round 2:
   the arm had been on the key, the rod 21 mm over it, the crankpin a cantilever that long).
 * **The hand crank**: printed in PETG in two parts joined by a slip clutch (:func:`clutch`):
-  its hub is keyed on the input shaft (an M3 thumb screw into a heat-set insert, down onto
-  the key: it comes off by hand, :data:`HANDLE_THUMB`) and runs on as a tube out along the
+  its hub is keyed on the input shaft (an M3 socket head in a printed knob through a captured
+  nut, down onto the key: it comes off by hand, :data:`HANDLE_THUMB`) and runs on as a tube out along the
   shaft to a flange and a journal; a laser-cut 6061 seat ring (:data:`SEAT_RING`) sits keyed
   on the flange's hex; the arm turns on the journal, three steel ball-nose spring plungers
   (:data:`PLUNGER`) in its boss pressed onto the ring's seats (holes, each ball on a hole's
@@ -300,9 +300,10 @@ CRANKPIN_PLAY = 0.3     # the rod's axial play on the crankpin, under its washer
 #                         rear tie's screw head under the cradle link (0.26 mm nominal where it
 #                         crosses, under the chain's +-0.3: the guide's paper check, filing
 #                         the crankpin's top if it drags). The block hangs from its seat plate
-#                         on the shaft's end and the crankpin stands on its lowest plate, so
-#                         the five plates between lie in that loop, each +0.152/-0.127 mm
-#                         (PLATE_UNDER): thin ones lift the rod up to 0.64 mm. A printed
+#                         on the shaft's end and the crankpin's end is flush with its lowest
+#                         plate's underside (its washer: simplification round 1), so the
+#                         plates under the seat lie in that loop, each +0.152/-0.127 mm
+#                         (PLATE_UNDER): thin ones lift the rod up to 0.76 mm. A printed
 #                         spacer under the rod, sanded on the bench, keeps its play (the rod
 #                         only goes down)
 TIE_NUT = (10.0, 3.2, "m6_thin_nut")    # the tie's thin nut under the block (DIN 439: across
@@ -454,7 +455,7 @@ HANDLE_OVER_RADIUS: dict[str, float] = {"decanter_hinge": 5.0}
 (A's: :data:`HANDLES`), which the tests allow it."""
 HUB_PRINT_MAX = 200.0           # a hand crank's hub and tube longer than this print in two
 #                                 pieces (a 210 mm tall bed): a hex spigot into a socket, an M3
-#                                 button head through the socket's wall into an insert
+#                                 button head through the socket's wall into a captured nut
 HUB_SPLIT = (110.0, 22.0, 15.0) # the hub piece's length to the joint, the spigot's across
 #                                 flats and length
 
@@ -479,11 +480,16 @@ ARM_T, ARM_W = 14.0, 18.0       # the printed crank arm's bar: along the shaft, 
 HUB_LEN = 28.0                  # the printed crank's hub on the input shaft (30 long), printed
 #                                 solid; its radius the box's crank_hub_r
 HUB_BORE = 14.1                 # its bore, printed and reamed with a 14 mm drill
-HANDLE_THUMB = (9.0, 8.0, 5.0)  # the knurled-head M3 thumb screw down onto that key (McMaster
-#                                 92545A115, 18-8): under its head, its head d and h; through a
-#                                 heat-set insert in the hub to the key, its head 2 mm off the hub
-INSERT = (4.0, 5.7, "m3_heat_set_insert")   # an M3 heat-set insert: its hole's d, its length
-#                                             and catalog key (the hub's, the journal's end's)
+HANDLE_THUMB = (10.0, 10.0, 6.0)   # the thumb screw down onto that key: an M3 x 10 socket head
+#                                 (ISO 4762, 18-8) under its head, its printed knob's d and h
+#                                 (PETG, pressed over the head); through a captured M3 nut in
+#                                 the hub to the key (simplification round 1, 2026-10-21: the
+#                                 knurled McMaster 92545A115 and its brass heat-set insert went:
+#                                 no soldering iron; threadlocker 222 on its thread)
+CAP_SCREW = 8.0                 # the cap's: an M3 x 8 socket head and knob into the journal's nut
+NUT = "m3_nut"                  # the captured nuts (DIN 934 M3, 18-8): each in a slot trap
+NUT_FIT = 0.15                  # a nut slot's clearance round the nut, each side (as the deck's)
+NUT_ROOF = 2.4                  # PETG between a nut and the face it pulls toward, at least
 TOGGLE_TURNS = 2.5
 """The handle turns from either end of the swing within which some part of a cradle holds
 the clutch's cap at a jam SF under 1.3 (``cradle_report``'s ``jam_capped``,
@@ -531,9 +537,11 @@ plunger's force for every set-up (B or A, run in or new, the greased friction's 
 inside its 26.7 N and its 53.4 N less the climb."""
 SEAT_RING = "clutch seat ring"  # its part's label: cut from the crank sheet (6061)
 DRIVE_LOCK = "threadlocker_243"  # the drive's threadlocker (the guide's steps, the BOM's line)
-PETG_PARTS = ("handle", "handle_tube", "handle_arm", "handle_cap", "handle_grip")
+PETG_PARTS = ("handle", "handle_tube", "handle_arm", "handle_cap", "handle_grip",
+              "handle_knob", "handle_cap_knob")
 """The hand crank's prints in PETG (``bom.part_filament``): the plungers push on the hub, the
-arm and the cap always, and PLA creeps out of a load in a hot car (round 2's m7)."""
+arm and the cap always, and PLA creeps out of a load in a hot car (round 2's m7); the knobs
+pressed over the thumb screws' heads too (a PLA knob loosens on its head in a hot car)."""
 THRUST = (17.0, 30.0, 3.0, "m16_washer")
 """The steel washer over the journal between the arm's boss and the journal's cap (DIN 125
 M16: bore, OD, thickness, catalog key), greased: the plungers' push on the cap runs on it, its
@@ -1087,7 +1095,7 @@ class HandCrank(Group):
                 raise Unbuildable(f"the rod {rider} must ride over the crank block and its "
                                   f"screws' heads (z {heads + 0.3:.1f} mm), not in layer {r}")
             rod_top = z_up(L, r) + ctx.sheet_t("link", rider)
-            length = rod_top + CRANKPIN_PLAY - (a0 + t)
+            length = rod_top + CRANKPIN_PLAY - a0
             if length < 2 * NETRF12_THREAD:
                 raise Unbuildable(f"the crankpin standoff would be {length:.1f} mm, under the "
                                   f"{2 * NETRF12_THREAD:g} its two M6 threads need")
@@ -1252,18 +1260,20 @@ class HandCrank(Group):
                                     f"nuts or the crankpin ({throw:.1f} mm out)")
         es = end_screw(box)
         slot_at = tuple(o + kc * (box.shaft_d / 2 + box.key_proud / 2))
+        if es.head_d + 1.0 > box.shaft_d + ARM_BORE_FIT + 1e-9:
+            raise ConstructionError(f"the M{es.d:g} end screw's head doesn't turn in the "
+                                    "plates' bore over the seat")
         for i, z_lo in enumerate(zs):
-            # the crankpin stands on the lowest plate; the tie bolt runs through them all
-            pins = [Cut(tuple(mxy), M6.shank_d + 0.5 if i == 0 else CRANKPIN_D + SOCKET_FIT),
-                    Cut(tuple(tie), M6.d + 0.6)]
-            if i < riser.seat_k:                    # round the shaft: keyed or clear of it
+            # the crankpin stands through every plate (its screw and wide washer under the
+            # lowest); the tie bolt runs through them all
+            pins = [Cut(tuple(mxy), CRANKPIN_D + SOCKET_FIT), Cut(tuple(tie), M6.d + 0.6)]
+            if i == riser.seat_k:                   # the seat: the end screw through
+                at_o = [Cut(tuple(o), es.d + 0.6)]
+            else:   # round the shaft, keyed or clear of it; over the seat round the end
+                #     screw's head, the same plate (simplification round 1: three files)
                 fit = KEY_SLOT if i < KEYED_PLATES else KEY_CLEAR
                 at_o = [Cut(tuple(o), box.shaft_d + ARM_BORE_FIT),
                         Rect(slot_at, (box.key_proud + 2.6, k_w + fit), key_ang)]
-            elif i == riser.seat_k:                 # the seat: the end screw through
-                at_o = [Cut(tuple(o), es.d + 0.6)]
-            else:                                   # round the end screw's head
-                at_o = [Cut(tuple(o), es.head_d + 1.5)]
             part = arm_plate(self.hub_r(ctx), self.web_r(ctx), self.throw(ctx), o, mxy, z_lo,
                              z_lo + t, [*at_o, *pins])
             name = crank if i == 0 else f"{crank}_plate{i}"
@@ -1320,12 +1330,21 @@ class HandCrank(Group):
 
         r0 = build.z(build.layers[rider])[0]
         rod_top = r0 + ctx.sheet_t("link", rider)
-        pin_part, pin_key = standoff(tuple(mxy), a0 + t, rod_top + CRANKPIN_PLAY)
+        pin_part, pin_key = standoff(tuple(mxy), a0, rod_top + CRANKPIN_PLAY)
         out.bodies.append(hardware("crankpin", pin_part, crank, fab="purchased",
                                    bom_key=pin_key, color=STEEL))
-        pin_top = a0 + t + _len_of(pin_key)
-        lo = m6(t)
-        add("crankpin_screw_lo", screw_solid(tuple(mxy), M6, a0, lo, up=True), M6.key(lo))
+        pin_top = a0 + _len_of(pin_key)
+        # under the lowest plate: a wide washer over the plate and the crankpin's end (the
+        # screw pulls the crankpin down onto it, flush whatever the plates' stack), an M6 up
+        # through it; its head clear of the outer plate as the tie's end is
+        lo = m6(pw_t)
+        if a0 - pw_t - M6.head_h < z1 + 2.0 - 1e-9:
+            raise ConstructionError("the crankpin's lower screw head and washer come within 2 mm "
+                                    "of the outer plate")
+        add("crankpin_washer_lo", ring(tuple(mxy), pw_od, M6.shank_d + 0.3, a0 - pw_t, a0),
+            PIN_WASHER)
+        add("crankpin_screw_lo", screw_solid(tuple(mxy), M6, a0 - pw_t, lo, up=True),
+            M6.key(lo))
         add("crankpin_washer", ring(tuple(mxy), pw_od, M6.shank_d + 0.3, pin_top,
                                     pin_top + pw_t), PIN_WASHER)
         hi = m6(pw_t)
@@ -1472,18 +1491,19 @@ class HandCrank(Group):
                "(the crank block's lowest plate passes over the four): file it down, masking "
                "tape on the plate round it.", "gearbox_studs"),
             Op(STACK, (ARM_LAYER, 0), whole(arm, *plates, "crank_tie", "crank_tie_nut",
-                                            "crankpin", "crankpin_screw_lo"),
+                                            "crankpin", "crankpin_washer_lo",
+                                            "crankpin_screw_lo"),
                "Crank block",
-               "On the bench, as one block: the lowest plate (keyed, a small hole at its end), "
-               "the thick steel standoff (the crankpin) stood on that small hole, an M6 button "
-               f"head up through the plate into it (threadlocker 243), {SCREW_NM:g} N·m; the "
-               "other plates down over the crankpin in their order (the "
-               f"{KEYED_PLATES - 1} more keyed ones with the narrow slot, the "
-               f"{n_clear} with a wider slot, the seat with the "
-               f"{es.d + 0.6:.1f} mm hole, the one with the {es.head_d + 1.5:g} mm hole on "
-               "top), the tie's M6 button head down through every plate's middle hole into its "
-               "thin nut under the lowest plate (threadlocker 243; a 10 mm wrench on the nut), "
-               f"{SCREW_NM:g} N·m. Fit the keyways: the keyed plates' slots are cut "
+               "On the bench, as one block, three kinds of plate: the "
+               f"{KEYED_PLATES} keyed ones (the narrow slot) at the bottom, then the "
+               f"{n_clear} with a wider slot, the seat (the {es.d + 0.6:.1f} mm hole), and "
+               "the rest of the wider-slot ones over it (their bore rings the end screw's "
+               "head). The tie's M6 button head down through every plate's middle hole into "
+               "its thin nut under the lowest plate (threadlocker 243; a 10 mm wrench on the "
+               f"nut), {SCREW_NM:g} N·m. The crankpin down through every plate's end hole, a "
+               "wide washer under the lowest plate and an M6 button head up through it into "
+               f"the crankpin (threadlocker 243), {SCREW_NM:g} N·m: it pulls the crankpin "
+               "down flush with the washer. Fit the keyways: the keyed plates' slots are cut "
                f"{-KEY_SLOT:g} mm under the shaft's {k[0]:g} mm key, so each can be filed to "
                "it; push the key, out of its seat, up into the block's slots from under it "
                "and file the narrow slots together (a flat file, the block tied) until it "
@@ -1513,17 +1533,18 @@ class HandCrank(Group):
                "screw heads over it).", "layer"),
             Op(FINISH, (2,), whole(*view.named(r"handle(_\w+)?")),
                "Hand crank",
-               "Print the hub (with its tube, flange and journal), the arm and the cap in "
-               "PETG (a hot car softens PLA, and the plungers push on these all the time), "
-               "the hub solid, 100 % infill: it carries the input's key; ream its bore with a "
-               f"{box.input_d:g} mm drill by hand. M3 heat-set inserts, a soldering iron "
-               "at about 230 °C: one down into the hub's hole over the keyway, one into the "
-               "journal's end"
+               "Print the hub (with its tube, flange and journal), the arm, the cap and the "
+               "two knobs in PETG (a hot car softens PLA, and the plungers push on these all "
+               "the time), the hub solid, 100 % infill: it carries the input's key; ream its "
+               f"bore with a {box.input_d:g} mm drill by hand. Press each knob over its M3 "
+               "socket head's head (a vise). An M3 nut pushed sideways into each slot: one "
+               "in the hub over the keyway, one in the journal's end"
                + ("" if "handle_tube" not in view.z else
-                  ", one into the hub's hex spigot (a long tube prints in two pieces: the "
+                  ", one in the hub's hex spigot (a long tube prints in two pieces: the "
                   "spigot into the tube's socket, an M3 button head through the socket's wall "
-                  "into that insert, threadlocker 243)")
-               + ". The clutch's seat ring (cut with the crank plates) onto the flange, its "
+                  "into that nut, threadlocker 243)")
+               + "; run a screw in to line each up. The clutch's seat ring (cut with the crank "
+               "plates) onto the flange, its "
                "hex bore on the flange's hex, the face the laser entered up (the clean face "
                "marked on arrival, its six seats broken alike: the balls ride it; the face "
                "with the dross down on the flange); grease its face, its six holes and the "
@@ -1533,8 +1554,8 @@ class HandCrank(Group):
                "spring's push. A spring plunger threaded through each from outside, ball "
                "first, until its ball just stands out of the inner face, a jam nut on each, "
                "loose. The arm onto the journal, the balls toward the ring; the steel washer "
-               "(greased) and the cap on the journal's flat, its M3 thumb screw into the "
-               f"insert, snug. The grip: an M{spec.bolt[0]:g} washer, the printed grip, a "
+               "(greased) and the cap on the journal's flat, its knobbed M3 screw into the "
+               f"journal's nut, snug. The grip: an M{spec.bolt[0]:g} washer, the printed grip, a "
                f"washer and the arm's end over the M{spec.bolt[0]:g} bolt from the outside, a "
                "washer and the nyloc nut on the arm's inner face, tight against the arm: the "
                "grip spins on the bolt's plain shank. A drop of threadlocker (243) in the "
@@ -1550,8 +1571,9 @@ class HandCrank(Group):
                    f"{_turns(NEAR_STOP)}: at the stop its ball can't climb out of its hole, "
                    "and the clutch is locked solid.",
                    "The crank's hub onto the input shaft, its keyway over the key, and the "
-                   "hub's M3 thumb screw down onto the key by hand (snug: it only keeps the hub "
-                   "on; it comes off the same way). Stand at the drive side's rear corner to "
+                   "hub's knobbed M3 thumb screw down onto the key by hand, a drop of "
+                   "threadlocker 222 on its thread (snug: it only keeps the hub on; it comes "
+                   "off the same way, by hand). Stand at the drive side's rear corner to "
                    "turn it, the neck in view past the stand. The clutch is set on a measured "
                    "start once the cradle is built (the last step, \"Before the first pour\").",
                    "Then the rod's check: from rest (the cradle neck up) turn the handle "
@@ -1696,8 +1718,9 @@ class HandCrank(Group):
         moved to ``end`` (side z ``z``); ``spec`` its arm (:data:`HANDLES`), ``sheet`` the
         seat ring's (the crank sheet).
 
-        * The hub (printed solid, PETG) on the shaft, keyed over its key, an M3 thumb screw
-          down onto the key through a heat-set insert (:data:`HANDLE_THUMB`), runs on as a
+        * The hub (printed solid, PETG) on the shaft, keyed over its key, an M3 socket head
+          in a printed knob down onto the key through a nut captured in a slot under the
+          hub's roof (:data:`HANDLE_THUMB`, :data:`NUT_ROOF`), runs on as a
           tube to the clutch's flange (a cone under it, so it prints hub down), a hex boss on
           the flange's face and a journal through the arm's boss.
         * The seat ring (laser-cut 6061: :data:`SEAT_RING`) on the flange's face, its hex
@@ -1705,8 +1728,9 @@ class HandCrank(Group):
         * The arm (PETG) turns on the journal: :data:`CLUTCH`'s plungers threaded through
           hex nuts pressed into its boss, each locked by a jam nut, their balls on the ring's
           holes' edges; it slips round the tube past its setting (:func:`clutch`). A steel
-          washer and the cap (keyed on the journal's flat, an M3 thumb screw into an insert in
-          the journal's end) hold it on against the plungers' push.
+          washer and the cap (keyed on the journal's flat, a knobbed M3 socket head into a nut
+          captured in the journal's end, its slot under the washer) hold it on against the
+          plungers' push.
         * The grip, a printed sleeve, spins on an M8 bolt's plain shank through the arm's
           end, a washer either side of it and a nyloc nut on the arm's inner face."""
         from build123d import Cone, RegularPolygon, Sphere, extrude
@@ -1755,9 +1779,29 @@ class HandCrank(Group):
         cap0 = reach + t_washer                         # the cap's underside, on the washer
         j1 = cap0 + 2.0                                 # the journal's end, inside the cap
         cap1 = j1 + 1.5
-        ins_d, ins_len, ins_key = INSERT
+        nd = get(NUT).dims
+        n_af, n_h = float(nd["af"]), float(nd["h"])
+        n_ac = n_af * 2 / math.sqrt(3)                  # its corners
 
-        # -- the hub: on the shaft, keyed, the thumb screw in its insert over the key
+        def hex_z(af: float, z0: float, z1: float, x: float = 0.0, y: float = 0.0):
+            """A hexagonal prism across flats ``af`` along +z, its flats facing +-x."""
+            prism = extrude(RegularPolygon(af / math.sqrt(3), 6, rotation=30.0),
+                            amount=z1 - z0)
+            return prism.moved(Location((x, y, z0)))
+
+        def nut_z(x: float, z0: float):
+            """A captured M3 nut on a screw along z at ``x``, from ``z0`` up."""
+            return difference(hex_z(n_af, z0, z0 + n_h, x), Cylinder(1.5, 2 * n_h).moved(
+                Location((x, 0.0, z0 + n_h / 2))))
+
+        def nut_slot_z(x: float, z0: float, out: float):
+            """Its slot trap: the nut pushed in sideways along +y from the surface (``out``,
+            past it) to the screw's axis, its flats on the slot's walls."""
+            w, h = n_af + 2 * NUT_FIT, n_h + 2 * NUT_FIT
+            y0 = -n_ac / 2 - NUT_FIT
+            return Box(w, out - y0, h).moved(Location((x, (out + y0) / 2, z0 + n_h / 2)))
+
+        # -- the hub: on the shaft, keyed, the thumb screw through its captured nut onto the key
         key_w, key_hub = self.box.input_key
         key_top = self.box.input_d / 2 + key_hub      # the keyway's top, over the axis
         t_len, t_d, t_h = HANDLE_THUMB
@@ -1765,7 +1809,11 @@ class HandCrank(Group):
             raise ConstructionError(f"an M3 x {t_len:g} thumb screw doesn't reach the input "
                                     f"key through the {hub_r - key_top:.1f} mm hub")
         xt = -HUB_LEN / 2                               # the thumb screw's place along it
-        ins0 = hub_r - ins_len                          # its insert, down from the hub's face
+        n0 = hub_r - NUT_ROOF - n_h - NUT_FIT - 0.3     # its nut, under the hub's roof (the
+        #                                                 screw's push on the key lifts it)
+        if n0 - NUT_FIT < key_top + 1.5:
+            raise ConstructionError(f"the {hub_r - key_top:.1f} mm hub over the input key has "
+                                    "no room for the thumb screw's captured nut")
 
         def radial(r: float, z0: float, z1: float):
             return Cylinder(r, z1 - z0).moved(Location((xt, 0.0, (z0 + z1) / 2)))
@@ -1778,10 +1826,17 @@ class HandCrank(Group):
         bore = rod(HUB_BORE / 2, -HUB_LEN - 0.5, 0.5)
         keyway = Box(HUB_LEN + 2.0, key_w + 0.2, key_top + 0.2).moved(
             Location((-HUB_LEN / 2, 0.0, (key_top + 0.2) / 2)))
-        hole = union([radial(ins_d / 2, ins0, hub_r + 1.0), radial(1.6, key_top - 0.5,
-                                                                    ins0 + 0.5)])
-        j_hole = union([rod(ins_d / 2, j1 - ins_len, j1 + 1.0), rod(1.6, j1 - ins_len - 4.0,
-                                                                     j1 - ins_len + 0.5)])
+        hole = union([radial(1.6, key_top - 0.5, hub_r + 1.0),
+                      nut_slot_z(xt, n0, hub_r + 1.0)])
+        # the cap's nut: in the journal's end, its slot from the journal's side under the
+        # thrust washer (the washer keeps it in), NUT_ROOF of journal between it and the end
+        cn1 = j1 - NUT_ROOF
+        cn0 = cn1 - n_h
+        if cn0 - NUT_FIT < reach - 1e-6:
+            raise ConstructionError("the journal's end has no room for the cap's nut")
+        j_slot = Box(n_h + 2 * NUT_FIT, jr + 1.0 + n_ac / 2 + NUT_FIT, n_af + 2 * NUT_FIT).moved(
+            Location(((cn0 + cn1) / 2, -(jr + 1.0 - n_ac / 2 - NUT_FIT) / 2, 0.0)))
+        j_hole = union([rod(1.6, cap1 - CAP_SCREW - 1.5, j1 + 1.0), j_slot])
         hub = difference(hub, bore, keyway, hole, j_hole)
         split = []                              # a long hub and tube: two printed pieces
         if j1 + HUB_LEN > HUB_PRINT_MAX:
@@ -1791,30 +1846,36 @@ class HandCrank(Group):
             beyond = Box(big, big, big).moved(Location((x_j + big / 2, 0.0, 0.0)))
             head = union([intersection(hub, beyond), rod(hub_r, x_j, x_j + 1.0)])
             x_s = x_j + sp_len / 2                  # the screw's place along the joint
-            pocket = union([Cylinder(ins_d / 2, ins_len + 3.0).moved(
-                Location((x_s, 0.0, af / 2 - ins_len / 2 + 1.5))),
-                Cylinder(1.6, af / 2).moved(Location((x_s, 0.0, af / 4)))])
+            sn0 = af / 2 - NUT_ROOF - n_h           # its captured nut in the spigot (the
+            #                                         screw pulls it up into the roof)
+            pocket = union([Cylinder(1.6, af / 2 - sn0 + 8.0).moved(      # (past the hex's
+                Location((x_s, 0.0, (af / 2 + sn0 - 2.0) / 2))),           # corners)
+                nut_slot_z(x_s, sn0, af / 2 + 2.0)])
             spigot = difference(hex_x(af, x_j - 0.01, x_j + sp_len), pocket)
             hub = union([difference(hub, beyond), spigot])
             through = Cylinder(1.7, hub_r).moved(Location((x_s, 0.0, hub_r / 2 + af / 2 - 1)))
             head = difference(head, hex_x(af + 0.3, x_j - 1.0, x_j + sp_len + 0.2), through)
             sk = screw("bhcs", "3")
             s_top = hub_r                           # its head on the tube's crest
-            s_len = next(L for L in sk.lengths      # 4 mm or more into the insert
-                         if af / 2 - ins_len + 0.5 <= s_top - L <= af / 2 - 4.0 + 1e-6)
-            t_ins = (Cylinder(ins_d / 2, ins_len) - Cylinder(1.5, ins_len + 2)).moved(
-                Location((x_s, 0.0, af / 2 - ins_len / 2)))
+            s_len = next(L for L in sk.lengths      # through its nut, 0.5-4 mm past it
+                         if sn0 - 4.0 <= s_top - L <= sn0 - 0.5 + 1e-6)
+            t_nut = nut_z(x_s, sn0)
             t_screw = union([Cylinder(sk.shank_d / 2, s_len).moved(
                 Location((x_s, 0.0, s_top - s_len / 2))),
                 Cylinder(sk.head_d / 2, sk.head_h).moved(
                     Location((x_s, 0.0, s_top + sk.head_h / 2)))])
-            split = [("handle_tube", head), ("handle_tube_insert", t_ins, ins_key),
+            split = [("handle_tube", head), ("handle_tube_nut", t_nut, NUT),
                      ("handle_tube_screw", t_screw, sk.key(s_len))]
-        insert = (Cylinder(ins_d / 2, ins_len) - Cylinder(1.5, ins_len + 2)).moved(
-            Location((xt, 0.0, ins0 + ins_len / 2)))
+        h_nut = nut_z(xt, n0)
         t_top = key_top + 0.05 + t_len               # the thumb screw's head's underside
-        thumb = union([Cylinder(1.45, t_len).moved(Location((xt, 0.0, t_top - t_len / 2))),
-                       Cylinder(t_d / 2, t_h).moved(Location((xt, 0.0, t_top + t_h / 2)))])
+        ts = screw("shcs", "3")
+        thumb = union([Cylinder(ts.shank_d / 2, t_len).moved(
+            Location((xt, 0.0, t_top - t_len / 2))),
+            Cylinder(ts.head_d / 2, ts.head_h).moved(Location((xt, 0.0, t_top + ts.head_h / 2)))])
+        knob_bore = Cylinder(ts.head_d / 2, ts.head_h).moved(
+            Location((xt, 0.0, t_top + ts.head_h / 2)))
+        knob = difference(Cylinder(t_d / 2, t_h).moved(Location((xt, 0.0, t_top + t_h / 2))),
+                          knob_bore)
 
         # -- the seat ring: on the flange's face, its hex bore on the hex boss, six seats
         seats_at = [(r_c * math.cos(phi), r_c * math.sin(phi))
@@ -1862,8 +1923,12 @@ class HandCrank(Group):
                          rod(jr + 0.2, cap0 - 1, j1) - Box(j1 - cap0 + 2, 2 * jr + 1, 2 * jr)
                          .moved(Location(((cap0 + j1) / 2, 0.0, flat + 0.2 + jr))),
                          rod(1.7, j1 - 1, cap1 + 1))
-        c_ins = (rod(ins_d / 2, j1 - ins_len, j1) - rod(1.5, j1 - ins_len - 1, j1 + 1))
-        c_screw = union([rod(1.45, cap1 - t_len, cap1), rod(t_d / 2, cap1, cap1 + t_h)])
+        c_nut = difference(hex_z(n_af, 0.0, n_h).rotate(Axis.Y, 90.0),
+                           rod(1.5, -1.0, n_h + 1.0)).moved(Location((cn0, 0.0, 0.0)))
+        c_screw = union([rod(ts.shank_d / 2, cap1 - CAP_SCREW, cap1),
+                         rod(ts.head_d / 2, cap1, cap1 + ts.head_h)])
+        c_knob = rod(t_d / 2, cap1, cap1 + t_h) - rod(ts.head_d / 2, cap1 - 1.0,
+                                                      cap1 + ts.head_h)
 
         # -- the grip on its bolt: washer, grip, washer, the head outside; washer and nyloc
         # on the arm's inner face
@@ -1896,10 +1961,14 @@ class HandCrank(Group):
                            color="#2b2b2b"),
                   hardware("handle_seat_ring", place(seat_ring), host, fab="laser",
                            sheet=sheet, color="#9aa3ad"),
-                  hw("handle_insert", insert, ins_key, color="#b08d57"),
-                  hw("handle_thumb_screw", thumb, f"m3_thumb_screw_{t_len:g}"),
-                  hw("handle_cap_insert", c_ins, ins_key, color="#b08d57"),
-                  hw("handle_cap_screw", c_screw, f"m3_thumb_screw_{t_len:g}"),
+                  hardware("handle_knob", place(knob), host, fab="printed",
+                           color=PRINT_COLOR),
+                  hardware("handle_cap_knob", place(c_knob), host, fab="printed",
+                           color=PRINT_COLOR),
+                  hw("handle_nut", h_nut, NUT),
+                  hw("handle_thumb_screw", thumb, ts.key(t_len)),
+                  hw("handle_cap_nut", c_nut, NUT),
+                  hw("handle_cap_screw", c_screw, ts.key(CAP_SCREW)),
                   hw("handle_thrust_washer", washer, THRUST[3]),
                   hw("handle_grip_pin", bolt.moved(down), bolt_key),
                   hw("handle_grip_nut", nut.moved(down), g_nut_key)]
@@ -1908,7 +1977,7 @@ class HandCrank(Group):
         if split:
             bodies += [hardware(split[0][0], place(split[0][1]), host, fab="printed",
                                 color=PRINT_COLOR),
-                       hw(split[1][0], split[1][1], split[1][2], color="#b08d57"),
+                       hw(split[1][0], split[1][1], split[1][2]),
                        hw(split[2][0], split[2][1], split[2][2])]
         for i, (y, zz) in enumerate(balls):
             plunger = union([rod(PLUNGER["thread"] / 2 * 0.97, x_front, x_back, y, zz),
