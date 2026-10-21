@@ -1783,11 +1783,13 @@ def _the_drive_keeps_its_bars(r: dict) -> list[str]:
 def _holds_the_jam(r: dict, key: str) -> None:
     """Every row of the report holds the jam at SF 1.3 or more but the parts open at the
     clutch's cap (``cradle_report.OPEN_AT_CAP``: the cradle box since simplification round
-    1), and nothing under it is off that list; the side frames' posts and plates among them
-    (their redesign, 2026-10-20); the cradle box's tie rods, their end joints and the cradle
-    link out of its plane among the rows (design review round 2's M1, the box a 3D frame
-    since simplification round 1), walking every end joint closed and none slipping in twist
-    at its least preload, the rear carrier's bridge riding the racking box within its bar;
+    1, B's closed by round 2's racking brace), and nothing under it is off that list; the
+    side frames' posts and plates among them (their redesign, 2026-10-20); the cradle box's
+    tie rods, their end joints and the cradle link out of its plane among the rows (design
+    review round 2's M1, the box a 3D frame since simplification round 1), and B's racking
+    brace (its tube and its sockets' teeth), which takes most of the jam's twist; walking
+    every end joint closed and none slipping in twist at its least preload, the rear
+    carrier's bridge riding the racking box within its bar;
     the rod as a beam-column at its far pin's offset (its minor 1); the side's stiffness
     across (its M3: a hand's 20 N sideways on the bottle sways the pivots under 5 mm)."""
     from spiderpig.cradle_report import OPEN_AT_CAP
@@ -1801,7 +1803,12 @@ def _holds_the_jam(r: dict, key: str) -> None:
     assert under <= set(open_at_cap), under
     assert {"frame:outer", "frame:inner"} <= {j for j, _ in held}
     box = {x["joint"]: x for x in rows if x["kind"] == "box"}
-    assert set(box) == {"box:tie rods", "box:tie rod ends", "box:cradle link"}
+    braced = key == "decanter_rcm"                    # (B's racking brace: decanters.BRACE)
+    assert set(box) == {"box:tie rods", "box:tie rod ends", "box:cradle link",
+                        *(("box:brace", "box:brace teeth") if braced else ())}
+    if braced:                                          # the brace takes the jam
+        jam = r["structure"]["box"]["cases"]["jam"]
+        assert jam["brace"]["twist_nm"] >= 0.8 * jam["crossing_nm"], jam["brace"]
     from spiderpig.cradle_report import OPEN_JOINTS
 
     open_ = OPEN_JOINTS.get(key, {})
@@ -1991,12 +1998,14 @@ def test_b_stands_turns_easily_and_holds():
                                                                 for j in "XY"}
     assert k["least_ratio"] >= k["bar"] == 10.0
     # design review round 2's M3: against the most the way back can put on a pin's tip,
-    # half the 3.1 kg cradle box, the bench push screens each keeper 1.5 x over it; printed
-    # at 7.38 mm on the 5/16 in rod, at least 0.36 mm of grip; still on by hand, a tube over
-    # the pin (7.4 and 0.4 on the 8 mm clevis pin)
+    # half the cradle box (3.4 kg with its racking brace), the bench push screens each keeper
+    # 1.5 x over it; printed at 7.38 mm on the 5/16 in rod, at least 0.36 mm of grip; still on
+    # by hand, a tube over the pin (7.4 and 0.4 on the 8 mm clevis pin)
     assert cr.KEEPER == (7.38, 0.36)
-    assert 2.8 < k["box_kg"] < 3.3          # (the 1/2 in 6061 tie rods since the simplification
-    #                                         round 1: 3.6 on round 2's 12 mm steel, 3.2 before)
+    assert 3.2 < k["box_kg"] < 3.6          # (the brace's tube and b6's wider rear since the
+    #                                         simplification round 2: 3.1 on round 1's 1/2 in
+    #                                         6061 tie rods, 3.6 on the design review round
+    #                                         2's 12 mm steel ones)
     assert 13.0 < k["load_n"] < 18.0
     assert k["load_ratio"] >= k["load_bar"] == 1.5
     assert all(x["push_on_n"] <= k["push_on_bar_n"] == 120.0 for x in k["rows"])
@@ -2088,11 +2097,15 @@ def test_the_cradle_has_an_assembly_order(key):
     link = cr.cradle_link(cfg.lk)
     modules = key in cr.PACK_POSES
     # the shop work first (simplification round 1): the arrival checks, the rods, the pins,
-    # the taps, the Carvera's birch; no part goes on in them
+    # the taps, the Carvera's birch; no part goes on in them. B's racking brace's tube
+    # notched after the rods (simplification round 2)
+    braced = key == "decanter_rcm"
     shop = [s for s in steps if s.stage == SHOP]
-    assert [s.title for s in shop] == ["Arrival checks", "Rods to length, faced",
-                                       "Pins cut to their stacks", "Drilled and tapped",
-                                       "The cleats and the riser locator, on the Carvera"]
+    assert [s.title for s in shop] == [
+        "Arrival checks", "Rods to length, faced",
+        *(("The racking brace's tube, notched",) if braced else ()),
+        "Pins cut to their stacks", "Drilled and tapped",
+        "The cleats and the riser locator, on the Carvera"]
     assert steps[:len(shop)] == shop
     assert not any(s.adds for s in shop)
     words = " ".join(t for s in shop for t in s.text)
@@ -2107,6 +2120,7 @@ def test_the_cradle_has_an_assembly_order(key):
     (ties,) = [s for s in steps if f"L.{link}" in s.adds]
     assert ties.sub
     assert {"tie_Tf1", "tie_Tr2"} <= set(ties.adds)
+    assert ("brace_Br" in ties.adds) is braced          # (the tube with the rods)
     (passive,) = [s for s in steps if f"R.{link}" in s.adds]
     assert passive.stage == UNIT
     assert passive.side == "R"
@@ -2705,7 +2719,7 @@ def _box_case(key: str = "decanter_rcm", moment_nm: float = 100.0):
     link = cr.cradle_link(lk)
     pts = {n: np.asarray(p, float).reshape(1, 2)
            for n, p in LegSolution(linkage_key=key).joints_at(0.0).items()}
-    pins = [j for j in lk.links[link][0] if j not in TIES and j not in ("Lc", "Ax")]
+    pins = [j for j in lk.links[link][0] if j not in TIES and j not in ("Lc", "Ax", "Br")]
     joints = [(j, link, "other") for j in pins]
     mouth = pts[cr.mouth_name(lk)][0]
     q = pts[pins[0]][0] - mouth
@@ -2739,7 +2753,8 @@ def test_the_cradle_box_racks_on_its_tie_rods():
     cfg = BuildConfig(linkage="decanter_rcm", robot=False)
     joints, pts, vecs = _box_case()
     got = box_racking(cfg, joints, pts, {"walk": (vecs, np.zeros(1, bool), None),
-                                         "jam": (vecs, np.zeros(1, bool), None)}, 274.9)
+                                         "jam": (vecs, np.zeros(1, bool), None)}, 274.9,
+                      braces={})                        # (the box unbraced: round 1's)
     assert got["cases"]["walk"]["crossing_nm"] == pytest.approx(PASSIVE_SHARE * 100.0)
     assert got["cases"]["jam"]["crossing_nm"] == pytest.approx(JAM_SHARE * 100.0)
     assert {r["joint"] for r in got["rows"]} == {"box:tie rods", "box:tie rod ends",
@@ -2764,8 +2779,9 @@ def test_the_cradle_box_racks_on_its_tie_rods():
     assert rigid.stiffness > 5 * k[0]                   # the plates give
     for h in cs.BOX_HOLDS:
         res = cs.box_frame(links, rods, [M], hold=h)
-        assert sum(float(res.twist[n][0]) for n in TIES) > 0.55 * M    # mostly in twist
-        #                     (the 1/2 in 6061 rods' G: 0.60 held, 0.74 pinned, 0.82 free)
+        assert sum(float(res.twist[n][0]) for n in TIES) > 0.5 * M     # mostly in twist
+        #                     (the 1/2 in 6061 rods' G: 0.52 held, 0.69 pinned, 0.77 free on
+        #                      round 2's links, wider at the rear; 0.60, 0.74, 0.82 before)
         f = {n: res.ends[n] @ cs.rod_k(rods[n], L).T for n in TIES}  # the links' on the rods
         about = sum(TIES[n][0] * f[n][0, 7] - TIES[n][1] * f[n][0, 6] + f[n][0, 11]
                     for n in TIES)
@@ -2800,6 +2816,63 @@ def test_a_tie_rods_end_joint_slips_past_its_friction():
         assert float(res.twist[n][1]) == pytest.approx(rod.slip_nmm(SLIP_MU), rel=1e-6)
         assert float(res.twist_stuck[n][1]) > rod.slip_nmm(SLIP_MU)
     assert abs(float(res.theta[1])) > 20 * 2 * abs(float(res.theta[0]))   # far softer
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
+def test_the_racking_brace_carries_the_box_in_torsion():
+    """The cradle box's racking brace (simplification round 2, 2026-10-21; ``decanters.BRACE``,
+    ``cradle_report.box_brace``): a 2 in x 0.065 in 6061-T6 tube across the bay, keyed into
+    both cradle links by 12 teeth, a 3D beam in ``box_frame`` whose twist is free inside its
+    play (the notches over the teeth, 0.47° both ends) and borne past it, never slipping.
+    Held rigid out of their plane, the links fix it as a rod: its torsion and its sway at its
+    radius add to the rods'. Inside its play it carries no twist; at the jam's whole couple
+    it takes most of it, no rod's end joint slips, and its teeth bear under the link's yield
+    over 1.3; the passive link in equilibrium with it. B's only (A's hand crank sweeps where
+    it would go: ``decanters.BRACE``)."""
+    from dataclasses import replace
+
+    from spiderpig import cradle_structure as cs
+    from spiderpig.cradle_report import SLIP_MU, box_brace, box_links, box_rods
+
+    key = "decanter_rcm"
+    assert box_brace(BuildConfig(linkage="decanter_hinge", robot=False)) == {}
+    cfg = BuildConfig(linkage=key, robot=False)
+    braces = box_brace(cfg)
+    assert list(braces) == ["Br"]
+    br = braces["Br"]
+    assert (br.od, br.wall, br.teeth) == (50.8, 1.651, 12)
+    assert math.degrees(br.play) == pytest.approx(0.466, abs=0.001)
+    joints, pts, _ = _box_case(key)
+    L = 274.9
+    links = box_links(cfg, joints, pts, L)
+    assert ("Tr2", "Br") in dict(links.segs)
+    rods = box_rods(cfg)
+    tight = {"Br": replace(br, play=0.0)}
+    M = 20.0e3
+    rigid = cs.box_frame(links, rods, [M], hold="held", rigid_links=True, braces=tight)
+    r = {n: math.hypot(*links.xy[n]) for n in (*TIES, "Br")}
+    k = sum(12 * rods[n].ei() / L ** 3 * r[n] ** 2 + rods[n].gj() / L for n in TIES)
+    k += 12 * br.ei() / L ** 3 * r["Br"] ** 2 + br.gj() / L
+    assert float(rigid.theta[0]) == pytest.approx(M / k, rel=1e-4)
+    assert float(rigid.twist["Br"][0]) == pytest.approx(br.gj() / L * M / k, rel=1e-4)
+    small = cs.box_frame(links, rods, [2.0e3], hold="pinned", braces=braces)
+    assert abs(float(small.theta[0])) < br.play
+    assert not small.engaged["Br"][0]
+    assert float(small.twist["Br"][0]) == pytest.approx(0.0, abs=1e-6)
+    jam = 221.0e3
+    for h in cs.BOX_HOLDS:
+        res = cs.box_frame(links, rods, [jam], hold=h, mu=SLIP_MU, braces=braces)
+        assert res.engaged["Br"][0]
+        assert float(res.twist["Br"][0]) > 0.75 * jam
+        assert not any(res.slipped[n][0] for n in TIES)
+        bear = float(br.tooth_n(res.twist["Br"][0])) / (br.wall * links.t)
+        assert links.yield_mpa / bear >= 1.3
+        ks = {**{n: cs.rod_k(rods[n], L) for n in TIES}, "Br": br.k(L)}
+        f = {n: res.ends[n] @ k_.T for n, k_ in ks.items()}     # the links' on each member
+        about = sum(links.xy[n][0] * f[n][0, 7] - links.xy[n][1] * f[n][0, 6] + f[n][0, 11]
+                    for n in f)
+        assert about == pytest.approx(jam, rel=1e-6)                 # the passive link holds
 
 
 @pytest.mark.no_fabricate
@@ -3995,8 +4068,11 @@ flat."""
 
 PACK_OPEN = {
     "decanter_rcm": "design review round 3's frames (the rail 60 mm, the rear leg 80, O2-O 88) "
-                    "land the drive panel on the cradle box: unsupported in the default plan, "
-                    "742 x 354 x 600 mm, 157.5 L (141.0): the packing round re-plans it",
+                    "landed the drive panel on the cradle box (742 x 354 x 600 mm, 157.5 L); "
+                    "since simplification round 2's racking brace b6's boss at X and its pad "
+                    "at Br stand the box 249 mm tall (178): 745 x 467 x 600 mm, 208.8 L, over "
+                    "MODULE_BOX's 325 mm and 143 L, a spacer free to slide 330 mm: the "
+                    "packing round re-plans it",
     "decanter_hinge": "design review round 3's frames (the strut G-O 140 mm, the rail 60, a "
                       "column E2) stand the panels 255 mm tall over PACK_BOX's 215, a piece "
                       "out of order: the packing round re-plans it",

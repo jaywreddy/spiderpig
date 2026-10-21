@@ -93,6 +93,10 @@ stops there:
     with an M6 x 16 button head through the link into each end (class 10.9 steel since
     2026-10-20: A2-70 at ISO 7380's 4 N·m left the joints at their gap). Two carry the front saddle under the neck, two the
     rear saddle 275 and 360 mm behind the mouth.
+  - On B a racking brace (since simplification round 2, 2026-10-21: `decanters.BRACE`): a
+    2 in 6061 tube across the bay behind the rear saddle, under the base stop's rails, its
+    ends keyed into toothed sockets in both cradle links; it carries the box's twist at a
+    jam ("The cradle box across the bay").
   - Two printed saddles ride on the tie rods (`cradle.SADDLES`; since 2026-10-14, under
     "The saddles, adjustable"). Each is a carrier locked on its rods by M3 set screws up
     from its underside, and a V block that rides up and down in it on a thumbscrew.
@@ -1862,21 +1866,65 @@ as a beam between both plates) missed. They feed `strength.check` (`loads_doc`'s
     stress grows with its depth) takes it at SF 8.5-10.1 across its layers (bar 2.5, each
     pour; 1/2 in 6061 rods 3.87, where the 10 mm bridge had 2.33); the front
     carrier's ends turn 0.19-0.21° on its rods, its bores' play 0.86°.
-  - Jammed it doesn't: every joint's twist passes its friction (B 43-50 N·m stuck against
-    6.84, A 53-59), they slip, and what's left goes into bending the links out of their
-    plane, far past yield (B at its 63.2 N·m cap, 221 N·m across: the rods 0.40, their
-    screws 0.86, the link 0.18; A at 66.4, 268 across: 0.39, 0.83, 0.16), the box racking
-    tens of degrees on the linear model. Half the couple (the old case) fails
-    too (the link about 0.5). The box holds about 55 N·m across at SF 1.3 (B and A,
-    steel or 1/2 in 6061 rods, the worst hold; 92 with dry faces, steel on aluminium's
-    least 0.47), a quarter of the cap's, and slips from 30-36 N·m: an open item at the
-    clutch's cap (`cradle_report.OPEN_AT_CAP`, the user's call).
+  - Jammed, unbraced, it doesn't (A today; B until simplification round 2): every joint's
+    twist passes its friction (B 43-50 N·m stuck against 6.84, A 53-59), they slip, and
+    what's left goes into bending the links out of their plane, far past yield (B at its
+    63.2 N·m cap, 221 N·m across: the rods 0.40, their screws 0.86, the link 0.18; A at
+    64.9, 262 across: 0.55, 1.02, 0.17 on 6061 rods), the box racking tens of degrees on
+    the linear model. Half the couple (the old case) fails too (the link about 0.5). The
+    box holds about 55 N·m across at SF 1.3 (B and A, steel or 1/2 in 6061 rods, the worst
+    hold; 92 with dry faces, steel on aluminium's least 0.47), a quarter of the cap's, and
+    slips from 30-36 N·m: on A an open item at the clutch's cap
+    (`cradle_report.OPEN_AT_CAP`, the user's call).
   - No cheap fix closes it: a second screw doesn't fit a 12-16 mm rod's end with its M6
     tap, and a key there would bear at 200-400 MPa in the 4.75 mm link; threadlocker is
     already on; a wider chord only slows it; dry faces (threadlocker on the thread only)
     give 92 N·m; a lower cap would have to sit under the running peak (55 / 221.1 of 63.2
-    N·m is 15.7). What would: a racking member that doesn't go through the rods' ends
-    (a diagonal tie under the rear saddle, or both sides driven), each a redesign.
+    N·m is 15.7).
+  - **B's racking brace** (simplification round 2, 2026-10-21, the user's choice;
+    `decanters.BRACE`, `cradle.BRACE_TUBE`, `cradle_structure.BoxBrace`): a 2 in x 0.065
+    in 6061-T6 round tube (Speedy Metals 4604) across the bay behind the rear saddle and
+    under the base stop's rails, its axis at (412, -124) in the cradle's frame, 430 mm from
+    the mouth (its front 6.6 mm behind the rear carrier, its top 7.6 mm under the rails).
+    - Why a tube: a brace in one plane (a shear panel or straps in the rear rods' plane, a
+      gusseted plate behind the saddle, a floor) carries the twist as shear in its own plane,
+      and a shear across the bay needs an equal couple out of each link's plane at its ends
+      (about the whole couple for a panel at the rear rods, 78 N·m for one behind the
+      saddle): the links can't (0.15-0.45), the rods' own failure. A closed section carries
+      a twist in torsion and puts it into each link in the link's own plane, as a couple
+      round its socket. Under the bottle between the saddles the decanter stands at rest;
+      the rear carrier rides the rear rods; in front of the mouth the stream and the gauge.
+    - Each end is keyed into its cradle link: a laser-cut socket (`cradle.BRACE_SOCKET`:
+      53.2 mm across, 12 teeth 6 mm wide standing in to 46.9 mm, their roots rounded r 1),
+      the tube's ends notched for them at home, one end marked from a socket, the lines
+      carried along the tube to the other, sawn and filed to fit, 0.1 mm over the teeth as
+      cut at most (`BRACE_CLEAR`: its free turn 0.47° both ends, `cradle_report.box_brace`),
+      its ends 0.25 mm short of the links' outer faces. No screw: the teeth key it, the rods'
+      screws close the box on it. 192 g; GJ/L 254 N·m/°.
+    - b6 carries the couple from the socket to its pins in its plane
+      (`cradle_structure.link_bending`'s `couples`: all of the box's moment at the socket):
+      its rear arm X-Tr1 64 mm (48 before), Tr1-Tr2 64 (24), a chord Tr2-Br 76 (the socket's
+      pad), a boss r 50 at X spreading it into the chord Tf2-X, which can't grow (pillar O1).
+      The plan is unchanged (81.03 mm in 15 layers, proven); b6 is 0.30 kg the pair heavier.
+    - In `box_frame` the tube is a 3D beam on the links' node Br, rigid in bending at its
+      ends, its twist free in its play and borne past it, never slipping; its rows
+      (`box_racking`): the tube on 6061-T6's 35 ksi (the Aluminum Association's Table 12.1),
+      its teeth bearing on the link's 5052 and the tube's wall (all twelve sharing: the 5052
+      gives a few hundredths of a millimetre at the first jam), their roots in shear.
+    - At B's 63.9 N·m cap (223.6 N·m across): the box racks 1.18-1.23°, the tube takes
+      193.9 N·m (87 %) at SF 4.50, its teeth bear at 83.8 MPa (1.89), the rods 8.73, their
+      screws 28.0, the cradle link 1.40 (Tf2-X past X's boss: the couple through the arm, in
+      its plane, 1.38 30° from the toggles); no joint slips (`slip_x` 0.74), the faces stay
+      shut (2.48). Walking (25.7 N·m across): 0.50-0.52° (the tube in its play to 0.47°,
+      then 13 N·m), the rods 20.7, the link 7.49, `slip_x` 0.31, the faces 5.89 x their gap
+      moment, the rear carrier's bridge 9.64.
+    - Not on A: A's hand crank (130 mm on a 230 mm reach) sweeps the bay's drive end behind
+      the rear saddle, the tube 16-28 mm inside a hand on its grip wherever it goes there (a
+      reach of about 300 mm clears it and its socket's pad: a probe, the rest unchecked),
+      and the reshaped link the brace needs (a chord E-Br over the crankpin, which passes
+      under Tr2) put A's worst start 4-5 % up and its grip at 22.1-22.3 N run in, over the
+      22 N bar (a 132 mm crank would bring it back under).
+      A's box stays open at the cap (`OPEN_AT_CAP`); the user's call.
   - Rods with stiffer twist attract more of it: rear rods of 5/8 in 6061 on A2-70 screws at
     4 N·m (the stand review's R1) slip walking (their joints hold 5.14 N·m, the rear rods'
     stuck twist 6.5-8.0).
@@ -2198,8 +2246,8 @@ ratchets on the start), and dry it locks (`handcrank.clutch_drift`, the report's
   1.38 at B's walking peak (1.31); the guide files them together.
 - The bars are the tests' (`tests/test_cradle.py`): the clutch's least slip in its check's
   window at least 1.1 x the worst starting turn (1.2 on both: 1.3 x 0.92), every part at
-  1.3 or more 30° from the toggles (nothing open at the cap since the side frames'
-  redesign: `cradle_report.OPEN_AT_CAP` is empty), the output shaft 3 x walking, the
+  1.3 or more 30° from the toggles (but A's cradle box since simplification round 1:
+  `cradle_report.OPEN_AT_CAP`; B's braced since round 2), the output shaft 3 x walking, the
   gearbox's maximum 1.25 x over the cap.
 
 Every joint on both sides is rated at the full planar load (`cradle_report.SHARE` = 1),
@@ -2351,13 +2399,13 @@ side as one frame):
 |---|---|
 | swing | −50.0° to +30.0°, the mouth still (0 mm), every bottle's mouth on the pivot |
 | transmission | 36.7° at worst (the rod's); the parallelograms 48.5° and 51.5° |
-| gearbox | NRV050: 35.8 N·m peak, SF 2.37 on its 85 N·m maximum, the clutch's cap 1.33 x under it; 21.7 N at the 125 mm grip at the worst start run in, 24.7 new (the bar 22 N, MIL-STD-1472H) |
-| jam (63.9 N·m, the clutch's cap; 63.2 since simplification round 1's lighter box, every row about 1 % up) | pillar O1 1.37 (on its box, through to the inner plate since design review round 3), column E2 1.46, b6 1.48, b4 1.49 (its chord's buckling), the outer plate 1.52 (the rail at column E2), pin K 1.53 (clevis), the inner plate 1.53, pillar O2 1.55, b2 1.9 (0.187 in 5052 since round 3), b1 1.99, column E1 1.99, pin Y 2.13 (clevis), the side's buckling 2.15, pin J2 2.28 (clevis), the crank's keyway 2.33, b3 2.46, pin X 2.47 (clevis), column D2 2.56, pin P 2.76 (steel), b5 4.46, column D1 8.9, pin J 11.25 (steel): every part 1.3 or more on round 3's model (minimum yields, second order, both plates' idealizations: "The structure model corrected") but the cradle box: rated as a 3D frame since simplification round 1 (all of the couple across it; the cap 63.2 since its lighter box), its rods 0.40, their screws 0.86 and the cradle link out of its plane 0.18, open (`cradle_report.OPEN_AT_CAP`; "The cradle box across the bay") |
+| gearbox | NRV050: 35.9 N·m peak, SF 2.37 on its 85 N·m maximum, the clutch's cap 1.33 x under it; 21.8 N at the 125 mm grip at the worst start run in, 24.7 new (the bar 22 N, MIL-STD-1472H) |
+| jam (63.9 N·m, the clutch's cap since simplification round 2's racking brace, 0.46 kg on the box; 61.8 after round 1) | the box's cradle link 1.40 (out of its plane with its in-plane stress, the brace's couple through its rear arm), b6 1.53, b4 1.65, the outer plate 1.60, the inner plate 1.66, pin K 1.71, pillar O1 1.76, b2 1.78, pillar O2 1.97, b1 1.98, the side's buckling 2.06, column E2 2.20, pin P 2.31, the crank 2.32, b3 and pin Y 2.46, pin J2 2.56, column E1 2.83, pin X 2.84, column D2 3.88, pin J 4.04, b5 4.46; the brace's teeth 1.89, its tube 4.50, the tie rods 8.73, their screws 28.0: every part 1.3 or more, the cradle box rated as a 3D frame since simplification round 1 (all of the couple across it), braced since round 2 ("The cradle box across the bay") |
 | walking | every joint, link, column and plate 4.13 or more (the crank's keyway; the outer plate 4.51); the output shaft's radial load 8.2 (410 N at the rod's plane, 69.4 mm past the hub, against 3363 N) |
 | rod, crankpin | buckling 1.78 × its jam force (1.9 as a beam-column); the crankpin 2.03 jammed |
-| the clutch's cap over the whole turn | every part 1.34 or more 30° and more from the toggles (pillar O1 and b6); 1.17 at ±25°, 0.96 at ±20° (the outer plate, pillar O1, column E2; round 2's pillar O2 0.6 and 0.49); the gearbox's output shaft 1.3 outside ±25°, 1 outside ±20°; the rod buckles within ±16° of rest, ±9° of full tilt (rounds 1 and 2's drive reviews) |
-| stand | tips at 26.7° at worst (a full 6 L at every tilt, over the rear edge: a bound; with the wine leaving as it pours, 30.2°); the drive side 30.0°, the passive side 31.9°, the front 42.4°; a push of 53.5 N or more at a bottle's top (toward the drive side). The board 40 mm toward the drive side and 686 mm long (round 2: its window under the base stop and the NRV050 took the 684 mm board's rear to 25.0°; the side frames' redesign, 1.2 kg more low on the stand, took the rear from 25.5° to 26.7°) |
-| stack | 84.55 mm a side, 16 layers (b2 in 0.187 in 5052 since round 3, 0.1 mm thinner than the 7075; 84.65 with round 2's M6 tie screws' heads under the cradle link, 0.6 mm; 84.05 before, the planner of 2026-10-14; 84.23 in 17 before it, 79.68 before the clevis pin at K and b6 in 0.187 in) |
+| the clutch's cap over the whole turn | every part 1.38 or more 30° and more from the toggles (the box's cradle link; 1.34, pillar O1 and b6, before simplification round 2's brace); 1.23 at ±25° (the outer plate), 1.17 at ±25° before, 0.96 at ±20° (the outer plate, pillar O1, column E2; round 2's pillar O2 0.6 and 0.49); the gearbox's output shaft 1.3 outside ±25°, 1 outside ±20°; the rod buckles within ±16° of rest, ±9° of full tilt (rounds 1 and 2's drive reviews) |
+| stand | tips at 26.8° at worst since simplification round 2's racking brace (27.1° after round 1; a full 6 L at every tilt, over the rear edge: a bound; with the wine leaving as it pours, 30.2° before round 1); the drive side 30.0°, the passive side 31.9°, the front 42.4°; a push of 54.6 N or more at a bottle's top (toward the drive side). The board 40 mm toward the drive side and 686 mm long (round 2: its window under the base stop and the NRV050 took the 684 mm board's rear to 25.0°; the side frames' redesign, 1.2 kg more low on the stand, took the rear from 25.5° to 26.7°) |
+| stack | 81.03 mm a side, 15 layers, proven (simplification round 1's rod pins; unchanged by round 2's brace); 84.55 mm in 16 layers before (b2 in 0.187 in 5052 since round 3, 0.1 mm thinner than the 7075; 84.65 with round 2's M6 tie screws' heads under the cradle link, 0.6 mm; 84.05 before, the planner of 2026-10-14; 84.23 in 17 before it, 79.68 before the clevis pin at K and b6 in 0.187 in) |
 
 Before the review's round (2026-10-13, the old rules and a 331 mm centre of mass): pillar
 O2 1.33, pin J2 1.40, pillar O1 1.42, b3 and b4 1.74, b2 2.61, b6 3.51; the gearbox 1.52
@@ -2502,8 +2550,8 @@ pins' 0.34): the mouth sags a few tenths of a millimetre more at worst, against 
 
 **Open items:**
 - **The cradle box at the clutch's cap** (`OPEN_AT_CAP`'s three rows, both cradles): the
-  joints slip and the links bend past yield; the user chose a racking brace, round 2 designs
-  it. Walking holds.
+  joints slip and the links bend past yield; the user chose a racking brace. Round 2 closed
+  B's ("Simplification round 2"); A's stay open (its hand crank). Walking holds.
 - **Wear on the hard coat:** cited as the fix for aluminium galling, unquantified at this
   duty; the guide's scoring check at each set-up is the screen.
 - **The anodized rod's tolerance:** McMaster doesn't say whether its +-0.008 in is the coated
@@ -2522,7 +2570,74 @@ pins' 0.34): the mouth sags a few tenths of a millimetre more at worst, against 
 - **The packs** stay open (`PACK_OPEN`, `pack-inspect --plan default`): B 742 x 350 x 600
   mm, 155.9 L (157.5 at f5e2737), its drive panel unsupported on the cradle box, 16 spacers
   (408 g); A 700 x 252 x 607 mm, 106.9 L, a piece out of order (its panels over `PACK_BOX`'s
-  215 mm).
+  215 mm). (B 208.8 L since round 2's racking brace: "Simplification round 2".)
+
+
+## Simplification round 2: the racking brace (2026-10-21)
+
+The user chose a racking brace for the cradle box's jam (round 1's open item:
+[DECISIONS.md](DECISIONS.md), "the cradle box's racking brace"). B has it; A can't take it as
+its hand crank stands ("The cradle box across the bay").
+
+**The concepts** (rough numbers at B's cap, 221 N·m across; A's 268):
+
+| concept | how it carries the twist | rough SF | verdict |
+|---|---|---|---|
+| a shear panel (0.080 in 5052) between the rear tie rods, bolted at their ends | shear in its plane; its end couple, about the whole couple, out of each link's plane | links about 0.2 | out (and the rear carrier rides those rods) |
+| diagonal straps (an X in the rear rods' plane) | the same statics: each strap 5.5 kN, its pull along the bay unbalanced at one link, 0.44 kN·m out of its plane | about 0.1 | out |
+| a gusseted end plate behind the rear saddle | shear in its plane, 0.57 kN at 390 mm; its end couple 78 N·m out of each link's plane | about 0.45 | out |
+| closing the box with a floor | planar again; and the decanter stands under the box between the saddles at rest | | out |
+| **a closed tube** behind the rear saddle, keyed into both links | torsion; its couple in each link's own plane | the tube 4.50, its teeth 1.89, the box 1.40 | **built (B)** |
+| a 1.5 in tube | torsion, 131 N·m/° | teeth about 1.3 | out (margin) |
+| a laser-cut 4-plate box | torsion; its corners carry 9-15 kN along the bay each | | out (40 screws, heavier) |
+
+**The numbers** (`cradle_report.report` on B; round 1's merged head in brackets):
+
+| | B |
+|---|---|
+| the box at the clutch's cap, across | 223.6 N·m: racks 1.18-1.23° (tens of degrees, slipping); the tube 193.9 N·m, SF 4.50; its teeth 1.89; the rods 8.73 (0.58), their screws 28.0 (1.08), the cradle link 1.40 (0.18); no joint slips |
+| the box walking, across | 25.7 N·m: 0.50-0.52° (1.20); the rods 20.7 (9.68), the link 7.49 (4.28), `slip_x` 0.31 (0.73), the faces 5.89 x their gap moment (3.19) |
+| every cap row, 30° from the toggles | 1.38 or more (the box's cradle link; the riser 1.42, b6 1.50) |
+| the start, the clutch's cap, spun | 2.72 N·m (2.629), 63.9 N·m (61.8), 68.1 (65.8) |
+| the grip run in / new; the gearbox | 21.8 / 24.7 N (21.0 / 23.9); 2.37 x walking, 1.33 x the cap |
+| tipping; sway; the side's buckling | 26.8° (27.1), 54.6 N at the top; 3.91 mm; 2.06 |
+| the device; the lifts | 16.75 kg (16.23); 13.2 kg the cradle, 10.4 the drive side with the box (12.7, 9.9) |
+| stack | 81.03 mm in 15 layers, proven (unchanged) |
+
+**The BOM** (`spiderpig build`): B USD 1,039.13 (1,007.55, +31.58): purchases 287.02 (+7.32, the
+tube: Speedy Metals 4604, 12 in), SendCutSend's cutting 752.11 (+24.26, the two cradle links
+b6 the bigger: their wider rear and the socket's pad). Speedy's cart clears its USD 20 minimum
+on B alone now (21.79). A unchanged.
+
+**The pack** (`pack-inspect --plan default`; still open, `PACK_OPEN`): B 745 x 467 x 600 mm,
+208.8 L (round 1: 742 x 350 x 600, 155.9 L), every piece supported (the drive panel had been
+unsupported on the box), 11 spacers (390 g; 16, 408 g), one of them free to slide 330 mm.
+b6's boss at X (r 50, its top 50 mm over X) and its pad at Br (the chord Tr2-Br 76 mm wide,
+38 under Tr2) stand the cradle box 249 mm tall (178), and the panels ride over it. Standing,
+the box had also turned on end in the plan: `cradle_pack._items` now stands it as in use
+(its axis level, as its "bottom" face says) instead of on its least footprint, which the
+squarer box no longer gave. The pack's way back: a boss and a pad grown only toward the
+link's middle (not about X and the chord's line) would give back most of the 71 mm; a
+model change of its own, the strength rows re-run. A unchanged: 700 x 252 x 607 mm, 106.9 L,
+22 spacers (710 g), a piece out of order.
+
+**Home work:** the tube brought to length by hand (120-grit on the flat table, to 0.1 mm)
+and its 24 notches marked from a socket and along the tube, sawn and filed to fit (an
+estimate: 1.5-2 h); the guide's shop step (`cradle.shop_ops`, "brace"). Hand tools only:
+whether the Carvera's vise takes a 2 in tube isn't on Makera's pages found that day.
+
+**Open:**
+- **A's cradle box at the clutch's cap** (`OPEN_AT_CAP`: rods 0.55, screws 1.02, link 0.17):
+  the brace can't go where A's hand crank sweeps. The user's call: a longer reach on A's
+  hand crank (about 300 mm clears the tube and its pad; its input shaft's overhung load,
+  its hub's print and its pack unchecked), with A's link reshaped for the couple (a chord
+  E-Br 48-56 mm wide) and its crank's throw to 132 mm to hold the 22 N grip; or A's box as
+  it is (walking holds).
+- **The teeth share:** rated with all twelve bearing (the 5052 beds in a few hundredths at
+  the first jam); the guide mills each notch to its tooth.
+- **A block at a saddle:** the box rows rate the whole couple across the bay (round 1's
+  bounding case); a block's force on the rods at mid-bay as a beam load is the known-limits
+  study's (`cradle_report.blocked`), where the box no longer governs on B.
 
 
 ## Simplification round 2 (2026-10-21)
@@ -2587,7 +2702,8 @@ The assembly guide's order is `construction.assembly.CRADLE_MODULE_ORDER` on B a
 `CRADLE_ORDER` on A:
 0. **The shop work** (`assembly.SHOP_STAGE`, `cradle.shop_ops`; simplification round 1,
    2026-10-21: the posts, tie rods, pins and crankpin are 6061 rod made at home, the cleats
-   and the riser locator cut on the Carvera), five steps before the first part goes on:
+   and the riser locator cut on the Carvera), five steps before the first part goes on (six
+   on B since simplification round 2):
    - the arrival checks: the cut parts labelled, deburred and calipered (`CRADLE_ARRIVAL`);
      B's rod b1 at least 5.79 mm thick (`cradle.ARRIVAL_LEAST_T`: its buckling at the cap
      goes as its thickness cubed); each rod stick calipered and its reading written on it,
@@ -2599,6 +2715,9 @@ The assembly guide's order is `construction.assembly.CRADLE_MODULE_ORDER` on B a
      each pivot post and the crankpin calipered at its journal (over 12.85 mm, its link's
      13.05 mm bore opened to 13.10: `cradle.POST_OVER`), the riser's studs sawn from A2-70
      screws, its sleeves drilled;
+   - on B, the racking brace's tube: squared to its length by hand (to 0.1 mm), one end
+     marked from a socket's teeth, the lines carried down it to the other end (both ends'
+     notches in line, as the links' teeth are), its 24 notches sawn and filed to fit;
    - the pins cut to their calipered stacks + 0.3 mm (`order.PIN_TAKE_UP_MM`, ORDER.md's
      pins note: `order.ROD_PIN_NOTE`), the crankpin to its drawn length;
    - every tapped end drilled and tapped (M6 at the posts', tie rods' and crankpin's ends and

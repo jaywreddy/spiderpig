@@ -386,6 +386,72 @@ register(Item(ROD_STICK[0], f"1/2 in 6061-T6511 round rod, 3 ft (McMaster {ROD_S
               notes="The plain posts', tie rods' and riser sleeves' stock (:data:`ROD_STICK`), "
                     "sawn to length at home."))
 
+BRACE_STOCK = {"od": 50.8, "wall": 1.651, "sku": "9056K83", "url": "https://www.mcmaster.com/9056K83/",
+               "lengths": ((304.8, 20.81), (609.6, 37.46)), "yield_mpa": 241.3,
+               "speedy": ("4604", 0.61, "https://www.speedymetals.com/pc-4604-8371-2-od-x-065-"
+                                   "wall-tube-6061-t6-aluminum.aspx")}
+"""The cradle box's racking brace's stock (simplification round 2, 2026-10-21): McMaster's
+multipurpose 6061 round tube, 2 in OD x 1.87 in ID (0.065 in wall, +-0.004 in), cold drawn,
+T6, ASTM B210 (9056K83; its family table rendered 2026-10-21: 1/2 ft USD 12.49, 1 ft 20.81, 2
+ft 37.46): the shortest stick the tube and its :data:`ROD_FACE` fit in, sawn at home, in the
+rods' cart (:data:`ROD_STICK`). Speedy Metals' 4604 (the same tube by the inch, USD 0.61, cut
+'Plus 1/8", Minus 0"', the page 2026-10-21) lists for less but would be its cart's only line
+since round 2's P5, under Speedy's USD 20 order minimum and on FedEx with an account: the
+second offer. Rated at 6061-T6's 35 ksi least yield: the Aluminum Association's Table 12.1 for
+extruded tube, 0.249 in wall and under (38 / 35 ksi; aluminum.org/sites/default/files/2022-12/
+Table_12.1.pdf, fetched 2026-10-21); ASTM B210's own drawn-tube limits weren't fetched (an
+estimate for the drawn tube: its row, 4.45 at the cap, holds at half that yield)."""
+
+
+def brace_tube(length: float) -> str:
+    """The catalog key of the racking brace's tube (:data:`BRACE_STOCK`), ``length`` mm, its
+    ends notched for its sockets' teeth (made on first use)."""
+    key = f"tube6061_2in_065_{round(length, 1):g}"
+    CATALOG.get(key)
+    return key
+
+
+def _brace_of(key: str) -> Item | None:
+    import math
+
+    pre = "tube6061_2in_065_"
+    try:
+        n = round(float(key.removeprefix(pre)) * 10)
+    except ValueError:
+        return None
+    L = n / 10
+    if not 1000 <= n <= 6000 or f"{pre}{L:g}" != key:
+        return None
+    s = BRACE_STOCK
+    fits = [(n, p) for n, p in s["lengths"] if n + 1e-9 >= L + ROD_FACE]
+    if not fits:
+        return None
+    stick, usd = fits[0]
+    sku, per_in, url = s["speedy"]
+    inches = math.ceil((L + ROD_FACE) / 25.4 - 1e-9)
+    return Item(
+        key, f"2 in x 0.065 in 6061-T6 round tube, {L:g} mm, its ends squared and notched "
+        f"for its sockets' teeth at home (sawn from a {stick / 304.8:g} ft McMaster "
+        f"{s['sku']})", "standoff",
+        (Offer("McMaster-Carr", s["url"], s["sku"], price_usd=usd, verified=True,
+               note=f"2 in OD x 1.87 in ID 6061-T6 tube, cold drawn, ASTM B210, "
+                    f"{stick / 304.8:g} ft, USD {usd:.2f} (the family table rendered "
+                    f"2026-10-21): sawn to {L + ROD_FACE:.1f} mm, brought to {L:g} mm square "
+                    "by hand, 12 notches sawn and filed in each end"),
+         Offer("Speedy Metals", url, f"{sku} cut {L + ROD_FACE:.1f} mm",
+               price_usd=round(inches * per_in, 3), verified=True,
+               note=f"the same tube by the inch, USD {per_in:.2f} an inch in whole inches (the "
+                    "page 2026-10-21), cut +1/8 -0 in; alone in its cart since round 2's P5, "
+                    "under Speedy's USD 20 minimum")),
+        dims={"od": s["od"], "wall": s["wall"], "length": L, "yield_mpa": s["yield_mpa"],
+              "material": "aluminium"},
+        notes="A decanting cradle's racking brace (simplification round 2, 2026-10-21): the "
+              "cradle box's twist across the bay crosses in its torsion; rated on 6061-T6's "
+              "35 ksi least yield (the Aluminum Association's Table 12.1).")
+
+
+register_factory("tube6061_2in_065_", _brace_of)
+
 ROD_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(250, 6001))
 """The posts' and tie rods' lengths: 25-600 mm in 0.1 mm steps (each one faced to it)."""
 

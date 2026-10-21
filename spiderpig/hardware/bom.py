@@ -1265,8 +1265,9 @@ CRADLE_GREASE_NOTE = (
 drive's B-1)."""
 CRADLE_CARTS_NOTE = (
     "The carts (simplification round 1, 2026-10-21: folded to seven and the upload; round "
-    "2: six, the rods from McMaster's sticks, sawn at home, in place of Speedy Metals' cut "
-    "pieces, whose cart took no order under USD 20 and shipped FedEx on an account only). "
+    "2: six, the rods and B's racking brace's tube from McMaster's sticks, sawn at home, "
+    "in place of Speedy Metals' cut pieces, whose cart took no order under USD 20 and "
+    "shipped FedEx on an account only). "
     "Their shipping isn't in the totals; priced only where a page or a cart gave it that "
     "day: SendCutSend free in the US over USD 39; Woodcraft standard USD 13.99 to 94103 for "
     "the panels and the glue (its cart's rates). Unpriced: McMaster-Carr (\"applicable "
