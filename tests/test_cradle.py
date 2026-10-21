@@ -252,6 +252,29 @@ def test_a_cradles_cutting_estimate_is_the_same_grouped_or_not():
         assert fit.factor(3) <= fit.factor(2)
 
 
+@pytest.mark.no_fabricate
+def test_a_cradles_cutting_fit_charges_the_deburring_and_caps_the_blank():
+    """The fit's two terms of simplification round 2's refit: SendCutSend's default
+    deburring, USD 1.47 a part, only on a part it deburrs (from 0.995 x 3 in), at any
+    quantity; and a blank past ``blank_cap`` priced as the cap (a big plate turned within it
+    costs the same, as the live quotes of B's outer plate at 0 and 70 deg did)."""
+    from spiderpig.hardware.bom import CRADLE_CUT_FITS, CutPart, cut_estimate
+
+    key = "al5052_4p8mm"
+    fit = CRADLE_CUT_FITS[key]
+    assert fit.deburr == pytest.approx(1.47)
+    narrow = CutPart(30.0, 2, 340.0, 3, 131.0, 25.0)       # under 0.995 in: arrives as cut
+    wide = narrow._replace(short_mm=25.3)
+    bare = 2 * round(fit.one(wide) * fit.factor(2), 2)
+    assert cut_estimate(key, [wide], fit) == pytest.approx(bare + 2 * 1.47, abs=0.02)
+    assert cut_estimate(key, [narrow], fit) < cut_estimate(key, [wide], fit) - 2.8
+    big = CutPart(1300.0, 2, 3560.0, 16, 576.0, 476.8)
+    assert 576.0 * 476.8 / 100.0 > fit.blank_cap
+    turned = big._replace(long_mm=566.0, short_mm=463.7)
+    assert cut_estimate(key, [turned], fit) == pytest.approx(cut_estimate(key, [big], fit),
+                                                             rel=0.005)
+
+
 QUOTED = (
     # SendCutSend's live quotes of 2026-10-14 (design review round 2): B's and A's files at
     # the reviewed snapshot, at their quantities: (cradle, sheet, part, qty, area cm^2, cut
@@ -286,9 +309,11 @@ QUOTED = (
 
 @pytest.mark.no_fabricate
 def test_a_cradles_cutting_fit_holds_to_the_live_quotes():
-    """``CRADLE_CUT_FITS`` against the quotes it was fitted on (design review round 2's B1:
-    the area-only fit had missed by -32 to +53 %, the 7075 and the birch unpriced): each
-    file within 11 %, B's and A's orders within 2 % (quoted USD 758.19 and 573.82)."""
+    """``CRADLE_CUT_FITS`` against the quotes it is fitted on (design review round 2's B1:
+    the area-only fit had missed by -32 to +53 %, the 7075 and the birch unpriced; refitted
+    in simplification round 2 on 2026-10-21's, with the deburring and the blank's cap): each
+    file of 2026-10-14 within 11 %, B's and A's orders then within 2 % (quoted USD 758.19
+    and 573.82); each quote of 2026-10-21, one off and at its quantity, within 11 %."""
     from spiderpig.hardware.bom import CRADLE_CUT_FITS, CutPart, cut_estimate
 
     totals: dict[str, list[float]] = {}
@@ -302,13 +327,14 @@ def test_a_cradles_cutting_fit_holds_to_the_live_quotes():
     assert totals["A"][0] == pytest.approx(573.82)
     for live, fit in totals.values():
         assert fit == pytest.approx(live, rel=0.02)
-    # and the frame plates' live quotes of 2026-10-21 (simplification round 1), checked, not
-    # fitted: the outer +8.2 %, the inner -7.2 %
+    # and the live quotes of 2026-10-21 (simplification rounds 1 and 2): A's outer plate,
+    # 19 % over on the 2026-10-14 law, and B's b5, 20 % under, now within 11 %
     from spiderpig.hardware.bom import CRADLE_LIVE_QUOTES
 
-    for _, key, part, q, area, cut, n, long_, short, usd in CRADLE_LIVE_QUOTES:
+    assert len(CRADLE_LIVE_QUOTES) >= 50
+    for cradle, key, part, q, area, cut, n, long_, short, usd in CRADLE_LIVE_QUOTES:
         got = cut_estimate(key, [CutPart(area, q, cut, n, long_, short)], CRADLE_CUT_FITS[key])
-        assert got == pytest.approx(usd, rel=0.11), part
+        assert got == pytest.approx(usd, rel=0.11), (cradle, part, q)
 
 
 @pytest.mark.no_fabricate
@@ -1196,8 +1222,8 @@ def test_a_cradles_bom_says_what_its_total_leaves_out():
     assert {"al7075_4p8mm", "birch_9mm", "al5052_4p8mm", "al5052_6p35mm",
             "al6061_3p2mm"} <= set(CRADLE_CUT_FITS)
     assert CRADLE_CUT_PROXIES == {}
-    assert "2026-10-14" in CRADLE_CUT_SOURCE
-    assert "758.19" in CRADLE_CUT_SOURCE
+    assert "2026-10-21" in CRADLE_CUT_SOURCE
+    assert "USD 1.47 a part SendCutSend deburrs" in CRADLE_CUT_SOURCE
     proxies = {"al7075_4p8mm": ("al5052_4p8mm", 1.0, 2.0, "a test's basis")}
     made = [MadeRow("L.b2", "laser", "7075", "", 40.0 * 0.4826, 2, sheet="al7075_4p8mm"),
             MadeRow("base_plate", "laser", "birch", "", 3000.0 * 0.9, 1, sheet="birch_9mm"),

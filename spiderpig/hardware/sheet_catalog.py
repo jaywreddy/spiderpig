@@ -108,7 +108,8 @@ so the sheet a layout draws is only a page."""
 SCS_SPEC_URL = "https://app.sendcutsend.com/materials?sku={sku}&include_datasheet=true"
 SCS_DEBURR_URL = "https://sendcutsend.com/services/deburring-services/"
 SCS_DEBURR_MM = (0.995 * IN, 3.0 * IN)
-"""SendCutSend deburrs (by default, free) only a part at least 0.995 x 3 in: its quoting
+"""SendCutSend deburrs (by default, at USD 1.47 a part: its live quotes of 2026-10-21 with and
+without it, :data:`hardware.bom.CRADLE_CUT_FITS`) only a part at least 0.995 x 3 in: its quoting
 app's limit (the spec API's ``deburring`` operation, ``min_length`` 0.995 and
 ``min_length_max`` 3.0 in on every aluminium SKU, fetched 2026-10-20 by design review round
 3's laser-cut parts review), which its spec tables and deburring page round to "1 x 3 in"
