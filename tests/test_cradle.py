@@ -4076,10 +4076,10 @@ flat."""
 PACK_OPEN = {
     "decanter_rcm": "design review round 3's frames (the rail 60 mm, the rear leg 80, O2-O 88) "
                     "landed the drive panel on the cradle box (742 x 354 x 600 mm, 157.5 L); "
-                    "since simplification round 2's racking brace b6's boss at X and its pad "
-                    "at Br stand the box 249 mm tall (178): 745 x 467 x 600 mm, 208.8 L, over "
-                    "MODULE_BOX's 325 mm and 143 L, a spacer free to slide 330 mm: the "
-                    "packing round re-plans it",
+                    "since simplification round 2 (the racking brace, b6 cut to its band: "
+                    "the box stands 212 mm tall, 249 uncut, 178 before the brace): 745 x 394 x "
+                    "600 mm, 175.9 L, over MODULE_BOX's 325 mm and 143 L, a spacer free to "
+                    "slide 153 mm: the packing round re-plans it",
     "decanter_hinge": "design review round 3's frames (the strut G-O 140 mm, the rail 60, a "
                       "column E2) stand the panels 255 mm tall over PACK_BOX's 215, a piece "
                       "out of order: the packing round re-plans it",

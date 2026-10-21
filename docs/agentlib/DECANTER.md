@@ -1888,7 +1888,8 @@ as a beam between both plates) missed. They feed `strength.check` (`loads_doc`'s
     N·m is 15.7).
   - **B's racking brace** (simplification round 2, 2026-10-21, the user's choice;
     `decanters.BRACE`, `cradle.BRACE_TUBE`, `cradle_structure.BoxBrace`): a 2 in x 0.065
-    in 6061-T6 round tube (Speedy Metals 4604) across the bay behind the rear saddle and
+    in 6061-T6 round tube (McMaster 9056K83, sawn from a 1 ft stick in the rods' cart:
+    `cradle_catalog.BRACE_STOCK`) across the bay behind the rear saddle and
     under the base stop's rails, its axis at (412, -124) in the cradle's frame, 430 mm from
     the mouth (its front 6.6 mm behind the rear carrier, its top 7.6 mm under the rails).
     - Why a tube: a brace in one plane (a shear panel or straps in the rear rods' plane, a
@@ -1910,19 +1911,29 @@ as a beam between both plates) missed. They feed `strength.check` (`loads_doc`'s
       (`cradle_structure.link_bending`'s `couples`: all of the box's moment at the socket):
       its rear arm X-Tr1 64 mm (48 before), Tr1-Tr2 64 (24), a chord Tr2-Br 76 (the socket's
       pad), a boss r 50 at X spreading it into the chord Tf2-X, which can't grow (pillar O1).
-      The plan is unchanged (81.03 mm in 15 layers, proven); b6 is 0.30 kg the pair heavier.
+      The plan is unchanged; b6 is about 0.3 kg the pair heavier.
+    - b6 is cut to a band across the bottle's axis (`config.PRODUCT_BAND`, the round's way
+      back): from 0.5 mm under Br's pad (the socket's web whole) to 1 mm under the front
+      saddle's lip gauge's top, its corners R5 (`plates.BAND_CORNER_R`). What grew inward
+      stays; what stood out past the box's other parts goes (X's boss's top, the rear arm's
+      round ends, the rear chords' lower edges near Tr2), and every section is rated on what
+      the band leaves (`cradle_structure.Band`, `strip_section`: an eccentric net section).
+      The cradle box stands about 212 mm tall in the pack (249 uncut, 178 before the brace).
     - In `box_frame` the tube is a 3D beam on the links' node Br, rigid in bending at its
       ends, its twist free in its play and borne past it, never slipping; its rows
       (`box_racking`): the tube on 6061-T6's 35 ksi (the Aluminum Association's Table 12.1),
       its teeth bearing on the link's 5052 and the tube's wall (all twelve sharing: the 5052
       gives a few hundredths of a millimetre at the first jam), their roots in shear.
-    - At B's 63.9 N·m cap (223.6 N·m across): the box racks 1.18-1.23°, the tube takes
-      193.9 N·m (87 %) at SF 4.50, its teeth bear at 83.8 MPa (1.89), the rods 8.73, their
-      screws 28.0, the cradle link 1.40 (Tf2-X past X's boss: the couple through the arm, in
-      its plane, 1.38 30° from the toggles); no joint slips (`slip_x` 0.74), the faces stay
-      shut (2.48). Walking (25.7 N·m across): 0.50-0.52° (the tube in its play to 0.47°,
-      then 13 N·m), the rods 20.7, the link 7.49, `slip_x` 0.31, the faces 5.89 x their gap
-      moment, the rear carrier's bridge 9.64.
+    - At B's cap (the round's integrated head; the rows at 63.9 N·m, 223.6 across, before
+      the way back took the cap to 63.7): the box racks 1.24°, the tube takes 195.9 N·m (88
+      %) at SF 4.45, its teeth bear at 84.7 MPa (1.87), the rods 9.12, their A2-70 screws
+      18.9, the cradle link 1.40 (Tf2-X past X's boss: the couple through the arm, in its
+      plane). The tie rods' end joints, A2-70 at 4 N·m since the round's P8 (`cradle.TIE_SCREWS`),
+      reach their friction in twist there and slip past it (`slip_x` 1.11; threadlocked into
+      the rods, the screws keep their preload), their faces shut (1.65). Walking (25.6 N·m
+      across): 0.52° (the tube in its play to 0.47°, then 13 N·m), the rods 20.7, the link
+      7.50, `slip_x` 0.47, the faces 3.93 x their gap moment. (On the brace's own branch, its
+      class 10.9 screws at 6 N·m: the tube 193.9 N·m at 4.50, no joint slipping, 0.74.)
     - Not on A: A's hand crank (130 mm on a 230 mm reach) sweeps the bay's drive end behind
       the rear saddle, the tube 16-28 mm inside a hand on its grip wherever it goes there (a
       reach of about 300 mm clears it and its socket's pad: a probe, the rest unchecked),
@@ -2575,87 +2586,25 @@ pins' 0.34): the mouth sags a few tenths of a millimetre more at worst, against 
 - **The packs** stay open (`PACK_OPEN`, `pack-inspect --plan default`): B 742 x 350 x 600
   mm, 155.9 L (157.5 at f5e2737), its drive panel unsupported on the cradle box, 16 spacers
   (408 g); A 700 x 252 x 607 mm, 106.9 L, a piece out of order (its panels over `PACK_BOX`'s
-  215 mm). (B 208.8 L since round 2's racking brace: "Simplification round 2".)
-
-
-## Simplification round 2: the racking brace (2026-10-21)
-
-The user chose a racking brace for the cradle box's jam (round 1's open item:
-[DECISIONS.md](DECISIONS.md), "the cradle box's racking brace"). B has it; A can't take it as
-its hand crank stands ("The cradle box across the bay").
-
-**The concepts** (rough numbers at B's cap, 221 N·m across; A's 268):
-
-| concept | how it carries the twist | rough SF | verdict |
-|---|---|---|---|
-| a shear panel (0.080 in 5052) between the rear tie rods, bolted at their ends | shear in its plane; its end couple, about the whole couple, out of each link's plane | links about 0.2 | out (and the rear carrier rides those rods) |
-| diagonal straps (an X in the rear rods' plane) | the same statics: each strap 5.5 kN, its pull along the bay unbalanced at one link, 0.44 kN·m out of its plane | about 0.1 | out |
-| a gusseted end plate behind the rear saddle | shear in its plane, 0.57 kN at 390 mm; its end couple 78 N·m out of each link's plane | about 0.45 | out |
-| closing the box with a floor | planar again; and the decanter stands under the box between the saddles at rest | | out |
-| **a closed tube** behind the rear saddle, keyed into both links | torsion; its couple in each link's own plane | the tube 4.50, its teeth 1.89, the box 1.40 | **built (B)** |
-| a 1.5 in tube | torsion, 131 N·m/° | teeth about 1.3 | out (margin) |
-| a laser-cut 4-plate box | torsion; its corners carry 9-15 kN along the bay each | | out (40 screws, heavier) |
-
-**The numbers** (`cradle_report.report` on B; round 1's merged head in brackets):
-
-| | B |
-|---|---|
-| the box at the clutch's cap, across | 223.6 N·m: racks 1.18-1.23° (tens of degrees, slipping); the tube 193.9 N·m, SF 4.50; its teeth 1.89; the rods 8.73 (0.58), their screws 28.0 (1.08), the cradle link 1.40 (0.18); no joint slips |
-| the box walking, across | 25.7 N·m: 0.50-0.52° (1.20); the rods 20.7 (9.68), the link 7.49 (4.28), `slip_x` 0.31 (0.73), the faces 5.89 x their gap moment (3.19) |
-| every cap row, 30° from the toggles | 1.38 or more (the box's cradle link; the riser 1.42, b6 1.50) |
-| the start, the clutch's cap, spun | 2.72 N·m (2.629), 63.9 N·m (61.8), 68.1 (65.8) |
-| the grip run in / new; the gearbox | 21.8 / 24.7 N (21.0 / 23.9); 2.37 x walking, 1.33 x the cap |
-| tipping; sway; the side's buckling | 26.8° (27.1), 54.6 N at the top; 3.91 mm; 2.06 |
-| the device; the lifts | 16.75 kg (16.23); 13.2 kg the cradle, 10.4 the drive side with the box (12.7, 9.9) |
-| stack | 81.03 mm in 15 layers, proven (unchanged) |
-
-**The BOM** (`spiderpig build`): B USD 1,039.13 (1,007.55, +31.58): purchases 287.02 (+7.32, the
-tube: Speedy Metals 4604, 12 in), SendCutSend's cutting 752.11 (+24.26, the two cradle links
-b6 the bigger: their wider rear and the socket's pad). Speedy's cart clears its USD 20 minimum
-on B alone now (21.79). A unchanged.
-
-**The pack** (`pack-inspect --plan default`; still open, `PACK_OPEN`): B 745 x 467 x 600 mm,
-208.8 L (round 1: 742 x 350 x 600, 155.9 L), every piece supported (the drive panel had been
-unsupported on the box), 11 spacers (390 g; 16, 408 g), one of them free to slide 330 mm.
-b6's boss at X (r 50, its top 50 mm over X) and its pad at Br (the chord Tr2-Br 76 mm wide,
-38 under Tr2) stand the cradle box 249 mm tall (178), and the panels ride over it. Standing,
-the box had also turned on end in the plan: `cradle_pack._items` now stands it as in use
-(its axis level, as its "bottom" face says) instead of on its least footprint, which the
-squarer box no longer gave. The pack's way back: a boss and a pad grown only toward the
-link's middle (not about X and the chord's line) would give back most of the 71 mm; a
-model change of its own, the strength rows re-run. A unchanged: 700 x 252 x 607 mm, 106.9 L,
-22 spacers (710 g), a piece out of order.
-
-**Home work:** the tube brought to length by hand (120-grit on the flat table, to 0.1 mm)
-and its 24 notches marked from a socket and along the tube, sawn and filed to fit (an
-estimate: 1.5-2 h); the guide's shop step (`cradle.shop_ops`, "brace"). Hand tools only:
-whether the Carvera's vise takes a 2 in tube isn't on Makera's pages found that day.
-
-**Open:**
-- **A's cradle box at the clutch's cap** (`OPEN_AT_CAP`: rods 0.55, screws 1.02, link 0.17):
-  the brace can't go where A's hand crank sweeps. The user's call: a longer reach on A's
-  hand crank (about 300 mm clears the tube and its pad; its input shaft's overhung load,
-  its hub's print and its pack unchecked), with A's link reshaped for the couple (a chord
-  E-Br 48-56 mm wide) and its crank's throw to 132 mm to hold the 22 N grip; or A's box as
-  it is (walking holds).
-- **The teeth share:** rated with all twelve bearing (the 5052 beds in a few hundredths at
-  the first jam); the guide mills each notch to its tooth.
-- **A block at a saddle:** the box rows rate the whole couple across the bay (round 1's
-  bounding case); a block's force on the rods at mid-bay as a beam load is the known-limits
-  study's (`cradle_report.blocked`), where the box no longer governs on B.
+  215 mm). (B 175.9 L since round 2's racking brace and its way back: "Simplification round 2".)
 
 
 ## Simplification round 2 (2026-10-21)
 
-The user kept B as the main design ("keep B", 2026-10-21): no linkage change. The round's
-review quoted 26 files live at SendCutSend; its checker built the survivors and kept what
-passed (`/root/scratch/decant/simplify/r2/check.md`; DECISIONS.md, "simplification round 2").
+**The user's two decisions** (2026-10-21):
+- B stays the main design ("keep B"): no linkage change.
+- A racking brace for the cradle box's jam (round 1's open item).
+
+The round's review quoted 26 files live at SendCutSend. Its checker built the survivors and
+kept what passed (`/root/scratch/decant/simplify/r2/check.md`). The brace was built on its
+own branch. The integration merged the two, then did the brace's items (the review's P8,
+A2's go/no-go) and the pack's way back (DECISIONS.md, "simplification round 2").
 
 **What changed:**
 - **The cutting fit** refitted on those quotes (`bom.CRADLE_CUT_FITS`: the deburring a part
   and the blank's cap; "Things to know before cutting", below).
-- **The cut files** turned to their least-area box (`Body.turn`, a cradle's only): B's b6
-  511 x 168 mm (475 x 222), its inner plate 497 x 239, its outer plate 516 x 464.
+- **The cut files** turned to their least-area box (`Body.turn`, a cradle's only): B's inner
+  plate 497 x 239 mm, its outer plate 516 x 464.
 - **B's b3** in 6061-T6 0.187 in at a 25 mm chord: 7075 leaves the order.
 - **The riser's sleeves** faced to the gearbox's calipered height, 21-23 mm (`RISER_AIM`
   over the go/no-go window's low end, long rather than short): no shims.
@@ -2666,33 +2615,104 @@ passed (`/root/scratch/decant/simplify/r2/check.md`; DECISIONS.md, "simplificati
 - **The M3 set screws** one length (5 mm), **the M3 socket heads** one (10 mm).
 - **A's M3 x 12** from Bolt Depot.
 - **The rods** sawn from McMaster's sticks (`cradle_catalog.ROD_STICK`): Speedy's cart goes.
+- **B's racking brace** ("The cradle box across the bay"): a 2 in x 0.065 in 6061-T6 tube
+  across the bay, keyed into toothed sockets in both cradle links.
+  - It comes from McMaster's cart (9056K83, a 1 ft stick, sawn at home). Speedy's 4604 would
+    have been that cart's only line, under its USD 20 minimum.
+  - b6 is reshaped for its couple, then cut to a band across the bottle's axis
+    (`config.PRODUCT_BAND`, the way back).
+- **B's tie rods' end screws** A2-70 at 4 N·m (the review's P8, `cradle.TIE_SCREWS`): the last
+  structural steel on B. A keeps class 10.9 at 6 N·m.
 
-**The numbers** (the report on the round's head; 0d9449b's in brackets):
+**The brace's concepts** (rough numbers at B's cap, 221 N·m across; A's 268):
+
+| concept | how it carries the twist | rough SF | verdict |
+|---|---|---|---|
+| a shear panel (0.080 in 5052) between the rear tie rods, bolted at their ends | shear in its plane; its end couple, about the whole couple, out of each link's plane | links about 0.2 | out (and the rear carrier rides those rods) |
+| diagonal straps (an X in the rear rods' plane) | the same statics: each strap 5.5 kN, its pull along the bay unbalanced at one link, 0.44 kN·m out of its plane | about 0.1 | out |
+| a gusseted end plate behind the rear saddle | shear in its plane, 0.57 kN at 390 mm; its end couple 78 N·m out of each link's plane | about 0.45 | out |
+| closing the box with a floor | planar again; and the decanter stands under the box between the saddles at rest | | out |
+| **a closed tube** behind the rear saddle, keyed into both links | torsion; its couple in each link's own plane | the tube 4.45, its teeth 1.87, the box 1.40 | **built (B)** |
+| a 1.5 in tube | torsion, 131 N·m/° | teeth about 1.3 | out (margin) |
+| a laser-cut 4-plate box | torsion; its corners carry 9-15 kN along the bay each | | out (40 screws, heavier) |
+
+**The way back** (B's pack): the brace's boss at X (r 50) and its wider rear chords (X-Tr1 and
+Tr1-Tr2 64 mm, Tr2-Br 76) had stood the cradle box 249 mm tall in the pack (178 before).
+- The band (`config.PRODUCT_BAND`) cuts b6 from 0.5 mm under Br's pad (the socket's web
+  whole) to 1 mm under the front saddle's lip gauge's top, its corners R5.
+- What the link needs grew inward and stays. Every section is rated on what the band leaves
+  (`cradle_structure.Band`, `strip_section`: an eccentric net section).
+- Narrowing the rear chords to 50 mm instead had failed: b6 1.24, the box's link 1.15.
+- The box now stands about 212.5 mm tall.
+
+**A2** (B's passive side planned with no inner plate, about USD -31 live): no-go.
+- Its sway at the bottle is 4.40 mm or more, against the go/no-go's bar of 4.5. That is a
+  lower bound: the model still ties the pillars' tips across the missing plate.
+- The passive pivot O1 drops from 7.94 to 3.37 N/mm.
+- That isn't a clear pass, so it wasn't built.
+
+**The numbers** (`cradle_report.report` on the round's head; 0d9449b's in brackets):
 
 | | B (`decanter_rcm`) | A (`decanter_hinge`) |
 |---|---|---|
-| every cap row but the box's | 1.37 or more (b3; 1.53, b6) | 1.40 or more (b2) |
-| b3 at the cap / walking | 1.37 / 12.57 (2.55 / 23.2 in 7075) | |
-| the frame plates at the cap, outer / inner | 1.64 / 1.64 (1.66 / 1.72) | 1.44 / 1.60 |
-| the side's buckling; column E2 | 2.05; 2.13 (2.13; 2.27) | 2.32 |
-| the post joints walking: `open_x`, `slip_x` (bar 1.0); the bare heads' `head_sf` | 0.90, 0.63 (0.86, 0.51); 2.38 | 0.83, 0.63 (0.83, 0.50); 2.38 |
-| the riser walking, least / slip; at the cap | 1.97 / 2.73; 1.44 | 1.95 / 2.55; 1.37 |
-| tipping front / rear / drive / passive (bar 25°) | 39.4 / 26.3 / 30.0 / 32.1° (42.9 / 27.1 / 30.3 / 32.4) | 39.9 / 28.1 / 26.0 / 34.4° |
+| every cap row, 30° from the toggles | 1.31 or more (b3; b6 1.54, the box's cradle link 1.41, the brace 4.47, its teeth 1.88, the riser 1.43): none open (the box's three, 0d9449b) | 1.37 or more but the box's three, open (`OPEN_AT_CAP`: the link 0.17, the rods 0.55, their screws 1.02) |
+| b3 at the cap / walking | 1.33 / 12.13 (2.55 / 23.2 in 7075) | |
+| the box at the cap, across | 222.9 N·m: racks 1.23°; the tube 195.2 N·m (88 %), SF 4.47; the rods 9.13, their A2-70 screws 18.9; the end joints slip in twist (`slip_x` 1.11), the faces shut (1.65) | open |
+| the box walking, across | 25.6 N·m: 0.52°; the rods 20.7, the link 7.50, `slip_x` 0.47, the faces 3.93 x their gap moment | the link 4.09, `slip_x` 0.68, the faces 2.82 x |
+| every walking row | 4.15 or more (the crank) | 4.07 or more (the crank) |
+| the frame plates at the cap, outer / inner | 1.59 / 1.59 (1.66 / 1.72) | 1.44 / 1.60 |
+| the side's buckling; column E2 | 1.99; 2.06 (2.13; 2.27) | 2.32 |
+| the post joints walking: `open_x`, `slip_x` (bar 1.0); the bare heads' `head_sf` | 0.93, 0.65 (0.86, 0.51); 2.38 | 0.83, 0.63 (0.83, 0.50); 2.38 |
+| tipping front / rear / drive / passive (bar 25°) | 39.3 / 26.1 / 29.9 / 31.9° (42.9 / 27.1 / 30.3 / 32.4) | 39.9 / 28.1 / 26.0 / 34.4° |
 | sway at the bottle, 20 N (bar 5 mm) | 3.89 mm (3.91) | 4.42 mm |
+| the start; the clutch's cap | 2.712 N·m (2.629); 63.7 N·m (61.8), spun 67.9 | 2.763; 64.9 |
+| the grip run in / new; the gearbox | 21.7 / 24.7 N (21.0 / 23.9); 2.37 x walking, 1.33 x the cap | 21.3 / 24.2 N; 2.33 x, 1.31 x |
 | clashes, 6 crank angles and both tilt ends | 0 | 0 |
-| the device | 15.80 kg (16.23) | 15.55 kg (15.58) |
-| the lifts (`cradle.LIFTS`) | 12.3 kg the cradle, 9.7 the drive side with the box (12.7, 9.9) | 11.9 kg (12.0) |
+| the device; the lifts (`cradle.LIFTS`) | 16.26 kg (16.23); 12.8 kg the cradle, 10.2 the drive side with the box (12.7, 9.9) | 15.55 kg (15.58); 11.9 kg (12.0) |
+| the room under the mouth | the light's clip lowest, 394.4 mm over the table near rest; the drawn decanter's rim 46.2 mm under it | |
 | the stack | 80.95 mm in 15 layers, proven (81.03) | as before |
 
-**The BOM** (`spiderpig build`, the refitted fit): B USD 1,002.06 -> 940.34 (purchases 279.70
--> 273.88, cutting 722.36 -> 666.46), A 812.04 -> 797.67 (254.50 -> 252.25, 557.54 -> 545.42);
-on the old fit 0d9449b was B 1,007.55 and A 847.47. Six carts and the upload (Speedy's
-gone); 33 fastener SKUs (36); B buys 192 pieces (244), A 168 (235).
+**The BOM** (`spiderpig build`, the refitted fit): B USD 1,002.06 at 0d9449b -> 969.62 (purchases 279.70 ->
+287.72, cutting 722.36 -> 681.90): the checker's survivors 940.34, the brace +36.25 (the tube
+20.81, b6's cutting +15.44), P8 -6.97. A 812.04 -> 797.67 (254.50 -> 252.25, 557.54 ->
+545.42). On the old fit 0d9449b was B 1,007.55 and A 847.47. Six carts and the upload
+(Speedy's gone); 32 fastener SKUs on B (36), 33 on A; B buys 193 pieces (244), A 168 (235).
+B's b6 blank 581 x 185 mm, turned.
 
-**Not taken:** A's front trim (no plan at 50 mm, its front tie rod 1.9 mm off the inner
-plate at 40); the light clip's M5 x 16 and the rear post's M6 x 16. **For later:** the racking
-brace's items (P8, C7, A2), the pack spacers in PETG (the packing turn; B's spacers grew to 17
-with this round's geometry, `PACK_OPEN`).
+**The pack** (`pack-inspect --plan default`; still open, `PACK_OPEN`): B 745 x 394 x 600 mm, 175.9 L (the
+brace's uncut b6: 745 x 467 x 600, 208.8 L; round 1: 155.9 L), every piece supported, 14
+spacers (620 g), one free to slide 153 mm; the cradle box stands 212.5 mm tall as in use
+(`cradle_pack._items` stands it so: on its least footprint the squarer box had turned on end).
+A unchanged: 700 x 252 x 607 mm, 106.9 L, 22 spacers (709 g), a piece out of order.
+
+**Home work:**
+- The tube is sawn from its stick and brought to length by hand (120-grit on the flat table,
+  to 0.1 mm).
+- Its 24 notches are marked from a socket and along the tube, then sawn and filed to fit (an
+  estimate: 1.5-2 h).
+- The guide's shop step: `cradle.shop_ops`, "brace".
+- Hand tools only: whether the Carvera's vise takes a 2 in tube isn't on Makera's pages found
+  that day.
+
+**Not taken:**
+- A's front trim: no plan at 50 mm, and its front tie rod 1.9 mm off the inner plate at 40.
+- The light clip's M5 x 16 and the rear post's M6 x 16.
+- A2.
+
+**Open:**
+- **A's cradle box at the clutch's cap** (`OPEN_AT_CAP`: rods 0.55, screws 1.02, link 0.17):
+  the brace can't go where A's hand crank sweeps. The user's call:
+  - a longer reach on A's hand crank: about 300 mm clears the tube and its pad. Its input
+    shaft's overhung load, its hub's print and its pack are unchecked;
+  - with that, A's link reshaped for the couple (a chord E-Br 48-56 mm wide) and its crank's
+    throw to 132 mm to hold the 22 N grip;
+  - or A's box as it is (walking holds).
+- **The teeth share:** rated with all twelve bearing (the 5052 beds in a few hundredths at
+  the first jam). The guide files each notch to its tooth.
+- **A block at a saddle:** the box rows rate the whole couple across the bay (round 1's
+  bounding case). A block's force on the rods at mid-bay, as a beam load, is the known-limits
+  study's (`cradle_report.blocked`); the box no longer governs on B there.
+- **The packs** (both open) and the pack spacers in PETG: the packing turn's.
 
 
 ## Building one
