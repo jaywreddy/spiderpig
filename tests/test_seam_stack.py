@@ -283,9 +283,10 @@ def test_no_workers_with_spiderpig_workers_off(monkeypatch):
 
 def _thick_pin(heads: str = "gap", **spec) -> StackProblem:
     """A decanting cradle's two 0.190 in links (``b3``, ``b4``: 4.826 mm in 7075, the pitch
-    3.175; ``b2`` until design review round 3 put it in 0.187 in 5052) on its 8 mm pivot pin,
-    made to its stack (10 mm at least between its rings), a third link ``b6`` crossing ``b3``
-    well clear of the pin: the real axle claim (:class:`construction.axle.AxleGroup`,
+    3.175; ``b2`` until design review round 3 put it in 0.187 in 5052, ``b4`` until
+    simplification round 1: named here, ``link_sheets``) on its 8 mm pivot pin, made to its
+    stack (10 mm at least between its rings), a third link ``b6`` crossing ``b3`` well clear
+    of the pin: the real axle claim (:class:`construction.axle.AxleGroup`,
     :data:`construction.pivots.PIVOT8`)."""
     from spiderpig.config import BuildConfig
     from spiderpig.construction.axle import AxleGroup
@@ -295,7 +296,10 @@ def _thick_pin(heads: str = "gap", **spec) -> StackProblem:
               "C": (30.0, -60.0), "D": (30.0, 60.0)}
     links = {"b3": (("A", "P"),), "b4": (("P", "B"),), "b6": (("C", "D"),)}
     topo = _ctx.topology(points, links, axles=(("P", "pin", ("b3", "b4")),))
-    ctx = _ctx.context(topo, BuildConfig(linkage="decanter_rcm", robot=False))
+    sheets = (("b1", "al5052_6p35mm"), ("b2", "al5052_4p8mm"), ("b3", "al7075_4p8mm"),
+              ("b4", "al7075_4p8mm"), ("b5", "al5052_4p8mm"), ("b6", "al5052_4p8mm"))
+    ctx = _ctx.context(topo, BuildConfig(linkage="decanter_rcm", robot=False,
+                                         link_sheets=sheets))
     group = AxleGroup(topo.axes[0], PIVOT8.resolve(ctx))
     claims = [_ctx.link_claim(n, ctx.params.link_radius, topo) for n in links]
     claims += group.claims(ctx)
