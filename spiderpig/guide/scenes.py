@@ -212,3 +212,47 @@ def rows(scene, mech, config, placed: list[str], adds: list[str], fill_of,
         fill = fill_of(name) if hit else (placed_fill if p in adds_set else context_fill)
         out.append([p, fill, hit, np.round(m, 6).tolist()])
     return out
+
+
+def box_rows(scene, mech, config, kit: dict, fill_of, context_fill, spacer_fill
+             ) -> tuple[list, dict[str, tuple[np.ndarray, np.ndarray]]]:
+    """A box step's picture (``guide.make.with_box_steps``, packing review 2's M2: the pack,
+    not the assembled cradle): the pack payload ``kit``'s pieces ``scene.show`` names (its
+    modules' and spacers' keys) where it puts them, each body moved to the pack pose
+    (:func:`_anchor_motion`) and then by its piece's matrix (or its own), the spacers and the
+    carton's floor as meshes of their own (``extra``: name -> positions, triangles, in the
+    box's frame); ``scene.marks`` (keys) highlighted: a piece's bodies by ``fill_of``, a
+    spacer in ``spacer_fill``. The renderer's rows and the extra meshes."""
+    from spiderpig import voxpack as vp
+    from spiderpig.construction import cradle as cr
+
+    lk = config.lk
+    got = cr.pack_pose(lk)
+    t = got[0] if got is not None else crank_t(mech, lk)
+    motion = _anchor_motion(mech, config, t) if abs(t - crank_t(mech, lk)) > 1e-9 else {}
+    show, marks = set(scene.show), set(scene.marks)
+    rows: list = []
+    extra: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    names = {b.name for b in mech.bodies if b.part is not None}
+    lo = np.asarray(kit["box"]["floor"], float)
+    hi = lo + np.asarray(kit["box"]["inside_mm"], float)
+    floor = vp.box_mesh((lo[0], lo[1] - 3.0, lo[2]), (hi[0], lo[1], hi[2]))
+    extra["carton_floor"] = floor
+    rows.append(["carton_floor", context_fill, False, np.eye(4).tolist()])
+    for mod in kit["modules"]:
+        if mod["key"] not in show:
+            continue
+        hit = mod["key"] in marks
+        for n in mod["parts"]:
+            if n not in names:
+                continue
+            m = np.asarray(mod.get("part_matrix", {}).get(n, mod["matrix"]), float)
+            m = m @ motion.get(n, np.eye(4))
+            rows.append([n, fill_of(n) if hit else context_fill, hit, np.round(m, 6).tolist()])
+    for d in kit.get("spacers") or []:
+        if d["key"] not in show:
+            continue
+        hit = d["key"] in marks
+        extra[d["key"]] = vp.Spacer.from_json(d).mesh()
+        rows.append([d["key"], spacer_fill if hit else context_fill, hit, np.eye(4).tolist()])
+    return rows, extra

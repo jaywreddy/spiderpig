@@ -533,7 +533,12 @@ def main(argv=None) -> int:
                          filaments=printed_filaments(mech, filament), stems=print_stems(types),
                          poses=mech.meta.get("print_poses"),
                          shapes=mech.meta.get("print_shapes"))
-    kit = _pack_spacers(config, store, out / "print", rows) if is_cradle(config) else []
+    pack = None
+    if is_cradle(config):
+        from spiderpig.cradle_pack import pack_kit
+
+        pack = pack_kit(config, store)
+    kit = _pack_spacers(pack, out / "print", rows) if pack else []
     if is_cradle(config):
         kit += _cradle_tools(out / "print", rows)
     n_print = sum(r["qty"] for r in rows)
@@ -586,8 +591,13 @@ def main(argv=None) -> int:
           f"est. ${bom.cost_usd:.2f} ({len(bom.unpriced)} without a listed price)")
     from spiderpig.hardware.order import order_markdown
 
+    shipping = None
+    if pack and pack.get("mass_kg"):
+        from spiderpig.hardware.shipping import ship_lines
+
+        shipping = ship_lines(config.lk.name, pack, float(pack["mass_kg"]))
     (out / "ORDER.md").write_text(order_markdown(bom, order, rows, title=title,
-                                                 build_dir=str(out)))
+                                                 build_dir=str(out), shipping=shipping))
     print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, prints)")
     _write_manifest(out, config, args)
     if opts is not None and key is not None and read is not None:   # (all set, or none)
@@ -596,24 +606,27 @@ def main(argv=None) -> int:
     return 0
 
 
-def _pack_spacers(config, store, folder: Path, rows: list[dict]) -> list:
-    """A decanting cradle's pack spacers (``cradle_pack.pack_kit``: printed in TPU, each
-    shaped to the pack): an STL each in ``folder`` (``pack_spacer_*.stl``, lying as it goes
-    in the box), a row each in ``rows`` and ``parts.csv``, and their BOM rows, each with its
-    filament (``bom_from_mechanism``'s ``extra``)."""
-    from spiderpig.cradle_pack import SPACER_FILAMENT, pack_kit, spacer_stl
+def _pack_spacers(kit: dict, folder: Path, rows: list[dict]) -> list:
+    """A decanting cradle's pack spacers (its pack payload ``kit``, ``cradle_pack.pack_kit``:
+    printed in PETG, each shaped to the pack, its number engraved): an STL each in
+    ``folder`` (``pack_spacer_*.stl``, laid as it prints: ``cradle_pack.spacer_print``), a
+    row each in ``rows`` and ``parts.csv``, and their BOM rows, each with its filament
+    (``bom_from_mechanism``'s ``extra``)."""
+    from spiderpig.cradle_pack import SPACER_FILAMENT, is_filler, spacer_stl
     from spiderpig.hardware.bom import MadeRow, _filament_name
 
-    kit = pack_kit(config, store)
     if not kit or not kit.get("spacers"):
         return []
     fil = _filament_name(SPACER_FILAMENT)
     out = []
     for d in kit["spacers"]:
+        if is_filler(d):                # (corrugated, cut from a spare carton: no print)
+            continue
         name = f"pack_{d['key']}"
         size = " x ".join(f"{v:.1f}" for v in spacer_stl(d, folder / f"{name}.stl"))
         rows.append({"file": f"{name}.stl", "qty": 1, "mirrored": 0,
-                     "print": "print 1 (the pack: 15 % gyroid, two walls)", "size_mm": size,
+                     "print": "print 1 (the pack: 15 % gyroid, two walls, as laid)",
+                     "size_mm": size,
                      "filament": fil,
                      "grams_each_100pct": round(d["volume_cm3"]
                                                 * filament_density(SPACER_FILAMENT), 1),

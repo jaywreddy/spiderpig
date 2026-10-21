@@ -147,8 +147,9 @@ def _money(v: float | None) -> str:
 
 
 def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: str = "",
-                   build_dir: str = ".") -> str:
-    """The shopping list of a build: carts per vendor, uploads per service, prints."""
+                   build_dir: str = ".", shipping: list[str] | None = None) -> str:
+    """The shopping list of a build: carts per vendor, uploads per service, prints, and
+    ``shipping``'s lines (a cradle's carton: ``hardware.shipping.ship_lines``)."""
     from spiderpig.layout import sheet_service
 
     # a sheet a service cuts is its upload (the service sells the stock); one no service
@@ -285,6 +286,7 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
                          f"{r['size_mm']} | {r['grams_each_100pct']} |")
         lines.append("")
 
+    lines += list(shipping or [])
     notes = [n for r in bom.purchased for n in _item_notes(r.key)]
     notes += [LINE_NOTES[r.key] for r in bom.purchased if r.key in LINE_NOTES]
     measured = [r for r in bom.purchased if r.key.startswith(MEASURED_PINS)]

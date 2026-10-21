@@ -446,13 +446,18 @@ def choose(items: list[Item], options: list[str], want: set[str]) -> str:
 def render_jobs(mesh_path: str, jobs: list[dict]) -> list[dict]:
     """Draw ``jobs`` (each: ``out`` its PNG, ``rows`` its items as :func:`items_of`
     takes, ``views`` the cameras to choose among, ``size``, ``explode`` the lift along
-    the camera's up of the marked items with an arrow, ``margin``): what each chose and
+    the camera's up of the marked items with an arrow, ``margin``; ``extra``, an ``.npz``
+    of more meshes, ``name|p`` and ``name|i``, that no body has): what each chose and
     where its marked items show."""
     data = np.load(mesh_path)
     names = sorted({k.rsplit("|", 1)[0] for k in data.files})
     mesh = {n: (data[n + "|p"], data[n + "|i"]) for n in names}
     out = []
     for job in jobs:
+        if job.get("extra"):            # (meshes of no body: a pack's spacers, its carton)
+            more = np.load(job["extra"])
+            mesh = {**mesh, **{n: (more[n + "|p"], more[n + "|i"]) for n in
+                               sorted({k.rsplit("|", 1)[0] for k in more.files})}}
         items = items_of(mesh, job["rows"])
         want = {it.name for it in items if it.mark}
         cam = choose(items, job["views"], want)

@@ -5296,7 +5296,41 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
              "before the first pour."),
             Scene("rest", show=("*",), marks=(r"L\.handle_grip",))),
     ]
-    return breakdown, reassembly
+    return _merged(breakdown, TRIP_MERGES[0]), _merged(reassembly, TRIP_MERGES[1])
+
+
+TRIP_MERGES: tuple[dict[str, tuple[str, ...]], dict[str, tuple[str, ...]]] = (
+    {"pose": ("pose", "hand_crank"), "lift": ("clips", "lift"), "box": ("box_clips", "box")},
+    {"set": ("set", "turn"), "lower": ("lower", "clips_in"), "riser": ("riser", "hand_crank_on"),
+     "checks": ("snug", "checks")},
+)
+"""The trip's steps made one (packing review 2's M2: 31 steps were too many to follow): each
+step's tag -> the tags of :func:`module_steps`' steps it takes, in order (the first's title
+and picture, the others' texts as its lines). Apart: the pack pose and the hand crank off;
+each side's two clips and the lift off them. Back: the passive panel set and turned over;
+lowered on and its clips in; the riser back and the hand crank on; snugged at level and the
+checks."""
+
+
+def _merged(steps: list[ModuleStep], merges: dict[str, tuple[str, ...]]) -> list[ModuleStep]:
+    """``steps`` with the runs ``merges`` names made one step each (:data:`TRIP_MERGES`)."""
+    by = {m.tag: m for m in steps}
+    first = {ts[0]: k for k, ts in merges.items()}
+    rest = {t for ts in merges.values() for t in ts[1:]}
+    out = []
+    for m in steps:
+        if m.tag in rest:
+            continue
+        if m.tag in first:
+            key = first[m.tag]
+            parts = [by[t] for t in merges[key] if t in by]
+            lines = [*parts[0].lines]
+            for q in parts[1:]:
+                lines += [q.text, *q.lines]
+            m = ModuleStep(parts[0].title + "".join(f"; {q.title}" for q in parts[1:]),
+                           parts[0].text, key, tuple(lines), parts[0].scene)
+        out.append(m)
+    return out
 
 
 PETG_PARTS = ("front_saddle", "front_saddle_vee", "front_saddle_gauge", "rear_saddle",

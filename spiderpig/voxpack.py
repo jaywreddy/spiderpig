@@ -383,6 +383,9 @@ class Item:
     pre: np.ndarray = field(default_factory=lambda: np.eye(3))
     faces: dict[str, np.ndarray] = field(default_factory=dict)
     parts: list[str] = field(default_factory=list)
+    bearless: frozenset[str] = frozenset()
+    """Its parts nothing may bear on (a gauge, a clip, its gearbox, a screw head: packing
+    review 2's B1): it doesn't rest on one, nor another piece on one of its."""
 
 
 @dataclass
@@ -403,6 +406,10 @@ class Shape:
     ghi: np.ndarray
     com: np.ndarray
     rects: np.ndarray
+    bad_lo: np.ndarray | None = None
+    """Each column's bottom cell one of its parts nothing bears on (``Item.bearless``)."""
+    bad_hi: np.ndarray | None = None
+    """... and its top cell."""
     _cols: tuple[np.ndarray, np.ndarray, np.ndarray] | None = field(
         default=None, repr=False, compare=False)
 
@@ -416,7 +423,8 @@ class Shape:
         return int(self.hi[self.hi > -BIG].max()) if (self.hi > -BIG).any() else 0
 
     @classmethod
-    def of(cls, key: str, base: Vox, pre: np.ndarray, com_pre: np.ndarray, ri: int) -> Shape:
+    def of(cls, key: str, base: Vox, pre: np.ndarray, com_pre: np.ndarray, ri: int,
+           bad: Vox | None = None) -> Shape:
         r = ROTATIONS[ri]
         vox = base.turned(r)
         occ = vox.occ
@@ -430,7 +438,15 @@ class Shape:
         g = maximum_filter(pad, size=3, mode="constant", cval=-BIG)
         ghi = np.where(g > -BIG, g + 1, -BIG).astype(np.int32)
         com = ((r @ com_pre) - vox.org) / vox.cell
-        return cls(key, ri, r @ pre, vox, lo, hi, ghi, com, _rects(lo))
+        bad_lo = bad_hi = None
+        if bad is not None:             # (its parts nothing bears on: their cells, turned)
+            b = bad.turned(r).occ
+            ii, kk = np.nonzero(has)
+            bad_lo = np.zeros(has.shape, bool)
+            bad_hi = np.zeros(has.shape, bool)
+            bad_lo[ii, kk] = b[ii, lo[ii, kk], kk]
+            bad_hi[ii, kk] = b[ii, hi[ii, kk] - 1, kk]
+        return cls(key, ri, r @ pre, vox, lo, hi, ghi, com, _rects(lo), bad_lo, bad_hi)
 
     @property
     def cols(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -538,6 +554,11 @@ class Body:
         self.vox = voxelize(item.meshes, cell, rot=item.pre, stats=stats)
         self.com_pre = item.pre @ np.asarray(item.com, float)
         self._shapes: dict[int, Shape] = {}
+        self.bad: Vox | None = None     # (its parts nothing bears on, on its grid)
+        bad = [m for m, n in zip(item.meshes, item.parts, strict=False) if n in item.bearless]
+        if bad:
+            self.bad = voxelize(bad, cell, rot=item.pre, org=self.vox.org,
+                                shape=tuple(self.vox.occ.shape))      # type: ignore[arg-type]
 
     @property
     def key(self) -> str:
@@ -547,7 +568,7 @@ class Body:
         got = self._shapes.get(ri)
         if got is None:
             got = self._shapes[ri] = Shape.of(self.item.key, self.vox, self.item.pre,
-                                              self.com_pre, ri)
+                                              self.com_pre, ri, self.bad)
         return got
 
     def distinct(self, ris: Sequence[int]) -> list[int]:
@@ -632,6 +653,7 @@ class Bin:
         self.top = np.zeros((nx, nz), np.int32)
         self.real = np.zeros((nx, nz), np.int32)
         self.who = np.full((nx, nz), -1, np.int32)
+        self.bad = np.zeros((nx, nz), bool)     # (its real top a part nothing bears on)
         self.placed: list[Placed] = []
         self.height = 0
         self.xr = (nx, 0)           # the real cells' column range so far
@@ -641,6 +663,7 @@ class Bin:
     def copy(self) -> Bin:
         b = copy.copy(self)
         b.top, b.real, b.who = self.top.copy(), self.real.copy(), self.who.copy()
+        b.bad = self.bad.copy()
         b.placed = list(self.placed)
         b._pyr = None               # (this one's own top from now on)
         return b
@@ -668,6 +691,9 @@ class Bin:
         mine = rtop > self.real[reg]
         self.real[reg] = np.where(mine, rtop, self.real[reg])
         self.who[reg] = np.where(mine, n, self.who[reg])
+        if sh.bad_hi is not None or self.bad[reg].any():
+            top_bad = sh.bad_hi if sh.bad_hi is not None else np.zeros(has.shape, bool)
+            self.bad[reg] = np.where(mine, top_bad, self.bad[reg])
         g0u, g0v = u - 1, v - 1
         gu0, gv0 = max(g0u, 0), max(g0v, 0)
         gu1, gv1 = min(g0u + a + 2, self.nx), min(g0v + c + 2, self.nz)
@@ -691,6 +717,11 @@ class Bin:
         real = self.real[u + ii, v + kk]
         who = self.who[u + ii, v + kk]
         gap = np.where(real > 0, bottom - (real + 1), bottom)
+        # (not on a part nothing bears on, nor where its own bottom is one)
+        bad = (real > 0) & self.bad[u + ii, v + kk]
+        if sh.bad_lo is not None:
+            bad |= sh.bad_lo[ii, kk]
+        gap = np.where(bad, BIG, gap)
         names = [p.key for p in self.placed]
         owner = np.where(real > 0, who, -1)
         xz = np.stack([u + ii, v + kk], axis=1)
@@ -1677,7 +1708,8 @@ def column_ranges(occ: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 TRAVEL = {"+x": (0, 1), "-x": (0, -1), "+z": (2, 1), "-z": (2, -1), "+y": (1, 1)}
-"""The ways :func:`free_travel` slides a piece: along the box's floor (x, z) and up."""
+"""The ways :func:`free_travel` slides a piece: along the box's floor (x, z) and up (to the
+lid, a cell over the pieces: what lifts is as loose as what slides, packing review 2's M4)."""
 
 
 def free_travel(g: Grid, i: int, owner: np.ndarray | None = None
@@ -1757,6 +1789,9 @@ class Spacer:
     why: str = "support"
     """``"support"`` (in place of pads) or ``"restraint +x"`` .. (beside a piece, the way it
     would slide)."""
+    taped: str = ""
+    """The piece it is taped to (what it stands on), where its shape holds it no other way
+    (:func:`spacers`): it moves with that piece."""
 
     @property
     def volume(self) -> float:
@@ -1788,14 +1823,14 @@ class Spacer:
                 "org": [float(v) for v in self.org], "cell": self.cell,
                 "cols": self.cols.astype(int).tolist(),
                 "volume_cm3": round(self.volume / 1000.0, 1), "size_mm": self.size_mm(),
-                "rank": self.rank, "why": self.why}
+                "rank": self.rank, "why": self.why, "taped": self.taped}
 
     @classmethod
     def from_json(cls, d: dict) -> Spacer:
         return cls(d["key"], d["under"], tuple(d["on"]), tuple(d["pads"]),
                    np.asarray(d["cols"], np.int64).reshape(-1, 4),
                    np.asarray(d["org"], float), float(d["cell"]), tuple(d.get("bears", ())),
-                   float(d.get("rank", 0.0)), d.get("why", "support"))
+                   float(d.get("rank", 0.0)), d.get("why", "support"), d.get("taped", ""))
 
 
 def vox_mesh(v: Vox) -> Mesh:
@@ -1833,6 +1868,152 @@ def vox_mesh(v: Vox) -> Mesh:
     return np.concatenate(verts), np.concatenate(tris)
 
 
+GLYPHS = {
+    "0": ("01110", "10001", "10011", "10101", "11001", "10001", "01110"),
+    "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
+    "2": ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
+    "3": ("11111", "00010", "00100", "00010", "00001", "10001", "01110"),
+    "4": ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
+    "5": ("11111", "10000", "11110", "00001", "00001", "10001", "01110"),
+    "6": ("00110", "01000", "10000", "11110", "10001", "10001", "01110"),
+    "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
+    "8": ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
+    "9": ("01110", "10001", "10001", "01111", "00001", "00010", "01100"),
+    ">": ("00000", "00100", "00010", "11111", "00010", "00100", "00000"),
+    "^": ("00100", "01110", "10101", "00100", "00100", "00100", "00100"),
+}
+"""A spacer's label's glyphs (5 x 7 cells, the top row first): its number's digits and its
+arrow (``>`` along the text, ``^`` up it)."""
+LABEL_SCALE = 2     # a spacer's print cells: its pack cells' this many each way (1.5 mm)
+LABEL_DEPTH = 1     # its label engraved this many print cells deep (1.5 mm)
+
+
+def _glyphs(text: str) -> np.ndarray:
+    """``text`` as a bitmap ``(along, up)``: its glyphs side by side a cell apart."""
+    cols = []
+    for n, ch in enumerate(text):
+        g = np.array([[c == "1" for c in row] for row in GLYPHS[ch]], bool)   # (row, col)
+        if n:
+            cols.append(np.zeros((1, 7), bool))
+        cols.append(g[::-1].T)                  # (col, row from the bottom)
+    return np.concatenate(cols) if cols else np.zeros((0, 7), bool)
+
+
+def _largest_rect(mask: np.ndarray) -> tuple[int, int, int, int, int]:
+    """The largest rectangle of ``mask``'s True cells: (area, i0, i1, k0, k1)."""
+    best = (0, 0, 0, 0, 0)
+    h = np.zeros(mask.shape[1], np.int64)
+    for i in range(mask.shape[0]):
+        h = np.where(mask[i], h + 1, 0)
+        stack: list[int] = []
+        for k in range(len(h) + 1):
+            cur = int(h[k]) if k < len(h) else 0
+            while stack and int(h[stack[-1]]) >= cur:
+                top = stack.pop()
+                height = int(h[top])
+                left = stack[-1] + 1 if stack else 0
+                area = height * (k - left)
+                if area > best[0]:
+                    best = (area, i - height + 1, i + 1, left, k)
+            stack.append(k)
+    return best
+
+
+def engrave(occ: np.ndarray, number: str, depth: int = LABEL_DEPTH) -> tuple[np.ndarray, str]:
+    """A spacer's cells (``occ``, x y z, y up as it goes in the box) with ``number`` and an
+    arrow toward +x engraved ``depth`` cells into its largest flat top (the face up in the
+    box: number up, arrow toward the carton's +x end), reading along x (``>``) or, where the
+    top is longer across, along z with the arrow (``^``) pointing +x; without the arrow, or
+    on the largest side (reading level, ``^`` up: this way up) where the top is too small.
+    And where it went: ``"top"``, ``"top, no arrow"``, ``"side"`` or ``""`` (nowhere)."""
+    ny = occ.shape[1]
+    has = occ.any(axis=1)
+    top = np.where(has, ny - 1 - np.argmax(occ[:, ::-1, :], axis=1), -1)
+    out = occ.copy()
+    tries = [(number + ">", True), (number, False)]
+    for text, arrow in tries:
+        g = _glyphs(text)
+        need = (g.shape[0] + 2, g.shape[1] + 2)     # (a cell's margin round it)
+        best = None
+        for t in np.unique(top[top >= depth]):
+            area, i0, i1, k0, k1 = _largest_rect(top == t)
+            if not area:
+                continue
+            if i1 - i0 >= need[0] and k1 - k0 >= need[1]:       # along x, up -z
+                cand = (area, int(t), i0, i1, k0, k1, "x")
+            elif k1 - k0 >= need[0] and i1 - i0 >= need[1]:     # along z, up +x
+                cand = (area, int(t), i0, i1, k0, k1, "z")
+            else:
+                continue
+            if best is None or cand[:2] > best[:2]:
+                best = cand
+        if best is None:
+            continue
+        _, t, i0, i1, k0, k1, way = best
+        if way == "z" and arrow:                    # (the arrow still points +x: up the text)
+            g = _glyphs(number + "^")
+        a, b = g.shape
+        if way == "x":
+            x0 = i0 + (i1 - i0 - a) // 2
+            z_top = k1 - 1 - (k1 - k0 - b) // 2      # (the glyph's up toward -z)
+            for p, q in zip(*np.nonzero(g), strict=True):
+                out[x0 + p, t - depth + 1:t + 1, z_top - q] = False
+        else:
+            z0 = k0 + (k1 - k0 - a) // 2
+            x0 = i0 + (i1 - i0 - b) // 2              # (the glyph's up toward +x)
+            for p, q in zip(*np.nonzero(g), strict=True):
+                out[x0 + q, t - depth + 1:t + 1, z0 + p] = False
+        return out, "top" if arrow else "top, no arrow"
+    # the largest side: reading level, the arrow up
+    g = _glyphs(number + "^")
+    a, b = g.shape
+    best = None
+    for ax in (0, 2):
+        for sgn in (1, -1):
+            o = occ if sgn > 0 else np.flip(occ, ax)
+            o = o if ax == 0 else np.transpose(o, (2, 1, 0))       # (the face at +x)
+            n0 = o.shape[0]
+            hasx = o.any(axis=0)                                    # (y, z)
+            far = np.where(hasx, n0 - 1 - np.argmax(o[::-1], axis=0), -1)
+            for f in np.unique(far[far >= depth]):
+                area, j0, j1, k0, k1 = _largest_rect(far == f)
+                if j1 - j0 >= b + 2 and k1 - k0 >= a + 2 and (best is None or area > best[0]):
+                    best = (area, ax, sgn, int(f), j0, j1, k0, k1)
+    if best is None:
+        return out, ""
+    _, ax, sgn, f, j0, j1, k0, k1 = best
+    o = out if sgn > 0 else np.flip(out, ax)
+    o = o if ax == 0 else np.transpose(o, (2, 1, 0))
+    y0 = j0 + (j1 - j0 - b) // 2
+    z0 = k0 + (k1 - k0 - a) // 2
+    for p, q in zip(*np.nonzero(g), strict=True):
+        o[f - depth + 1:f + 1, y0 + q, z0 + p] = False
+    return out, "side"
+
+
+def print_pose(occ: np.ndarray) -> tuple[np.ndarray, str]:
+    """The turn (3 x 3, of the cells' x y z) that lays a spacer on the bed with the least
+    overhang (a cell's down face over nothing, off the bed), then the most on the bed, then
+    as it goes in the box (its bottom down); and which of its faces is down
+    (``"-y"``: its bottom, as in the box)."""
+    cands = []
+    for n, (down, r) in enumerate((("-y", ((1, 0, 0), (0, 0, -1), (0, 1, 0))),
+                                   ("+y", ((1, 0, 0), (0, 0, 1), (0, -1, 0))),
+                                   ("-x", ((0, 1, 0), (0, 0, 1), (1, 0, 0))),
+                                   ("+x", ((0, 1, 0), (0, 0, -1), (-1, 0, 0))),
+                                   ("-z", ((1, 0, 0), (0, 1, 0), (0, 0, 1))),
+                                   ("+z", ((1, 0, 0), (0, -1, 0), (0, 0, -1))))):
+        rot = np.asarray(r, float)
+        a = Vox(occ, np.zeros(3), 1.0).turned(rot).occ            # (x y z, z up: the bed's)
+        below = np.zeros_like(a)
+        below[:, :, 1:] = a[:, :, :-1]
+        overhang = int((a[:, :, 1:] & ~below[:, :, 1:]).sum())
+        bed = int(a[:, :, 0].sum())
+        cands.append((overhang, -bed, n, down, rot))
+    overhang, _, _, down, rot = min(cands, key=lambda c: c[:3])
+    return rot, down
+
+
 def _pad_clusters(pads: Sequence[dict], join: float) -> list[list[dict]]:
     """``pads`` (measured: :func:`measure_pads`) grouped: two whose footprints come within
     ``join`` mm share a group (single linkage)."""
@@ -1861,8 +2042,17 @@ SPACER_SPAN = 60    # cells: the most a spacer's footprint spans either way (180
 SPACER_REACH = 20   # cells: how far a restraint reaches down to stand on something
 SPACER_HOLD = 1     # cells: the most a piece or a spacer may slide (one cell: up to 3 mm)
 SPACER_MAX = 400.0  # cm^3: a spacer grows no bigger (its solid)
+BRIDGE_MAX = 40     # cells (120 mm): the longest bar :func:`_bridges` joins two spacers with
+SPACER_BED = 250.0  # mm: the most a spacer spans any way (a 256 mm bed, the X1C's, its margins
+#                     off; packing review 2's M3: two of A's didn't fit): longer, it is cut
 WAYS = {"+x": (0, 1), "-x": (0, -1), "+z": (2, 1), "-z": (2, -1)}
 """The ways a spacer is grown for and a piece restrained: along the box's floor."""
+UP = {"+y": (1, 1)}
+"""And up: a piece or a spacer that lifts more than :data:`SPACER_HOLD` gets a cap (packing
+review 2's M4: carried upside down, or dropped on its top, a piece free to lift falls onto
+what is over it)."""
+CAP_REACH = 40      # cells (120 mm): the tallest a cap stands, from what it holds down to
+#                     what holds it (a piece over it, or the lid)
 
 
 @dataclass
@@ -1883,14 +2073,19 @@ class _Spec:
     grow: str = "away"
     pad_seeds: list[tuple[float, float, int, int, int]] = field(default_factory=list)
     why: str = "support"
+    walls: bool = False
+    """It may fill the box's clearance to its walls and floor (a filler: corrugated)."""
 
 
 class _Spacers:
     """The judged grid ``g`` with every spacer made so far in it (:func:`spacers`)."""
 
-    def __init__(self, g: Grid, keys: Sequence[str]):
+    def __init__(self, g: Grid, keys: Sequence[str], avoid: np.ndarray | None = None):
         self.g = g
         self.occ = g.count > 0
+        # the empty cells no spacer takes: round a part nothing may bear on (its clearance:
+        # :func:`spacers`' ``avoid``)
+        self.avoid = (avoid & ~self.occ) if avoid is not None else np.zeros_like(self.occ)
         self.owner = g.owner().astype(np.int32)
         self.keys = list(keys)
         self.ranks = [float(i) for i in range(len(keys))]      # by owner (-2 - n: spacers)
@@ -1899,8 +2094,9 @@ class _Spacers:
         self.shape = self.occ.shape
         # the cells a spacer may take: inside the pieces' bounds (the box's clearance, a
         # cell all round, stays the box's), each axis's past the last
-        self.end = tuple(math.floor((float(g.hi[a]) - CLEAR - float(g.lo[a])) / g.cell
-                                    + 1e-6) for a in range(3))
+        self.end = tuple(math.floor((float(g.hi[a]) - (CLEAR if a != 1 else 0.0)
+                                     - float(g.lo[a])) / g.cell + 1e-6) for a in range(3))
+        # (up, a spacer may fill the lid's clearance: a cap held by the lid within a cell)
 
     def ids(self, name: str) -> list[int]:
         """The grid owners named ``name``: a piece's index, or a spacer's (-2 - n)."""
@@ -1947,32 +2143,38 @@ class _Spacers:
         nx, ny, nz = self.shape
         cols = np.zeros((nx, nz), bool)
         for i0, i1, k0, k1 in sp.rects:
-            cols[max(i0, 1):min(i1, self.end[0]), max(k0, 1):min(k1, self.end[2])] = True
+            if sp.walls:
+                cols[max(i0, 0):i1, max(k0, 0):k1] = True
+            else:
+                cols[max(i0, 1):min(i1, self.end[0]), max(k0, 1):min(k1, self.end[2])] = True
         ii, kk = np.nonzero(cols)
         empty = np.zeros((0, 4), np.int64)
         if not len(ii):
             return empty
         j, cap0, cap1 = (sp.seed[ii, kk, n].astype(np.int64) for n in range(3))
         prof = self.occ[ii, :, kk]
+        wall = prof | self.avoid[ii, :, kk]     # (a run stops at a part's clearance too)
         at = np.arange(ny)[None, :]
         if sp.rank is None:             # (a restraint: the first empty cell from its seed)
-            free = ~prof & (at >= np.maximum(j, 1)[:, None]) & (at < np.minimum(cap1, ny - 1)
-                                                                  [:, None])
+            free = ~wall & (at >= np.maximum(j, 0 if sp.walls else 1)[:, None]) & (
+                at < np.minimum(cap1, ny - 1)[:, None])
             j = np.where(free.any(axis=1), free.argmax(axis=1), -1)
         jj = np.clip(j, 0, ny - 1)
-        ok = (j >= 1) & (j < ny - 1) & ~prof[np.arange(len(ii)), jj]
-        a = np.where(prof & (at < jj[:, None]), at, -1).max(axis=1) + 1
-        b = np.where(prof & (at >= jj[:, None]), at, ny).min(axis=1)
-        j0 = np.maximum(np.maximum(a, cap0), 1)
+        low = 0 if sp.walls else 1
+        ok = (j >= low) & (j < ny - 1) & ~wall[np.arange(len(ii)), jj]
+        a = np.where(wall & (at < jj[:, None]), at, -1).max(axis=1) + 1
+        b = np.where(wall & (at >= jj[:, None]), at, ny).min(axis=1)
+        j0 = np.maximum(np.maximum(a, cap0), low)
         j1 = np.minimum(np.minimum(b, cap1), self.end[1])
         ok &= j1 > j0
         rk = self.ranks_of(self.owner[ii, :, kk])
         over = np.where(prof & (at >= j1[:, None]), rk, np.inf).min(axis=1)
         under = np.where(prof & (at < j0[:, None]), rk, -1.0).max(axis=1)
         rank = sp.rank
-        if rank is None:                # in as soon as what is under it is
-            rank = float(under[ok].max(initial=-1.0)) + 0.25
-        ok &= (over > rank) & (under < rank)
+        if rank is None:                # (a restraint's: :meth:`restraint_rank`)
+            rank = self.restraint_rank(sp, under[ok], over[ok])
+        own = sp.why == "restraint +y" and sp.rank is not None    # (a spacer's own cap)
+        ok &= (over > rank) & ((under <= rank) if own else (under < rank))
         if not ok.any():                # (it couldn't go in under the one, or over the other)
             return empty
         runs = np.stack([ii[ok], kk[ok], j0[ok], j1[ok]], axis=1)
@@ -1997,6 +2199,77 @@ class _Spacers:
         col = lab[runs[:, 0] - lo[0], runs[:, 2] - lo[1], runs[:, 1] - lo[2]]
         return runs[np.isin(col, sorted(holds))]
 
+    def restraint_rank(self, sp: _Spec, under: np.ndarray, over: np.ndarray) -> float:
+        """Where a restraint goes in the order (its columns' ranks of what is under them and
+        the least of what is over them): just after the piece it holds is in, where nothing
+        over it is in by then (packing review 2's M2: it goes in against that piece's side,
+        not where the piece will go); else as soon as what is under it is."""
+        base = float(np.max(under, initial=-1.0)) + 0.25
+        held = max((self.rank(o) for o in self.ids(sp.under)), default=-1.0)
+        pref = max(base, held + 0.25)
+        return pref if (np.asarray(over) > pref).all() else base
+
+    def runs_rank(self, sp: _Spec, cols: np.ndarray) -> float:
+        """:meth:`restraint_rank` of a restraint's runs ``cols``."""
+        ny = self.shape[1]
+        under, over = [], []
+        for i, k, j0, j1 in cols.tolist():
+            if j0 >= 1 and self.occ[i, j0 - 1, k]:
+                under.append(self.rank(int(self.owner[i, j0 - 1, k])))
+            up = np.flatnonzero(self.occ[i, j1:, k])
+            over.append(self.rank(int(self.owner[i, j1 + int(up[0]), k])) if len(up) and
+                        j1 < ny else np.inf)
+        return self.restraint_rank(sp, np.asarray(under, float), np.asarray(over, float))
+
+    def walls_at(self) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        """The first and one past the last cell each way that the pieces' bounds reach into
+        (a filler's reach: the box's clearance, a cell, stays the box's but for the cell its
+        pieces' bounds end in)."""
+        g = self.g
+        lo = tuple(math.floor(CLEAR / g.cell + 1e-6) for _ in range(3))
+        hi = tuple(min(self.shape[a], math.ceil((float(g.hi[a]) - CLEAR - float(g.lo[a]))
+                                                / g.cell - 1e-6)) for a in range(3))
+        return lo, hi
+
+    def drop(self, n: int, keep_cells: bool = False) -> None:
+        """Spacer ``n`` gone (its cells emptied, or ``keep_cells``: another's now), the
+        spacers after it renumbered."""
+        sp = self.made[n]
+        if not keep_cells:
+            for i, k, j0, j1 in sp.cols.tolist():
+                self.occ[i, j0:j1, k] = False
+                self.owner[i, j0:j1, k] = -1
+        for m in range(n + 1, len(self.made)):
+            for i, k, j0, j1 in self.made[m].cols.tolist():
+                self.owner[i, j0:j1, k] = -2 - (m - 1)
+        del self.made[n]
+        del self.ranks[len(self.keys) + n]
+        del self.names[len(self.keys) + n]
+
+    def rests(self, p: int, com_xz, bearless: np.ndarray | None = None) -> bool:
+        """Whether piece ``p`` rests directly on what is under it now (:func:`support`'s
+        test: its centre of mass, x z mm, over the columns within :data:`SETTLE` of something
+        under them, none of them on a part nothing bears on)."""
+        mine = self.owner == p
+        ii, kk = np.nonzero(mine.any(axis=1))
+        if not len(ii):
+            return False
+        y0 = mine[ii, :, kk].argmax(axis=1)
+        reach = round(SETTLE / self.g.cell) + 2
+        on = np.zeros(len(ii), bool)
+        for d in range(1, reach + 1):
+            y = y0 - d
+            ok = y >= 0
+            hit = np.zeros(len(ii), bool)
+            hit[ok] = self.occ[ii[ok], y[ok], kk[ok]] & (self.owner[ii[ok], y[ok], kk[ok]] != p)
+            if bearless is not None:
+                hit[ok] &= ~bearless[ii[ok], y[ok], kk[ok]]
+            on |= hit | (y < 0)
+        if bearless is not None:
+            on &= ~bearless[ii, y0, kk]
+        com = (np.asarray(com_xz, float) - self.g.lo[[0, 2]]) / self.g.cell
+        return over_hull(np.stack([ii[on], kk[on]], axis=1), com)
+
     def mask(self, cols: np.ndarray) -> np.ndarray:
         """Runs (i, k, j0, j1) as the grid's cells."""
         m = np.zeros(self.shape, bool)
@@ -2013,20 +2286,22 @@ class _Spacers:
         hi = [int(cols[:, 0].max()) + 1, int(cols[:, 3].max()), int(cols[:, 1].max()) + 1]
         return self.slide(cols, (lo, hi))
 
-    def slide(self, mine, bounds=None) -> dict[str, int]:
-        """How many cells the cells ``mine`` slide each way of :data:`WAYS` before one meets
-        a full cell (another's: the grid's and the spacers' made so far) or the box's
-        wall. ``mine``: a mask of the grid, or runs (i, k, j0, j1) with their ``bounds``."""
+    def slide(self, mine, bounds=None, up: bool = False) -> dict[str, int]:
+        """How many cells the cells ``mine`` slide each way of :data:`WAYS` (and :data:`UP`
+        with ``up``) before one meets a full cell (another's: the grid's and the spacers'
+        made so far) or the box's wall (up: the lid's, a cell over the pieces). ``mine``: a
+        mask of the grid, or runs (i, k, j0, j1) with their ``bounds``."""
+        ways = {**WAYS, **UP} if up else WAYS
         if bounds is None:
             idx = np.nonzero(mine)
             if not len(idx[0]):
-                return dict.fromkeys(WAYS, 0)
+                return dict.fromkeys(ways, 0)
             lo_b = [int(v.min()) for v in idx]
             hi_b = [int(v.max()) + 1 for v in idx]
         else:
             lo_b, hi_b = bounds
         out = {}
-        for way, (a, sgn) in WAYS.items():
+        for way, (a, sgn) in ways.items():
             sl = tuple(slice(None) if k == a else slice(lo_b[k], hi_b[k]) for k in range(3))
             if bounds is None:
                 m = mine[sl]
@@ -2058,9 +2333,7 @@ class _Spacers:
         while key in taken:
             key, n = f"{base}_{n}", n + 1
         if sp.rank is None:
-            sp.rank = max((self.rank(int(self.owner[i, j0 - 1, k]))
-                           for i, k, j0, _ in cols.tolist()
-                           if j0 >= 1 and self.occ[i, j0 - 1, k]), default=-1.0) + 0.25
+            sp.rank = self.runs_rank(sp, cols)
         under = {int(self.owner[i, j0 - 1, k]) for i, k, j0, _ in cols.tolist()
                  if j0 >= 1 and self.occ[i, j0 - 1, k]}
         floor = any(j0 <= 1 for _, _, j0, _ in cols.tolist())
@@ -2144,7 +2417,9 @@ class _Spacers:
         return best[3]
 
 
-def spacers(g: Grid, rows: Sequence[dict]) -> list[Spacer]:
+def spacers(g: Grid, rows: Sequence[dict], avoid: np.ndarray | None = None,
+            fillers: Sequence[str] = ("base",), bearless: np.ndarray | None = None
+            ) -> list[Spacer]:
     """The printed spacers of a judged packing (:func:`metrics`' ``pieces`` rows, in the order
     the pieces go in, on its grid ``g``): each a block of the grid's empty cells, one run a
     column, inside the pieces' bounds, that goes in at its place in the order (its
@@ -2170,10 +2445,22 @@ def spacers(g: Grid, rows: Sequence[dict]) -> list[Spacer]:
     print with it, and goes in with it). Rounds of them until nothing slides or a round adds
     none.
 
-    The grid's cells are the parts' conservative fill, so a spacer meets each part with up
-    to a cell's gap: a piece it holds slides up to 3 mm (:data:`CELL`)."""
+    *Caps*, the same way, for what lifts more than :data:`SPACER_HOLD` cells (:func:`_cap`):
+    a block on its top up to what is over it, or the lid. One that still slides, standing on
+    one piece, is taped to it (``taped``). The pieces ``fillers`` names (the
+    base board, on the carton's floor) are held by *fillers* instead (:func:`_filler`): a
+    slab of corrugated across the piece's whole end, from the floor to what is over it (or
+    the lid), in the gap to the wall (``why`` ``"filler +x"`` ..: cut, not printed).
+
+    ``avoid``: cells no spacer takes (the clearance round a part nothing may bear on: a
+    gauge, a clip, a gearbox, a screw head; :func:`part_cells`, grown a cell; ``bearless``
+    the parts' own). Spacers of one piece that face each other join (:func:`_bridges`); then
+    a support that still slides is left out where what it carries rests directly without it
+    (:meth:`_Spacers.rests`). The grid's
+    cells are the parts' conservative fill, so a spacer meets each part with up to a cell's
+    gap: a piece it holds slides up to 3 mm (:data:`CELL`)."""
     keys = [r["key"] for r in rows]
-    st = _Spacers(g, keys)
+    st = _Spacers(g, keys, avoid)
     for u, r in enumerate(rows):
         pads = [p for p in r["pads"] if p.get("fits") and p.get("base_mm") is not None
                 and p["height_mm"] > 0]
@@ -2215,17 +2502,19 @@ def spacers(g: Grid, rows: Sequence[dict]) -> list[Spacer]:
                               else f"spacer_{r['key']}")
     for _ in range(6):                      # restraints for what still slides
         more = False
-        owners = [p for p in range(len(keys)) if p or len(keys) == 1]   # (not the base)
+        owners = list(range(len(keys)))     # (the board too: its ends, in a longer box)
         for p in owners + [-2 - n for n in range(len(st.made))]:
             key = st.name(p)
             mine = st.owner == p
             if not mine.any():
                 continue
-            free = st.slide(mine)
-            for way in sorted(WAYS, key=lambda w: -free[w]):
+            free = st.slide(mine, up=True)
+            for way in sorted(free, key=lambda w: -free[w]):
                 if free[way] <= SPACER_HOLD:
                     break
-                for sp in _bar(st, p, mine, way):
+                fill = p >= 0 and st.name(p) in fillers and way in WAYS
+                for sp in (_cap(st, p, mine) if way in UP else _filler(st, p, mine, way)
+                           if fill else _bar(st, p, mine, way)):
                     cols = st.grow(sp)
                     if len(cols):
                         cols = _split(st, sp, cols)[0][1]
@@ -2236,15 +2525,199 @@ def spacers(g: Grid, rows: Sequence[dict]) -> list[Spacer]:
                     if p < 0:               # (a spacer's: one print with it)
                         st.merge(-2 - p, cols)
                     else:
-                        st.commit(sp, cols, f"spacer_{key}_{'pm'[WAYS[way][1] < 0]}"
-                                            f"{'xyz'[WAYS[way][0]]}")
+                        a_, s_ = {**WAYS, **UP}[way]
+                        st.commit(sp, cols, f"spacer_{key}_{'pm'[s_ < 0]}{'xyz'[a_]}")
                     more = True
                     mine = st.owner == p
-                    free = st.slide(mine)
+                    free = st.slide(mine, up=True)
                     break
         if not more:
             break
-    return st.made
+    _bridges(st)
+    # a support that still slides goes, where what it carries rests without it
+    for n in reversed(range(len(st.made))):
+        sp = st.made[n]
+        if sp.why != "support":
+            continue
+        free = st.slide(st.mask(sp.cols), up=True)
+        p = next((o for o in st.ids(sp.under) if o >= 0), None)
+        if max(free.values()) <= SPACER_HOLD or p is None or "com_mm" not in rows[p]:
+            continue
+        com = np.asarray(rows[p]["com_mm"], float)[[0, 2]]
+        cells = st.mask(sp.cols)
+        st.occ[cells] = False           # (tried without it)
+        held = st.rests(p, com, bearless)
+        st.occ[cells] = True
+        if held:
+            st.drop(n)
+    # what still slides, standing on one piece, is taped to it
+    for sp in st.made:
+        if sp.why.startswith("filler"):
+            continue
+        free = st.slide(st.mask(sp.cols), up=True)
+        on = [o for o in sp.on if o != "floor"]
+        if max(free.values()) > SPACER_HOLD and len(on) == 1 and on[0] in st.keys:
+            sp.taped = on[0]
+    return [q for sp in st.made
+            for q in ([sp] if sp.why.startswith("filler") else _fit_bed(st, sp))]
+
+
+def _bridges(st: _Spacers) -> None:
+    """Fewer, larger spacers (packing review 2's M3): two printed spacers of one piece (they
+    carry or hold the same piece and go in together) that face each other along x or z with
+    a corridor of empty cells between them at a height they share (no more than
+    :data:`BRIDGE_MAX` cells long, a cell or more of its height clear of every part and
+    clearance, nothing over it that goes in before them nor under it after) become one: the
+    corridor's cells, as tall as is clear there up to their shared height and as wide as
+    they face each other (at most three cells), join them. Then one that slid along that
+    way rides the other's hold. Within the print bed (:data:`SPACER_BED`); again until none
+    joins."""
+    bed = int(SPACER_BED // st.g.cell)
+    ny = st.shape[1]
+    wall = st.occ | st.avoid
+    while True:
+        joined = False
+        made = st.made
+        for a, b in itertools.combinations(range(len(made)), 2):
+            sa, sb = made[a], made[b]
+            if (sa.under != sb.under or sa.rank != sb.rank or sa.why.startswith("filler")
+                    or sb.why.startswith("filler")):
+                continue
+            got = _corridor(st, sa.cols, sb.cols, wall, bed)
+            if got is None:
+                continue
+            for i, k, j0, j1 in got.tolist():
+                st.occ[i, j0:j1, k] = True
+                st.owner[i, j0:j1, k] = -2 - a
+                wall[i, j0:j1, k] = True
+            for i, k, j0, j1 in sb.cols.tolist():
+                st.owner[i, j0:j1, k] = -2 - a
+            sa.cols = np.concatenate([sa.cols, got, sb.cols])
+            sa.pads = tuple(dict.fromkeys(sa.pads + sb.pads))
+            sa.bears = tuple(sorted(set(sa.bears) | set(sb.bears)))
+            sa.on = tuple(sorted(set(sa.on) | set(sb.on)))
+            st.drop(b, keep_cells=True)
+            joined = True
+            break
+        if not joined:
+            return
+        _ = ny
+
+
+def _corridor(st: _Spacers, ca: np.ndarray, cb: np.ndarray, wall: np.ndarray, bed: int
+              ) -> np.ndarray | None:
+    """The runs (i, k, j0, j1) of a straight corridor joining two spacers' runs ``ca`` and
+    ``cb`` (:func:`_bridges`), or None."""
+    def bounds(c):
+        return (np.array([c[:, 0].min(), c[:, 2].min(), c[:, 1].min()]),
+                np.array([c[:, 0].max() + 1, c[:, 3].max(), c[:, 1].max() + 1]))
+
+    (la, ha), (lb, hb) = bounds(ca), bounds(cb)
+    lo, hi = np.minimum(la, lb), np.maximum(ha, hb)
+    if ((hi - lo)[[0, 2]] > bed).any() or hi[1] - lo[1] > bed:
+        return None
+    for ax in (0, 2):
+        o = 2 if ax == 0 else 0
+        # facing each other along ax: apart there, overlapping across
+        w0, w1 = max(la[o], lb[o]), min(ha[o], hb[o])
+        if w1 <= w0:
+            continue
+        if not (ha[ax] <= lb[ax] or hb[ax] <= la[ax]):
+            continue                    # (not apart that way)
+        g0, g1 = (int(min(ha[ax], hb[ax])), int(max(la[ax], lb[ax])))
+        if not 0 < g1 - g0 <= BRIDGE_MAX:
+            continue
+        y0, y1 = int(max(la[1], lb[1])), int(min(ha[1], hb[1]))
+        if y1 <= y0:
+            continue
+        mid = (w0 + w1) // 2
+        w0, w1 = max(w0, mid - 1), min(w1, mid + 2)
+        sl = [slice(None)] * 3
+        sl[ax] = slice(g0, g1)
+        sl[o] = slice(w0, w1)
+        sl[1] = slice(y0, y1)
+        free = ~wall[tuple(sl)].any(axis=(0, 2))       # (each layer clear across it)
+        # the longest run of clear layers that touches both spacers' ends
+        best = None
+        j = 0
+        layers = free.tolist()
+        while j < len(layers):
+            if not layers[j]:
+                j += 1
+                continue
+            k = j
+            while k < len(layers) and layers[k]:
+                k += 1
+            if best is None or k - j > best[1] - best[0]:
+                best = (j, k)
+            j = k
+        if best is None:
+            continue
+        j0, j1 = y0 + best[0], y0 + best[1]
+        cols = []
+        for x in range(g0, g1):
+            for w in range(w0, w1):
+                i, k = (x, w) if ax == 0 else (w, x)
+                col = st.occ[i, :, k]
+                rk = st.ranks_of(st.owner[i, :, k])
+                over = np.where(col & (np.arange(len(col)) >= j1), rk, np.inf).min()
+                under = np.where(col & (np.arange(len(col)) < j0), rk, -1.0).max()
+                rank = st.rank(int(st.owner[ca[0, 0], ca[0, 2], ca[0, 1]]))
+                if not (over > rank and under < rank):
+                    return None
+                cols.append((i, k, j0, j1))
+        got = np.asarray(cols, np.int64)
+        if _label(st.mask(np.concatenate([ca, got, cb])))[1] != 1:
+            continue                    # (it must meet both: one print)
+        return got
+    return None
+
+
+def _fit_bed(st: _Spacers, sp: Spacer, bed: float = SPACER_BED) -> list[Spacer]:
+    """``sp`` cut where it spans more than ``bed`` mm (a print bed): across its longest way,
+    where its section is least within the cut's reach (each side no longer than the bed),
+    each side again until every one fits; each a spacer of its own (``key`` ``_a``, ``_b``
+    ..: its own 6-connected parts), with what it stands on."""
+    n = int(bed // sp.cell)
+    m = st.mask(sp.cols)
+    parts = [m]
+    out: list[np.ndarray] = []
+    while parts:
+        q = parts.pop()
+        idx = np.nonzero(q)
+        lo = np.array([int(v.min()) for v in idx])
+        hi = np.array([int(v.max()) + 1 for v in idx])
+        span = hi - lo
+        if (span <= n).all():
+            out.append(q)
+            continue
+        a = int(np.argmax(span))
+        sec = q.sum(axis=tuple(k for k in range(3) if k != a))[lo[a]:hi[a]]
+        # a cut between index c - 1 and c (from lo): both sides n or less, where least meets
+        cs = np.arange(max(1, span[a] - n), min(span[a] - 1, n) + 1)
+        if not len(cs):
+            cs = np.array([min(n, span[a] - 1)])
+        c = int(cs[np.argmin(np.minimum(sec[cs - 1], sec[cs]))]) + int(lo[a])
+        for half in (slice(None, c), slice(c, None)):
+            r = np.zeros_like(q)
+            sl = [slice(None)] * 3
+            sl[a] = half
+            r[tuple(sl)] = q[tuple(sl)]
+            lab, k = _label(r)
+            parts += [lab == j for j in range(1, k + 1)]
+    if len(out) == 1:
+        return [sp]
+    got = []
+    for j, q in enumerate(sorted(out, key=lambda q: tuple(np.argwhere(q).min(axis=0)))):
+        cols = _runs(q)
+        under = {int(st.owner[i, j0 - 1, k]) for i, k, j0, _ in cols.tolist()
+                 if j0 >= 1 and st.occ[i, j0 - 1, k] and st.owner[i, j0 - 1, k] != st.owner[
+                     i, j0, k]}
+        floor = any(j0 <= 1 for _, _, j0, _ in cols.tolist())
+        on = sorted({st.name(o) for o in under}) + (["floor"] if floor else [])
+        got.append(Spacer(f"{sp.key}_{'abcdefghij'[j]}", sp.under, tuple(on), sp.pads, cols,
+                          sp.org, sp.cell, sp.bears, sp.rank, sp.why))
+    return got
 
 
 def _split(st: _Spacers, sp: _Spec, cols: np.ndarray) -> list[tuple[_Spec, np.ndarray]]:
@@ -2351,6 +2824,81 @@ def _bar(st: _Spacers, p: int, mine: np.ndarray, way: str) -> list[_Spec]:
     return out          # (a spacer's restraint goes in with it: its rank)
 
 
+def _filler(st: _Spacers, p: int, mine: np.ndarray, way: str) -> list[_Spec]:
+    """A filler for piece ``p`` (the board) sliding ``way`` (:func:`spacers`): a slab from
+    its end that way to the wall, wall to wall across, from the floor up to the lowest thing
+    over it (or the lid; no lower than the piece's end): corrugated, a spare carton folded to
+    it."""
+    a, sgn = WAYS[way]
+    other = 2 if a == 0 else 0
+    idx = np.nonzero(mine)
+    near = int(idx[a].max()) + 1 if sgn > 0 else int(idx[a].min()) - 1
+    wall = st.walls_at()
+    last = wall[1][a] - 1 if sgn > 0 else wall[0][a]   # (from its end to the wall)
+    if (last - near) * sgn < 0:
+        return []
+    lo_a, hi_a = sorted((near, last))
+    w0, w1 = wall[0][other], wall[1][other]          # (wall to wall across)
+    rect = (lo_a, hi_a + 1, w0, w1) if a == 0 else (w0, w1, lo_a, hi_a + 1)
+    seed = np.empty((st.shape[0], st.shape[2], 3), np.int64)
+    # (flat-topped: from over the piece's end face up to the lowest thing over its
+    # footprint, or the lid: a held slab)
+    face = np.take(mine, [near - sgn], axis=a)
+    ftop = int(np.flatnonzero(face.any(axis=(0, 2)))[-1]) + 1
+    sl = [slice(None)] * 3
+    sl[a] = slice(lo_a, hi_a + 1)
+    sl[other] = slice(w0, w1)
+    sl[1] = slice(ftop, None)
+    over = (st.occ | st.avoid)[tuple(sl)].any(axis=(0, 2))
+    top = ftop + int(np.argmax(over)) if over.any() else st.end[1]
+    seed[...] = (0, 0, min(top, st.end[1]))
+    return [_Spec([rect], seed, None, st.name(p), (), (st.name(p),), "", why=f"filler {way}",
+                  walls=True)]
+
+
+def _cap(st: _Spacers, p: int, mine: np.ndarray, k: int = 4) -> list[_Spec]:
+    """Caps for piece (or spacer) ``p`` that lifts (:func:`spacers`): a block standing on
+    its top up to what is over it there (a piece or a spacer that goes in after it) or the
+    lid, where that reach is least (and no more than :data:`CAP_REACH`), its footprint
+    :data:`SPACER_GROW` cells each way over the piece's columns whose reach is within a cell
+    of it; up to ``k`` places, each at least two footprints from those before it."""
+    nx, ny, nz = st.shape
+    ii, kk = np.nonzero(mine.any(axis=1))
+    if not len(ii):
+        return []
+    col = mine[ii, :, kk]
+    top = ny - 1 - np.argmax(col[:, ::-1], axis=1)          # its highest cell, a column
+    at = np.arange(ny)[None, :]
+    wall = (st.occ | st.avoid)[ii, :, kk]
+    above = np.where(wall & (at > top[:, None]), at, ny).min(axis=1)
+    lid = st.end[1]
+    held = np.zeros(len(ii), bool)                          # what is there holds it down
+    inb = above < min(ny, lid)
+    held[inb] = st.occ[ii[inb], above[inb], kk[inb]]
+    held |= above >= lid
+    reach = np.minimum(above, lid) - top - 1
+    good = held & (reach >= 1) & (reach <= CAP_REACH)
+    if not good.any():
+        return []
+    out: list[_Spec] = []
+    taken = np.zeros(len(ii), bool)
+    for c in np.argsort(np.where(good, reach, BIG), kind="stable")[:len(ii)]:
+        if not good[c] or taken[c] or len(out) >= k:
+            continue
+        i, kc, r = int(ii[c]), int(kk[c]), int(reach[c])
+        near = (np.abs(ii - i) <= SPACER_GROW) & (np.abs(kk - kc) <= SPACER_GROW)
+        use = near & good & (reach <= r + 1)
+        seed = np.full((nx, nz, 3), -1, np.int64)
+        seed[ii[use], kk[use], 0] = top[use] + 1
+        seed[ii[use], kk[use], 1] = top[use] + 1
+        seed[ii[use], kk[use], 2] = np.minimum(above[use], lid)
+        rect = (i - SPACER_GROW, i + SPACER_GROW + 1, kc - SPACER_GROW, kc + SPACER_GROW + 1)
+        out.append(_Spec([rect], seed, st.rank(p) if p < 0 else None, st.name(p), (),
+                         (st.name(p),), "away", why="restraint +y"))
+        taken |= (np.abs(ii - i) <= 2 * SPACER_GROW) & (np.abs(kk - kc) <= 2 * SPACER_GROW)
+    return out
+
+
 def _grow_merged(st: _Spacers, specs: list[_Spec]) -> list[tuple[_Spec, np.ndarray]]:
     """Each spec grown (:meth:`_Spacers.grow`); two of one piece whose cells meet merged and
     grown again, until none meet."""
@@ -2453,6 +3001,36 @@ def _stands(st: _Spacers, cols: np.ndarray) -> bool:
     return any(j0 <= 1 or st.occ[i, j0 - 1, k] for i, k, j0, _ in cols.tolist())
 
 
+def part_cells(pieces: Sequence[Packed], names: set[str] | frozenset[str], g: Grid
+               ) -> np.ndarray:
+    """The cells of grid ``g`` the parts ``names`` fill (:func:`voxelize`, each part on its
+    own bounds, on the grid's cells): a piece's parts are its meshes (``Packed.parts``)."""
+    out = np.zeros(g.count.shape, bool)
+    shape = np.array(out.shape)
+    for pc in pieces:
+        for m, (pos, tri) in enumerate(pc.meshes):
+            if m >= len(pc.parts) or pc.parts[m] not in names or not len(tri):
+                continue
+            q = np.asarray(pos, float)
+            lo = np.maximum(np.floor((q.min(axis=0) - g.lo) / g.cell).astype(int) - 1, 0)
+            hi = np.minimum(np.ceil((q.max(axis=0) - g.lo) / g.cell).astype(int) + 1, shape)
+            if (hi <= lo).any():
+                continue
+            v = voxelize([(q, tri)], g.cell, org=g.lo + lo * g.cell,
+                         shape=(int(hi[0] - lo[0]), int(hi[1] - lo[1]), int(hi[2] - lo[2])))
+            out[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]] |= v.occ
+    return out
+
+
+def grown(mask: np.ndarray, cells: int = 1) -> np.ndarray:
+    """``mask`` grown ``cells`` cells each way (26-connected: a cube round each cell)."""
+    from scipy import ndimage
+
+    if cells <= 0 or not mask.any():
+        return mask.copy()
+    return ndimage.binary_dilation(mask, np.ones((3, 3, 3), bool), iterations=cells)
+
+
 def pad_id(order: int, n: int) -> str:
     """Pad ``n`` (from 0) of the piece that goes in ``order``-th (from 1): ``4a``, ``4b``
     .. ``4z``, ``4aa`` .."""
@@ -2466,7 +3044,7 @@ def pad_id(order: int, n: int) -> str:
 
 def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | None = None,
             cell: float = CELL, fine: float = FINE, bands: int = 12,
-            grid: Grid | None = None) -> dict:
+            grid: Grid | None = None, bearless: np.ndarray | None = None) -> dict:
     """What a packing is worth, from the pieces where it put them (in the order they go
     in): the box (``inside``, default :func:`box_of`; its outside with :data:`WALL`), the
     true fill (the parts' own volumes over the box's inside), its cells' fill, the air per
@@ -2476,11 +3054,15 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
     it), its pads measured on the real meshes (:func:`measure_pads`; ``pads``: their count,
     volume, the tallest and the cut list, each named by its piece's number and a letter),
     how far it slides before it meets a neighbour or the wall (:func:`free_travel`:
-    ``free_mm`` each way, ``slide_mm`` the most along the floor; ``restraint``: the pieces
-    that slide more than :data:`CLEAR`, the foam's width, and the most any does), the
+    ``free_mm`` each way, ``slide_mm`` the most along the floor or up, the lid holding
+    what it is over within a cell, packing review 2's M4; ``restraint``: the pieces that
+    move more than :data:`CLEAR`, a cell, and the most any does), the
     real-shape overlaps (pieces that share cells, then the volume they share at ``fine``
     mm), the order's faults (a piece over another that goes in after it), the mass centre's
-    height."""
+    height. ``bearless``: the grid's cells of the parts nothing may bear on
+    (:func:`part_cells`): a piece doesn't rest where its bottom is one of them, nor on one
+    (packing review 2's B1: a panel on its gearbox or a screw head, the cradle box on its
+    gauge)."""
     g = grid or occupancy(pieces, inside, cell)
     lo, hi = g.lo, g.hi
     size = hi - lo
@@ -2512,6 +3094,8 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
         who = np.full(len(ii), -1)
         found = np.zeros(len(ii), bool)
         others = g.count - g.occ[i]
+        bad = (bearless[ii, y0, kk] if bearless is not None
+               else np.zeros(len(ii), bool))      # (its bottom a part nothing bears on)
         for d in range(1, depth + 1):
             y = y0 - d
             look = ~found & (y >= 0)
@@ -2521,7 +3105,10 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
                 gap[hit] = np.maximum(d - 2, 0)
                 w = owner[ii[hit], y[hit], kk[hit]]
                 who[hit] = np.where(w == i, -1, w)
+                if bearless is not None:
+                    bad[hit] |= bearless[ii[hit], y[hit], kk[hit]]
                 found |= hit
+        gap = np.where(bad, BIG, gap)
         com_c = (np.asarray(pc.com, float) - lo) / cell
         rest = support(np.stack([ii, kk], axis=1), gap, who, names, com_c[[0, 2]], cell,
                        lo[[0, 2]])
@@ -2540,13 +3127,13 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
         rows.append({"key": pc.key, "label": pc.label, "order": i + 1,
                      "mass_kg": round(pc.mass, 3), "volume_l": round(pc.volume / 1e6, 3),
                      "com_height_mm": round(float(pc.com[1] - lo[1]), 1),
+                     "com_mm": [round(float(v), 2) for v in pc.com],
                      "supported": rest.ok, "rests": rest.how, "on": list(rest.on),
                      "pads": pads, "cells": int(g.occ[i].sum()),
                      "free_mm": {k: round(v[0], 1) for k, v in free.items()},
                      "meets": {k: "wall" if v[1] < 0 else names[v[1]]
                                for k, v in free.items()},
-                     "slide_mm": max((v[0] for k, v in free.items() if k != "+y"),
-                                     default=0.0)})
+                     "slide_mm": max((v[0] for v in free.values()), default=0.0)})
     # overlaps: cells two pieces claim, then measured finer
     overlaps = []
     if (g.count > 1).any():
