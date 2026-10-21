@@ -90,7 +90,9 @@ stops there:
     "The saddles, adjustable"). Each is a carrier locked on its rods by M3 set screws up
     from its underside, and a V block that rides up and down in it on a thumbscrew.
     - The front one carries the neck: its V block slides in the carrier's box guide, an M6
-      thumbscrew at its end.
+      thumbscrew at its end. Its V bears on the neck only to 64.5 mm from the mouth
+      (`cradle.FRONT_BEAR`, since design review round 3): behind that it is relieved 6 mm,
+      and the carrier's back wall notched 6 mm deeper, so no shoulder lands on either.
     - The rear one carries the body: its V block rides a 15 mm plated steel post and,
       27 mm beside it at the same end, a coarse lead screw (8 mm a turn) that pushes it up
       (since review round 2; the post had been at the far end, and the block jammed on it);
@@ -107,9 +109,11 @@ stops there:
     over the top of the rim (above a cork's bore), and its bar runs back beside the neck,
     not over it: a bottle lays in under nothing. It checks where the mouth is, and it is
     the forward stop: past level a bottle would slide toward its mouth, and the rim's top
-    bears on it. A bottle is uncorked standing on the table before it goes in (since
-    review round 2: the gauge had hinged up to uncork and fallen back by its own weight,
-    barely more than its hinge's friction).
+    bears on it. Dry, the liners hold a bottle on the gate the whole pour; a wet one slides
+    onto the pad mid-pour, which its post (21.7 mm across since round 3,
+    `cradle.GAUGE_POST_OUT`) takes (`cradle_report.gauge_slide`). A bottle is uncorked
+    standing on the table before it goes in (since review round 2: the gauge had hinged up
+    to uncork and fallen back by its own weight, barely more than its hinge's friction).
   - **The base stop** (`cradle._rails`, `cradle._gate`): a printed gate across the V behind
     the bottle's base, riding the rear V block's flats and two printed rails behind the
     block. It is the back stop: at rest the bottle stands 50° neck up and leans on it (at
@@ -118,6 +122,9 @@ stops there:
     - Keys under its ears run in a groove along each flat and rail. It is set by a scale
       grooved across the +z flat and rail and locked by hand: a printed knob on an M5 tap
       bolt through one ear into a nut and a fender washer in a T-slot under the groove.
+      Its top bar and ears stand 9 mm over the rails (`cradle.GATE_TOP`), the ears' roots
+      filleted, and it prints on its top, so the clamped ear's root and the pointer bend in
+      its layers.
     - It serves every base from 285 mm (inside the rear V: a 750 ml's at 300.5) to 576 mm
       (a 6 L's at 571) behind the mouth, its face 2.5 mm behind the base
       (`cradle.STOP_GAP`).
@@ -131,12 +138,17 @@ stops there:
   pivot and the axis level, so the mouth stays put for each. Its setting is the two V
   blocks' rise and the base stop's place, read off the scales with the bottle out (see
   "The saddles, adjustable"); the base stop and the lip gauge hold it there.
-  - The 6 L necks' lengths and radii are estimates scaled from the jeroboam's (no maker
-    draws them): set the front knob to the neck in hand.
+  - The 750 ml and the 6 L impériale are drawn as their makers draw them (Saverglass's
+    4427 and univerre's NGBD06QFR, traced: `cradle.SAVERGLASS_4427`,
+    `cradle.UNIVERRE_NGBD06QFR`), the others as a cylinder neck, a cosine shoulder and a
+    cylinder body. The methuselah's neck is still an estimate scaled from the jeroboam's:
+    set the front knob to the neck in hand.
   - Every bottle is measured first (two of a size differ: 750 ml Bordeaux run 300.5 to 315
-    mm long): each knob set to its neck's diameter (80 mm from the lip) and its body's
-    (where it lies, 255 mm from the lip and on) on the scales' graded rows, the base stop
-    to its length on a plain length scale with a vernier.
+    mm long): each knob set to its neck's diameter (62 mm from the lip, the front V's
+    bearing's back end: `cradle.NECK_AT`) and its body's (255 mm from the lip, where it
+    lies on the rear V's front edge) on the scales' graded rows, the base stop to its
+    length on a plain length scale with a vernier. `cradle.bottle_room` checks a real
+    outline at its setting against the V's relief, the back wall and the light.
 - **The drive** (`spiderpig/construction/handcrank.py`, `config.crank == "hand"`; round 1's
   drive review of 2026-10-14 reworked its riser, its block, its tie and its hand crank;
   round 2's, of the same day, its gearbox, riser, block and clutch).
@@ -550,11 +562,14 @@ stops there:
   toggle zones' marks; `handcrank.TOGGLE_TURNS`).
 - **The light:** a 14 x 60.5 mm AAA keychain light (Olight i3E EOS) stands in a printed
   clip under the front saddle's back end (its flange on the carrier's underside, two M5s),
-  so the clip prints upright and round. Its head sits under the
-  shoulder; an M3 set screw holds it while you twist the head to switch it on.
+  so the clip prints upright and round. Its head sits 100 mm behind the mouth
+  (`cradle.LED_X`), under where a 750's shoulder starts and a 6 L's neck meets its shoulder
+  (since round 3: at 118 univerre's real 6 L impériale, its shoulder 27 mm fuller there than
+  the model's, lay on its head); an M3 set screw holds it while you twist the head to switch
+  it on.
   - A longer light's tail reaches a decanter's shoulder at rest.
-  - Its printed clip is the lowest part of the cradle box over the decanter's rim: 380 mm
-    over the table, at rest ("The vessel under the mouth").
+  - Its printed clip is the lowest part of the cradle box over the decanter's rim: 394 mm
+    over the table, near rest ("The vessel under the mouth"; 380 before round 3 moved it).
 - **Display only** (`fab="display"`: drawn, never bought, cut or printed): the bottle (a
   6 L methuselah, `cradle.SHOWN`: the V blocks drawn at their lowest; the cradle page sets
   them for the bottle picked) and a RIEDEL Ultra decanter (225 mm, `cradle.DECANTER_PROFILE`)
@@ -669,18 +684,25 @@ block travels 15 mm, the rear one 72: a neck from 28 to 48 mm across, a body fro
    ===o========o===  tie rods                  ===o===\block/=====o==[collar]=== tie rods
 ```
 
-- **Front:** the V block slides in a box (the carrier's walls, the front and back ones
-  notched under the lowest V; two drains through the back one at the floor, its low end at
-  rest). Its tab at the +z end holds an M6 nut. The M6 x 60 tap bolt stands in a blind bore
+- **Front:** the V block slides in a box (the carrier's walls, the front one notched under
+  the lowest V, the back one 6 mm deeper; two drains through the back one at the floor, its
+  low end at rest). Its V and liner bear on the neck from 48.3 to 64.5 mm behind the mouth
+  (`cradle.FRONT_BEAR`); behind that the V is 6 mm lower (`cradle.FRONT_RELIEF`, a 1 mm floor
+  kept), so the V holds a neck only in front of its shoulder (design review round 3,
+  mounting M1: borne to 79 mm, Saverglass's 4427, which flares from 71, lay on its
+  shoulder, set by its neck 3.9 mm low, and slid onto the pad its shoulder climbed the
+  back wall). Its tab at the +z end holds an M6 nut. The M6 x 60 tap bolt stands in a blind bore
   in the carrier's floor, through the nut, its printed knob on its head over the wall. The
   knob stays put: turning it walks the nut, and the block, up or down (13 turns end to
   end). The block bears down on the nut, so the thread (self-locking) holds it.
   - The push at the tab is 40 mm off the box's middle, so it cocks the block onto the -z
     wall's top and the +z wall's foot, and their friction grows with the push: a drawer.
     The -z wall stands 12 mm taller (`cradle.FRONT_GUIDE`), a cheek up the block's -z face
-    along it: the pair 45 mm apart at every bottle's setting (32 before), the block jams
-    raising only past friction 0.56 (`cradle_report.drawers`; 3.3 x the most cited for
-    printed PETG on steel, oiled: the guide's faces are greased).
+    along it, and over the lip gauge's post the cheek stands 10 mm taller still against the
+    post's face (`cradle.FRONT_CHEEK`, round 3's mounting m9): the pair 55 mm apart at every
+    bottle's setting (45 before, 32 before round 2), the block jams raising only past
+    friction 0.69 (`cradle_report.drawers`; 2.3 x the most cited for printed PETG on steel,
+    dry: the guide's grease helps, but a spill washes it out; it had held 1.9 x dry).
 - **Rear:** the V block's two bosses at its +z end ride a 15 mm steel post, nickel plated
   (MISUMI PETR15-150), and 27 mm behind it a Tr8 x 8 lead screw (8 mm a turn: 9 turns end
   to end), whose bronze barrel nut sits in its boss from below, an M3 set screw on it. Both
@@ -696,7 +718,8 @@ block travels 15 mm, the rear one 72: a neck from 28 to 48 mm across, a body fro
     `saddles`). (The post had been at -z, 213 mm across from the screw: it jammed past
     0.15, 0.095 at a 750 ml's setting: review round 2, N1.)
   - An 8 mm lead isn't self-locking (the thread's lead angle, 20°, is over its friction's).
-    The knob locks it: it slides up and down a hex hub set-screwed on the screw's top, and
+    The knob locks it: it slides up and down a hex hub set-screwed on the screw's top (on a
+    flat filed there, since round 3), and
     down, its underside's star socket sits over the arm's teeth, so the screw can't turn
     (`cradle._lead_screw`). Lifted 3.6 mm off them, it turns the screw; let go and pressed
     down, it locks it again, a twelfth of a turn at most from where it was (0.7 mm of the
@@ -728,9 +751,12 @@ block travels 15 mm, the rear one 72: a neck from 28 to 48 mm across, a body fro
   and rail, a groove every 5 mm of a bottle's length (a long one every 10; one dot in front
   of each 50 mm groove, three, four and five at 300, 400 and 500), the gate's face 2.5 mm
   behind the length it reads. The gate's pointer reaches forward along the scale's outer
-  half with a vernier (`cradle.VERNIER`): four lines 6 mm apart, the k-th from the face
-  meeting a groove for a length k mm past one. (It had been a named groove per bottle:
-  review round 2, N2.)
+  half with a vernier (`cradle.VERNIER`): four notches 6 mm apart in its inner edge, the
+  k-th from the face meeting a groove for a length k mm past one, where both reach the
+  rail's top. (It had been a named groove per bottle: review round 2, N2. The notches had
+  been lines cut in the pointer's top, 6 mm over the grooves, and the pointer 2 mm wide,
+  printing as a column: round 3's mounting m4 and m2; it is 4 mm wide, its outer edge over
+  the rail's outer face.)
 - **No depth added:** each carrier's bottom is the old saddle's (front -60, rear -149).
   The V block sits on the rods at its lowest, and its guides stand beside the bottle (|z|
   88 to 126 at the rear, inside the bay's 130). `decanters.TIES` didn't move: neither
@@ -801,6 +827,17 @@ pad is 41 mm off the bolt's line, and the gauge's two cheeks either side of the 
 that turn on the bolt (the push itself bears the back cheek on the post's back face, not
 on a thread).
 
+**The slide onto the pad** (`cradle_report.gauge_slide`, round 3's mounting m1): at rest a
+bottle lies on the gate, its rim 2 to 4 mm behind the pad. A 90° V's two faces press it with
+√2 its weight, so its liners hold it past level at a friction of tan(tilt) / √2: dry TPU on
+glass, over 1, never slides in the swing (that needs under 0.41 at +30°). Wet (a sweating
+bottle, liners not dried), it can, and its friction falls to TPU's wet kinetic 0.30 (pure
+TPU in water, Yu et al., Polymers 17(1):30, 2024): the difference, 14 N for a full 6 L
+methuselah, drives it the 4 mm into the pad, the gauge a 25 N/mm spring (its bar bent by
+the push off its line), peaking at 70 N against the 54 N static pull. The gauge's parts
+are rated at the peak; its post, 21.7 mm across since (13.7 before, SF 2.88 at the static
+pull), takes it at 4.3 (bar 2.5). And the guide has the bottle and the liners wiped dry.
+
 **Why the gauge is fixed** (review round 2, N4 and m2): it had hinged up to uncork and
 fallen back by its own weight, a turn only 1.3 x its hinge's friction at rest (0.8 N·mm
 against 0.6 at a printed hinge's 0.3): dried wine, or a nut done up a little tight, would
@@ -824,10 +861,12 @@ than 26 mm (the old rails' end had been 18.8 mm over it, under a finger's 25 mm)
 
 **Use** (the guide's "Setting it for a bottle"):
 1. Measure the bottle, every one: its length standing on the table, base to lip, to the
-   millimetre; its neck's diameter 80 mm down from the lip (where the front V holds it: a
-   Port bottle's bulb or a tapered neck sets by that); its body's where it lies in the
-   rear V, 255 mm from the lip and on (the 1855 and Icon 750s taper 84.8 to 79.4 and 82 to
-   75.8 mm). Uncork it there, standing on the table.
+   millimetre; its neck's diameter 62 mm down from the lip (`cradle.NECK_AT`: the front V's
+   bearing's back end, the bottle on the gate; in front of every traced shoulder, so a
+   neck's widest under the V; round 3's mounting M1: measured at 80, a steep Bordeaux's
+   shoulder, 2.4-2.9 mm wider in radius there, set the V 3.9-5.1 mm low); its body's 255 mm
+   from the lip, where it lies on the rear V's front edge. Uncork it there, standing on the
+   table, and wipe it and the V blocks' liners dry.
 2. At rest, the bottle out, set all three: the gate's face to the bottle's length on the
    5 mm grooves, its vernier for the millimetres, its knob tight by hand, then tug the gate
    toward the saddle: it must not move; each V block's reading edge to the bottle's
@@ -836,7 +875,14 @@ than 26 mm (the old rails' end had been 18.8 mm over it, under a finger's 25 mm)
 3. Lay the bottle in base first, its label up: its heel on the rails just in front of the
    gate, slid back against it, then the neck lowered into the front V, the rim passing
    behind the gauge's pad (it won't go down if the bottle is longer than set: the gate
-   back). The pad's bottom edge covers the rim's top, 2 to 4 mm in front of it.
+   back). Tug the gate again (and before the first turn, after the bottle has rested for
+   its sediment: the lock's printed lips creep under its preload, round 3's m6). The pad's
+   bottom edge covers the rim's top, 2 to 4 mm in front of it; a strip of paper under the
+   neck, either side, is pinched. A body that narrows toward its base (univerre's 6 L
+   impériale 82.2 to 79.3 mm, its 3 L too) lies tipped back on it, its neck 3-4 mm over the
+   V and its mouth 4 mm high (round 3's m7; harmless: the pad covers its rim by 15 mm):
+   lowering the rear V by 5 mm of diameter brings its neck down (its mouth then 1 mm
+   high).
 
 **The parts** (prices from pages rendered 2026-10-13 to 2026-10-15, qty 1, per cradle;
 the sourcing in `/root/scratch/decant/saddles/sourcing/`,
@@ -983,6 +1029,47 @@ development box). What it found, and what changed:
   for the 15 mm post's weight, the rear V shell 7.5 mm (9) and the carrier's -z block 15 mm
   wide (29): the printed mounting parts 1220 cm³ solid (1223 before).
 
+**Review round 3** (2026-10-20; `/root/scratch/decant/review5/r3/mounting.md` on the
+development box, its traced drawings and probes in `/root/.cache/spiderpig/tmp/r3-mounting/`).
+It traced ten real bottles from their makers' drawings and laid them in as the guide says.
+What it found, and what changed (USD 0, a few grams of PETG):
+- **The neck was measured 3.5 mm from where the V bears (M1).** The V ends its bearing at
+  64.5 mm, relieved 6 mm behind it, the carrier's back wall notched 6 mm deeper, and the
+  guide measures the neck 62 mm from the lip (`cradle.FRONT_BEAR`, `cradle.NECK_AT`). Set
+  so, every traced 750 lies within 0.2 mm of the pivot, and a 4427's shoulder clears the
+  relief by 1.4 mm and the back wall by 3.0 even slid onto the pad (`cradle.bottle_room`).
+  The 750 ml and the impériale are drawn as traced (`cradle.SAVERGLASS_4427`,
+  `cradle.UNIVERRE_NGBD06QFR`), so the clash test lays the real shoulders in at every
+  crank angle.
+- **A real 6 L impériale lay on the light (M2).** The light moved forward to 100 mm
+  (`cradle.LED_X`; 118 before): its head 10.7 mm under the impériale's glass (it had
+  overlapped 7-10 mm on the drawing; 4 by the reviewer's rest), 7.4 under a 4427's (6.7
+  before), 21 under the methuselah's neck. The clip, the lowest part over the decanter,
+  rose 14 mm (394 mm over the table, near rest): the RIEDEL Ultra's whole riser keeps its
+  20 mm rule with more to spare. Moving it 45 mm aside would have kept its height and
+  needed a new clip.
+- **The gate's clamped ear took the push's lever across its layers, unrated (M3).** The
+  gate's top bar, ears and pointer stand 9 mm over the rails (6), the ears' roots filleted
+  4 mm, and it prints on its top, so their roots bend in its layers: the row in `saddles`,
+  6.1 MPa, SF 7.7 (bar 4), and its plate hanging from its top bar across them, SF 19. The
+  reviewer's 12 mm would want an M5 x 30 lock bolt; at 9 the M5 x 25 still runs 1.1 mm
+  past its nut.
+- **Minor:** the wet slide onto the pad rated, its post widened, the bottle and liners
+  wiped dry (m1, above); the gate prints on its top, its pointer 4 mm wide (m2); the rear
+  knob's hub's M3 set screw bears on a flat filed on the lead screw's top
+  (`cradle.LEAD_FLAT`: by friction on a thread crest it had rated 3.3, against the bar of 4),
+  both set screws threadlocked and rated (`saddles`: the hub's 14.5 in bearing, the barrel
+  nut's 9.8 by friction) and checked in the guide, the knob down (m3); the vernier notched in the
+  pointer's edge, read at the rail's top (m4); "out of the sun, under 50 °C", against
+  Eastman's HDT (m5); the gate tugged again before the first turn (m6); tapered bodies in
+  the guide's paper check (m7); the front box guide's cheek 10 mm taller over the gauge's
+  post, rated dry (m9); a 250 mm bed for the 249 mm rails in the print note (m10).
+- **Not done:** the methuselah's neck and shoulder are still an estimate (m8: no maker's
+  drawing found; the light clears a shoulder as full as the impériale's by 10.7 mm); a
+  24 h bench sag test of a rail at 23 and 50 °C (m5) and the printed parts' creep (m6)
+  stay unmeasured: `cradle_report.SUSTAINED_SF` 4 stands for them; the reviewer's sparse
+  PETG infill (S3) waits for those rows to be re-rated.
+
 ## The vessel under the mouth
 
 At rest, 50° neck up, the cradle box hangs straight under the mouth: the front tie rods, the
@@ -991,8 +1078,9 @@ a vessel has round its axis at every height, over the whole swing and from the p
 cradle past −20°), with the drawn 6 L methuselah in the saddles (the V blocks at their
 lowest: a thinner bottle's ride higher, off the decanter), and names the cradle box's part
 that comes lowest over the drawn decanter's rim (within its 37 mm of the axis) over the
-swing (`room`'s `lowest`): **the light's printed clip, 380 mm over the table, at rest**. The
-front saddle the guide had named is 66 mm higher (447 mm).
+swing (`room`'s `lowest`): **the light's printed clip, 394 mm over the table, near rest**
+(4° from it; 380 at rest before design review round 3 moved the light 18 mm toward the
+mouth, mounting M2). The front saddle the guide had named is 53 mm higher (447 mm).
 - **The one rule** (`cradle.RISER_CLEAR`, design review round 2's B1, 2026-10-14): a
   vessel's rim at least 20 mm under that lowest part, and every point of it 10 mm off the
   room's side (the box beside it, the bay's faces), on the highest printed stack under
@@ -1008,9 +1096,10 @@ front saddle the guide had named is 66 mm higher (447 mm).
   which `liquid.test.ts` and `tests/test_cradle.py` both read; the room's rule and stacks
   come from the API (`/api/cradle/{key}/room`).
 - The drawn RIEDEL Ultra (225 mm): the rule allows it 129 mm; it stands on the whole printed
-  set, 123.2 mm (`cradle.DECANTER_RISER`), its rim at 348.2 mm, 32 mm under the clip. A
-  RIEDEL Cabernet Magnum carafe (269 mm): the blocks alone, 87 mm; a RIEDEL Ultra Magnum
-  (240 mm): the lifts and the blocks, 114.2. Before round 2 four heights were given for the RIEDEL Ultra: the guide's size rule
+  set, 123.2 mm (`cradle.DECANTER_RISER`), its rim at 348.2 mm, 45 mm under the clip (32
+  before design review round 3 moved the light). A RIEDEL Cabernet Magnum carafe (269 mm):
+  the blocks and both plates, 96 mm (the blocks alone, 87, before); a RIEDEL Ultra Magnum
+  (240 mm): the lifts, the blocks and the 5 mm plate, 119.2 (114.2). Before round 2 four heights were given for the RIEDEL Ultra: the guide's size rule
   124 mm, the model 135, the guide's finger rule (aimed at the front saddle) about 137 or,
   read literally, 205 (into the clip), and the page 148, whose rim stood 7 mm under the clip:
   its `bestRiser` kept 3 mm off the room's side and nothing over the rim.
@@ -2206,6 +2295,9 @@ Things to know before cutting and on the bench:
   washer slows the lead screw.
 - **Lift it** by its base board in use; to take it off the board, by its outer plates' top
   members, never by the cradle box or the hand crank.
-- **PLA softens at about 55 °C:** the parts that carry the bottle and the hand crank are
-  PETG (68 °C); a cradle that travels in a hot car wants the brackets and the thumb knobs in
+- **Out of the sun, under 50 °C** (since design review round 3, mounting m5): the parts
+  that carry the bottle and the hand crank are PETG, the bottle's parts bearing up to 11 MPa
+  as long as a bottle rests, and PETG's resin deflects at 64 °C under 1.8 MPa, 70 under 0.46
+  (Eastman's Eastar 6763; "68 °C" had been an unloaded part's); PLA softens at about 55 °C.
+  A cradle that travels in a hot car wants the brackets and the thumb knobs in
   PETG too.

@@ -1884,12 +1884,18 @@ def test_the_saddles_hold_a_full_6_l():
     the rails' flanges), the post and the screws 3 x under their yield, the gate's lock
     gripping 2 x what it holds at the least friction cited, the rear knob's teeth holding
     the greased lead screw; no V block's guide jams raising it under twice the most friction
-    cited for its faces (review round 2, N1: the post 213 mm from the screw jammed at 0.15,
-    0.095 for a 750 ml); the lip gauge held on its post."""
+    cited for its faces, dry (review round 2, N1: the post 213 mm from the screw jammed at
+    0.15, 0.095 for a 750 ml; round 3's mounting m9: the front one held only greased); the
+    lip gauge held on its post. Design review round 3 (mounting): the gate's ears' roots
+    (M3: the push's lever under the rails, unrated), the rear lock's two M3 set screws
+    (m3), and the lip gauge at a wet bottle's slide onto its pad (m1: its peak over the
+    static pull, the gauge's parts rated at it)."""
     from spiderpig.cradle_report import (
+        PETG_STEEL,
         PLA_ALLOW,
         PRINTED,
         SUSTAINED_SF,
+        TPU_WET,
         TRANSIENT_SF,
         drawers,
         saddles,
@@ -1917,6 +1923,28 @@ def test_the_saddles_hold_a_full_6_l():
                  "base stop's rails' tongues (bending where they leave the sockets)",
                  "lip gauge on its post (fixed)", "rear knob's tower (bending)"):
         assert part in rows, part
+    # the gate's ears' roots: in their layers, the gate printing on its top; its plate
+    # hanging from its top bar across them
+    ears = rows["base stop's gate's ears (their root)"]
+    assert "in its layers" in ears["basis"]
+    assert ears["sf"] >= SUSTAINED_SF
+    assert "across" in rows["base stop's gate (its plate hanging from its top bar)"]["basis"]
+    # the rear lock's set screws: the hub's on a flat on the screw, the nut's by friction
+    # through its printed thread across its layers
+    hub = rows["rear knob's hub on the lead screw (its M3 set screw on the flat)"]
+    nut = rows["rear barrel nut in its boss (its M3 set screw)"]
+    assert "across" in nut["basis"]
+    assert min(hub["sf"], nut["sf"]) >= SUSTAINED_SF
+    assert cr.LEAD_FLAT[0] > 0.0
+    # a wet bottle's slide onto the pad: it can start in the swing only under tan 30° / √2,
+    # and its peak over the static pull is what the gauge's parts are rated at
+    slide = got["slide"]
+    assert slide["mu_static_most"] == pytest.approx(math.tan(math.radians(30.0)) / math.sqrt(2),
+                                                    abs=1e-3)
+    assert slide["mu_kinetic"] == TPU_WET < slide["mu_static_most"]
+    assert slide["peak_n"] > slide["static_n"]
+    assert rows["lip gauge's post (bent and twisted)"]["load_n"] == pytest.approx(
+        slide["peak_n"], abs=0.1)
     # the brake alone, greased, doesn't hold: the knob's lock does
     greased = rows["rear lead screw's brake, the knob lifted, greased"]
     assert greased["bar"] is None
@@ -1926,12 +1954,85 @@ def test_the_saddles_hold_a_full_6_l():
     assert {(r["bottle"], r["guide"]) for r in guides} == {
         (z.name, g) for z in cr.SIZES for g in ("rear", "front")}
     assert all(r["ok"] and r["mu_jam"] >= 2 * r["mu"] for r in guides)
+    assert all(r["mu"] == PETG_STEEL["dry"][1] for r in guides)       # (both dry)
     rear = {r["bottle"]: r for r in guides if r["guide"] == "rear"}
     assert rear[cr.STANDARD.name]["mu_jam"] == pytest.approx(
         rear[cr.STANDARD.name]["engagement_mm"] / 54.0, abs=1e-3)
     assert min(r["mu_jam"] for r in rear.values()) > 0.6     # (it had been 0.095)
     assert got["balance"]["ok"]
     assert got["gauge"]["held"]
+
+
+@pytest.mark.no_fabricate
+def test_real_bottles_lie_clear_of_the_saddles_and_the_light():
+    """Design review round 3, mounting M1 and M2: the 750 ml and the 6 L impériale are drawn as
+    their makers draw them (Saverglass's 4427, univerre's NGBD06QFR, traced), not the model's
+    cosine shoulder that had hidden their real ones. Each listed bottle, set as the guide
+    measures it (its neck :data:`construction.cradle.NECK_AT` from the lip, the front V's
+    bearing's back end), at rest on the gate and slid onto the pad: the front V bears on its
+    measured section (its widest there), the V's relief behind the bearing and the carrier's
+    back wall clear its shoulder, the light's head lies under the glass with room, and the
+    pad covers the rim. At the light's old place (118 mm) the impériale lay on its head."""
+    from dataclasses import replace
+
+    assert cr.STANDARD.profile()[1] == (2.0, 13.44)                  # (the drawings)
+    assert cr.IMPERIAL.profile()[-1] == (493.0, 74.96)
+    assert cr.MAGNUM.profile()[0] == (0.0, cr.MAGNUM.r_neck)        # (the model)
+    assert cr.NECK_AT == cr.FRONT_BEAR - cr.STOP_GAP
+    words = " ".join(next(u for u in cr.use_steps("decanter_rcm") if u.tag == "setting").lines)
+    assert f"neck's diameter {cr.NECK_AT:g} mm down from the lip" in words
+    for size in cr.SIZES:
+        for mouth in (cr.STOP_GAP, cr.GAUGE_FRONT[1]):
+            room = cr.bottle_room(size, mouth)
+            if mouth == cr.STOP_GAP:
+                assert room["bearing"] == pytest.approx(room["neck"], abs=0.05), size.key
+                assert room["neck"] == pytest.approx(size.r_neck, abs=0.4), size.key
+            assert room["relief"] >= 1.0, (size.key, mouth, room)
+            assert room["wall"] >= 2.5, (size.key, mouth, room)
+            assert room["light"] >= 5.0, (size.key, mouth, room)
+            assert room["pad"] >= 2.5, (size.key, mouth, room)
+    assert cr.bottle_room(cr.IMPERIAL, cr.GAUGE_FRONT[1])["light"] >= 10.0
+    # (m8) a methuselah whose shoulder were as full as the impériale's clears it too
+    fuller = replace(cr.METHUSELAH, outline=cr.UNIVERRE_NGBD06QFR)
+    assert cr.bottle_room(fuller, cr.GAUGE_FRONT[1])["light"] >= 10.0
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_gate_prints_on_its_top_its_pointer_wide_and_notched():
+    """Design review round 3, mounting M3, m2 and m4: the base stop's gate prints on its top
+    (its top bar, ears and pointer on the bed: the ears' roots and the 25.5 mm pointer in its
+    layers; on its face the pointer had been a 2 x 6 mm column), its ears
+    :data:`construction.cradle.GATE_TOP` tall over the rails with their roots filleted, its
+    pointer 4 mm wide with the vernier notched through its inner edge to the rail's top (cut
+    in its top they read across a 6 mm step), and the M5 x 25 lock bolt still reaching past
+    its nut."""
+    from spiderpig.build import print_pose
+
+    rear = cr.SADDLES[1]
+    stop = cr.setting(cr.STANDARD).stop
+    gate, (bolt, *_, nut) = cr._gate(rear, stop)
+    pose = cr.print_poses(["base_stop_gate"], 0.0)["base_stop_gate"]
+    assert pose == [("Z", -0.0), ("X", -90.0)]
+    posed = print_pose(gate, pose).bounding_box()
+    hi = cr.REAR_FLANGE[1]
+    bb = gate.bounding_box()
+    assert pytest.approx((hi + cr.GATE_TOP, cr.GATE_BOTTOM)) == (bb.max.Y, bb.min.Y)
+    assert pytest.approx(-(hi + cr.GATE_TOP)) == posed.min.Z         # its top on the bed
+    assert cr.GATE_TOP >= 9.0
+    assert cr.EAR_FILLET >= 4.0
+    pitch, lines, width = cr.VERNIER
+    assert width >= 4.0
+    assert pytest.approx(cr.POINTER_IN + width) == bb.max.Z
+    # each notch through the pointer's whole height at its inner edge
+    from build123d import Box, Location
+
+    for k in range(1, lines + 1):
+        probe = Box(0.3, cr.GATE_TOP - 0.2, 0.4).moved(Location(
+            (stop - pitch * k, hi + cr.GATE_TOP / 2, cr.POINTER_IN + 0.25)))
+        hit = gate & probe
+        assert hit is None or getattr(hit, "volume", 0.0) < 1e-6, k
+    assert bolt.bounding_box().min.Y <= nut.bounding_box().min.Y - 0.8   # (past its nut)
 
 
 @pytest.mark.no_fabricate
@@ -2824,10 +2925,12 @@ def test_the_riser_rule_gives_each_listed_vessel_its_stack():
 @pytest.mark.construction
 def test_the_room_under_the_mouth_names_its_lowest_part():
     """``cradle_report.room`` of B as fabricated: the lowest part of the cradle box over the
-    drawn decanter's rim over the whole swing is the light's printed clip, at rest, about
-    380 mm over the table (design review round 2: the guide had named the front saddle, 66
-    mm higher); the drawn decanter's riser by the rule is the whole printed set; the recorded
-    room (``RISER_REF``) is this one (``SPIDERPIG_REGEN=1`` rewrites it)."""
+    drawn decanter's rim over the whole swing is the light's printed clip, near rest, about
+    394 mm over the table (design review round 2: the guide had named the front saddle, 66
+    mm higher than the clip's 380 then; round 3's mounting M2 moved the light 18 mm toward
+    the mouth, 14 mm higher at rest); the drawn decanter's riser by the rule is the whole
+    printed set; the recorded room (``RISER_REF``) is this one (``SPIDERPIG_REGEN=1``
+    rewrites it)."""
     import json
     import os
     from pathlib import Path
@@ -2839,8 +2942,8 @@ def test_the_room_under_the_mouth_names_its_lowest_part():
     got = room(cfg, fabricate(template_for(cfg), cfg, 0.0))
     low = got["lowest"]
     assert low["part"] == "led_clip"
-    assert 370.0 < low["mm"] < 390.0
-    assert low["tilt_deg"] == pytest.approx(REST["decanter_rcm"], abs=1.0)
+    assert 385.0 < low["mm"] < 400.0
+    assert low["tilt_deg"] == pytest.approx(REST["decanter_rcm"], abs=5.0)
     assert got["drawn"]["riser_mm"] == cr.DECANTER_RISER
     assert got["drawn"]["stack"][0] == cr.DECANTER_RISER
     path = Path(__file__).resolve().parents[1] / RISER_REF
