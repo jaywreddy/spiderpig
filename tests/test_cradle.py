@@ -661,9 +661,9 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
     journal's flat holds the arm on, so the crank comes off the input shaft whole; the grip on
     a bolt's plain shank; each plunger's nut pressed in from the boss's inner face (its m2).
     The set state is slippable in the drawn parts (design review round 3's B1): each plunger
-    drawn at the guide's start, half a turn out from the felt stop, its nose over the ring's
-    face by the ball's climb and 0.2 mm more on B's and A's crank, and at the guide's limit
-    the climb still left."""
+    drawn at the guide's start, half a turn out from the felt stop, its body's nose over the
+    ring's face by 0.2 mm or more (its room for the ball's climb) on B's and A's crank, and
+    at the guide's limit still."""
     from spiderpig.config import PRODUCT_CLUTCH_NM
     from spiderpig.construction.handcrank import (
         CLUTCH,
@@ -736,11 +736,12 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
 
 
 def _the_clutch_is_set_slippable(hc, spec, climb: float, setting: dict) -> None:
-    """In the drawn hand crank (``spec``'s reach): each plunger's body (its thread, not its
-    ball) stands over the seat ring's face by the ball's climb out of its hole and 0.2 mm
-    more, so the arm slips round; drawn at the guide's start (the felt stop, half a turn
-    out), and at its limit (an eighth of a turn) the climb still left; each plunger's nut in
-    its pocket from the boss's inner face, flush with it."""
+    """In the drawn hand crank (``spec``'s reach): each ball seated, its tip the climb under
+    the seat ring's face, and its plunger's body (its thread, not its ball) over the face by
+    0.2 mm or more: as the ball climbs out its spring goes in by the climb, and with less room
+    the nose lands on the ring first (locked). Drawn at the guide's start (the felt stop,
+    half a turn out), and at its limit (an eighth of a turn) the room still left; each
+    plunger's nut in its pocket from the boss's inner face, flush with it."""
     from build123d import Box, Cylinder, Location
 
     from spiderpig.construction.handcrank import CLUTCH, NEAR_STOP, NUT_HALF, PLUNGER, SET_BACK
@@ -1644,7 +1645,7 @@ def test_the_cradle_has_an_assembly_order(key):
     htext = " ".join(hand.text)
     for words in ("stops hard", "half a turn", "an eighth of a turn", "Before the first pour"):
         assert words in htext, words
-    for words in ("flush", "Measure the start", "vise", "toggle"):
+    for words in ("flush", "Measure the start", "tube in a vise", "toggle"):
         assert words not in htext, words
     (pour,) = [s for s in steps if s.title == "Before the first pour"]
     assert steps.index(pour) == steps.index(board) + 1

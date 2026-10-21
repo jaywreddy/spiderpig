@@ -277,8 +277,9 @@ stops there:
       that, three pulls in a row within 8 % (`CLUTCH_CHECK`), an eighth of a turn of one
       plunger at a time (about 3 %: round 2's m5), and no pull ever over the ceiling: the
       drawn 6 L's window top, 30.5 N on B's grip, 30.8 on A's. The check is on a printed stub
-      in the riser locator's pocket (`handcrank.check_stub`, a tool the build prints: round
-      3's m12, no vise), at every set-up (the trip's way back sends the user there), after
+      in the riser locator's pocket (`handcrank.check_stub`, a tool the build prints, not a
+      body of the model, so the flat pack doesn't place it yet: round 3's m12, no vise), at
+      every set-up (the trip's way back sends the user there), after
       greasing, after a hot car, and every month or ten pours while it stands set up. A full
       6 L reads 21.7 N on B's grip (24.7 new), 22.0 on A's (25.0): set at 28.2 and 28.6.
       With every plunger at its limit, a 10 % weak spring at the greased friction's low end

@@ -2531,7 +2531,9 @@ plate at O. Both are fixed; `OPEN_AT_CAP` is empty and the tests assert again (A
     angle and scale errors fall under it too.
   - **a check with no vise** (the stand and use review's m12; `handcrank.check_stub`, a PETG
     tool the build prints, `build._cradle_tools`): a 100 x 30 mm bar in the riser locator's
-    pocket and a 14 mm keyed post, the hub on it; the bar turns under 2° and jams.
+    pocket and a 14 mm keyed post, the hub on it; the bar turns under 2° and jams. Not a
+    body of the model, so the flat pack doesn't place it yet (100 x 30 x 42 mm: the packing
+    stream's).
   - **a schedule:** the last build step, every set-up (the trip's way back names it), after
     greasing, after a hot car, and every month or ten pours standing set up.
   - What it doesn't bound, reported (`cradle_drive.drive_limits`): spun at 200 rpm

@@ -2639,8 +2639,8 @@ STUDIES: dict[str, str] = {}
 (2026-10-10, ``docs/agentlib/DECANTER.md``)."""
 
 DRIVE_PARTS = ("gearbox", "riser_", "crank_", "crankpin", "handle")
-DRIVE_WHERE = "the drive"       # the drive's BOM lines' ``where`` (handcrank's extras)
 """The hand crank's parts by name (:mod:`construction.handcrank`): the drive side's only."""
+DRIVE_WHERE = "the drive"       # the drive's BOM lines' ``where`` (handcrank's extras)
 
 GROUPS = {"drive": ("gearbox", "riser_", "handle"), "crank": ("conn",),
           "box": ("tie_", "front_saddle", "rear_saddle", "led", "base_stop"),
@@ -3449,7 +3449,8 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
         f"its setting ({CLUTCH_SET:g} times the start you measured: about {slip:.0f} N at the "
         f"grip on its {r:g} mm crank for a full 6 L, and never over {ceil:g} N), so, set and "
         "checked, a hard push can't break the drive away from the ends of the swing; a click "
-        "means something is in the way. Check the setting on its stub in the riser "
+        "means something is in the way.",
+        "Check the setting on its stub in the riser "
         "locator's pocket (the last build step, \"Before the first pour\") at every set-up, "
         "after greasing it, after a trip in a hot car, and every month or ten pours while it "
         "stands set up: unchecked, the grease's drift can carry the slip over what the parts "
