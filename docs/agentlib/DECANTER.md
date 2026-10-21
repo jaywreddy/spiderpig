@@ -2568,6 +2568,59 @@ pins' 0.34): the mouth sags a few tenths of a millimetre more at worst, against 
   215 mm).
 
 
+## Simplification round 2: the racking brace (2026-10-21)
+
+The user chose a racking brace for the cradle box's jam (round 1's open item:
+[DECISIONS.md](DECISIONS.md), "the cradle box's racking brace"). B has it; A can't take it as
+its hand crank stands ("The cradle box across the bay").
+
+**The concepts** (rough numbers at B's cap, 221 N·m across; A's 268):
+
+| concept | how it carries the twist | rough SF | verdict |
+|---|---|---|---|
+| a shear panel (0.080 in 5052) between the rear tie rods, bolted at their ends | shear in its plane; its end couple, about the whole couple, out of each link's plane | links about 0.2 | out (and the rear carrier rides those rods) |
+| diagonal straps (an X in the rear rods' plane) | the same statics: each strap 5.5 kN, its pull along the bay unbalanced at one link, 0.44 kN·m out of its plane | about 0.1 | out |
+| a gusseted end plate behind the rear saddle | shear in its plane, 0.57 kN at 390 mm; its end couple 78 N·m out of each link's plane | about 0.45 | out |
+| closing the box with a floor | planar again; and the decanter stands under the box between the saddles at rest | | out |
+| **a closed tube** behind the rear saddle, keyed into both links | torsion; its couple in each link's own plane | the tube 4.50, its teeth 1.89, the box 1.40 | **built (B)** |
+| a 1.5 in tube | torsion, 131 N·m/° | teeth about 1.3 | out (margin) |
+| a laser-cut 4-plate box | torsion; its corners carry 9-15 kN along the bay each | | out (40 screws, heavier) |
+
+**The numbers** (`cradle_report.report` on B; round 1's merged head in brackets):
+
+| | B |
+|---|---|
+| the box at the clutch's cap, across | 223.6 N·m: racks 1.18-1.23° (tens of degrees, slipping); the tube 193.9 N·m, SF 4.50; its teeth 1.89; the rods 8.73 (0.58), their screws 28.0 (1.08), the cradle link 1.40 (0.18); no joint slips |
+| the box walking, across | 25.7 N·m: 0.50-0.52° (1.20); the rods 20.7 (9.68), the link 7.49 (4.28), `slip_x` 0.31 (0.73), the faces 5.89 x their gap moment (3.19) |
+| every cap row, 30° from the toggles | 1.38 or more (the box's cradle link; the riser 1.42, b6 1.50) |
+| the start, the clutch's cap, spun | 2.72 N·m (2.629), 63.9 N·m (61.8), 68.1 (65.8) |
+| the grip run in / new; the gearbox | 21.8 / 24.7 N (21.0 / 23.9); 2.37 x walking, 1.33 x the cap |
+| tipping; sway; the side's buckling | 26.8° (27.1), 54.6 N at the top; 3.91 mm; 2.06 |
+| the device; the lifts | 16.75 kg (16.23); 13.2 kg the cradle, 10.4 the drive side with the box (12.7, 9.9) |
+| stack | 81.03 mm in 15 layers, proven (unchanged) |
+
+**The BOM** (`spiderpig build`): B USD 1,039.13 (1,007.55, +31.58): purchases 287.02 (+7.32, the
+tube: Speedy Metals 4604, 12 in), SendCutSend's cutting 752.11 (+24.26, the two cradle links
+b6 the bigger: their wider rear and the socket's pad). Speedy's cart clears its USD 20 minimum
+on B alone now (21.79). A unchanged.
+
+**Home work:** the tube faced with the tie rods and its 24 notches milled on the Carvera (an
+estimate: 45 min); the guide's shop step (`cradle.shop_ops`, "brace").
+
+**Open:**
+- **A's cradle box at the clutch's cap** (`OPEN_AT_CAP`: rods 0.55, screws 1.02, link 0.17):
+  the brace can't go where A's hand crank sweeps. The user's call: a longer reach on A's
+  hand crank (about 300 mm clears the tube and its pad; its input shaft's overhung load,
+  its hub's print and its pack unchecked), with A's link reshaped for the couple (a chord
+  E-Br 48-56 mm wide) and its crank's throw to 132 mm to hold the 22 N grip; or A's box as
+  it is (walking holds).
+- **The teeth share:** rated with all twelve bearing (the 5052 beds in a few hundredths at
+  the first jam); the guide mills each notch to its tooth.
+- **A block at a saddle:** the box rows rate the whole couple across the bay (round 1's
+  bounding case); a block's force on the rods at mid-bay as a beam load is the known-limits
+  study's (`cradle_report.blocked`), where the box no longer governs on B.
+
+
 ## Building one
 
 ```bash

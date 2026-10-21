@@ -3198,3 +3198,76 @@ maybe." Products only: the walkers' identity gate is identical.
   `config.py`, `cradle_report.py`, `layout.py`, `materials.py`, `hardware/` (`bom.py`,
   `order.py`, `sheet_catalog.py`, `cradle_catalog.py`, `parts.py`), `tests/test_cradle.py`,
   `docs/agentlib/DECANTER.md`.
+
+### 2026-10-21: the cradle box's racking brace (simplification round 2; the user's choice of the same day)
+
+Round 1 rated the cradle box as a 3D frame and left it open at the clutch's cap
+(`cradle_report.OPEN_AT_CAP`): the whole couple across the bay (`JAM_SHARE` 1.0) crossed in
+the tie rods' twist through their single-screw end joints, which slip, and the 4.75 mm cradle
+links bent out of their plane (B: the rods 0.58, their screws 1.08, the link 0.18; A 0.55,
+1.02, 0.16). The user chose a racking brace. B has it; A's three rows stay open. Products
+only: the walkers' identity gate is identical.
+
+- **Why a closed tube, not a panel:** a brace in one plane (a shear panel or X straps in the
+  rear rods' plane, a gusseted plate behind the saddle, a floor) carries the twist as shear in
+  its own plane, and a shear across the bay's 275 mm needs an equal couple at each end about
+  the panel's normal, which lies in the links' plane: out of the links' plane, the rods' own
+  failure (about the whole couple for a panel at the rear rods, 78 N·m for one behind the
+  saddle, against the link's 14-45 N·m at yield; rough SF 0.1-0.45). A rod pair in push-pull
+  only makes opposite couples at the two links; the panel needs like ones. A closed section
+  carries a twist in torsion and puts it into each link in the link's own plane, a couple
+  round its socket. Where: under the bottle between the saddles the decanter stands at rest
+  (its rim 13-40 mm under a 6 L), the rear carrier rides the rear rods (|z| 88-126), in front
+  of the mouth the stream and the gauge; behind the rear saddle, under the base stop's rails,
+  the bay is free (`decanters.BRACE`: (412, -124), its front 6.6 mm behind the carrier, its
+  top 7.6 mm under the rails).
+- **The brace** (`construction.cradle.BRACE_TUBE`, `BRACE_TEETH`, `BRACE_SOCKET`,
+  `BRACE_CLEAR`; `shapes.Socket`): a 2 in x 0.065 in 6061-T6 tube (Speedy Metals 4604, USD
+  0.61 an inch, the page of the day; 12 in USD 7.32), 192 g, GJ/L 254 N·m/°; each end keyed
+  into a laser-cut socket in its cradle link (53.2 mm, 12 teeth 6 mm wide to 46.9 mm, their
+  roots r 1), the tube's ends notched for them on the Carvera 0.1 mm over the teeth as cut
+  (its free turn 0.47° both ends), 0.25 mm short of the links' outer faces; no screw. Its
+  claims through the inner plate's layer as a tie rod's, its path in the inner plate's
+  keep-out and its clearance check; the guide's shop step ("brace") and the cradle link's
+  step put it in; the BOM's line (`cradle_catalog.brace_tube`).
+- **B's cradle link b6 in its plane** (`cradle_structure.link_bending`'s `couples`: all of the
+  box's moment at the socket, the rods taking only its force): the couple reaches the front of
+  b6 only through X (no chord from the front ties to the rear clears pillar O1), so its rear
+  arm X-Tr1 64 mm (48), Tr1-Tr2 64 (24), a chord Tr2-Br 76 (the socket's pad), a boss r 50
+  at X (`config.PRODUCT_CHORD_R`, `PRODUCT_BOSS_R`); the plan unchanged (81.03 mm in 15
+  layers, proven).
+- **The model** (`cradle_structure.BoxBrace`, `box_frame`'s `braces`): the tube a 3D beam on
+  the links' node Br, rigid in bending at its ends, its twist free in its play and borne past
+  it, never slipping. `cradle_report.box_brace`, and two more box rows (`box_racking`): the
+  tube on 6061-T6's 35 ksi (the Aluminum Association's Table 12.1, extruded tube, fetched the
+  same day) in torsion and bending, its teeth bearing on the link's 5052 and the tube's wall
+  (all twelve sharing) and their roots in shear. The box's link rows now count the bosses as
+  `link_bending` does (through the hole at the boss's width, past it on the chord).
+- **B at its cap** (63.9 N·m, 223.6 across): the box racks 1.18-1.23°, the tube takes 87 %
+  (193.9 N·m) at SF 4.50, its teeth 1.89, the rods 8.73, their screws 28.0, the cradle link
+  1.40 (Tf2-X past X's boss, the couple through the arm); no joint slips (`slip_x` 0.74), the
+  faces shut (2.48); every cap row 30° from the toggles 1.38 or more. Walking: 0.50-0.52°,
+  the rods 20.7, the link 7.49, `slip_x` 0.31, the gap 5.89, the rear bridge 9.64.
+- **The heavier box** (0.46 kg: the tube and b6's rear, most of it behind the saddles) moves
+  B's numbers, taken as round 1 took them: the start 2.629 to 2.72 N·m
+  (`handcrank.DESIGN_START_NM`), the cap 61.8 to 63.9 (`config.PRODUCT_CLUTCH_NM`,
+  `PRODUCT_JAM_NM`; spun 68.1, the fast cap's least 1.29), the lifts 13.2 and 10.4 kg
+  (`cradle.LIFTS`); the grip 21.8 N run in (bar 22), 24.7 new; tipping 26.8°; the gearbox
+  1.33 x the cap.
+- **Not on A:** A's hand crank (130 mm on a 230 mm reach) sweeps the bay's drive end behind
+  the rear saddle: a tube there comes 16-28 mm inside a hand on its grip wherever it goes
+  (`cradle_report.hand_sweep`'s own envelopes); A's link would also need a chord E-Br (its
+  crankpin passes under Tr2 in the link's layer: the rear chords at 76 mm pushed its plan two
+  layers up and its outer plate to 1.17), which put its worst start 4-5 % up and its grip at
+  22.1-22.3 N run in. A reach of about 300 mm clears the tube and its pad (a probe); with a
+  132 mm crank the grip holds. The user's call; A's `OPEN_AT_CAP` keeps its three rows.
+- **The BOM:** B USD 1,007.55 to 1,039.13 (+31.58: the tube 7.32, the cradle links' cutting
+  24.26); Speedy's cart clears its USD 20 minimum on B alone (21.79). A unchanged.
+- **Where:** `spiderpig/linkages/decanters.py` (`BRACE`), `spiderpig/config.py`,
+  `spiderpig/construction/cradle.py`, `spiderpig/construction/base.py`,
+  `spiderpig/construction/assembly.py`, `spiderpig/construction/handcrank.py`,
+  `spiderpig/shapes.py`, `spiderpig/cradle_structure.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/hardware/cradle_catalog.py`, `spiderpig/hardware/bom.py`,
+  `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`; the probes
+  `/root/.cache/spiderpig/tmp/simplify/r2-brace/` (the concepts, the in-plane and hand-sweep
+  probes, the reports).
