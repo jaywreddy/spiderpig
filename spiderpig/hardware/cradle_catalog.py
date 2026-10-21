@@ -240,13 +240,15 @@ ROD_STOCK: dict[float, dict] = {
     ROD_HALF: {"in": "1/2", "url": "https://www.speedymetals.com/p-2438-12-rd-6061-t6511-"
                                    "aluminum-extruded.aspx", "sku": "61r.5", "per_in": 0.192},
 }
-"""Speedy Metals' 6061-T6511 extruded rounds cut to length (the page and the cart, 2026-10-21:
+"""Speedy Metals' 6061-T6511 extruded rounds cut to length (the page and the cart, 2026-10-21;
+each length its own cart line, so its SKU is the stock's with the cut length:
 USD 0.192 an inch, each piece billed at its length rounded up to the next whole inch, cut +1/8
 -0 in; ASTM B221, diameter +-0.009 in from 0.500 to under 0.750 in): each post and tie rod
 bought as its own piece, :data:`ROD_FACE` over its length (faced square on the Carvera), so no
-piece is over 48 in and nothing is sawn at home. The cart adds a process fee (about USD 8) to a
-line of more than ten pieces (order a cradle's posts in lines of ten at most) and takes no
-order under USD 20 (one cart with the other rods, or a stick to clear it)."""
+piece is over 48 in and only the pivot posts are sawn at home (:data:`ROD_HARD`). The cart
+adds a process fee (about USD 8) to a line of more than ten pieces (order a cradle's posts in
+lines of ten at most) and takes no order under USD 20 (one cart with the other rods, or a stick
+to clear it)."""
 
 
 def _rod_tag(od: float) -> str:
@@ -277,7 +279,8 @@ def _rod_item(od: float, L: float) -> Item:
         f"rod6061_{_rod_tag(od)}_m6_{L:g}", f"{s['in']} in ({od:g} mm) 6061-T6511 round, "
         f"{L:g} mm, faced and tapped M6 x {ROD_THREAD:g} both ends (cut to length by Speedy "
         "Metals)", "standoff",
-        (Offer("Speedy Metals", s["url"], s["sku"], price_usd=usd, verified=True,
+        (Offer("Speedy Metals", s["url"], f"{s['sku']} cut {L + ROD_FACE:.1f} mm",
+               price_usd=usd, verified=True,
                note=f"{s['in']} in round 6061-T6511 extruded, cut to {L + ROD_FACE:.1f} mm "
                     f"(USD {s['per_in']:.3f} an inch in whole inches, the cart 2026-10-21): "
                     f"faced to {L:g} mm both ends square on the Carvera, drilled 5.0 mm and "
@@ -998,7 +1001,8 @@ register(
                "thread, as before."),
     Item("m8_sleeve_6061_12p7x20", "1/2 in 6061-T6511 riser sleeve, 12.7 x 20 mm, drilled 8.0 mm "
          "(a 1 in piece cut by Speedy Metals)", "misc",
-         (Offer("Speedy Metals", ROD_STOCK[ROD_HALF]["url"], ROD_STOCK[ROD_HALF]["sku"],
+         (Offer("Speedy Metals", ROD_STOCK[ROD_HALF]["url"],
+                f"{ROD_STOCK[ROD_HALF]['sku']} cut 1 in",
                 price_usd=ROD_STOCK[ROD_HALF]["per_in"], verified=True,
                 note="a 1 in piece of the posts' 1/2 in round (USD 0.192 an inch, whole inches, "
                      "the cart 2026-10-21), faced to 20 mm on the Carvera and drilled 8.0 mm "

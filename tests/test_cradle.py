@@ -1675,7 +1675,8 @@ def _holds_the_jam(r: dict, key: str) -> None:
     # the simplification round 1 (2026-10-21): the posts' and tie rods' M6 threads tapped in
     # 6061 hold the screws' most at 1.3, and strip only past the screw's proof (the screw
     # goes first)
-    assert joints["jam"]["strip_sf"] >= 1.3 and joints["walk"]["strip_sf"] >= 1.3, joints
+    assert joints["jam"]["strip_sf"] >= 1.3, joints
+    assert joints["walk"]["strip_sf"] >= 1.3, joints
     assert r["structure"]["joints"]["thread"]["over_proof"] >= 1.0
     ties = r["structure"]["tie_threads"]
     assert min(ties["walk"]["strip_sf"], ties["jam"]["strip_sf"]) >= 1.3, ties
@@ -2451,7 +2452,8 @@ def test_a_product_is_rated_on_its_alloys_minimum_and_a_walker_on_its_typical():
     assert NETRF10_YIELD == 235.0
     assert ROD_YIELD == 241.3
     pillar = StandoffAxle().cradle_shaft()
-    assert pillar.od == 12.7 and pillar.yield_mpa == ROD_YIELD
+    assert pillar.od == 12.7
+    assert pillar.yield_mpa == ROD_YIELD
     assert get(pillar.segment_key(71.8)).dims["material"] == "aluminium"
     assert get(al_rod(12.7, 274.9)).dims["yield_mpa"] == ROD_YIELD
     assert column_section(cr.STANDS["decanter_rcm"])[0] == 12.7

@@ -454,8 +454,8 @@ hand on its grip behind A's cradle link b2 and its rear tie Tr2 over the whole t
 front of the base stop's rails behind the cradle (``cradle_report.hand_sweep``). A full 6
 L's worst start is 21.5 N at 130 mm run in, under the 22 N bar (21.97, at it, from design
 review round 2's 12 mm steel tie rods to the simplification round 1's 6061 ones); at Figure
-13's light-load maximum, 125 mm, it is 22.8 N, and a heavy-load crank (190 mm or more) meets A's bottle and
-the base stop's rails at every reach to 300 mm: so 5 mm over the light row's radius
+13's light-load maximum, 125 mm, it is 22.8 N, and a heavy-load crank (190 mm or more) meets
+A's bottle and the base stop's rails at every reach to 300 mm: so 5 mm over the light row's radius
 (:data:`HANDLE_OVER_RADIUS`). Its tube is long, so its hub prints in two pieces
 (:data:`HUB_PRINT_MAX`)."""
 HANDLE_OVER_RADIUS: dict[str, float] = {"decanter_hinge": 5.0}
