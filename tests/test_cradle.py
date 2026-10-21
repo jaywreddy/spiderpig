@@ -1582,7 +1582,8 @@ def test_the_cradle_stands_turns_easily_and_holds():
                             {"column:C1", "column:C2", "column:D1", "column:D2", "column:D3",
                              "column:E1", "column:E2"})
     _holds_the_clutchs_cap(r, "decanter_hinge")
-    _the_grip_is_open(_the_drive_keeps_its_bars(r) + _open_joints(r, "decanter_hinge"))
+    _the_grip_is_open(_the_drive_keeps_its_bars(r) + _open_joints(r, "decanter_hinge")
+                      + _open_at_cap(r, "decanter_hinge"))
 
 
 def _the_drive_keeps_its_bars(r: dict) -> list[str]:
@@ -1631,26 +1632,36 @@ def _the_drive_keeps_its_bars(r: dict) -> list[str]:
 
 
 def _holds_the_jam(r: dict, key: str) -> None:
-    """Every row of the report holds the jam at SF 1.3 or more, the side frames' posts and
-    plates included (their redesign, 2026-10-20: nothing open at the clutch's cap,
-    ``cradle_report.OPEN_AT_CAP``); the cradle box's tie rods and their end joints among the
-    rows (design review round 2's M1); the rod as a beam-column at its far pin's offset (its
-    minor 1); the side's stiffness across (its M3: a hand's 20 N sideways on the bottle sways
-    the pivots under 5 mm)."""
+    """Every row of the report holds the jam at SF 1.3 or more but the parts open at the
+    clutch's cap (``cradle_report.OPEN_AT_CAP``: the cradle box since simplification round
+    1), and nothing under it is off that list; the side frames' posts and plates among them
+    (their redesign, 2026-10-20); the cradle box's tie rods, their end joints and the cradle
+    link out of its plane among the rows (design review round 2's M1, the box a 3D frame
+    since simplification round 1), walking every end joint closed and none slipping in twist
+    at its least preload, the rear carrier's bridge riding the racking box within its bar;
+    the rod as a beam-column at its far pin's offset (its minor 1); the side's stiffness
+    across (its M3: a hand's 20 N sideways on the bottle sways the pivots under 5 mm)."""
     from spiderpig.cradle_report import OPEN_AT_CAP
 
-    assert key not in OPEN_AT_CAP
+    open_at_cap = OPEN_AT_CAP.get(key, {})
     rows = r["strength"]["rows"]
-    held = [(x["joint"], x["jam_sf"]) for x in rows if x["jam_sf"] is not None]
+    held = [(x["joint"], x["jam_sf"]) for x in rows
+            if x["jam_sf"] is not None and x["joint"] not in open_at_cap]
     assert min(sf for _, sf in held) >= 1.3, held
+    under = {x["joint"] for x in rows if x["jam_sf"] is not None and x["jam_sf"] < 1.3}
+    assert under <= set(open_at_cap), under
     assert {"frame:outer", "frame:inner"} <= {j for j, _ in held}
     box = {x["joint"]: x for x in rows if x["kind"] == "box"}
-    assert set(box) == {"box:tie rods", "box:tie rod ends"}
+    assert set(box) == {"box:tie rods", "box:tie rod ends", "box:cradle link"}
     from spiderpig.cradle_report import OPEN_JOINTS
 
     open_ = OPEN_JOINTS.get(key, {})
-    gap = r["structure"]["box"]["cases"]["walk"]["gap_ratio"]          # closed walking at the
+    walk = r["structure"]["box"]["cases"]["walk"]
+    gap = walk["gap_ratio"]                                            # closed walking at the
     assert gap >= (0.9 if "tie rod ends" in open_ else 1.0), gap       # least preload
+    assert walk["slip_x"] <= 1.0, walk["slip_x"]                       # and not turning
+    for hv in walk["holds"].values():
+        assert hv["carriers"]["rear_bridge"]["ok"], hv["carriers"]
     assert r["rod"]["sf_secant_jam"] >= 1.5
     # design review round 3: the sway with the rail's rock in its cleats (M6); the side as one
     # frame buckling (M2) among the rows above; the posts' screwed ends (M5): at the cap their
@@ -1685,6 +1696,22 @@ def _open_joints(r: dict, key: str) -> list[str]:
     return got
 
 
+def _open_at_cap(r: dict, key: str) -> list[str]:
+    """The parts open at the clutch's cap as ``cradle_report.OPEN_AT_CAP`` says (the user's
+    call), for the test's xfail: each under 1.3 there, named with its SF; an entry that holds
+    now fails."""
+    from spiderpig.cradle_report import OPEN_AT_CAP
+
+    rows = {x["joint"]: x for x in r["strength"]["rows"]}
+    got = []
+    for k, why in OPEN_AT_CAP.get(key, {}).items():
+        sf = rows[k]["jam_sf"]
+        assert sf is not None and sf < 1.3, f"{key}: {k} holds the cap now: drop it"
+        got.append(f"{k} {sf:g} at the cap")
+    return [f"open at the clutch's cap: {', '.join(got)} ({next(iter(OPEN_AT_CAP[key].values()))})"
+            ] if got else []
+
+
 def _the_grip_is_open(grip: list[str]) -> None:
     """The grip open at its bar, said as such (A's: ``cradle_report.OPEN_GRIP``, the user's
     call): the test's last check, an xfail with its reason. (The side frames, open at the
@@ -1704,6 +1731,7 @@ def _holds_the_clutchs_cap(r: dict, key: str) -> None:
     frames too since their redesign (2026-10-20; the band round a toggle where any falls
     under 1.3 is reported, no wider); the keyed plates at the cap."""
     from spiderpig.cradle_drive import OUTPUT, RISER
+    from spiderpig.cradle_report import OPEN_AT_CAP
 
     clutch = r["drive"]["clutch"]
     assert clutch["margin"] >= clutch["margin_floor"]
@@ -1728,16 +1756,18 @@ def _holds_the_clutchs_cap(r: dict, key: str) -> None:
     assert r["drive"]["output_overhung"]["sf_walk"] >= 3.0
     capped = r["jam_capped"]
     assert capped["crank_nm"] == clutch["crank_cap_nm"]
-    away = capped["by_band"][-1]["parts"]
-    assert min(away.values()) >= 1.3, away          # every part 30° from the toggles,
-    assert OUTPUT in capped["parts"]                # the output shaft among them,
-    assert RISER in capped["parts"]                 # and the gearbox's riser
+    open_ = OPEN_AT_CAP.get(key, {})
+    away = {k: v for k, v in capped["by_band"][-1]["parts"].items() if k not in open_}
+    assert min(away.values()) >= 1.3, away          # every part 30° from the toggles but
+    assert OUTPUT in capped["parts"]                # the open ones, the output shaft among
+    assert RISER in capped["parts"]                 # them, and the gearbox's riser
     bands = [(x["band_deg"], x["worst"]) for x in capped["by_band"]]
-    held = [v["holds_1p3_outside_deg"] for v in capped["parts"].values()]
+    held = [v["holds_1p3_outside_deg"] for k, v in capped["parts"].items() if k not in open_]
     assert None not in held, bands                  # (5° steps: where the old case
     holds = max(held)                               # skipped, now rated at a bound)
     assert holds <= 30.0, bands
-    assert capped["holds_1p3_outside_deg"] == holds, bands
+    if not open_:
+        assert capped["holds_1p3_outside_deg"] == holds, bands
     assert capped["by_band"][0]["band_deg"] == 0.0              # the whole turn rated
     from spiderpig.construction.handcrank import TOGGLE_TURNS
 
@@ -1837,7 +1867,7 @@ def test_b_stands_turns_easily_and_holds():
         assert th["sf_1p3"]["grip_n"] < th["within_grip_n"], th
     _holds_the_clutchs_cap(r, "decanter_rcm")
     assert not _the_drive_keeps_its_bars(r)
-    _the_grip_is_open(_open_joints(r, "decanter_rcm"))
+    _the_grip_is_open(_open_joints(r, "decanter_rcm") + _open_at_cap(r, "decanter_rcm"))
 
 
 def _the_structure_is_rated(r: dict, links, pillars, columns) -> None:
@@ -2040,12 +2070,14 @@ def test_the_cradle_builds_an_order_without_a_walkers_words(tmp_path):
 @pytest.mark.usefixtures("cached_cradle_fabrications")
 def test_verify_rates_a_cradles_joints_at_its_own_loads(key):
     """``api.verify`` rates a cradle's joints at its own statics (cradle_report.loads), as an
-    audit does: A and B fail on nothing, their side frames included since the redesign of
-    2026-10-20 (a joint under jam SF 1 is verify's failure; the report's tests hold every
-    part at 1.3; design review round 2 had left the side frames open at the clutch's cap,
-    ``cradle_report.OPEN_AT_CAP``). One cradle per test (each a ``standard`` verify: a build,
-    the contract, the clashes; its fabrications from the test cache)."""
+    audit does: A and B fail on nothing but the parts open at the clutch's cap
+    (``cradle_report.OPEN_AT_CAP``: the cradle box as a 3D frame since simplification round
+    1; a joint under jam SF 1 is verify's failure; the report's tests hold every other part
+    at 1.3), their side frames included since the redesign of 2026-10-20; then xfail on the
+    open ones. One cradle per test (each a ``standard`` verify: a build, the contract, the
+    clashes; its fabrications from the test cache)."""
     from spiderpig import api
+    from spiderpig.cradle_report import OPEN_AT_CAP
 
     d = api.resolve({"kind": "mechanism", "linkage": {"key": key}}, store=None)
     if key == "decanter_hinge":
@@ -2055,10 +2087,16 @@ def test_verify_rates_a_cradles_joints_at_its_own_loads(key):
         assert "servo" not in floor.detail.lower()
         assert not [r for r in q.rows if r.requirement == "size.mass_g"]  # a build weighs it
     rep = api.verify(d, "standard")
-    assert not [f.message for f in rep.failures], key
-    assert rep.ok, key
+    other = [f.message for f in rep.failures if f.code != "joint_overload"]
+    assert not other, (key, other)
+    culprits = {c["joint"] for f in rep.failures for c in f.culprits}
+    assert culprits <= set(OPEN_AT_CAP.get(key, {})), culprits
+    assert rep.ok == (not culprits), key
     (joints,) = [r for r in rep.rows if r.requirement == "strength.joints"]
     assert joints.value is not None
+    if culprits:
+        pytest.xfail(f"{key}: open at the clutch's cap (cradle_report.OPEN_AT_CAP): "
+                     f"{sorted(culprits)}")
 
 
 @pytest.mark.slow
@@ -2458,28 +2496,109 @@ def test_a_post_ends_face_lifts_past_its_kern_and_bears_at_its_edge():
 
 @pytest.mark.strength
 @pytest.mark.no_fabricate
+def _box_case(key: str = "decanter_rcm", moment_nm: float = 100.0):
+    """A cradle's joints at crank angle 0 (the linkage alone, no build) and one case whose
+    drive pins put ``moment_nm`` on the cradle link about the mouth, at its first pin."""
+    from spiderpig.linkage.engine import LegSolution
+
+    lk = linkage.get(key)
+    link = cr.cradle_link(lk)
+    pts = {n: np.asarray(p, float).reshape(1, 2)
+           for n, p in LegSolution(linkage_key=key).joints_at(0.0).items()}
+    pins = [j for j in lk.links[link][0] if j not in TIES and j not in ("Lc", "Ax")]
+    joints = [(j, link, "other") for j in pins]
+    mouth = pts[cr.mouth_name(lk)][0]
+    q = pts[pins[0]][0] - mouth
+    f = np.array([-q[1], q[0]]) / float(q @ q) * moment_nm * 1000.0      # r x f = M
+    vecs = np.zeros((1, len(joints), 2))
+    vecs[0, 0] = f
+    return joints, pts, vecs
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
 def test_the_cradle_box_racks_on_its_tie_rods():
-    """``cradle_report.box_racking`` (design review round 2's M1): the passive half's share of
-    what the drive side's pins put on the cradle about the mouth crosses the bay in the four
-    tie rods, each fixed at both ends: shared by their stiffness at their radii from the mouth
-    (``12 E I / L^3`` across, ``G J / L`` in twist), the rear rods most."""
-    from spiderpig.cradle_report import PASSIVE_SHARE, box_racking
-    from spiderpig.cradle_structure import E_STEEL
+    """``cradle_report.box_racking`` (design review round 2's M1; a 3D frame since
+    simplification round 1): walking, the passive half's share of what the drive side's pins
+    put on the cradle about the mouth crosses the bay (jammed, all of the couple). Held rigid
+    out of their plane, the cradle links fix each rod at both ends, the old model: the rods
+    share by their stiffness at their radii from the mouth (``12 E I / L^3`` across, ``G J /
+    L`` in twist), the rear rods most. As the 4.75 mm plates they are (grillages of their
+    chords), the box racks several times more and the moment crosses mostly in the rods'
+    twist, held at the pins every way it can be (stiffest first); the passive link in
+    equilibrium."""
+    from spiderpig import cradle_structure as cs
+    from spiderpig.cradle_report import (
+        JAM_SHARE,
+        PASSIVE_SHARE,
+        box_links,
+        box_racking,
+        box_rods,
+    )
 
     cfg = BuildConfig(linkage="decanter_rcm", robot=False)
-    pts = {"Lc": np.zeros((1, 2)), "X": np.array([[100.0, 0.0]])}
-    joints = [("X", "b6", "b4")]
-    vecs = np.array([[[0.0, 1000.0]]])                  # 100 N·m about the mouth
-    got = box_racking(cfg, joints, pts, {"walk": (vecs, np.zeros(1, bool), None)}, 274.9)
-    case = got["cases"]["walk"]
-    assert case["crossing_nm"] == pytest.approx(PASSIVE_SHARE * 100.0)
+    joints, pts, vecs = _box_case()
+    got = box_racking(cfg, joints, pts, {"walk": (vecs, np.zeros(1, bool), None),
+                                         "jam": (vecs, np.zeros(1, bool), None)}, 274.9)
+    assert got["cases"]["walk"]["crossing_nm"] == pytest.approx(PASSIVE_SHARE * 100.0)
+    assert got["cases"]["jam"]["crossing_nm"] == pytest.approx(JAM_SHARE * 100.0)
+    assert {r["joint"] for r in got["rows"]} == {"box:tie rods", "box:tie rod ends",
+                                                  "box:cradle link"}
+    links = box_links(cfg, joints, pts, 274.9)
+    assert links.pins == (("X", "Y"), ("X", "Y"))
+    assert ("X", "Lc") in dict(links.segs)              # (split at the mouth on it)
+    rods = box_rods(cfg)
+    M = 20.0e3                                          # (under the joints' slip)
+    rigid = cs.box_frame(links, rods, [M], hold="held", rigid_links=True)
     d, L = cr.TIE_D, 274.9
-    ei, gj = E_STEEL * math.pi * d ** 4 / 64, E_STEEL / 2.6 * math.pi * d ** 4 / 32
+    ei, gj = rods["Tr2"].ei(), rods["Tr2"].gj()
     r = {n: math.hypot(*TIES[n]) for n in TIES}
-    theta = case["crossing_nm"] * 1000 / sum(12 * ei / L ** 3 * x * x + gj / L for x in r.values())
-    assert case["rods"]["Tr2"]["shear_n"] == pytest.approx(12 * ei / L ** 3 * r["Tr2"] * theta,
-                                                           rel=0.01)
-    assert max(case["rods"].values(), key=lambda x: x["end_nm"]) is case["rods"]["Tr2"]
+    theta = M / sum(12 * ei / L ** 3 * x * x + gj / L for x in r.values())
+    assert float(rigid.theta[0]) == pytest.approx(theta, rel=1e-4)
+    assert float(rigid.shear["Tr2"][0, 0]) == pytest.approx(12 * ei / L ** 3 * r["Tr2"] * theta,
+                                                            rel=1e-4)
+    assert float(rigid.end_moment["Tr2"][0].max()) == pytest.approx(
+        6 * ei / L ** 2 * r["Tr2"] * theta, rel=1e-4)
+    k = [cs.box_frame(links, rods, [M], hold=h).stiffness for h in cs.BOX_HOLDS]
+    assert k[0] >= k[1] >= k[2]
+    assert rigid.stiffness > 5 * k[0]                   # the plates give
+    for h in cs.BOX_HOLDS:
+        res = cs.box_frame(links, rods, [M], hold=h)
+        assert sum(float(res.twist[n][0]) for n in TIES) > 0.7 * M     # mostly in twist
+        f = {n: res.ends[n] @ cs.rod_k(rods[n], L).T for n in TIES}  # the links' on the rods
+        about = sum(TIES[n][0] * f[n][0, 7] - TIES[n][1] * f[n][0, 6] + f[n][0, 11]
+                    for n in TIES)
+        assert about == pytest.approx(M, rel=1e-6)                   # the passive link holds
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
+def test_a_tie_rods_end_joint_slips_past_its_friction():
+    """A tie rod's end joint (``cradle_structure.TieRod``): its twist held by its face's and,
+    its screw threadlocked into the rod, its head's friction on the cradle link (the M6 class
+    10.9 button head at 6 N·m: 3.8 kN at friction 0.2, 6.8 N·m; the face alone 3.6), its
+    face shut to the preload over its kern (7.3 N·m). Past that twist the joint turns on the
+    link (``box_frame``): the rod carries no more, the rest of the moment goes into bending
+    the links out of their plane, and the box racks far more."""
+    from spiderpig import cradle_structure as cs
+    from spiderpig.cradle_report import SLIP_MU, box_links, box_rods
+
+    cfg = BuildConfig(linkage="decanter_rcm", robot=False)
+    rod = box_rods(cfg)["Tr2"]
+    assert rod.preload == pytest.approx(3777, abs=1)
+    assert rod.slip_nmm(SLIP_MU) / 1000 == pytest.approx(6.84, abs=0.01)
+    assert rod.slip_nmm(SLIP_MU, locked=False) / 1000 == pytest.approx(3.58, abs=0.01)
+    assert rod.gap_nmm() / 1000 == pytest.approx(7.28, abs=0.01)
+    joints, pts, _ = _box_case()
+    links = box_links(cfg, joints, pts, 274.9)
+    rods = box_rods(cfg)
+    res = cs.box_frame(links, rods, [10.0e3, 200.0e3], hold="pinned")
+    for n in TIES:
+        assert not res.slipped[n][0]
+        assert res.slipped[n][1]
+        assert float(res.twist[n][1]) == pytest.approx(rod.slip_nmm(SLIP_MU), rel=1e-6)
+        assert float(res.twist_stuck[n][1]) > rod.slip_nmm(SLIP_MU)
+    assert abs(float(res.theta[1])) > 20 * 2 * abs(float(res.theta[0]))   # far softer
 
 
 @pytest.mark.no_fabricate
