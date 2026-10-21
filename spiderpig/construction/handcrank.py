@@ -352,9 +352,12 @@ RISER_THIN = (13.0, 4.0, "m8_thin_nut")
 """The riser's thin nut over the outer plate on each stud (DIN 439 M8, in the head layer):
 the plate, the shims, the sleeve and the ring clamped between it and the gearbox's face, a 13
 mm wrench on it."""
-RISER_NUT_NM = 10.0             # the thin nut's torque: TR Fastenings' A2-70 M8 14.5 N·m at a
-#                                 friction of 0.1, a thin nut's two-thirds (its stainless table,
-#                                 rendered 2026-10-14); the stud is class 8.8, the nut the limit
+RISER_NUT_NM = 9.0              # the thin nut's torque: under TR Fastenings' A2-70 M8 14.5 N·m
+#                                 at a friction of 0.1, a thin nut's two-thirds (its stainless
+#                                 table, rendered 2026-10-14); 10 until the simplification round
+#                                 1 (2026-10-21): on A2-70 studs and 6061 sleeves 9 keeps the
+#                                 stud 2 x walking and the sleeve's crush 1.3 x at A's cap
+#                                 (cradle_drive.riser_rating)
 RISER_NUT_K = (0.15, 0.2)       # the nut factor's band (threadlocker 243 wet on zinc and 18-8):
 #                                 the clamp T / (K d) at its two ends (the friction rated on the
 #                                 low clamp, the stud on the high)

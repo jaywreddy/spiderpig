@@ -125,10 +125,10 @@ def riser_rating(box, notes: dict, f, t_nm) -> dict:
     # the sleeve: in bending once the joint opens, and crushed by the clamp and the column's
     # moment at its most (the simplification round 1, 2026-10-21: unrated before, 304's
     # annealed 205 MPa took 222 at B's cap)
-    sf_sleeve = np.minimum(np.where(opens, y_sl / np.maximum(m / z_sl, 1e-9), np.inf),
-                           y_sl / bearing)
+    sf_sleeve = np.where(opens, y_sl / np.maximum(m / z_sl, 1e-9), np.inf)
+    sf_crush = y_sl / bearing
     sf_ring = HAND_CRANK.bearing_mpa / bearing
-    least = np.minimum(np.minimum(sf_stud, sf_sleeve), sf_ring)
+    least = np.minimum(np.minimum(np.minimum(sf_stud, sf_sleeve), sf_ring), sf_crush)
     slip = RISER_MU * np.maximum(clamp, 0.0) / np.maximum(v, 1e-9)
 
     def out(x):
@@ -138,6 +138,7 @@ def riser_rating(box, notes: dict, f, t_nm) -> dict:
             "clamp_n": [round(p_lo), round(p_hi)], "phi": round(phi, 3),
             "lever_mm": round(lever, 1), "opens": bool(np.any(opens)),
             "sf_stud": out(sf_stud), "sf_sleeve": out(np.minimum(sf_sleeve, 99.0)),
+            "sf_sleeve_crush": out(sf_crush),
             "sf_ring_bearing": out(sf_ring), "least": out(least),
             "slip_sf": out(slip), "slip_mu": RISER_MU}
 

@@ -923,9 +923,9 @@ def test_the_riser_holds_the_gearbox_as_a_clamped_stack():
     """The riser rated (design review round 3's M2, ``cradle_drive.riser_rating``): at a
     rod force and torque like B's walking peak it doesn't slip at the faces' oiled friction
     (``RISER_MU``) by 2 x; at B's and A's capped jam 30° from the toggles (the review's rod
-    forces) every strength row holds 1.3 (the stud in class 8.8 at its proof, the sleeve,
-    the ring's bearing); the 18-8 set screws round 2 had, carried in bending over 18.7 mm,
-    were SF 0.55-0.62 (the review's)."""
+    forces) every strength row holds 1.3 (the stud in A2-70 at its proof, the sleeve in
+    bending and crushed, the ring's bearing); the 18-8 set screws round 2 had, carried in
+    bending over 18.7 mm, were SF 0.55-0.62 (the review's)."""
     from spiderpig.construction.handcrank import NRV050
     from spiderpig.cradle_drive import riser_rating
 
@@ -933,11 +933,18 @@ def test_the_riser_holds_the_gearbox_as_a_clamped_stack():
              "riser_ring_mm": 3.175, "riser_shims_mm": 2.025, "plate_inner_z_mm": 4.75}
     walk = riser_rating(NRV050, notes, 410.0, 35.8)
     assert walk["slip_sf"] >= 2.0, walk
-    assert walk["least"] >= 2.0, walk
+    assert min(walk["sf_stud"], walk["sf_sleeve"], walk["sf_ring_bearing"]) >= 2.0, walk
+    # the simplification round 1 (2026-10-21): the sleeve crushed by the clamp at its most
+    # preload and the column's moment, rated at its yield (a 304 one, annealed, took B's cap
+    # past it: 0.92); a 6061 sleeve from the posts' 1/2 in rod holds it
+    assert walk["sf_sleeve_crush"] >= 1.5, walk
+    assert walk["least"] == min(walk["sf_stud"], walk["sf_sleeve"], walk["sf_ring_bearing"],
+                                walk["sf_sleeve_crush"])
     for f, cap in ((1931.9, 63.7), (2301.7, 67.1)):
         got = riser_rating(NRV050, notes, f, cap)
         assert got["least"] >= 1.3, got
         assert got["sf_stud"] >= 1.3, got
+        assert got["sf_sleeve_crush"] >= 1.3, got
 
 
 def p_ok(name: str, pieces) -> bool:
