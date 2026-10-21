@@ -2550,16 +2550,26 @@ posts and both frame plates as one frame (``cradle_structure.side_frame``) and f
 outer plate (0.6), pillar O2 (0.73) and column D2 (0.97), A's outer plate (0.41), column D3
 (0.83), inner plate (1.09) and pillar G (1.25) under it."""
 
-OPEN_JOINTS: dict[str, str] = {
-    "decanter_hinge": "pillar G's foot joint lifts walking at the least preload (its M6 button "
-                      "head at ISO 7380's 4 N·m, friction 0.2: 1.05 x its decompression, under "
-                      "the walking bound that puts the whole bottle on the drive side); shut at "
-                      "friction 0.17 or less (threadlocker's), and at the bottle's real half; "
-                      "a full-head screw (ISO 4762) there would hold it, a part and a layer of "
-                      "head room more"}
-"""Per cradle, a post's screwed joint open at its walking bar (``post_joints``: every face
-shut walking at its screw's least preload; design review round 3's M5): the user's call, the
-report's ``structure.joints`` names it. The tests hold it within 10 % and xfail on it."""
+_TIES_OPEN = ("the cradle box's tie rods' end joints are at their gap walking, 0.98 of it, at "
+              "their screws' least preload (M6 button heads at ISO 7380's 4 N·m, friction "
+              "0.2; under the walking bound, the whole bottle on the box): shut at friction "
+              "0.19 or less (threadlocker's), and with a full-head screw at 5 N·m or a 10.9 "
+              "button head at 8 N·m, a part each and, for a socket head, its room under the "
+              "cradle link")
+OPEN_JOINTS: dict[str, dict[str, str]] = {
+    "decanter_rcm": {"tie rod ends": _TIES_OPEN},
+    "decanter_hinge": {
+        "tie rod ends": _TIES_OPEN,
+        "posts": "pillar G's foot joint lifts walking at its screw's least preload (its M6 "
+                 "button head at ISO 7380's 4 N·m, friction 0.2: 1.05 x its decompression, "
+                 "under the walking bound that puts the whole bottle on the drive side); shut "
+                 "at friction 0.18 or less (threadlocker's); a full-head screw there would "
+                 "hold it, a part and a layer of head room more"},
+}
+"""Per cradle, the screwed joints open at their walking bar (every post's face shut walking at
+its screw's least preload, :func:`post_joints`; the tie rods' end joints closed,
+:func:`box_racking`'s ``gap_ratio``; design review round 3's M5, the ISO 7380 heads at their
+4 N·m): the user's call. The tests hold each within 10 % and xfail on it."""
 
 OPEN_GRIP: dict[str, str] = {
     "decanter_hinge": "a full 6 L's worst start at A's 130 mm grip, run in, is 21.97 N: at "

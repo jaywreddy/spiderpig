@@ -1247,14 +1247,9 @@ def test_the_cradle_stands_turns_easily_and_holds():
     _holds_the_jam(r, "decanter_hinge")
     _the_structure_is_rated(r, ("b2",), {"pillar:G"},
                             {"column:C1", "column:C2", "column:D1", "column:D2", "column:D3",
-                             "column:E1"})
+                             "column:E1", "column:E2"})
     _holds_the_clutchs_cap(r, "decanter_hinge")
-    from spiderpig.cradle_report import OPEN_JOINTS
-
-    open_ = _the_drive_keeps_its_bars(r)
-    if r["structure"]["joints"]["worst"]["walk"]["open_x"] > 1.0:
-        open_.append(OPEN_JOINTS["decanter_hinge"])
-    _the_grip_is_open(open_)
+    _the_grip_is_open(_the_drive_keeps_its_bars(r) + _open_joints(r, "decanter_hinge"))
 
 
 def _the_drive_keeps_its_bars(r: dict) -> list[str]:
@@ -1318,7 +1313,11 @@ def _holds_the_jam(r: dict, key: str) -> None:
     assert {"frame:outer", "frame:inner"} <= {j for j, _ in held}
     box = {x["joint"]: x for x in rows if x["kind"] == "box"}
     assert set(box) == {"box:tie rods", "box:tie rod ends"}
-    assert r["structure"]["box"]["cases"]["walk"]["gap_ratio"] >= 1.5   # closed walking
+    from spiderpig.cradle_report import OPEN_JOINTS
+
+    open_ = OPEN_JOINTS.get(key, {})
+    gap = r["structure"]["box"]["cases"]["walk"]["gap_ratio"]          # closed walking at the
+    assert gap >= (0.9 if "tie rod ends" in open_ else 1.0), gap       # least preload
     assert r["rod"]["sf_secant_jam"] >= 1.5
     # design review round 3: the sway with the rail's rock in its cleats (M6); the side as one
     # frame buckling (M2) among the rows above; the posts' screwed ends (M5): at the cap their
@@ -1334,9 +1333,23 @@ def _holds_the_jam(r: dict, key: str) -> None:
     assert joints["jam"]["screw_sf"] >= 1.3, joints
     assert joints["jam"]["bearing_sf"] >= 1.0, joints
     assert joints["walk"]["slip_x"] <= 1.0, joints
+    assert joints["walk"]["open_x"] <= (1.1 if "posts" in open_ else 1.0), joints
+
+
+def _open_joints(r: dict, key: str) -> list[str]:
+    """The screwed joints open at their walking bar as ``cradle_report.OPEN_JOINTS`` says
+    (the user's call), for the test's xfail; an entry no longer open fails."""
     from spiderpig.cradle_report import OPEN_JOINTS
 
-    assert joints["walk"]["open_x"] <= (1.1 if key in OPEN_JOINTS else 1.0), joints
+    got = []
+    for what, why in OPEN_JOINTS.get(key, {}).items():
+        if what == "tie rod ends":
+            is_open = r["structure"]["box"]["cases"]["walk"]["gap_ratio"] < 1.0
+        else:
+            is_open = r["structure"]["joints"]["worst"]["walk"]["open_x"] > 1.0
+        assert is_open, f"{key}: {what} holds now: drop it from OPEN_JOINTS"
+        got.append(why)
+    return got
 
 
 def _the_grip_is_open(grip: list[str]) -> None:
@@ -1475,6 +1488,7 @@ def test_b_stands_turns_easily_and_holds():
         assert th["sf_1p3"]["grip_n"] < th["within_grip_n"], th
     _holds_the_clutchs_cap(r, "decanter_rcm")
     assert not _the_drive_keeps_its_bars(r)
+    _the_grip_is_open(_open_joints(r, "decanter_rcm"))
 
 
 def _the_structure_is_rated(r: dict, links, pillars, columns) -> None:

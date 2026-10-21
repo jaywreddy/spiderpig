@@ -527,12 +527,13 @@ STANDS: dict[str, Stand] = {
         # order, its buckling): the strut 140 mm at O, the legs from O 56, the front leg 48,
         # the triangles round G 40 and their leg to D1 34 (both plates: as wide as the front
         # tie rod Tf1 passing it leaves), the inner leg 40 down
-        # to D3 and 60 to the rail columns, the rail 60
+        # to D3, 60 to E1 and 40 along the rail to E2 (its bottom edge clear of the riser locator
+        # in the board's notch), the rail 60
         wide={("G", "O"): 70.0, ("Ff", "O"): 28.0, ("O", "Fm"): 28.0, ("O", "Fr"): 28.0,
               ("Ff", "Fm"): _RAIL_A, ("Fm", "Fr"): _RAIL_A, ("G", "D1"): 11.8,
               ("G", "Ff"): 24.0, ("G", "C1"): 20.0, ("G", "C2"): 20.0, ("C1", "C2"): 20.0,
               ("C2", "D1"): 17.0, ("D1", "D2"): 20.0, ("D2", "D3"): 20.0,
-              ("D3", "E1"): 30.0, ("E1", "E2"): 30.0},
+              ("D3", "E1"): 30.0, ("E1", "E2"): 20.0},
         column_d=12.0,
         base=(-200.0, 482.0),
     ),
