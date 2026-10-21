@@ -3584,8 +3584,8 @@ On the old fit 0d9449b was B 1,007.55 and A 847.47.
     6061; the screws stainless; the clutch's plungers black oxide;
   - the board, cleats and locator birch, with plies on their edges;
   - PETG prints with a soft gloss, PLA matte, TPU black;
-  - the gearbox a cast grey housing (the brief's steel gearbox; `handcrank.GEARBOX_COLOR`'s
-    blue stays the guide's);
+  - the gearbox bare die-cast aluminium, as Phidgets' photo of the NRV050 shows it (the
+    guide's and the bake's RAL 5010 blue was wrong: `handcrank.GEARBOX_COLOR` now matches);
   - the decanter in clear glass, the wine in it lit through (high quality), and a ruby stream.
   The light: Khronos PBR Neutral tone mapping in place of ACES, so the page's reds and greens
   stay true; a brighter studio with bounce cards, so upright aluminium no longer reflects a

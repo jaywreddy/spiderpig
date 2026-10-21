@@ -103,7 +103,7 @@ from spiderpig.stack import Claim, Disc, Layout, Pill, Placed, Unbuildable
 
 GROUP = "crank"
 STEEL = "#4a4a4a"
-GEARBOX_COLOR = "#2f5d8a"       # an NRV's RAL 5010 blue
+GEARBOX_COLOR = "#b4b8bc"       # the NRV050's bare die-cast aluminium (Phidgets' photo)
 PRINT_COLOR = "#6a4fc7"
 
 HAND_RPM = 100.0

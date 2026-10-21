@@ -632,8 +632,9 @@ export function createLook(stage: Stage, onChange: () => void): Look {
     // hard-anodized 6061 (the link pins, the pivot rods): a dark grey satin
     anodized: phys({ color: '#4e5053', metalness: 0.55, roughness: 0.42, clearcoat: 0.25, clearcoatRoughness: 0.5 }, 0.9),
     brass: phys({ color: '#c9a45a', metalness: 1, roughness: 0.3 }, 1.0),
-    // the worm gearbox: a cast metal housing, satin grey, its casting's grain
-    gearbox: phys({ color: '#7a7f84', metalness: 0.85, roughness: 0.48, bumpMap: tiled(cast, 2, 2), bumpScale: 0.15,
+    // the worm gearbox: a bare die-cast aluminium housing (the NRV050 is unpainted), its
+    // casting's grain
+    gearbox: phys({ color: '#a9adb1', metalness: 0.85, roughness: 0.55, bumpMap: tiled(cast, 2, 2), bumpScale: 0.15,
       clearcoat: 0.15, clearcoatRoughness: 0.6 }, 0.95),
     petg,
     pla,
