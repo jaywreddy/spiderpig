@@ -989,11 +989,14 @@ class CradleStand(Group):
         outer = view.named(r"stand_column_\w+_(?:screw|washer)i")
         inner = view.named(r"stand_column_\w+_(?:screw|washer)o")
         nm = BUTTON_A2_70_NM["6"]
+        washed = bool(view.named(r"stand_column_\w+_washer[io]"))
+        head = ("(and its washer, on a 12 mm column)" if washed else
+                "(straight on the deburred plate: no washer under it)")
         ops = []
         if columns:
             ops.append(Op(STACK, (-1, 1), whole(*columns, *faces, *outer), "",
-                          "Screw the stand's columns to the outer plate, a button head "
-                          "(and its washer, on a 12 mm column) from outside into each "
+                          f"Screw the stand's columns to the outer plate, a button head {head} "
+                          "from outside into each "
                           + ("through an 18 mm fender washer on the plate's inner face under "
                              "the column's end, another on its top end for the inner plate "
                              "(all of one thickness: caliper them from the bag, within 0.05 "
@@ -1002,7 +1005,8 @@ class CradleStand(Group):
                           "Fastenings' table).", "columns"))
         if inner:
             ops.append(Op(JOIN, (2,), whole(*inner), "",
-                          "The columns' inner button heads (and washers) from the bay side "
+                          "The columns' inner button heads "
+                          + ("(and washers) " if washed else "") + "from the bay side "
                           f"(threadlocker, {nm:g} N·m). After a clutch slip (a blocked cradle "
                           f"cranked until the clutch clicks), take every post's screws back to "
                           f"{nm:g} N·m: the slip may have set the plates under the posts' "
@@ -1521,6 +1525,16 @@ FACE_WASHER = "m6_washer_wide"  # the 18-8 M6 fender washer (6.4 x 18 x 1.6, Bol
 #                         guide: a post's length scatter is the inner plate's locked-in stress)
 
 
+HEAD_WASHED: dict[str, tuple[str, ...]] = {"pillar": ("foot",), "column": ()}
+"""The post ends whose M6 button head keeps a DIN 125 washer under it, by kind (simplification
+round 2, 2026-10-21: every end had one since design review round 2's m2): a pillar's foot on
+the outer plate, where the walking moment opens the face at the least preload a bare head's
+friction on the 5052 leaves (``cradle_report.post_joints``: 1.07 x its decompression on B's
+O1 and O2, 1.05 on A's G, at an under-head friction of 0.3; 0.85 and 0.83 washered), and where
+B's lay-flat block takes O1's head in its relief (:data:`RISER_RELIEF`). Elsewhere the head
+bears on the deburred plate (``cradle_report``'s head rows, VDI 2230's limiting pressure)."""
+
+
 def face_washer() -> tuple[float, float, float]:
     """:data:`FACE_WASHER`'s OD, ID and thickness (mm)."""
     from spiderpig.hardware.catalog import get
@@ -1533,14 +1547,15 @@ def column_parts(stand: Stand) -> ColumnParts:
     """:class:`ColumnParts` of ``stand``'s columns: a NETRF10 on M5 x 12 button heads in
     5.5 mm holes, or a 1/2 in 6061-T6511 round (M6 x 12 deep each end, tapped at home: the
     simplification round 1, 2026-10-21; MISUMI's 12 mm NETRF12 steel before) on M6 x 16
-    button heads (A2-70) and DIN 125 washers in 6.4 mm holes (design review round 2's m2: the
-    heads had borne on the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated
+    button heads (A2-70) in 6.4 mm holes, their heads on the plate (:data:`HEAD_WASHED`:
+    simplification round 2; DIN 125 washers under them since design review round 2's m2, when
+    the heads had borne on the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated
     class)."""
     if stand.column_d > SMALL_TIE_D:
         from spiderpig.hardware.cradle_catalog import ROD_HALF, ROD_THREAD
 
-        return ColumnParts(ROD_HALF, ROD_THREAD, M6, 16.0, POST_HOLE, "m6_washer",
-                           FACE_WASHER)
+        return ColumnParts(ROD_HALF, ROD_THREAD, M6, 16.0, POST_HOLE,
+                           "m6_washer" if HEAD_WASHED["column"] else None, FACE_WASHER)
     return ColumnParts(SMALL_TIE_D, 10.0, M5, TIE_SCREW, TIE_HOLE)
 
 

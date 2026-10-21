@@ -141,6 +141,9 @@ class StandoffAxle:
     shim_key: str = "shim_din988_4x8"   # the end shims (bought as stock 0.5 mm washers)
     set_play: float = 0.1            # axial play of the column (plates touch; assumed)
     washer_key: str | None = "m4_washer"   # None: the head bears on the plate
+    washer_ends: tuple[str, ...] = ("foot", "end")   # the ends a washer goes under the head at
+    #                                  ("foot": on the outer plate; a cradle's pillar keeps one
+    #                                  only there since simplification round 2)
     lock_key: str | None = "threadlocker_222"
     lock_per_screw: float = 0.01
     size: str = "M4"                 # "M3": the one-piece shaft's M3 ends (one_piece)
@@ -229,21 +232,23 @@ class StandoffAxle:
         6061-T6511 round made to the column's length (``hardware.cradle_catalog.al_rod``: cut
         to length, faced and tapped M6 at home; the simplification round 1, 2026-10-21, the
         materials rule: MISUMI's 12 mm NETRF12 steel before), an M6 x 16 button head (A2-70)
-        and a DIN 125 washer through each plate's 6.4 mm hole (design review round 2's m2,
-        2026-10-15: the 10.5 mm heads had borne on the bare 5052 through 6.6 mm holes, on
-        18-8 screws of no stated class). Its bottle's load bends a 6 mm column between plates
+        through each plate's 6.4 mm hole, a DIN 125 washer under it at its foot only
+        (simplification round 2, 2026-10-21: :data:`construction.cradle.HEAD_WASHED`; at both
+        ends since design review round 2's m2, 2026-10-15, when the 10.5 mm heads had borne on
+        the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated class). Its bottle's load bends a 6 mm column between plates
         too far (B's O1 at the 3 L's jam: SF 0.4, ``cradle_report``), a 10 mm steel one at the
         6 L's (0.78); 1/2 in 6061 is 1.6 x as stiff as the 10 mm steel and stronger at its
         tapped ends (ASTM B221's 241 MPa minimum against the steel's 235). Its links turn on
         it in 13.05 mm bores (its running fit). Its heads and washers, 4.9 mm, stand outside
         the plates, where a cradle's side is open (the bay; the outside, its gearbox at O)."""
-        from spiderpig.construction.cradle import FACE_WASHER
+        from spiderpig.construction.cradle import FACE_WASHER, HEAD_WASHED
         from spiderpig.hardware.cradle_catalog import ROD_HALF, ROD_ROOT, ROD_YIELD
         from spiderpig.hardware.fasteners import BUTTON_A2_70_NM
 
         return replace(self.one_piece(), stock="shaft12", size="M6", od=ROD_HALF, id_=ROD_ROOT,
                        yield_mpa=ROD_YIELD, end_hole=6.4, stud_hole=6.4,
                        min_engage=6.0, min_segment=24.0, washer_key="m6_washer",
+                       washer_ends=HEAD_WASHED["pillar"],
                        shim_key="m6_washer", tighten_nm=BUTTON_A2_70_NM["6"],
                        outside=5.0, neck_wall=NECK_WALL, face_washer=FACE_WASHER)
 
@@ -310,17 +315,17 @@ class StandoffAxle:
         w = get(self.washer_key).dims
         return float(w["od"]), float(w["id"]), float(w["t"])
 
-    def end_screw(self, pitch: float, plate: bool = True, kind: str = "bhcs"
-                  ) -> tuple[str, float, float, float] | None:
+    def end_screw(self, pitch: float, plate: bool = True, kind: str = "bhcs",
+                  washer: bool = True) -> tuple[str, float, float, float] | None:
         """(key, length, head diameter, head height) of the button head (M4, or M3 for an
         M3 column; ``kind`` "bhcs109": a cradle's class 10.9 foot, :meth:`steel_foot`) through a
         frame plate (``plate``; else straight into the column's free end, over the last link)
-        and its washer into the standoff's end: the most thread up to its depth (taken as the
-        shortest standoff's)."""
+        and its washer (``washer``; none at an end :attr:`washer_ends` leaves bare) into the
+        standoff's end: the most thread up to its depth (taken as the shortest standoff's)."""
         from spiderpig.hardware.crank_catalog import M4_BHCS_LENGTHS, m4_bhcs
         from spiderpig.hardware.fasteners import SCREWS
 
-        _, _, wt = self.washer()
+        wt = self.washer()[2] if washer else 0.0
         depth = min(self.thread_max, self.min_segment / 2)
         best = None
         family = SCREWS.get((kind, self.size[1:])) if self.size != "M4" else None
@@ -650,8 +655,11 @@ class StandoffAxle:
                           + " while the column is bare to hold.", "columns"))
         if inner:
             ops.append(Op(JOIN, (1,), whole(*inner), "",
-                          (f"Each pillar's inner button head and washer from the bay side, "
-                           f"threadlocker, to {self.tighten_nm:g} N·m." if cradle else
+                          (f"Each pillar's inner button head "
+                           + ("and washer " if "end" in self.washer_ends else
+                              "(straight on the deburred plate: no washer) ")
+                           + f"from the bay side, threadlocker, to {self.tighten_nm:g} N·m."
+                           if cradle else
                            "Each pillar's inner screw and washer from the servo bay (a "
                            f"ball-end key), threadlocker, to {self.tighten_nm:g} N·m."),
                           "pillar_screws"))
@@ -761,7 +769,10 @@ class StandoffAxle:
         for k, sign, plate in ends:
             # through the plate (and any shims under it) into the standoff's end
             grip = (build.plan.t(k) if plate else pitch) + shimmed.get(k, 0.0)
-            got = self.end_screw(grip, plate, self.foot if sign < 0 and plate else "bhcs")
+            washed = (self.washer_key is not None
+                      and ("foot" if sign < 0 else "end") in self.washer_ends)
+            got = self.end_screw(grip, plate, self.foot if sign < 0 and plate else "bhcs",
+                                 washer=washed)
             if got is None:
                 raise ConstructionError(f"{group.name}: no stock M4 screw takes a {grip:.2f} mm "
                                         f"grip at layer {k}")
@@ -770,13 +781,13 @@ class StandoffAxle:
                 face = build.z(k)[0] if sign < 0 else build.z(k)[1]
             else:                # in the end layer, on the column's free end
                 face = build.z(k)[1] if sign < 0 else build.z(k)[0]
-            if self.washer_key is not None:
+            if washed:
                 washer = bored(disc(xy, w_od / 2, *sorted((face, face + sign * w_t))), xy,
                                w_id, *sorted((face, face + sign * w_t)))
                 out.bodies.append(hardware(f"{stem}_washer{k}", washer, host,
                                            fab="purchased", bom_key=self.washer_key,
                                            color=STEEL))
-            bear = face + sign * w_t
+            bear = face + sign * (w_t if washed else 0.0)
             head = disc(xy, hd / 2, *sorted((bear, bear + sign * hh)))
             shank = disc(xy, 0.97 * self.screw_d / 2, *sorted((bear, bear - sign * L)))
             out.bodies.append(hardware(f"{stem}_screw{k}", union([head, shank]), host,

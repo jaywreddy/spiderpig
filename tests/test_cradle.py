@@ -1012,6 +1012,26 @@ def test_the_riser_holds_the_gearbox_as_a_clamped_stack():
             assert got["sf_sleeve_crush"] >= 1.3, (sleeve, got)
 
 
+@pytest.mark.no_fabricate
+def test_a_post_s_bare_head_is_rated_at_its_own_friction():
+    """Simplification round 2's P6: the posts' DIN 125 washers stay only at the pillars' feet
+    (``cradle.HEAD_WASHED``); a bare head's least preload at the bare 5052's under-head
+    friction (up to 0.3: VDI 2230's torque split, 0.79 of the washered 0.2's) and its
+    pressure on the plate at the most preload within VDI 2230's limit by 2 x; the threads'
+    least engagement the washered foot's."""
+    from spiderpig.construction.pivots.standoff import StandoffAxle
+    from spiderpig.cradle_report import P_LIMIT_MPA, bare_head_factor, head_area, post_engaged
+
+    assert cr.HEAD_WASHED == {"pillar": ("foot",), "column": ()}
+    assert StandoffAxle().cradle_shaft().washer_ends == ("foot",)
+    assert cr.column_parts(cr.STANDS["decanter_rcm"]).washer is None
+    assert bare_head_factor() == pytest.approx(0.793, abs=0.005)
+    assert bare_head_factor(mu_head=0.2) == pytest.approx(1.0)
+    assert P_LIMIT_MPA / (4644.0 / head_area()) >= 2.0
+    cfg = BuildConfig(linkage="decanter_rcm", robot=False)
+    assert post_engaged(cfg) == pytest.approx(16.0 - 1.6 - 4.75 - 1.6, abs=0.05)
+
+
 def p_ok(name: str, pieces) -> bool:
     """A riser piece is one valid solid."""
     part = dict(pieces)[name]
@@ -1808,6 +1828,9 @@ def _holds_the_jam(r: dict, key: str) -> None:
     # goes first)
     assert joints["jam"]["strip_sf"] >= 1.3, joints
     assert joints["walk"]["strip_sf"] >= 1.3, joints
+    # simplification round 2's P6: a head straight on the deburred plate (no DIN 125 but at a
+    # pillar's foot) within VDI 2230's limiting pressure at the screw's most, by 1.3
+    assert joints["jam"]["head_sf"] >= 1.3, joints
     assert r["structure"]["joints"]["thread"]["over_proof"] >= 1.0
     ties = r["structure"]["tie_threads"]
     assert min(ties["walk"]["strip_sf"], ties["jam"]["strip_sf"]) >= 1.3, ties
