@@ -175,7 +175,7 @@ def print_pose(part, turns):
 def export_prints(groups, out_dir: Path, density: float = 1.24,
                   filaments: dict[str, str | None] | None = None,
                   stems: dict[str, str] | None = None,
-                  poses: dict | None = None) -> list[dict]:
+                  poses: dict | None = None, shapes: dict | None = None) -> list[dict]:
     """One STL per different printed part (and its mirror image where needed).
 
     ``stems``: each printed body's file stem (:func:`spiderpig.labels.print_stems`: the
@@ -184,6 +184,9 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
 
     ``poses``: a body's turns into its print pose (:func:`print_pose`), where it isn't
     printed as it lies (every walker part is).
+
+    ``shapes``: a body's shape as it prints, where the design draws less (a decanting
+    cradle's printed lead screw and nut, ``mech.meta["print_shapes"]``: their threads).
 
     ``filaments``: each printed body's filament (catalog key, by name:
     :func:`hardware.bom.printed_filaments`): a group whose parts take two filaments is
@@ -207,13 +210,16 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
         plain = [n for n in g.names if n not in g.mirrored] or [own]
         stem = (stems or {}).get(plain[0]) or _file_stem(own, taken)
         turns = (poses or {}).get(g.ref.name)
-        part = _on_plate(print_pose(g.ref.part, turns))
+        shape = (shapes or {}).get(g.ref.name, g.ref.part)
+        part = _on_plate(print_pose(shape, turns))
         export_stl(part, str(out_dir / f"{stem}.stl"))
         same = g.qty - len(g.mirrored)
         todo = f"print {same}"
         files = [f"{stem}.stl"]
-        if g.mirrored:
-            export_stl(_on_plate(print_pose(g.ref.part.mirror(Plane.YZ), turns)),
+        if g.mirrored:      # posed, then mirrored across the bed (mirrored first, a pose
+            #                 with a turn about Z had stood a cradle's rail liner 170 mm
+            #                 up, tilted; simplification round 1)
+            export_stl(_on_plate(print_pose(shape, turns).mirror(Plane.YZ)),
                        str(out_dir / f"{stem}_mirrored.stl"))
             files.append(f"{stem}_mirrored.stl")
             todo += f", and {len(g.mirrored)} mirrored ({stem}_mirrored.stl)"
@@ -223,7 +229,7 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
             "file": files[0], "qty": g.qty, "mirrored": len(g.mirrored), "print": todo,
             "size_mm": f"{bb.size.X:.1f} x {bb.size.Y:.1f} x {bb.size.Z:.1f}",
             "filament": _filament_name(fil) if fil else "",
-            "grams_each_100pct": round(g.ref.part.volume / 1000
+            "grams_each_100pct": round(shape.volume / 1000
                                        * (filament_density(fil) if fil else density), 1),
             "parts": " ".join(g.names),
         })
@@ -525,7 +531,8 @@ def main(argv=None) -> int:
     types = part_types(mech, assembly_order(mech, design), groups, filament)
     rows = export_prints(groups["printed"], out / "print", density=filament_density(filament),
                          filaments=printed_filaments(mech, filament), stems=print_stems(types),
-                         poses=mech.meta.get("print_poses"))
+                         poses=mech.meta.get("print_poses"),
+                         shapes=mech.meta.get("print_shapes"))
     kit = _pack_spacers(config, store, out / "print", rows) if is_cradle(config) else []
     if is_cradle(config):
         kit += _cradle_tools(out / "print", rows)

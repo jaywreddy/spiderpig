@@ -195,7 +195,8 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
                  load_nodes: Mapping[str, Sequence[str]] | None = None,
                  skip: np.ndarray | None = None,
                  width: Callable[[str, str, str], float] | None = None,
-                 bosses: Mapping[str, Mapping[str, float]] | None = None) -> dict[str, dict]:
+                 bosses: Mapping[str, Mapping[str, float]] | None = None,
+                 keep_forces: Sequence[str] = ()) -> dict[str, dict]:
     """Every link of ``lk`` (``lk.links``) as a plane frame of its chords under one case's
     joint force vectors ``vecs`` (``cradle_report.statics_vectors``: ``joints`` its
     ``(point, body, other)``, ``pts`` the joints' world paths): per link, its worst chord end
@@ -207,7 +208,11 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
     width where it isn't its section's. ``bosses`` (per link, a joint's boss radius,
     ``config.PRODUCT_BOSS_R``; a wider chord's end disc there counts as one): a chord end at
     a boss rated through its hole at the boss's width and, past it, where the boss meets the
-    chord's edges, on the chord without a hole at the moment there."""
+    chord's edges, on the chord without a hole at the moment there. A link in ``keep_forces``
+    returns its chord segments' end forces (``out[link + ":forces"]``: ``"forces"`` per
+    ``(a, b)``, ``(cases kept, 3)``, the axial force and the moments at ``a`` and ``b`` as
+    :func:`frame2d`'s; ``"widths"``): :func:`cradle_report.box_racking` adds its stresses
+    out of the plane to them."""
     load_nodes = load_nodes or {}
     keep = np.ones(len(vecs), bool) if skip is None else ~np.asarray(skip, bool)
     out: dict[str, dict] = {}
@@ -295,6 +300,9 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
                 buckle = {"safety": pcr / f, "chord": f"{p}-{q}", "compression_n": round(f, 1),
                           "euler_n": round(pcr, 1)}
         worst["safety"] = round(worst["safety"], 2)
+        if name in keep_forces:
+            out[name + ":forces"] = {"forces": {s_: res[:, e] for e, s_ in enumerate(segs)},
+                                     "widths": dict(wide)}
         out[name] = {"section": [sec.w, sec.t], "sheet": sec.sheet,
                      "allowable_mpa": sec.yield_mpa, "chords": [f"{p}-{q}" for p, q in segs],
                      "worst": worst,
@@ -1065,3 +1073,275 @@ def members(xy: Mapping[str, np.ndarray], pairs: Sequence[tuple[str, str]],
                      "untied": free, "sway_n": round(sway, 1) if sway is not None else None,
                      "buckling": round(pcr / comp, 2) if comp > 1e-6 else None})
     return {"members": rows, "forces": {s_: res[:, e] for e, s_ in enumerate(segs)}}
+
+
+# -- the cradle box across the bay, in 3D ---------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TieRod:
+    """One of the cradle box's tie rods and its two screwed ends (simplification round 1,
+    2026-10-21): its diameter ``d`` (its end face's too), its tapped ends a tube to ``bore``
+    (the female thread's roots), its moduli and its specified minimum yield (MPa); each end's
+    screw at its least preload ``preload`` (N), through the cradle link's ``hole``, its head
+    ``head_d`` across on the link's outer face, the head's proof ``proof`` (N); ``stock`` what
+    it is (for the report)."""
+
+    d: float
+    bore: float
+    e: float
+    g: float
+    yield_mpa: float
+    preload: float
+    hole: float
+    head_d: float
+    proof: float
+    stock: str = ""
+
+    @staticmethod
+    def mean_r(od: float, idia: float) -> float:
+        """An annulus' mean friction radius at a uniform pressure (mm)."""
+        ro, ri = od / 2, idia / 2
+        return 2.0 / 3.0 * (ro ** 3 - ri ** 3) / (ro ** 2 - ri ** 2)
+
+    def slip_nmm(self, mu: float, locked: bool = True) -> float:
+        """The twist (N·mm) an end joint holds before it turns on the link at friction
+        ``mu``: its end face's friction and, with the screw locked in the rod (threadlocker,
+        cured: the screw turns with the rod), its head's on the link's outer face."""
+        r = self.mean_r(self.d, self.hole)
+        if locked:
+            r += self.mean_r(self.head_d, self.hole)
+        return mu * self.preload * r
+
+    def gap_nmm(self) -> float:
+        """The end moment (N·mm) that lifts the end face's edge off the link at the least
+        preload: the preload over the face annulus' kern."""
+        return self.preload * (self.d ** 2 + self.hole ** 2) / (8.0 * self.d)
+
+    def z_tube(self) -> float:
+        """The tapped end's section modulus (mm³): a tube ``d`` x ``bore``."""
+        return math.pi * (self.d ** 4 - self.bore ** 4) / (32.0 * self.d)
+
+    def stress(self, moment, twist) -> np.ndarray:
+        """The von Mises stress (MPa) at its tapped end under an end moment and a twist
+        (N·mm): ``sqrt((M / Z)^2 + 3 (T / 2 Z)^2)``."""
+        z = self.z_tube()
+        return np.hypot(np.asarray(moment) / z, math.sqrt(3.0) * np.asarray(twist) / (2 * z))
+
+    def ei(self) -> float:
+        """Its bending stiffness (N·mm²): the solid bar's."""
+        return self.e * math.pi * self.d ** 4 / 64.0
+
+    def gj(self) -> float:
+        """Its twist stiffness (N·mm²): the solid bar's."""
+        return self.g * math.pi * self.d ** 4 / 32.0
+
+
+@dataclass(frozen=True)
+class BoxLinks:
+    """The cradle box's two cradle links (the drive side's and the passive side's: one
+    outline, each in its own plane, ``length`` apart along their normal, z) for
+    :func:`box_frame`: their nodes in the cradle's frame (``xy``: mm, the mouth at the
+    origin), their chords split at the nodes on them (``segs``: ``((a, b), width)``), ``t``
+    thick, their sheet's yield; each link's pins (``pins``: the drive link's, the passive
+    link's: what joins it to its side, its only hold out of its plane), its tie nodes in the
+    rods' order (``ties``) and each node's hole (``holes``, mm)."""
+
+    xy: Mapping[str, tuple[float, float]]
+    segs: Sequence[tuple[tuple[str, str], float]]
+    t: float
+    yield_mpa: float
+    pins: tuple[tuple[str, ...], tuple[str, ...]]
+    ties: tuple[str, ...]
+    length: float
+    holes: Mapping[str, float] = field(default_factory=dict)
+
+
+BOX_HOLDS = ("held", "pinned", "free")
+"""How each cradle link's pins hold it out of its plane in :func:`box_frame`, stiffest
+first (the truth lies between: a pin through a stack of links in their layers holds it
+across a little and against turning less, within its bore's play): ``"held"`` each pin
+fixes the link's node (across and both turns), ``"pinned"`` across only, ``"free"`` nothing
+(the box held across at one pin only, against sliding along the rods: the links' own
+stiffness and the rods' carry everything else)."""
+
+
+@dataclass
+class BoxResult:
+    """:func:`box_frame`'s solve, per crossing moment (``(cases,)`` arrays): the racking
+    angle ``theta`` (rad, the passive link on the drive one about the mouth); per rod (by
+    its tie node) its end moments and shears at its drive and passive ends (``(cases, 2)``,
+    N·mm, N), its twist (N·mm, the same along it), the twist its joints would take stuck
+    (``twist_stuck``) and whether one slipped (``slipped``); per link chord segment
+    ``(link, a, b)`` (link 0 the drive one) its end forces out of the plane in its own frame
+    (``(cases, 6)``: ``V, T, M`` at ``a`` then at ``b``, as :class:`Grillage`); the box's
+    racking stiffness with every joint stuck (N·mm per radian); each rod's lateral
+    displacement along it (:meth:`lateral`)."""
+
+    theta: np.ndarray
+    end_moment: dict[str, np.ndarray]
+    shear: dict[str, np.ndarray]
+    twist: dict[str, np.ndarray]
+    twist_stuck: dict[str, np.ndarray]
+    slipped: dict[str, np.ndarray]
+    chords: dict[tuple[int, str, str], np.ndarray]
+    stiffness: float
+    length: float
+    ends: dict[str, np.ndarray] = field(default_factory=dict, repr=False)
+
+    def lateral(self, name: str, z: float) -> np.ndarray:
+        """Rod ``name``'s displacement in the cradle's plane ``z`` mm from its drive end
+        (``(cases, 2)``, mm): Hermite on its ends' displacements and slopes."""
+        u = self.ends[name]                 # (cases, 12): its drive end then its passive end
+        L = self.length
+        s = z / L
+        h1, h2 = 1 - 3 * s * s + 2 * s ** 3, L * (s - 2 * s * s + s ** 3)
+        h3, h4 = 3 * s * s - 2 * s ** 3, L * (-s * s + s ** 3)
+        ux = h1 * u[:, 0] + h2 * u[:, 4] + h3 * u[:, 6] + h4 * u[:, 10]       # du_x/dz = r_y
+        uy = h1 * u[:, 1] - h2 * u[:, 3] + h3 * u[:, 7] - h4 * u[:, 9]        # du_y/dz = -r_x
+        return np.stack([ux, uy], -1)
+
+
+def rod_k(rod: TieRod, L: float) -> np.ndarray:
+    """A tie rod as a 3D beam along z (12 dofs: ``u_x, u_y, u_z, r_x, r_y, r_z`` at its drive
+    end, then at its passive end ``L`` mm on)."""
+    ea = rod.e * math.pi * rod.d ** 2 / 4.0
+    k = np.zeros((12, 12))
+    k[np.ix_([2, 8], [2, 8])] += ea / L * np.array([[1.0, -1.0], [-1.0, 1.0]])
+    k[np.ix_([5, 11], [5, 11])] += rod.gj() / L * np.array([[1.0, -1.0], [-1.0, 1.0]])
+    kb = _beam_k(rod.ei(), L)
+    k[np.ix_([0, 4, 6, 10], [0, 4, 6, 10])] += kb                   # u_x with r_y
+    flip = np.diag([1.0, -1.0, 1.0, -1.0])                          # u_y with -r_x
+    k[np.ix_([1, 3, 7, 9], [1, 3, 7, 9])] += flip @ kb @ flip
+    return k
+
+
+def box_frame(links: BoxLinks, rods: Mapping[str, TieRod], moments,
+              hold: str = "pinned", mu: float = 0.2, locked: bool = True,
+              rigid_links: bool = False) -> BoxResult:
+    """The cradle box across the bay as a 3D frame (simplification round 1, 2026-10-21; until
+    then :func:`cradle_report.box_racking` held the cradle links rigid out of their plane, so
+    each rod was fixed at both ends and the box racked on the rods' bending): each cradle link
+    a grillage of its chords out of its plane (:func:`_grillage_k`: their weak-axis bending
+    and twist), rigid in its plane, the drive one held there, the passive one turning about
+    the mouth under each crossing moment ``moments`` (N·mm); each tie rod a 3D beam
+    (:func:`rod_k`) whose ends move and turn with its links' tie nodes. Its end joints are
+    rigid in bending (closed, :meth:`TieRod.gap_nmm`; gapped, the screw's stiffness, far over
+    the links', carries on) and in twist up to their friction (:meth:`TieRod.slip_nmm` at
+    ``mu``, ``locked`` its screw in the rod): a rod whose twist passes that slips at one end
+    and carries only the slip's torque. The links held out of their plane at their pins as
+    ``hold`` says (:data:`BOX_HOLDS`); ``rigid_links``: every link node fixed out of the
+    plane (the old model's limit). Returns :class:`BoxResult`."""
+    if hold not in BOX_HOLDS:
+        raise ValueError(f"hold {hold!r}: one of {BOX_HOLDS}")
+    moments = np.atleast_1d(np.asarray(moments, float))
+    m = len(moments)
+    L = links.length
+    names = sorted({p for s, _ in links.segs for p in s} | set(links.ties)
+                   | {p for ps in links.pins for p in ps})
+    at = {p: i for i, p in enumerate(names)}
+    per = 3 + 3 * len(names)
+    n_link = 2 * per
+
+    def node(li: int, p: str) -> int:
+        return li * per + 3 + 3 * at[p]
+
+    K_link = np.zeros((n_link, n_link))
+    elems = []
+    for li in (0, 1):
+        for (a, b), w in links.segs:
+            kg, kl, T, _ = _grillage_k(np.asarray(links.xy[a], float),
+                                       np.asarray(links.xy[b], float), w, links.t)
+            ii = [node(li, a), node(li, a) + 1, node(li, a) + 2,
+                  node(li, b), node(li, b) + 1, node(li, b) + 2]
+            K_link[np.ix_(ii, ii)] += kg
+            elems.append((li, a, b, ii, kl, T))
+    fixed = {0, 1, 2, per, per + 1}            # the drive link in its plane, the passive one's
+    #                                            mouth (it turns about it: per + 2 is free)
+    for li, ps in enumerate(links.pins):
+        for p in ps:
+            if hold in ("held", "pinned"):
+                fixed.add(node(li, p))
+            if hold == "held":
+                fixed |= {node(li, p) + 1, node(li, p) + 2}
+    if hold == "free":
+        fixed.add(node(0, links.pins[0][0]))
+    if rigid_links:
+        fixed |= {node(li, p) + q for li in (0, 1) for p in names for q in range(3)}
+    k_rod = {n: rod_k(rods[n], L) for n in links.ties}
+    cap = {n: rods[n].slip_nmm(mu, locked) for n in links.ties}
+
+    def rod_map(n: str, slipped: Sequence[str], n_ind: int) -> np.ndarray:
+        """Rod ``n``'s 12 end dofs from the independent ones: the links' and, where it
+        slipped (its passive end), its own twist there."""
+        x, y = links.xy[n]
+        C = np.zeros((12, n_ind))
+        for li in (0, 1):
+            o, lb, g = 6 * li, li * per, node(li, n)
+            C[o + 0, lb + 0], C[o + 0, lb + 2] = 1.0, -y
+            C[o + 1, lb + 1], C[o + 1, lb + 2] = 1.0, x
+            C[o + 2, g], C[o + 3, g + 1], C[o + 4, g + 2] = 1.0, 1.0, 1.0
+            if li == 1 and n in slipped:
+                C[o + 5, n_link + list(slipped).index(n)] = 1.0
+            else:
+                C[o + 5, lb + 2] = 1.0
+        return C
+
+    def solve(slipped: Mapping[str, float], ms: np.ndarray):
+        """The box at moments ``ms``, the rods in ``slipped`` turning at their passive end
+        under that torque (signed: the link's on the rod there)."""
+        order = list(slipped)
+        n_ind = n_link + len(order)
+        K = np.zeros((n_ind, n_ind))
+        K[:n_link, :n_link] = K_link
+        Cs = {n: rod_map(n, order, n_ind) for n in links.ties}
+        for n in links.ties:
+            K += Cs[n].T @ k_rod[n] @ Cs[n]
+        F = np.zeros((n_ind, len(ms)))
+        F[per + 2] = ms
+        for i, n in enumerate(order):
+            F[n_link + i] += slipped[n]
+            F[per + 2] -= slipped[n]
+        free = [i for i in range(n_ind) if i not in fixed]
+        q = np.zeros((n_ind, len(ms)))
+        q[free] = _solve(K[np.ix_(free, free)], F[free], "the cradle box")
+        return q, Cs
+
+    q0, C0 = solve({}, np.concatenate([moments, [1.0]]))
+    stiffness = 1.0 / float(q0[per + 2, -1] - q0[2, -1])
+    q0 = q0[:, :-1]
+    links_q = q0[:n_link].copy()
+    ends = {n: (C0[n] @ q0).T for n in links.ties}                 # (cases, 12)
+    stuck = {n: np.abs(ends[n] @ k_rod[n][11]) for n in links.ties}
+    slip_mask = {n: np.zeros(m, bool) for n in links.ties}
+    for c in range(m):
+        slipped: dict[str, float] = {}
+        u = {n: ends[n][c] for n in links.ties}
+        q_c = q0[:, c]
+        for _ in range(len(links.ties)):
+            grew = False
+            for n in links.ties:
+                tau = float(u[n] @ k_rod[n][11])
+                if n not in slipped and abs(tau) > cap[n]:
+                    slipped[n] = math.copysign(cap[n], tau)
+                    grew = True
+            if not grew:
+                break
+            q, Cs = solve(slipped, moments[[c]])
+            q_c = q[:, 0]
+            u = {n: Cs[n] @ q_c for n in links.ties}
+        if slipped:
+            links_q[:, c] = q_c[:n_link]
+            for n in links.ties:
+                ends[n][c] = u[n]
+                slip_mask[n][c] = n in slipped
+    end_m, shear, twist = {}, {}, {}
+    for n in links.ties:
+        f = ends[n] @ k_rod[n].T                # the links' forces on the rod at its ends
+        end_m[n] = np.stack([np.hypot(f[:, 3], f[:, 4]), np.hypot(f[:, 9], f[:, 10])], -1)
+        shear[n] = np.stack([np.hypot(f[:, 0], f[:, 1]), np.hypot(f[:, 6], f[:, 7])], -1)
+        twist[n] = np.abs(f[:, 11])
+    chords = {(li, a, b): (kl @ (T @ links_q[ii])).T for li, a, b, ii, kl, T in elems}
+    return BoxResult(theta=links_q[per + 2] - links_q[2], end_moment=end_m, shear=shear,
+                     twist=twist, twist_stuck=stuck, slipped=slip_mask, chords=chords,
+                     stiffness=stiffness, length=L, ends=ends)
