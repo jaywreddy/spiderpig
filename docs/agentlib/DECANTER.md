@@ -2566,7 +2566,7 @@ pins' 0.34): the mouth sags a few tenths of a millimetre more at worst, against 
 - **The packs** stay open (`PACK_OPEN`, `pack-inspect --plan default`): B 742 x 350 x 600
   mm, 155.9 L (157.5 at f5e2737), its drive panel unsupported on the cradle box, 16 spacers
   (408 g); A 700 x 252 x 607 mm, 106.9 L, a piece out of order (its panels over `PACK_BOX`'s
-  215 mm).
+  215 mm). (B 208.8 L since round 2's racking brace: "Simplification round 2".)
 
 
 ## Simplification round 2: the racking brace (2026-10-21)
@@ -2604,6 +2604,18 @@ its hand crank stands ("The cradle box across the bay").
 tube: Speedy Metals 4604, 12 in), SendCutSend's cutting 752.11 (+24.26, the two cradle links
 b6 the bigger: their wider rear and the socket's pad). Speedy's cart clears its USD 20 minimum
 on B alone now (21.79). A unchanged.
+
+**The pack** (`pack-inspect --plan default`; still open, `PACK_OPEN`): B 745 x 467 x 600 mm,
+208.8 L (round 1: 742 x 350 x 600, 155.9 L), every piece supported (the drive panel had been
+unsupported on the box), 11 spacers (390 g; 16, 408 g), one of them free to slide 330 mm.
+b6's boss at X (r 50, its top 50 mm over X) and its pad at Br (the chord Tr2-Br 76 mm wide,
+38 under Tr2) stand the cradle box 249 mm tall (178), and the panels ride over it. Standing,
+the box had also turned on end in the plan: `cradle_pack._items` now stands it as in use
+(its axis level, as its "bottom" face says) instead of on its least footprint, which the
+squarer box no longer gave. The pack's way back: a boss and a pad grown only toward the
+link's middle (not about X and the chord's line) would give back most of the 71 mm; a
+model change of its own, the strength rows re-run. A unchanged: 700 x 252 x 607 mm, 106.9 L,
+22 spacers (710 g), a piece out of order.
 
 **Home work:** the tube brought to length by hand (120-grit on the flat table, to 0.1 mm)
 and its 24 notches marked from a socket and along the tube, sawn and filed to fit (an

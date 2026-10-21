@@ -3262,6 +3262,12 @@ only: the walkers' identity gate is identical.
   layers up and its outer plate to 1.17), which put its worst start 4-5 % up and its grip at
   22.1-22.3 N run in. A reach of about 300 mm clears the tube and its pad (a probe); with a
   132 mm crank the grip holds. The user's call; A's `OPEN_AT_CAP` keeps its three rows.
+- **The pack** (still open): B 155.9 L to 208.8 L (745 x 467 x 600 mm), b6's boss at X and
+  its pad at Br standing the cradle box 249 mm tall (178); every piece supported now, 11
+  spacers. The box had turned on end in the plan as well (its least footprint no longer the
+  in-use turn): `cradle_pack._items` stands B's cradle box as in use. A boss and pad grown
+  toward the link's middle only would give most of it back (not done: a model change of its
+  own). A unchanged (106.9 L).
 - **The BOM:** B USD 1,007.55 to 1,039.13 (+31.58: the tube 7.32, the cradle links' cutting
   24.26); Speedy's cart clears its USD 20 minimum on B alone (21.79). A unchanged.
 - **Where:** `spiderpig/linkages/decanters.py` (`BRACE`), `spiderpig/config.py`,
@@ -3269,6 +3275,6 @@ only: the walkers' identity gate is identical.
   `spiderpig/construction/assembly.py`, `spiderpig/construction/handcrank.py`,
   `spiderpig/shapes.py`, `spiderpig/cradle_structure.py`, `spiderpig/cradle_report.py`,
   `spiderpig/hardware/cradle_catalog.py`, `spiderpig/hardware/bom.py`,
-  `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`; the probes
+  `spiderpig/cradle_pack.py`, `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`; the probes
   `/root/.cache/spiderpig/tmp/simplify/r2-brace/` (the concepts, the in-plane and hand-sweep
   probes, the reports).
