@@ -527,6 +527,8 @@ def main(argv=None) -> int:
                          filaments=printed_filaments(mech, filament), stems=print_stems(types),
                          poses=mech.meta.get("print_poses"))
     kit = _pack_spacers(config, store, out / "print", rows) if is_cradle(config) else []
+    if is_cradle(config):
+        kit += _cradle_tools(out / "print", rows)
     n_print = sum(r["qty"] for r in rows)
     print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
     for r in rows:
@@ -617,6 +619,34 @@ def _pack_spacers(config, store, folder: Path, rows: list[dict]) -> list:
         w.writeheader()
         w.writerows(rows)
     return out
+
+
+def _cradle_tools(folder: Path, rows: list[dict]) -> list:
+    """A decanting cradle's printed tools, no body of the mechanism: the clutch's check stub
+    (``construction.handcrank.check_stub``, PETG; design review round 3's m12): its STL in
+    ``folder``, a row in ``rows`` and ``parts.csv``, and its BOM row with its filament
+    (``bom_from_mechanism``'s ``extra``)."""
+    from spiderpig.construction.handcrank import check_stub
+    from spiderpig.hardware.bom import MadeRow, _filament_name
+    from spiderpig.mesh import export_stl
+
+    fil = "petg_filament"
+    name = "clutch_check_stub"
+    part = check_stub()
+    export_stl(part, folder / f"{name}.stl")
+    bb = part.bounding_box()
+    size = " x ".join(f"{v:.1f}" for v in (bb.size.X, bb.size.Y, bb.size.Z))
+    vol = part.volume / 1000.0
+    rows.append({"file": f"{name}.stl", "qty": 1, "mirrored": 0,
+                 "print": "print 1 (the clutch's check: its bar on the bed, 40 % infill)",
+                 "size_mm": size, "filament": _filament_name(fil),
+                 "grams_each_100pct": round(vol * filament_density(fil), 1), "parts": name})
+    with open(folder / "parts.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    return [(MadeRow(name=name, method="printed", material=_filament_name(fil), size_mm=size,
+                     volume_cm3=round(vol, 3), names=[name]), fil)]
 
 
 def _write_manifest(out: Path, config, args=None) -> None:

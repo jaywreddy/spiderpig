@@ -677,17 +677,35 @@ register(
          notes="Phidgets' drawing (TRM4004_0Mechanical.pdf, the 050 row): 25 h6 x 153, a 32 x "
                "3.5 collar, 50 past it, the keyway 40 long ending 5 short of its end and 4 "
                "deep, an M10 x 16 end tap; C45 quenched and tempered, HB 220-260."),
-    Item("m8_set_screw_45", "M8 x 45 socket set screw, cup point, 18-8", "fastener",
-         (Offer("Bolt Depot", BD + "8752", "8752", price_usd=1.02, verified=True,
-                tiers=((1, 1.02), (100, 0.681)),
-                note=BD_2 + " (the M8 18-8 set screw list)"),),
-         dims={"d": 8.0, "length": 45.0},
-         notes="The gearbox's riser studs (construction.handcrank.RISER_STUD): threaded into "
-               "the face's tapped holes with threadlocker."),
-    Item("m8_nut", "M8 hex nut (DIN 934), 18-8", "nut",
-         (Offer("Bolt Depot", BD + "4778", "4778", price_usd=0.17, verified=True,
-                tiers=((1, 0.17), (100, 0.1177)), note=BD_2 + ": 13 mm AF, 6.5 mm"),),
-         dims={"af": 13.0, "h": 6.5}),
+    Item("m8_stud_88_45", "M8 x 45 stud, class 8.8 zinc-plated, cut from a 200 mm DIN 976 "
+         "threaded rod (four to a rod)", "fastener",
+         (Offer("McMaster-Carr", MCM + "99067A279/", "99067A279", pack_qty=4, price_usd=5.11,
+                verified=True,
+                note="M8 x 1.25 x 200 mm zinc-plated class 8.8 steel threaded rod, DIN 976, "
+                     "110,000 psi; the class 8.8 threaded studs listing rendered 2026-10-20; "
+                     "cut into four 45 mm studs by hand (a hacksaw)"),),
+         dims={"d": 8.0, "length": 45.0, "proof_mpa": 580.0},
+         notes="The gearbox's riser studs (construction.handcrank.RISER_STUD, design review "
+               "round 3's M2): threaded into the face's tapped holes with threadlocker, each "
+               "the tension of one clamped column; an 18-8 set screw's class is for a "
+               "headless screw not loaded in tension (TR Fastenings)."),
+    Item("m8_sleeve_12x20", "304 stainless spacer 8 mm ID x 12 mm OD x 20 mm (pack of 5)",
+         "misc",
+         (Offer("Harfington (uxcell)", "https://www.harfington.com/products/p-1579935",
+                "a24101800ux1328", pack_qty=5, price_usd=7.53, verified=True,
+                note="5 pcs, 304 stainless, 8 ID x 12 OD x 20 mm, 'for 5/16\" or M8 screw'; "
+                     "the product JSON fetched 2026-10-20"),),
+         dims={"id": 8.0, "od": 12.0, "length": 20.0},
+         notes="The gearbox riser's sleeves (construction.handcrank.RISER_SLEEVE): one on "
+               "each stud, the ring to the shims, clamped."),
+    Item("shim_8x14x0p5", "304 stainless flat shim 8 x 14 x 0.5 mm (pack of 20)", "washer",
+         (Offer("Harfington (uxcell)", "https://www.harfington.com/products/p-1378778",
+                "a23040700ux0239", pack_qty=20, price_usd=6.14, verified=True,
+                note="20 pcs M8 304 ultra-thin flat washers 8 x 14 x 0.5 mm; the product JSON "
+                     "fetched 2026-10-20 (2026-10-10 the same)"),),
+         dims={"id": 8.0, "od": 14.0, "t": 0.5},
+         notes="The gearbox riser's go/no-go shims (construction.handcrank.RISER_SHIM), over "
+               "each sleeve under the outer plate."),
     Item("m8_thin_nut", "M8 hex jam nut, 18-8 (13 x 4 mm)", "nut",
          (Offer("Bolt Depot", BD + "13573", "13573", price_usd=0.15, verified=True,
                 tiers=((1, 0.15), (100, 0.0979)), note=BD_2 + ": 13 mm AF, 4 mm"),),

@@ -35,6 +35,7 @@
         <span class="label">Handle turns from rest</span>
         <span id="turns-value" class="big">–</span>
         <span id="phase" class="small"></span>
+        <span id="zone" class="small zone" hidden>toggle zone: hands out, nothing under the box</span>
       </div>
     </div>
     <header><span id="diagram-title">Mechanism</span><button id="diagram-toggle">hide</button></header>
@@ -49,6 +50,7 @@
       <option value="8">quick look</option>
     </select>
     <div class="track">
+      <div id="zones" class="zones" title="Toggle zones: the gearbox's red arcs (hands out)"></div>
       <input id="slider" type="range" min="0" max="30" step="0.01" value="0" title="Handle turns from rest" />
       <div class="ticks"><span style="left:0">rest</span><span id="tick-full">full tilt</span><span style="left:100%">rest</span></div>
     </div>

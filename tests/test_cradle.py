@@ -652,12 +652,18 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
     """The hand crank's slip clutch (design review round 2's B-1): three steel ball-nose spring
     plungers in the arm's boss, their balls on the edges of a 6061 seat ring's holes (a 30°
     seat); set at 1.3 x the start the user measures, checked within its window, its cap the
-    config's for each cradle; every set-up's plunger force (B or A, the gearbox run in or new,
-    the greased friction's either end) within the plunger's range less its climb; its slip
+    config's for each cradle, under its ceiling whatever the gearbox's run-in state (design
+    review round 3's M1); every set-up's plunger force (B or A, the gearbox run in or new, the
+    greased friction's either end) within the plunger's range up to the guide's limit, an
+    eighth of a turn from the felt stop (its m3); its slip
     rising with the friction, never locking greased, locking dry (the band the report
     rates); its parts meet nowhere, each ball touching its hole's edge; the cap keyed on the
     journal's flat holds the arm on, so the crank comes off the input shaft whole; the grip on
-    a bolt's plain shank."""
+    a bolt's plain shank; each plunger's nut pressed in from the boss's inner face (its m2).
+    The set state is slippable in the drawn parts (design review round 3's B1): each plunger
+    drawn at the guide's start, half a turn out from the felt stop, its nose over the ring's
+    face by the ball's climb and 0.2 mm more on B's and A's crank, and at the guide's limit
+    the climb still left."""
     from spiderpig.config import PRODUCT_CLUTCH_NM
     from spiderpig.construction.handcrank import (
         CLUTCH,
@@ -669,9 +675,11 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
         PLUNGER,
         HandCrank,
         clutch,
+        clutch_ceiling,
         clutch_drift,
         clutch_slip,
         drawn_clutch,
+        plunger_setting,
     )
 
     rate = (PLUNGER["force"][1] - PLUNGER["force"][0]) / PLUNGER["travel"]
@@ -679,14 +687,21 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
     climb = big_r - math.sqrt(big_r ** 2 - a ** 2)
     assert math.degrees(math.asin(a / big_r)) == pytest.approx(30.0, abs=0.5)
     assert CLUTCH["seat_d"] >= 3.175                        # SendCutSend's least hole
+    setting = plunger_setting()
+    assert setting["climb_mm"] == pytest.approx(climb, abs=1e-3)
+    assert setting["start_room_mm"] >= 0.2
+    assert setting["limit_room_mm"] >= 0.2
     for key in CRADLES:
         got = drawn_clutch(key)
         assert PRODUCT_CLUTCH_NM[key] == pytest.approx(got["crank_cap_nm"], abs=0.05)
         assert got["set_nm"] == pytest.approx(CLUTCH_SET * DESIGN_START_NM[key], abs=1e-3)
         new = clutch(DESIGN_START_NM[key] * NRV050.eta_static / NRV050.eta_new(),
-                     HANDLES.get(key, HANDLES[""]).throw, NRV050)
+                     HANDLES.get(key, HANDLES[""]).throw, NRV050, clutch_ceiling(key))
+        assert new["crank_cap_nm"] <= got["crank_cap_nm"] + 1e-9     # the ceiling holds it
+        assert new["margin"] >= 1.0                                   # (and it still turns)
         for f in (*got["plunger_n"], *new["plunger_n"]):
-            assert PLUNGER["force"][0] - 0.5 <= f <= PLUNGER["force"][1] - rate * climb, f
+            assert PLUNGER["force"][0] - 0.5 <= f <= setting["limit_n"] + 1e-9, f
+            assert f <= PLUNGER["force"][1] - rate * climb
     drift = clutch_drift()
     assert 1.0 < drift["greased"][1] <= drift["greased_worn"][1] < 2.0
     assert drift["locks_dry"]
@@ -716,30 +731,83 @@ def test_the_hand_crank_slips_past_its_set_force_and_comes_off_whole():
     assert HANDLES[""].reach <= by["handle_cap"].part.bounding_box().min.X
     assert max(s[2] for s in sweep) >= max(b.part.bounding_box().max.X for b in parts) - 1e-6
     assert max(s[0] for s in sweep) >= HANDLES[""].throw + HANDLES[""].grip[0] / 2
+    for spec in {HANDLES[k].reach: HANDLES[k] for k in HANDLES}.values():
+        _the_clutch_is_set_slippable(hc, spec, climb, setting)
+
+
+def _the_clutch_is_set_slippable(hc, spec, climb: float, setting: dict) -> None:
+    """In the drawn hand crank (``spec``'s reach): each plunger's body (its thread, not its
+    ball) stands over the seat ring's face by the ball's climb out of its hole and 0.2 mm
+    more, so the arm slips round; drawn at the guide's start (the felt stop, half a turn
+    out), and at its limit (an eighth of a turn) the climb still left; each plunger's nut in
+    its pocket from the boss's inner face, flush with it."""
+    from build123d import Box, Cylinder, Location
+
+    from spiderpig.construction.handcrank import CLUTCH, NEAR_STOP, NUT_HALF, PLUNGER, SET_BACK
+
+    parts, _ = hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame", spec)
+    by = {b.name: b for b in parts}
+    face = by["handle_seat_ring"].part.bounding_box().max.X
+    a_in = spec.reach - CLUTCH["boss_t"]
+    big_r = PLUNGER["ball_d"] / 2
+    for i in range(CLUTCH["plungers"]):
+        plunger = by[f"handle_plunger{i}"].part
+        bb = plunger.bounding_box()
+        cy, cz = bb.center().Y, bb.center().Z
+        # the ball seated, its tip the climb under the ring's face: as it climbs out its
+        # spring goes in by the climb, so the body's nose must stand over the face (its
+        # room) or the nose lands on the ring first and the clutch locks
+        assert pytest.approx(face - climb, abs=1e-3) == bb.min.X
+        low = Box(5.2, 40.0, 40.0).moved(Location((face + 0.2 - 2.6, cy, cz)))
+        ub = (plunger & low).bounding_box()
+        # only the ball under 0.2 mm over the face: the body's thread (12.7 mm) stands over
+        assert max(ub.size.Y, ub.size.Z) <= PLUNGER["ball_d"] + 1e-3, (spec.reach, ub)
+        # the body's nose: where the solid first reaches out past the ball's radius
+        shell = (Cylinder(10.0, 80.0, rotation=(0, 90, 0))
+                 - Cylinder(big_r + 0.2, 82.0, rotation=(0, 90, 0))).moved(
+            Location((bb.min.X + 40.0, cy, cz)))
+        nose = (plunger & shell).bounding_box().min.X
+        assert nose - face == pytest.approx(setting["start_room_mm"], abs=0.01)
+        # turned in from there to the guide's limit, the room still left
+        turned = (SET_BACK - NEAR_STOP) * PLUNGER["pitch"]
+        assert nose - turned - face >= 0.2 - 1e-6
+        nut = by[f"handle_plunger_nut{i}"].part.bounding_box()
+        assert pytest.approx(a_in, abs=1e-6) == nut.min.X
+        assert pytest.approx(a_in + NUT_HALF[1], abs=1e-6) == nut.max.X
 
 
 @pytest.mark.construction
 @pytest.mark.no_fabricate
 def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
-    """The riser (design review round 2): four studs in the gearbox's machined face, each
-    nut set by a printed sleeve that sits on the face between its spigot ring and its boss's
-    edge, the plate over the spigot ring and the turning hub's end by ``RISER_CLEAR``
-    whatever their unmeasured heights; each stud threaded a diameter or more into the face,
-    short of its thread's depth, its end in the head layer under the block; the crank
-    block's seat plate on the shaft's steel end, its M10 end screw's head no higher over the
-    block's top than the tie's head (the rod rides where it did); the keyed plates on the
-    key's straight flanks for any end the go/no-go's window takes."""
+    """The riser (design review round 3's M2: a clamped stack, not four studs in bending):
+    a ring of the crank sheet on the gearbox's machined face, centred on its spigot ring, its
+    holes' webs a thickness or more; on each stud a steel sleeve that sits on the face's boss
+    between the spigot ring and the boss's edge, the go/no-go's shims over it within their
+    range, the plate over the spigot ring and the turning hub's end by ``RISER_CLEAR``; each
+    class 8.8 stud threaded a diameter or more into the face, short of its thread's depth, its
+    end filed to at most ``STUD_PAST_MAX`` over its thin nut, under the crank block's lowest
+    plate by half a millimetre with the go/no-go's window and the plates under the seat at
+    their thickest (its m9); the crank block's seat plate on the shaft's steel end, its M10
+    end screw's head no higher over the block's top than the tie's head (the rod rides where
+    it did); the keyed plates on the key's straight flanks for any end the go/no-go's window
+    takes."""
     from spiderpig.construction.handcrank import (
         BLOCK_PLATES,
         HEAD_LAYER_T,
         KEYED_PLATES,
         M6,
         NRV050,
+        PLATE_OVER,
         RISER_CLEAR,
+        RISER_RING,
+        RISER_RING_HOLE,
+        RISER_SHIMS_RANGE,
         RISER_SLEEVE,
         RISER_STUD,
         RISER_THIN,
+        SEAT_LOW,
         STUD_IN,
+        STUD_PAST_MAX,
         arm_z,
         end_screw,
         riser_for,
@@ -748,17 +816,24 @@ def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
     t, t_frame = 3.175, 4.75
     box = NRV050
     a0, a1 = arm_z(0.0, t_frame, KEYED_PLATES * t)
-    r = riser_for(0.0, a0, t, box, t_frame)
+    r = riser_for(0.0, a0, t, box, t_frame, t)
     assert r.height - max(box.spigot_h, box.hub_out) >= RISER_CLEAR
     od = RISER_SLEEVE[0]
     assert box.pcd / 2 - od / 2 >= box.spigot_d / 2 + 1.0       # off the spigot ring
     assert box.pcd / 2 + od / 2 <= box.face_d / 2 - 1.0          # on the face's boss
+    hole = box.face_thread + RISER_RING_HOLE
+    assert box.pcd / 2 - hole / 2 - (box.spigot_d + RISER_RING) / 2 >= t   # the ring's webs
+    assert box.face_d / 2 - box.pcd / 2 - hole / 2 >= t
+    assert r.ring_t + RISER_SLEEVE[2] + r.shims == pytest.approx(r.height)
+    assert RISER_SHIMS_RANGE[0] <= r.shims <= RISER_SHIMS_RANGE[1]
     d = RISER_STUD[0]
     assert STUD_IN * d <= r.engage <= box.face_depth - 0.5
-    stud_top = r.face - r.engage + r.stud
-    assert 0.5 - 1e-9 <= stud_top - (t_frame + RISER_THIN[1]) <= HEAD_LAYER_T - RISER_THIN[1]
-    assert stud_top < a0 - 0.5                                   # under the block
-    assert r.sleeve == pytest.approx(r.height - 6.5)
+    assert 0.0 <= r.past <= STUD_PAST_MAX
+    assert r.stud >= r.stud_drawn                                # (filed, never short)
+    stud_top = r.face - r.engage + r.stud_drawn
+    assert stud_top == pytest.approx(t_frame + RISER_THIN[1] + r.past)
+    assert stud_top + STUD_PAST_MAX - r.past + SEAT_LOW + r.seat_k * PLATE_OVER <= a0 - 0.5
+    assert HEAD_LAYER_T - RISER_THIN[1] - STUD_PAST_MAX >= 0.5
     assert r.seat == pytest.approx(a0 + r.seat_k * t)
     assert r.shaft_end == pytest.approx(r.seat)
     top = a0 + BLOCK_PLATES * t
@@ -768,6 +843,29 @@ def test_the_gearbox_stands_on_studs_and_the_crank_block_on_the_shafts_end():
     for end in (r.seat, r.seat - r.low):
         assert end - box.key_short - key_w / 2 >= a1 - 0.2 - 1e-9
         assert end - box.key_short - key_len + key_w / 2 <= a0
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_riser_holds_the_gearbox_as_a_clamped_stack():
+    """The riser rated (design review round 3's M2, ``cradle_drive.riser_rating``): at a
+    rod force and torque like B's walking peak it doesn't slip at the faces' oiled friction
+    (``RISER_MU``) by 2 x; at B's and A's capped jam 30° from the toggles (the review's rod
+    forces) every strength row holds 1.3 (the stud in class 8.8 at its proof, the sleeve,
+    the ring's bearing); the 18-8 set screws round 2 had, carried in bending over 18.7 mm,
+    were SF 0.55-0.62 (the review's)."""
+    from spiderpig.construction.handcrank import NRV050
+    from spiderpig.cradle_drive import riser_rating
+
+    notes = {"riser_height_mm": 25.2, "face_z_mm": -25.2, "rod_mid_z_mm": 55.0,
+             "riser_ring_mm": 3.175, "riser_shims_mm": 2.025, "plate_inner_z_mm": 4.75}
+    walk = riser_rating(NRV050, notes, 410.0, 35.8)
+    assert walk["slip_sf"] >= 2.0, walk
+    assert walk["least"] >= 2.0, walk
+    for f, cap in ((1931.9, 63.7), (2301.7, 67.1)):
+        got = riser_rating(NRV050, notes, f, cap)
+        assert got["least"] >= 1.3, got
+        assert got["sf_stud"] >= 1.3, got
 
 
 def p_ok(name: str, pieces) -> bool:
@@ -1333,19 +1431,35 @@ def _holds_the_clutchs_cap(r: dict, key: str) -> None:
     shaft included, holds the cap at SF 1.3 or more 30° and more from the toggles, the side
     frames too since their redesign (2026-10-20; the band round a toggle where any falls
     under 1.3 is reported, no wider); the keyed plates at the cap."""
-    from spiderpig.cradle_drive import OUTPUT
+    from spiderpig.cradle_drive import OUTPUT, RISER
 
     clutch = r["drive"]["clutch"]
     assert clutch["margin"] >= clutch["margin_floor"]
     assert r["drive"]["jam_torque_nm"] == pytest.approx(clutch["crank_cap_nm"], abs=0.01)
     assert clutch["unchecked_cap_nm"] > clutch["crank_cap_nm"]          # (reported)
+    # the ceiling (design review round 3's M1): set on a new box, the cap is the rated one,
+    # and the new box's 6 L still turns; spun fast, more (reported, the use limits' "turn
+    # it, don't spin it")
+    assert clutch["set_new_cap_nm"] <= clutch["crank_cap_nm"] + 0.05
+    assert clutch["set_new_no_ceiling_cap_nm"] > clutch["crank_cap_nm"]
+    assert clutch["new_box_margin"] >= 1.0
+    assert clutch["fast_cap_nm"] > clutch["crank_cap_nm"]
+    assert clutch["fast_cap_least_sf"] >= 1.2
+    # every plunger setting reachable by the guide's limit but a 10 % weak spring's at the
+    # greased friction's low end (the slip then stays under the target: its m3)
+    assert all(case == ["0.09", "0.9"] for case in clutch["plunger_reach"]["under"])
+    # the gearbox's riser (its M2): no slip walking, every strength row at the cap 30° off
+    riser = r["drive"]["riser"]
+    assert riser["walk"]["slip_sf"] >= 2.0, riser
+    assert riser["cap"]["least"] >= 1.3, riser
     assert r["drive"]["input_overhung"]["sf"] >= 2.0
     assert r["drive"]["output_overhung"]["sf_walk"] >= 3.0
     capped = r["jam_capped"]
     assert capped["crank_nm"] == clutch["crank_cap_nm"]
     away = capped["by_band"][-1]["parts"]
     assert min(away.values()) >= 1.3, away          # every part 30° from the toggles,
-    assert OUTPUT in capped["parts"]                # the output shaft among them
+    assert OUTPUT in capped["parts"]                # the output shaft among them,
+    assert RISER in capped["parts"]                 # and the gearbox's riser
     bands = [(x["band_deg"], x["worst"]) for x in capped["by_band"]]
     held = [v["holds_1p3_outside_deg"] for v in capped["parts"].values()]
     assert None not in held, bands                  # (5° steps: where the old case
@@ -1524,9 +1638,25 @@ def test_the_cradle_has_an_assembly_order(key):
     assert "to level" in btext
     assert "luggage scale" in btext
     assert steps.index(board) > max(steps.index(s) for s in steps if s.side == "R")
+    # the clutch set, the worm's hold and the toggle zones once the cradle is built (design
+    # review round 3's stand and use M2, M4): the last build step; the hand crank's step
+    # sets the plungers at their felt start (its B1), no more
+    htext = " ".join(hand.text)
+    for words in ("stops hard", "half a turn", "an eighth of a turn", "Before the first pour"):
+        assert words in htext, words
+    for words in ("flush", "Measure the start", "vise", "toggle"):
+        assert words not in htext, words
+    (pour,) = [s for s in steps if s.title == "Before the first pour"]
+    assert steps.index(pour) == steps.index(board) + 1
+    assert not pour.adds
+    ptext = " ".join(pour.text)
+    for words in ("luggage scale", "check stub", "no vise", "none over the ceiling",
+                  "every month or ten pours", "red arc", "folded under the rod",
+                  "one straight line", "worm's hold"):
+        assert words in ptext, words
     # the use, in order, after the build; its own items, none a wall of text; a picture each
     use = [s for s in steps if s.stage == USE]
-    assert steps.index(use[0]) == steps.index(board) + 1
+    assert steps.index(use[0]) == steps.index(pour) + 1
     titles = [s.title for s in use]
     assert titles[:5] == ["Before you use it", "Setting it for a bottle", "The decanter's riser",
                           "Decanting", "The use limits"]
@@ -2041,6 +2171,9 @@ def test_the_cradle_page_lists_the_cradles_and_serves_their_swing(monkeypatch):
     r = client.get("/api/cradle/decanter_hinge?n=48")
     assert r.status_code == 200
     assert r.json()["n"] == 48
+    from spiderpig.construction.handcrank import TOGGLE_TURNS
+
+    assert r.json()["toggle_turns"] == TOGGLE_TURNS     # the slider's red zones (round 3's M4)
     # how it's used: the guide's own use steps, the use limits' five-line card first
     # (design review round 2's M5: the page had none of them)
     use = r.json()["use"]

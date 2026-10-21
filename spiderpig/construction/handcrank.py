@@ -10,17 +10,18 @@ self-locking worm gear reducer instead of a servo:
   the maker's catalogue gives for static irreversibility: a load on the cradle can't turn the
   worm. Its 14 mm input shaft points back (``input_angle_deg``) and carries the printed hand
   crank.
-* **The riser** (:func:`riser_for`): four M8 studs threaded into the gearbox's machined output
-  face, a hex nut on each set to one height by a printed setting sleeve (:data:`RISER`), the
-  outer plate down onto the nuts and a thin nut over it on each stud: the plate is clamped
-  between the two nuts. Only the machined face and the studs are in the stack-up: the raised
-  spigot ring and the turning output hub's end stand well under the plate whatever their
-  heights, and the nuts' height is set, not bought (round 2: no stock metal spacer for M8
-  is 13 mm across or less, what clears the 70 mm spigot on the 85 mm PCD; a nut's height
-  also takes up the clone's unmeasured hub, so no second order of spacers). The gearbox's
-  stock output shaft (25 mm, its collar on the hub's end, keyed 8 x 7 ending 5 short of its
-  end, an M10 end tap; 53.5 past the hub's end) reaches into the stack: the crank block's
-  keyed plates on its key's straight flanks.
+* **The riser** (:func:`riser_for`, design review round 3's M2): a clamped stack on the
+  gearbox's machined output face. Four class 8.8 M8 studs threaded into the face
+  (:data:`RISER_STUD`); a ring of the crank sheet on the face, centred on its raised spigot
+  ring (:data:`RISER_RING`); a steel sleeve on each stud (:data:`RISER_SLEEVE`, 12 mm across:
+  1.5 mm off the 70 mm spigot on the 85 mm PCD); the go/no-go's shims over the sleeves
+  (:data:`RISER_SHIM`); the outer plate; a thin nut over it on each stud. Clamped, friction
+  carries the gearbox's side load and turn, the sleeves the columns' bending, the studs
+  their tension (``cradle_drive.riser_rating``; round 2's studs had carried it all in
+  bending over 18.7 mm of printed setting sleeve). The shims take up the clone's unmeasured
+  hub. The gearbox's stock output shaft (25 mm, its collar on the hub's end, keyed 8 x 7
+  ending 5 short of its end, an M10 end tap; 53.5 past the hub's end) reaches into the
+  stack: the crank block's keyed plates on its key's straight flanks.
 * **The crank block** (the arm): laser-cut 0.125 in 6061-T6 plates (the crank sheet), each
   the arm's whole outline, :data:`BLOCK_PLATES` of them stacked on the shaft: the lowest
   :data:`KEYED_PLATES` keyed over the key (cut :data:`KEY_SLOT` under its width and filed
@@ -44,8 +45,10 @@ self-locking worm gear reducer instead of a servo:
   shaft to a flange and a journal; a laser-cut 6061 seat ring (:data:`SEAT_RING`) sits keyed
   on the flange's hex; the arm turns on the journal, three steel ball-nose spring plungers
   (:data:`PLUNGER`) in its boss pressed onto the ring's seats (holes, each ball on a hole's
-  edge: a 30° seat), so the arm slips round the tube past the slip it is set to on the bench:
-  1.3 x the start the user measures with the heaviest bottle (:data:`CLUTCH_SET`). The arm's
+  edge: a 30° seat), so the arm slips round the tube past the slip it is set to: 1.3 x the
+  start the user measures with the heaviest bottle in the built cradle, under a ceiling
+  (:data:`CLUTCH_SET`, :func:`clutch_ceiling`), checked on a printed stub
+  (:func:`check_stub`); the plungers start from a felt stop (:data:`SET_BACK`). The arm's
   throw, grip and reach are the linkage's (:func:`handle_spec`): B a light-load crank, A a
   heavy-load one (MIL-STD-1472H Figure 13), its grip a printed sleeve spinning on an M8 bolt
   through the arm (a nyloc nut).
@@ -106,6 +109,12 @@ HAND_RPM = 100.0
 "Rate Below 100 RPM" column, which both the light-load (B) and heavy-load (A) cranks are
 sized in. The clutch's cap takes the worm's efficiency here (:meth:`WormBox.eta_at`): a
 cradle blocked while the handle turns stops the worm at the speed it was turning."""
+HAND_FAST_RPM = 200.0
+"""A hand's fast spin (input rpm): the empty cradle cranked back to rest at about 4 N on the
+grip (MIL-STD-1472H Figure 13's light-load "Rate Above 100 RPM" row). The worm is more
+efficient there, so the same slip puts more on the crank: the report gives the cap there
+(``cradle_drive``'s ``fast_cap_nm``, design review round 3's M1), which the rating doesn't
+take (the rated cap is at :data:`HAND_RPM`)."""
 RUNIN_LOSS = 0.12
 """How much lower a new worm gear's efficiency is than its catalogue's run-in figure: SEW-
 EURODRIVE's run-in table, "1-start approx. 12%" (MOVIONE project planning, "Run-in phase",
@@ -308,9 +317,11 @@ PIN_WASHER = "m6_washer_wide"   # over the crankpin's end, holding the rod on
 PIN_WASHER_T = 1.6
 M5 = screw("bhcs", "5")         # ISO 7380 M5 button heads (the stand's)
 M6 = screw("bhcs", "6")         # ISO 7380 M6 button heads: the crankpin's, the tie
-SCREW_NM = 5.0                  # the drive's M6 A2-70 screws into steel (the tie, the crankpin):
-#                                 TR Fastenings' 5.9 N·m at a friction of 0.1 (its stainless
-#                                 table, rendered 2026-10-14), uncured threadlocker the lubricant
+SCREW_NM = 4.0                  # the drive's M6 A2-70 ISO 7380 button heads into steel (the tie,
+#                                 the crankpin): TR Fastenings' maximum for ISO 7380 in A2-70,
+#                                 4 N·m at M6 (its socket screws' torque table, rendered
+#                                 2026-10-20: ISO 7380-1's reduced loadability; design review
+#                                 round 3's m1: 5 N·m had been over it)
 HEAD_LAYER_T = 7.0              # the layer over the outer plate: the riser's thin nuts and studs'
 #                                 ends, the crankpin's screw head and the tie's nut under the
 #                                 block, with room to run
@@ -337,34 +348,66 @@ PLATE_UNDER = 0.127             # a 0.125 in 6061 plate's thinnest under its nom
 ARM_BORE_FIT = 0.25             # the arm plates' bore over the h6 shaft: over a laser's
 #                                 +-0.13 mm (the key drives; the seat plate's end screw and the
 #                                 shaft's end hold the block along the axis)
-RISER_NUT = (13.0, 6.5, "m8_nut")
-"""The riser's nut under the outer plate on each stud (DIN 934 M8: across flats, height,
-catalog key): run down onto its printed setting sleeve, the plate onto it."""
 RISER_THIN = (13.0, 4.0, "m8_thin_nut")
 """The riser's thin nut over the outer plate on each stud (DIN 439 M8, in the head layer):
-the plate clamped between it and the nut under it, a 13 mm wrench on each."""
-RISER_NUT_NM = 10.0             # the thin nut's torque: A2-70 M8, TR Fastenings' 14.5 N·m at a
-#                                 friction of 0.1, a thin nut's two-thirds
-RISER_STUD = (8.0, (30, 35, 40, 45, 50))
-"""The riser's studs: M8 x 1.25 socket set screws, 18-8 (``m8_set_screw_<L>``), threaded into
-the face's tapped holes with threadlocker: their thread and stock lengths."""
-RISER_SLEEVE = (13.0, 8.6)
-"""The printed setting sleeve on each stud, face to nut (OD, bore): it sets the four nuts at
-one height and carries nothing once the plate is clamped (so its PETG can't creep out of a
-preload: round 1's M2). 13 mm across keeps 1 mm off the 70 mm spigot on the 85 mm PCD and
-1 mm inside the face's 100 mm boss (round 2's m3)."""
+the plate, the shims, the sleeve and the ring clamped between it and the gearbox's face, a 13
+mm wrench on it."""
+RISER_NUT_NM = 10.0             # the thin nut's torque: TR Fastenings' A2-70 M8 14.5 N·m at a
+#                                 friction of 0.1, a thin nut's two-thirds (its stainless table,
+#                                 rendered 2026-10-14); the stud is class 8.8, the nut the limit
+RISER_NUT_K = (0.15, 0.2)       # the nut factor's band (threadlocker 243 wet on zinc and 18-8):
+#                                 the clamp T / (K d) at its two ends (the friction rated on the
+#                                 low clamp, the stud on the high)
+RISER_STUD = (8.0, 45.0, "m8_stud_88_45")
+"""The riser's studs (design review round 3's M2: the 18-8 set screws had carried the
+gearbox in bending, and a set screw's class is for a headless screw not loaded in tension, TR
+Fastenings' note under its socket screws' torque table): M8 x 1.25 class 8.8 studs, four cut
+45 mm long from one 200 mm zinc-plated DIN 976 threaded rod (McMaster 99067A279), each
+threaded into one of the face's tapped holes until it stops (threadlocker 243); its end filed
+to at most :data:`STUD_PAST_MAX` over its thin nut (thread, length, catalog key)."""
+STUD_PAST_MAX = 0.8             # a stud's end over its thin nut at most (the guide files it): the
+#                                 crank block's lowest plate passes over the four ends (design
+#                                 review round 3's m9: 1.45 mm drawn, under the stack's tolerances)
+STUD_PROOF_MPA = 580.0          # class 8.8's proof stress under M16 (ISO 898-1)
+RISER_RING = 0.3
+"""The riser's ring (design review round 3's M2): one plate of the crank sheet (0.125 in
+6061) on the gearbox's machined face, its bore this much over the face's spigot ring (it
+centres on it: the gearbox's side load goes into the ring through the spigot, not through the
+studs), out to the face's boss, a hole on each stud (:data:`RISER_RING_HOLE` over it); the
+sleeves stand on it, so the face takes their clamp over the whole ring."""
+RISER_RING_HOLE = 0.3           # its holes over the studs' thread (8.3 mm: the web to its bore
+#                                 stays over a thickness, SendCutSend's least; a stud that won't
+#                                 pass, the hole filed)
+RISER_SLEEVE = (12.0, 8.0, 20.0, "m8_sleeve_12x20")
+"""The riser's sleeve on each stud, from the ring up to the shims under the plate (OD, bore,
+length, catalog key): 304 stainless, a snug 8.0 mm bore on the M8 stud (Harfington's 8 x 12 x
+20 mm spacers, five to a pack). 12 mm across keeps 1.5 mm off the 70 mm spigot ring on the 85
+mm PCD and 1.5 mm inside the face's 100 mm boss. Clamped, the plate, the shims, the sleeves
+and the ring are one stack on the face: friction carries the gearbox's side load and its turn,
+the sleeve the column's bending, the stud only its tension (round 2's printed sleeves had
+carried nothing, the studs all of it in bending over 18.7 mm)."""
+RISER_SHIM = (14.0, 8.0, 0.5, "shim_8x14x0p5", 20)
+"""The go/no-go's shims over each sleeve, under the plate (OD, bore, thickness, catalog key,
+bought): 0.5 mm 304 flat shims, the drawn stack the riser's height less the ring and the
+sleeve; four DIN 125 M8 washers (1.6 mm, :data:`RISER_COARSE`) as coarse ones."""
+RISER_COARSE = ("m8_washer", 4)
+RISER_SHIMS_RANGE = (1.0, 3.0)  # the drawn shim stack's least and most (mm): the go/no-go moves
+#                                 the shaft's end a millimetre either way with the shims bought
 RISER_HEAD_R = RISER_THIN[0] / math.sqrt(3)   # its corners' radius
-RISER_CLEAR = 3.0               # the nuts hold the plate this far over the face's raised spigot
+RISER_CLEAR = 3.0               # the riser holds the plate this far over the face's raised spigot
 #                                 ring and the turning hub's end at least (neither measured)
 STUD_IN = 1.0                   # a stud's least engagement in the face, in diameters
 SEAT_LOW = 0.7                  # how far under the seat plate's drawn place the shaft's end may
 #                                 stand (the block on it sits that much low: the head layer has
-#                                 the room); the go/no-go's window, the riser's nuts set it
-END_SCREW_NM = 20.0             # the shaft's end screw: an M10 A2-70 button head through the seat
-#                                 plate into the shaft's M10 end tap, threadlocker
-#                                 (243): TR Fastenings' A2-70 M10 30 N·m at a friction of 0.1, its
-#                                 two-thirds (round 2's m1: 8 N·m had been over an 18-8 M6's
-#                                 5.9); it only holds the block on the shaft's end
+#                                 the room); the go/no-go's window, the riser's shims set it
+PLATE_OVER = 0.152              # a 0.125 in 6061 plate's thickest over its nominal (SendCutSend's
+#                                 table, +0.006 in): the plates under the seat lower the block
+END_SCREW_NM = 15.0             # the shaft's end screw: an M10 A2-70 ISO 7380 button head through
+#                                 the seat plate into the shaft's M10 end tap, threadlocker
+#                                 (243): TR Fastenings' maximum for ISO 7380 in A2-70 at M10
+#                                 (its socket screws' torque table, rendered 2026-10-20; design
+#                                 review round 3's m1: 20 N·m had been over it); it only holds
+#                                 the block on the shaft's end
 LIGHT_LOAD_N = 22.0
 """The grip force bar (N): MIL-STD-1472H's crank (§5.1.4.1.2.4.7, Figure 13 "Cranks", p. 76:
 "Light Loads <22 N (5 lb); Wrist & Finger Movement", a 38 to 125 mm turning radius below 100
@@ -448,15 +491,26 @@ the clutch's cap at a jam SF under 1.3 (``cradle_report``'s ``jam_capped``,
 gearbox's far face and the use limits keep everything off the cradle in (design review round
 2's M-4)."""
 CLUTCH_SET = 1.3
-"""The slip clutch is set on the bench to slip at this times the start the user measures (the
-user's call of 2026-10-14, design review round 2's B-1): the heaviest bottle they have, at its
-hardest start, a luggage scale on the grip; the slip at the grip then 1.3 x that reading. It
-depends on neither efficiency guess (the scale reads the worm as it is)."""
+"""The slip clutch is set to slip at this times the start the user measures (the user's call
+of 2026-10-14, design review round 2's B-1): the heaviest bottle they have, at its hardest
+start, a luggage scale on the grip; the slip at the grip then 1.3 x that reading, but never
+over the cradle's ceiling (:func:`clutch_ceiling`: design review round 3's M1). It depends on
+neither efficiency guess (the scale reads the worm as it is)."""
 CLUTCH_CHECK = 0.08
-"""The bench check's window: three pulls in a row within this of the target (a luggage
-scale's tenth of a kilogram is 3.5 % of B's 28 N). The check is part of every set-up and
-follows any greasing (the guide): between checks the cap holds at the window's top. Unchecked,
-the friction can carry the slip far further (:func:`clutch_drift`)."""
+"""The check's window: three pulls in a row within this of the target (a luggage scale's
+tenth of a kilogram is 3.5 % of B's 28 N), none over the ceiling. The check (on its printed
+stub in the riser locator's pocket: no vise) is the last build step, part of every set-up and
+follows any greasing, a hot car, and a month or ten pours standing set up (the guide): between
+checks the cap holds at the ceiling. Unchecked, the friction can carry the slip far further
+(:func:`clutch_drift`)."""
+SET_BACK = 0.5
+"""The plungers' starting setting (design review round 3's B1: "flush with its jam nut" had
+pushed each 1.98 mm, its nose onto the seat ring with its ball still in its hole: no clutch):
+with the arm at a click, each plunger turned in until it stops (its nose on the ring, wherever
+its ball and its nuts are), then out this many turns. Drawn so."""
+NEAR_STOP = 0.125
+"""The nearest a plunger is ever set to that stop (turns): its ball still climbs out of its
+hole with the code's 0.2 mm to spare (:func:`plunger_setting`)."""
 PLUNGER = {"thread": 12.7, "length": 26.67, "ball_d": 7.14, "travel": 1.83,
            "force": (26.7, 53.4), "key": "spring_plunger_half13", "pitch": 25.4 / 13.0}
 """The clutch's ball-nose spring plungers (McMaster 5901A17, the 1/2"-13 listing rendered
@@ -486,6 +540,11 @@ M16: bore, OD, thickness, catalog key), greased: the plungers' push on the cap r
 friction a few per cent of the slip (:func:`clutch_slip`)."""
 JAM_NUT = (19.05, 7.94, "half13_jam_nut")   # each plunger's jam nut over the boss (AF, h, key)
 NUT_HALF = (19.05, 11.11, "half13_nut")     # its hex nut pressed into the boss (AF, h, key)
+NUT_POCKET = 0.15               # that nut's hex pocket over its across-flats: pressed in from the
+#                                 boss's inner face, its floor toward the boss's outer face takes
+#                                 the spring's push and the jam nut's clamp (design review round
+#                                 3's m2: 0.3 mm over, open toward the push, it had held by
+#                                 friction alone)
 GREASED_MU = (0.09, 0.19)
 """The clutch's contacts' friction, greased (both the ball on the 6061 seat's edge and the
 ball in its steel body): RoyMech's "Steel (Mild) / Steel (Mild)" greasy sliding 0.09-0.19
@@ -497,8 +556,12 @@ DRY_MU = ((0.47, 0.61), (0.42, 0.78))
 """Dry: the ball on 6061 (RoyMech's "Aluminum / Mild Steel" 0.47 sliding, 0.61 static) and in
 its steel body (0.42 sliding; static 0.74 mild, 0.78 hard): where the grease has gone."""
 SEAT_WEAR = 0.1                 # the seat holes' edge rounded this far (mm) before the yearly
-#                                 check replaces the ring (the guide: a bright land wider than
-#                                 a millimetre round a hole's edge)
+#                                 look replaces the ring (the guide: any bright land you can
+#                                 see round a hole's edge; design review round 3's m4: "wider
+#                                 than a millimetre" had been ten times this). The balls ride
+#                                 the ring's laser entry face, its dross face on the flange
+JOURNAL_MU = (0.1, 0.3)         # the arm's PETG boss on the hub's PETG journal: greased (the
+#                                 guide), and dry: the grip's couple on it (journal_share)
 GRIP_NUT = (13.0, 8.0, "m8_nyloc_nut")      # the grip bolt's nyloc on the arm's inner face
 GRIP_WASHER = "m8_washer"                   # a DIN 125 washer each side of the grip and the arm
 
@@ -570,18 +633,68 @@ def plunger_force(slip_nm: float, mu: float) -> float:
     return (lo + hi) / 2
 
 
-def clutch(start_nm: float, grip_r: float, box: WormBox) -> dict:
+def plunger_setting() -> dict:
+    """The plungers' settings (mm of push, each ball's spring pressed in from its free length,
+    and N): the felt stop (the nose on the ring, the ball seated: push ``travel - climb``,
+    where the ball can't climb out of its hole at all: the lock), the start the guide sets
+    (:data:`SET_BACK` turns out from it, drawn), the nearest the guide allows
+    (:data:`NEAR_STOP` turns out), each one's force, and the room left to climb at each
+    (``travel - push - climb``: the code's least 0.2 mm). Whatever the nuts' heights: the stop
+    is felt, not measured."""
+    big_r, a = PLUNGER["ball_d"] / 2, CLUTCH["seat_d"] / 2
+    climb = big_r - math.sqrt(big_r ** 2 - a ** 2)
+    travel, pitch = PLUNGER["travel"], PLUNGER["pitch"]
+    lo, hi = PLUNGER["force"]
+    rate = (hi - lo) / travel
+    stop = travel - climb
+    out = {"climb_mm": round(climb, 3), "pitch_mm": round(pitch, 3),
+           "stop_push_mm": round(stop, 3), "rate_n_mm": round(rate, 2)}
+    for tag, turns in (("start", SET_BACK), ("limit", NEAR_STOP)):
+        push = stop - turns * pitch
+        out[f"{tag}_push_mm"] = round(push, 3)
+        out[f"{tag}_n"] = round(lo + rate * push, 1)
+        out[f"{tag}_room_mm"] = round(travel - push - climb, 3)
+    return out
+
+
+def plunger_reach(slip_nm: float) -> dict:
+    """Whether a plunger set between the guide's start and its limit (:func:`plunger_setting`)
+    reaches ``slip_nm`` (N·m at the input) at the greased friction's either end with its
+    spring 10 % weak, nominal or 10 % strong (no maker states a ball plunger's force
+    tolerance: design review round 3's m3): the force needed and the force at the limit, per
+    case; ``under``: the cases it can't reach (the slip then stays under the target, the safe
+    side: the guide says to leave it there if it still clears 1.1 x the start)."""
+    s = plunger_setting()
+    need = {f"{mu:g}": round(plunger_force(slip_nm, mu), 1) for mu in GREASED_MU}
+    at = {f"{k:g}": round(k * s["limit_n"], 1) for k in (0.9, 1.0, 1.1)}
+    under = [[m, k] for m, f in need.items() for k, g in at.items() if f > g + 1e-9]
+    return {"need_n": need, "limit_n": at, "under": under}
+
+
+def clutch_ceiling(linkage: str) -> float:
+    """Cradle ``linkage``'s ceiling (N·m at the input): the most any of the check's pulls may
+    read, whatever the start measured: the drawn 6 L's window top (:data:`CLUTCH_SET` x
+    (1 + :data:`CLUTCH_CHECK`) x its run-in start, :data:`DESIGN_START_NM`). A new box's start
+    reads up to :data:`RUNIN_LOSS` higher and its user can't know it; set on it, 1.3 x had let
+    the box run in under a slip 14 % over the rated (design review round 3's M1): under the
+    ceiling the cap holds whatever the box's run-in state or the reading."""
+    return CLUTCH_SET * (1 + CLUTCH_CHECK) * DESIGN_START_NM[linkage]
+
+
+def clutch(start_nm: float, grip_r: float, box: WormBox,
+           ceiling_nm: float | None = None) -> dict:
     """The hand crank's slip clutch for a cradle whose worst starting turn takes
     ``start_nm`` N·m at the input (a sealed full 6 L at the catalogue's static efficiency; the
-    user measures their own): set to :data:`CLUTCH_SET` x it, held within
-    :data:`CLUTCH_CHECK` by the bench check; the grip's forces at ``grip_r`` mm; the most it
-    puts on the crank (``crank_cap_nm``, ``config.PRODUCT_CLUTCH_NM``): the check's top
-    through the worm at the hand's fastest (:data:`HAND_RPM`, :meth:`WormBox.eta_at`). As the
-    user sets it on a measurement, the cap is the measured bottle's peak x 1.3 x the window
-    x the worm's efficiency at speed over its static one, whatever the box's (run in or new)
-    efficiency. The plungers' force where it slips, set, for the greased friction's either
-    end (``plunger_n``, within :data:`PLUNGER`'s)."""
+    user measures their own): set to :data:`CLUTCH_SET` x it, but its window's top never over
+    ``ceiling_nm`` (:func:`clutch_ceiling`; ``None``: no ceiling), held within
+    :data:`CLUTCH_CHECK` by the check; the grip's forces at ``grip_r`` mm; the most it puts on
+    the crank (``crank_cap_nm``, ``config.PRODUCT_CLUTCH_NM``): the check's top through the
+    worm at the hand's fastest (:data:`HAND_RPM`, :meth:`WormBox.eta_at`), and at a fast spin
+    (``fast_cap_nm``, :data:`HAND_FAST_RPM`). The plungers' force where it slips, set, for the
+    greased friction's either end (``plunger_n``, within :data:`PLUNGER`'s)."""
     set_nm = CLUTCH_SET * start_nm
+    if ceiling_nm is not None:
+        set_nm = min(set_nm, ceiling_nm / (1 + CLUTCH_CHECK))
     lo, hi = set_nm * (1 - CLUTCH_CHECK), set_nm * (1 + CLUTCH_CHECK)
     eta = box.eta_at(HAND_RPM)
     cap = hi * box.ratio * eta
@@ -590,8 +703,34 @@ def clutch(start_nm: float, grip_r: float, box: WormBox) -> dict:
     return {"set_nm": round(set_nm, 3), "lo_nm": round(lo, 3), "hi_nm": round(hi, 3),
             "set_grip_n": round(set_nm * 1000.0 / grip_r, 1),
             "start_grip_n": round(start_nm * 1000.0 / grip_r, 1),
+            "hi_grip_n": round(hi * 1000.0 / grip_r, 1),
+            "margin": round(lo / max(start_nm, 1e-9), 2),
             "eta_hand": eta, "crank_cap_nm": round(cap, 1),
+            "fast_cap_nm": round(hi * box.ratio * box.eta_at(HAND_FAST_RPM), 1),
             "plunger_n": sorted(f_at)}
+
+
+def journal_share(spec: HandleSpec) -> dict:
+    """What the grip's offset adds to the slip (an estimate: design review round 3's m6): the
+    hand's pull at the grip, ``e`` mm out along the axis from the middle of the arm's boss,
+    tilts the arm on the hub's journal (:data:`CLUTCH`'s ``boss_t`` long, ``journal_r``); the
+    journal's two ends take the couple, ``2 F e / L`` together, its friction (:data:`JOURNAL_MU`)
+    at the journal's radius resists the turn. As a fraction of the slip at the grip's middle
+    (where the check pulls), its inner end and its outer end, greased and dry; and the outer
+    end over the middle (what a hand there adds over the checked slip)."""
+    cl = CLUTCH
+    grip_len = spec.grip[1]
+    boss_mid = spec.reach - cl["boss_t"] / 2
+    w_t = 1.6                                       # (the grip's washer: _handle's)
+    mid = spec.reach + w_t + 0.2 + grip_len / 2 - boss_mid
+    out = {"e_mid_mm": round(mid, 1)}
+    for mu in JOURNAL_MU:
+        k = 2 * mu * cl["journal_r"] / (cl["boss_t"] * spec.throw)
+        at = {p: k * max(e, cl["boss_t"] / 2) for p, e in
+              (("inner", mid - grip_len / 2), ("mid", mid), ("outer", mid + grip_len / 2))}
+        out[f"{mu:g}"] = {p: round(v, 3) for p, v in at.items()}
+        out[f"{mu:g}"]["outer_over_mid"] = round((1 + at["outer"]) / (1 + at["mid"]), 3)
+    return out
 
 
 DESIGN_START_NM: dict[str, float] = {"decanter_rcm": 2.712, "decanter_hinge": 2.856}
@@ -602,9 +741,39 @@ expected reading, ``config.PRODUCT_CLUTCH_NM``)."""
 
 
 def drawn_clutch(linkage: str) -> dict:
-    """:func:`clutch` for cradle ``linkage`` as drawn (its 6 L's start, its crank, the box)."""
+    """:func:`clutch` for cradle ``linkage`` as drawn (its 6 L's start, its crank, the box,
+    under its ceiling)."""
     spec = HANDLES.get(linkage, HANDLES[""])
-    return clutch(DESIGN_START_NM[linkage], spec.throw, NRV050)
+    return clutch(DESIGN_START_NM[linkage], spec.throw, NRV050, clutch_ceiling(linkage))
+
+
+CHECK_STUB = (100.0, 30.0, 10.0, 32.0)
+"""The clutch's check stub (design review round 3's stand and use m12: the check had needed a
+bench vise): its bar's length, width and thickness, its post's height (mm)."""
+
+
+def check_stub(box: WormBox = NRV050) -> Shape3D:
+    """The clutch's check stub, printed in PETG (a tool: ``build`` writes its STL and the
+    BOM lists it): a bar that drops into the riser locator's 101 mm square pocket (100 x 30
+    mm: it turns under 2° before its corners meet the pocket's walls), a post standing up
+    from it the size of the gearbox's input shaft with its key printed on it, for the hand
+    crank's hub and thumb screw. The check pulls the grip with the hub held: at the ceiling's
+    4 N·m the bar's ends push about 40 N on the walls (about 4 MPa in the bar at the post,
+    10 MPa of bearing on the key), the board held down by the cradle on it."""
+    length, width, thick, tall = CHECK_STUB
+    key_w, key_hub = box.input_key
+    r = box.input_d / 2 - 0.05                      # (the hub's bore is reamed 14.1)
+    top = box.input_d / 2 + key_hub - 0.2           # the key under the hub's keyway's top
+    bar = Box(length, width, thick).moved(Location((0.0, 0.0, thick / 2)))
+    post = Cylinder(r, tall).moved(Location((0.0, 0.0, thick + tall / 2)))
+    ridge = Box(key_w - 0.2, top, tall).moved(Location((0.0, top / 2, thick + tall / 2)))
+    return union([bar, post, ridge])
+
+
+def _turns(turns: float) -> str:
+    """A part of a plunger's turn in words (the guide's)."""
+    return {0.5: "half a turn", 0.25: "a quarter of a turn",
+            0.125: "an eighth of a turn"}.get(turns, f"{turns:g} of a turn")
 
 
 def _drawn_start(view, spec: HandleSpec) -> float:
@@ -619,11 +788,12 @@ def _drawn_start(view, spec: HandleSpec) -> float:
 class Riser:
     """The riser: how far the gearbox's machined output face stands under the outer plate's
     outer face (``height``) and where it and its output shaft then are (side z, the drawn
-    housing's): the hub's end, the key's span and the shaft's end; the studs' stock length and
-    how far each goes into the face; the printed setting sleeve's length (face to nut); the
-    crank block's seat plate's underside (its index ``seat_k``) on that end, and how far under
-    it the end may stand (``low``: the keyed plates still on the key's straight flanks, the
-    block that much low)."""
+    housing's): the hub's end, the key's span and the shaft's end; the stack on the face (the
+    ring ``ring_t`` thick, the sleeve, the drawn shims ``shims`` thick, the plate); the studs'
+    cut length, how far each goes into the face, how far its end stands over its thin nut
+    once filed (``past``) and its drawn length; the crank block's seat plate's underside (its
+    index ``seat_k``) on that end, and how far under it the end may stand (``low``: the keyed
+    plates still on the key's straight flanks, the block that much low)."""
 
     height: float
     face: float
@@ -632,10 +802,19 @@ class Riser:
     shaft_end: float
     stud: float
     engage: float
-    sleeve: float
+    past: float
+    ring_t: float
+    shims: float
     seat: float
     seat_k: int
     low: float
+    over: float = 0.0           # the plate's outer face to its thin nut's top
+
+    @property
+    def stud_drawn(self) -> float:
+        """The stud's drawn length: in the face, up through the stack and its thin nut, and
+        its end :attr:`past` over the nut (filed so)."""
+        return self.engage + self.height + self.over + self.past
 
 
 def end_screw(box: WormBox):
@@ -644,18 +823,21 @@ def end_screw(box: WormBox):
 
 
 def riser_for(z0: float, a0: float, t: float, box: WormBox = NRV050,
-              t_plate: float = 4.75) -> Riser:
+              t_plate: float = 4.75, t_ring: float = 3.175) -> Riser:
     """The riser that puts the shaft's end under the crank block's seat plate (the block's
-    plates ``t`` thick from ``a0``, side z; ``z0`` the outer plate's outer face): the seat the
-    highest plate whose end screw's head stands no higher over the block's top than the tie's
-    M6 head, with the key's straight flanks (its keyseat is end-milled: its ends are round,
-    half its width each) still over the keyed plates' whole height with the shaft's end
-    :data:`SEAT_LOW` under it; the shaft's end drawn at the seat; the face under it by the
-    shaft's and the hub's lengths (the riser's nuts set it: a hub prouder or lower than
-    drawn is turned out); the studs the
-    shortest stock length that goes at least :data:`STUD_IN` diameters into the face, short of
-    its tapped depth, and through the plate and the thin nut. :class:`ConstructionError` if
-    none does."""
+    plates ``t`` thick from ``a0``, side z; ``z0`` the outer plate's outer face, ``t_plate``
+    its thickness; ``t_ring`` the ring's, the crank sheet): the seat the highest plate whose
+    end screw's head stands no higher over the block's top than the tie's M6 head, with the
+    key's straight flanks (its keyseat is end-milled: its ends are round, half its width
+    each) still over the keyed plates' whole height with the shaft's end :data:`SEAT_LOW`
+    under it; the shaft's end drawn at the seat; the face under it by the shaft's and the
+    hub's lengths; on the face the ring, the sleeve and the shims up to the plate (the
+    shims set it: a hub prouder or lower than drawn is shimmed out, :data:`RISER_SHIMS_RANGE`
+    either way); each stud threaded :data:`STUD_IN` diameters or more into the face, short of
+    its tapped depth, up through the stack and its thin nut, its end filed to at most
+    :data:`STUD_PAST_MAX` over the nut, so the crank block's lowest plate clears it with the
+    go/no-go's window and the plates under the seat at their thickest (design review round
+    3's m9). :class:`ConstructionError` if any of it doesn't hold."""
     key_w, _, key_len = box.shaft_key
     a1 = a0 + KEYED_PLATES * t
     lo = a1 - 0.2 + box.key_short + key_w / 2
@@ -677,23 +859,29 @@ def riser_for(z0: float, a0: float, t: float, box: WormBox = NRV050,
     if height - max(box.spigot_h, box.hub_out) < RISER_CLEAR:
         raise ConstructionError(f"the gearbox's face {height:.1f} mm under the plate leaves "
                                 f"under {RISER_CLEAR:g} mm over its spigot ring")
-    sleeve = height - RISER_NUT[1]
-    d, lengths = RISER_STUD
-    over = z0 + t_plate + RISER_THIN[1] - face        # the face to the thin nut's top
-    stud = engage = None
-    for L in lengths:
-        e = min(box.face_depth - 0.5, L - over - 0.5)
-        past = L - over - e
-        if e >= STUD_IN * d - 1e-9 and 0.5 - 1e-9 <= past <= HEAD_LAYER_T - RISER_THIN[1] - 0.5:
-            stud, engage = float(L), round(e, 2)
-            break
-    if stud is None or engage is None:
-        raise ConstructionError(f"no stock M{d:g} stud goes {STUD_IN * d:g} mm into the face's "
-                                f"{box.face_depth:g} mm thread and {over:.1f} mm up through the "
-                                "plate and its thin nut")
+    shims = height - t_ring - RISER_SLEEVE[2]
+    if not RISER_SHIMS_RANGE[0] - 1e-9 <= shims <= RISER_SHIMS_RANGE[1] + 1e-9:
+        raise ConstructionError(f"the riser's {height:.2f} mm leaves {shims:.2f} mm of shims "
+                                f"over its ring and {RISER_SLEEVE[2]:g} mm sleeve, not "
+                                f"{RISER_SHIMS_RANGE[0]:g}-{RISER_SHIMS_RANGE[1]:g}")
+    d, length, _ = RISER_STUD
+    thin = RISER_THIN[1]
+    over = t_plate + thin                               # the plate's outer face to the nut's top
+    engage = box.face_depth - 0.5
+    spare = length - engage - height - over             # its end over the nut, as cut
+    if engage < STUD_IN * d - 1e-9 or spare < -1e-9:
+        raise ConstructionError(f"a {length:g} mm M{d:g} stud {engage:g} mm into the face "
+                                f"doesn't reach its thin nut's top over the {height:.1f} mm "
+                                "riser and the plate")
+    past = min(STUD_PAST_MAX, spare)
+    room = (HEAD_LAYER_T - thin - STUD_PAST_MAX - SEAT_LOW - seat_k * PLATE_OVER)
+    if room < 0.5 - 1e-9:
+        raise ConstructionError(f"the crank block's lowest plate passes {room:.2f} mm over the "
+                                "riser's studs' ends at the stack's worst, under 0.5")
     return Riser(round(height, 3), face, hub, (end - box.key_short - key_len,
-                                               end - box.key_short), end, stud, engage,
-                 round(sleeve, 2), seat, seat_k, round(min(SEAT_LOW, seat - lo), 3))
+                                               end - box.key_short), end, float(length),
+                 round(engage, 2), round(past, 3), t_ring, round(shims, 3), seat, seat_k,
+                 round(min(SEAT_LOW, seat - lo), 3), over)
 
 
 def arm_z(z0: float, t_frame: float, t_arm: float) -> tuple[float, float]:
@@ -767,7 +955,7 @@ class HandCrank(Group):
         z0 = L.z(0)[0]
         t = ctx.sheet_t("crank")
         a0, a1 = arm_z(z0, ctx.sheet_t("frame"), KEYED_PLATES * t)
-        riser = riser_for(z0, a0, t, self.box, ctx.sheet_t("frame"))
+        riser = riser_for(z0, a0, t, self.box, ctx.sheet_t("frame"), t)
         return a0, a1, riser, a0 + BLOCK_PLATES * t
 
     # -- claims -----------------------------------------------------------------------
@@ -970,17 +1158,25 @@ class HandCrank(Group):
         pad = box.pcd / 2 + hole / 2 + 2 * ctx.sheet_t("frame") + 0.5
         out.pad(FRAME_OUTER, tuple(o), tuple(o), pad)
 
-        # the riser: a stud in each of the face's tapped holes, its printed setting sleeve and
-        # nut under the plate, its thin nut over it; the gearbox (outboard: the frame's)
-        sl_od, sl_bore = RISER_SLEEVE
+        # the riser, a clamped stack on the gearbox's face (design review round 3's M2): the
+        # ring centred on the spigot, a steel sleeve on each stud, the go/no-go's shims, the
+        # plate, a thin nut over it on each stud; the gearbox (outboard: the frame's)
+        sl_od, sl_bore, sl_len, sl_key = RISER_SLEEVE
         if box.pcd / 2 - sl_od / 2 < box.spigot_d / 2 + 1.0 - 1e-9 or \
                 box.pcd / 2 + sl_od / 2 > box.face_d / 2 - 1.0 + 1e-9:
-            raise ConstructionError(f"a {sl_od:g} mm setting sleeve doesn't sit on the face "
-                                    f"between its {box.spigot_d:g} mm spigot ring and its "
+            raise ConstructionError(f"a {sl_od:g} mm sleeve doesn't sit on the face between "
+                                    f"its {box.spigot_d:g} mm spigot ring and its "
                                     f"{box.face_d:g} mm boss's edge")
-        nut_af, nut_h, nut_key = RISER_NUT
         thin_af, thin_h, thin_key = RISER_THIN
-        d_stud = RISER_STUD[0]
+        d_stud, _, stud_key = RISER_STUD
+        ring_bore = box.spigot_d + RISER_RING
+        ring_hole = box.face_thread + RISER_RING_HOLE
+        t_ring = riser.ring_t
+        web = box.pcd / 2 - ring_hole / 2 - ring_bore / 2
+        if web < t_ring - 1e-9 or box.face_d / 2 - box.pcd / 2 - ring_hole / 2 < t_ring - 1e-9:
+            raise ConstructionError(f"the riser's ring leaves {web:.2f} mm round its studs' "
+                                    f"holes, under its {t_ring:g} mm thickness")
+        shim_od, shim_bore = RISER_SHIM[0], RISER_SHIM[1]
 
         def hexnut(xy, af, z_lo, z_hi):
             from build123d import RegularPolygon, extrude
@@ -989,20 +1185,33 @@ class HandCrank(Group):
             prism = prism.moved(Location((float(xy[0]), float(xy[1]), z_lo)))
             return difference(prism, disc(xy, d_stud / 2, z_lo - 1, z_hi + 1))
 
+        out.bodies.append(hardware("riser_ring", difference(
+            ring(tuple(o), box.face_d, ring_bore, face, face + t_ring),
+            *[disc(xy, ring_hole / 2, face - 1, face + t_ring + 1) for xy in screws]),
+            frame, fab="laser", sheet=ctx.sheet("crank"), color="#9aa3ad"))
+        s0 = face + t_ring + sl_len                     # the sleeve's top, the shims'
         for i, xy in enumerate(screws):
             out.bodies.append(hardware(f"riser_stud{i}", disc(xy, 0.97 * d_stud / 2,
                                                               face - riser.engage,
-                                                              face - riser.engage + riser.stud),
-                                       frame, fab="purchased",
-                                       bom_key=f"m8_set_screw_{riser.stud:g}", color=STEEL))
-            out.bodies.append(hardware(f"riser_sleeve{i}", ring(xy, sl_od, sl_bore, face,
-                                                                z0 - nut_h),
-                                       frame, fab="printed", color=PRINT_COLOR))
-            out.bodies.append(hardware(f"riser_nut{i}", hexnut(xy, nut_af, z0 - nut_h, z0),
-                                       frame, fab="purchased", bom_key=nut_key, color=STEEL))
+                                                              face - riser.engage
+                                                              + riser.stud_drawn),
+                                       frame, fab="purchased", bom_key=stud_key, color=STEEL))
+            out.bodies.append(hardware(f"riser_sleeve{i}", ring(xy, sl_od, sl_bore,
+                                                                face + t_ring, s0),
+                                       frame, fab="purchased", bom_key=sl_key, color=STEEL))
+            out.bodies.append(hardware(f"riser_shims{i}", ring(xy, shim_od, shim_bore + 0.2,
+                                                               s0, z0),
+                                       frame, fab="purchased", color=STEEL))
             out.bodies.append(hardware(f"riser_thin_nut{i}", hexnut(xy, thin_af, z1,
                                                                     z1 + thin_h),
                                        frame, fab="purchased", bom_key=thin_key, color=STEEL))
+        # the shims and the coarse washers, bought by the pack (a stack is drawn as one)
+        out.extras.append(BomLine(RISER_SHIM[3], RISER_SHIM[4],
+                                  "the drive: the riser's go/no-go shims (0.5 mm), over its "
+                                  "sleeves"))
+        out.extras.append(BomLine(RISER_COARSE[0], RISER_COARSE[1],
+                                  "the drive: the riser's coarse shims (1.6 mm), over its "
+                                  "sleeves"))
         out.bodies.append(hardware("gearbox", self._gearbox(o, face, screws), frame,
                                    fab="purchased", bom_key=box.key, color=GEARBOX_COLOR))
 
@@ -1141,7 +1350,9 @@ class HandCrank(Group):
         out.notes["hand_crank"] = {
             "gearbox": box.key, "ratio": box.ratio, "riser_height_mm": riser.height,
             "riser_stud_mm": riser.stud, "riser_engage_mm": riser.engage,
-            "riser_sleeve_mm": riser.sleeve, "face_z_mm": round(riser.face, 3),
+            "riser_stud_past_mm": riser.past, "riser_ring_mm": riser.ring_t,
+            "riser_sleeve_mm": RISER_SLEEVE[2], "riser_shims_mm": riser.shims,
+            "face_z_mm": round(riser.face, 3),
             "plate_inner_z_mm": round(z1, 3),
             "arm_z_mm": [round(a0, 3), round(block_top, 3)],
             "keyed_z_mm": [round(a0, 3), round(a1, 3)],
@@ -1176,12 +1387,14 @@ class HandCrank(Group):
     def assembly(self, view) -> list:
         """How the drive goes on (:mod:`construction.assembly`, a cradle's
         ``CRADLE_ORDER``): on the bench the shaft through the gearbox from the face's side,
-        the studs in the face and their setting sleeves and nuts on them; the outer plate
-        down onto the nuts and the thin nuts over it (their heads end up inside the stack, so
-        first), and the go/no-go measurement that sets the nuts; the crank block built and
+        the studs in the face, the ring, the sleeves and the shims on them; the outer plate
+        down onto the shims and the thin nuts over it (their heads end up inside the stack, so
+        first), and the go/no-go measurement that sets the shims; the crank block built and
         fitted on the bench (its plates, the tie, the crankpin), then down over the shaft onto
         the shaft's end and the end screw; the crankpin's spacer before the rod, its washer and
-        screw once the rod is on; the hand crank last, its clutch set on a measurement."""
+        screw once the rod is on; the hand crank, its plungers at their felt start; and, the
+        cradle built, the clutch set on a measured start, the worm's hold and the toggle
+        zones' marks (:meth:`first_pour`: design review round 3's stand and use M2, M4)."""
         from spiderpig.construction.assembly import FINISH, STACK, Op, whole
 
         if "gearbox" not in view.z:
@@ -1193,8 +1406,9 @@ class HandCrank(Group):
         k_rod = view.slot(view.z[rider][0]) if rider in view.z else ARM_LAYER + 1
         studs = view.named(r"riser_stud\d+")
         sleeves = view.named(r"riser_sleeve\d+")
-        nuts = view.named(r"riser_nut\d+")
+        shims = view.named(r"riser_shims\d+")
         thins = view.named(r"riser_thin_nut\d+")
+        ring_ = [n for n in ("riser_ring",) if n in view.z]
         plates = view.named(rf"{re.escape(arm)}_plate\d+")
         k = box.shaft_key
         spec = handle_spec(getattr(view.ctx, "config", None))
@@ -1209,14 +1423,14 @@ class HandCrank(Group):
         n_clear = len([p for p in [arm, *plates] if p in view.z]) - len(over) - KEYED_PLATES
         a1 = view.layers[ARM_LAYER][0] + KEYED_PLATES * HAND_CRANK.plate_t - inner
         lo = seat - min(SEAT_LOW, seat - (a1 - 0.2 + box.key_short + k[0] / 2))
-        face = view.z[sleeves[0]][0] if sleeves else 0.0
-        stand = (view.z[studs[0]][1] - face) if studs else 0.0
-        sleeve = (view.z[sleeves[0]][1] - face) if sleeves else 0.0
-        stud_len = view.keys.get(studs[0], "") if studs else ""
-        flat = 1.25 / 6.0                               # a sixth of a turn: one flat
+        d_stud, cut, _ = RISER_STUD
+        stand = cut - (box.face_depth - 0.5)            # as cut, in the face until it stops
+        shim_t = RISER_SHIM[2]
+        n_shims = round((view.z[shims[0]][1] - view.z[shims[0]][0]) / shim_t) if shims else 0
+        sl_od, sl_bore, sl_len, _ = RISER_SLEEVE
         ops = [
-            Op(STACK, (-1, -1, "gearbox"), whole("gearbox", "crank_shaft", *studs, *sleeves,
-                                                 *nuts),
+            Op(STACK, (-1, -1, "gearbox"), whole("gearbox", "crank_shaft", *studs, *ring_,
+                                                 *sleeves, *shims),
                "Gearbox on its riser",
                "Wipe the gearbox: a new worm box can weep oil at its seals. Run it in now, "
                "before it goes on the cradle (a drill on the built cradle's input would turn "
@@ -1225,30 +1439,36 @@ class HandCrank(Group):
                "board beside the wine. The output shaft into the gearbox's hollow output from "
                f"the face's side, collar first against the hub, its {k[0]:g} x {k[1]:g} key in "
                "its seat (the snap ring and washer on its far end); the gearbox on its back, "
-               "face up, on a block with a hole for the shaft's far end. An M8 stud (an "
-               f"{stud_len.replace('m8_set_screw_', 'M8 x ')} set screw) into each of the "
-               "face's four tapped holes, a drop of threadlocker (243) on its thread, by hand "
-               f"with a hex key until it stops: it stands {stand:.1f} mm over the face (a "
-               "caliper's depth rod; if it stands more than a millimetre taller, the hole's "
-               "thread is short: grind the stud's end down to it). A printed setting sleeve "
-               f"({sleeve:.1f} mm) over each stud: it must sit flat on the machined face, not "
-               "on the raised spigot ring's edge, a fillet or a cover screw (file its foot if "
-               "it rocks). An M8 nut down each stud onto its sleeve, finger tight: the four "
-               "nuts are now at one height.", "gearbox", sub=True),
+               "face up, on a block with a hole for the shaft's far end. The riser's four "
+               f"studs: cut four {cut:g} mm lengths from the 200 mm M{d_stud:g} class 8.8 "
+               "threaded rod (a hacksaw; file each cut end square and run a nut on and off it "
+               "to clean its thread). Each into one of the face's four tapped holes, a drop of "
+               "threadlocker (243) on its thread, two nuts locked together on it to turn it, "
+               f"until it stops: it stands about {stand:.1f} mm over the face (a caliper's "
+               "depth rod; if it stands more than a millimetre taller, the hole's thread is "
+               "short: cut the stud down to it). The riser's ring (cut with the crank plates) "
+               "down over the studs onto the machined face, its bore round the raised spigot "
+               "ring: it must lie flat (a stud that won't pass its hole: file the hole, never "
+               f"force it). A steel sleeve ({sl_bore:g} x {sl_od:g} x {sl_len:g} mm) down "
+               f"each stud onto the ring, and {n_shims} of the {shim_t:g} mm shims on each "
+               "sleeve: the go/no-go may change how many.", "gearbox", sub=True),
             Op(STACK, (-1, 2), whole(*thins), "",
-               "The outer plate over the studs onto the four nuts, its outside down, the shaft "
-               "up through its bore; an M8 thin nut on each stud over the plate, then each "
-               f"pair tightened: a 13 mm wrench holding the nut under the plate, "
-               f"{RISER_NUT_NM:g} N·m on the thin nut (a torque wrench). The gearbox now "
-               "stands the plate up off the bench. Go/no-go: measure the shaft's end over the "
-               f"plate's inner face (a caliper's depth rod beside the shaft): {shaft:.2f} mm "
-               f"drawn, the crank block's seat plate sitting on it. Between {lo:.2f} and "
-               f"{seat:.2f} it is right (the block sits on the shaft's end, at most "
-               f"{seat - lo:.1f} mm lower than drawn). Over {seat:.2f} (the hub prouder than "
-               f"drawn) or under {lo:.2f} (lower: the key's straight flanks would fall short of "
-               "the keyed plates): take the plate off and turn the four nuts under it the "
-               "same, toward the gearbox for the first, away for the second (one flat, a sixth "
-               f"of a turn, moves it {flat:.2f} mm), and measure again.", "gearbox_studs"),
+               "The outer plate over the studs onto the shims, its outside down, the shaft up "
+               "through its bore; an M8 thin nut on each stud over the plate, finger tight. The "
+               "gearbox now stands the plate up off the bench. Go/no-go: measure the shaft's "
+               "end over the plate's inner face (a caliper's depth rod beside the shaft): "
+               f"{shaft:.2f} mm drawn, the crank block's seat plate sitting on it. Between "
+               f"{lo:.2f} and {seat:.2f} it is right (the block sits on the shaft's end, at "
+               f"most {seat - lo:.1f} mm lower than drawn). Over {seat:.2f} (the hub prouder "
+               "than drawn): the plate off, a shim more on every sleeve (a 1.6 mm washer for "
+               f"three); under {lo:.2f} (lower: the key's straight flanks would fall short of "
+               "the keyed plates): a shim fewer on every sleeve; each shim moves it "
+               f"{shim_t:.2f} mm; and measure again. Then each thin nut, a drop of 243 on its "
+               f"thread, {RISER_NUT_NM:g} N·m (a torque wrench), the four in a cross: the "
+               "plate, the shims, the sleeves and the ring one clamped stack on the face. Each "
+               f"stud's end must stand no more than {STUD_PAST_MAX:g} mm over its thin nut "
+               "(the crank block's lowest plate passes over the four): file it down, masking "
+               "tape on the plate round it.", "gearbox_studs"),
             Op(STACK, (ARM_LAYER, 0), whole(arm, *plates, "crank_tie", "crank_tie_nut",
                                             "crankpin", "crankpin_screw_lo"),
                "Crank block",
@@ -1278,7 +1498,7 @@ class HandCrank(Group):
                "gearbox's "
                f"{box.input_d:g} mm input shaft by hand until the block has gone a whole turn "
                "(30 turns: the worm can't be turned from the block): nothing may touch the "
-               "outer plate or the riser's nuts.", "layer"),
+               "outer plate, the riser's thin nuts or its studs' ends.", "layer"),
             Op(STACK, (ARM_LAYER, 2), whole("crankpin_spacer"), "",
                "The crankpin's printed spacer down over the crankpin onto the block; grease "
                "the crankpin where the rod turns on it (aluminium on bare steel: any lithium "
@@ -1301,69 +1521,125 @@ class HandCrank(Group):
                   ", one into the hub's hex spigot (a long tube prints in two pieces: the "
                   "spigot into the tube's socket, an M3 button head through the socket's wall "
                   "into that insert, threadlocker 243)")
-               + ". The clutch's seat ring (cut with the crank plates) onto the "
-               "flange, its hex bore on the flange's hex; grease its face and its six holes "
-               "(lithium or PTFE grease). A 1/2\"-13 hex nut pressed into each of the three "
-               "hex pockets in the arm's boss from its outer face (a vise); a spring plunger "
-               "threaded through each from outside, ball first, until the ball stands about "
-               "1.3 mm out of the boss's inner face, a jam nut on each, loose. The arm onto "
-               "the journal, the balls in the ring's holes; the steel washer (greased) and the "
-               "cap on the journal's flat, its M3 thumb screw into the insert, snug. The grip: "
-               f"an M{spec.bolt[0]:g} washer, the printed grip, a washer and the arm's end "
-               f"over the M{spec.bolt[0]:g} bolt from the outside, a washer and the nyloc nut "
-               "on the arm's inner face, tight against the arm: the grip spins on the bolt's "
-               "plain shank. A drop of threadlocker (243) in the gearbox's input keyseat and "
-               f"its {box.input_key[0]:g} x {box.input_key[0]:g} key pressed in (it comes with "
-               "the gearbox; else a DIN 6885 key that size), so it stays when the crank comes "
-               "off. Turn each plunger in until its back stands flush with its jam nut's top: "
-               "the clutch now slips well over the cradle's hardest start. The crank's hub "
-               "onto the input shaft, its keyway over the key, and the hub's M3 thumb screw "
-               "down onto the key by hand (snug: it only keeps the hub on; it comes off the "
-               "same way). Stand at the drive side's rear corner to turn it, the neck in view "
-               "past the stand. "
-               "Measure the start, then set the clutch on it (it is what keeps a hard push at "
-               "the grip from breaking the cradle, and nothing else sets it): the heaviest "
-               "full bottle you'll pour (a 6 L at most) in the cradle, turn the handle slowly "
-               "from rest and stop where it is heaviest (about level); let go. A luggage scale "
-               "on the grip's middle, pulled square to the arm, slowly: the reading where the "
-               "handle starts to turn is the start (a full 6 L reads about "
-               f"{_drawn_start(view, spec):g} N on this crank, more while the gearbox is new). "
-               f"The clutch's slip is {CLUTCH_SET:g} times that: take the hand crank off, its "
-               "hub's tube in a vise (a rag round it), the scale on the grip the same way: it "
-               "must click round there. Over: turn one plunger out an eighth of a turn (a hex "
-               "key in its back, about 3 % of the slip; the three in turn); under: in; then "
-               "tighten the jam nuts, holding each plunger's back, and pull again: three times "
-               f"in a row within {CLUTCH_CHECK * 100:g} % of it. Never set it higher: its top "
-               "is what the cradle's parts are rated at. Check it so at every set-up (after "
-               "the trip, before the first pour) and after greasing; once a year grease the "
-               "ring's holes and the washer again and look at the holes: a bright land wider "
-               "than a millimetre round a hole's edge, a new ring. Only the hand crank's arm "
-               "may turn it: a drill on the input, or a hand twisting the hub or the clutch's "
-               "flange, turns the cradle with no clutch between. "
-               "Then the rod's check: from rest (the cradle neck up) turn the handle "
-               "4 turns one way and, if the rear tie's screw head under the drive side's "
-               "cradle link never passed over the rod, back to rest and 4 turns the other "
-               "way. Where the head is over the rod, press the rod up against its washer and "
-               "slide a sheet of paper between them: it must pass. If it drags, take the "
-               "crankpin's top screw and washer off, file 0.1 mm off the crankpin's top end, "
-               "sand the rod's spacer to keep its play, and check again. Then the worm's "
-               "hold: with the heaviest full bottle you have (a 6 L at best) in the cradle, "
-               "turn it to level, let go, tap the table and watch a pencil line across the "
-               "crank's arm and the outer plate for 10 minutes: it must not move. If it creeps "
-               "back toward rest, the worm holds less than drawn: an O-ring (about 15 x 2 mm) "
-               "between the hub's face and the gearbox's input seal adds a little drag (1 to "
-               "2 N at the grip) and doubles the margin; a bottle that creeps never tips "
-               "further, it settles back neck up. Last, mark the toggle zones (the use limits): "
-               "on the gearbox's far face the output hub turns with the crank; at rest draw a "
-               "paint-pen line across the hub's end and on the housing beside it, turn the "
-               f"handle {TOGGLE_TURNS:g} turns and mark the housing where the hub's line now "
-               f"is; likewise {TOGGLE_TURNS:g} turns before full tilt and at full tilt. "
-               "Between each pair of marks the cradle comes in with a force no clutch "
-               "bounds.", "handle"),
+               + ". The clutch's seat ring (cut with the crank plates) onto the flange, its "
+               "hex bore on the flange's hex, the face the laser entered up (the clean face: "
+               "the balls ride it; the face with the dross down on the flange); grease its "
+               "face, its six holes and the hub's journal (lithium or PTFE grease). A 1/2\"-13 "
+               "hex nut pressed into each of the three hex pockets in the arm's boss from its "
+               "inner face, the face toward the ring (a vise): the pocket's floor takes the "
+               "spring's push. A spring plunger threaded through each from outside, ball "
+               "first, until its ball just stands out of the inner face, a jam nut on each, "
+               "loose. The arm onto the journal, the balls toward the ring; the steel washer "
+               "(greased) and the cap on the journal's flat, its M3 thumb screw into the "
+               f"insert, snug. The grip: an M{spec.bolt[0]:g} washer, the printed grip, a "
+               f"washer and the arm's end over the M{spec.bolt[0]:g} bolt from the outside, a "
+               "washer and the nyloc nut on the arm's inner face, tight against the arm: the "
+               "grip spins on the bolt's plain shank. A drop of threadlocker (243) in the "
+               f"gearbox's input keyseat and its {box.input_key[0]:g} x {box.input_key[0]:g} "
+               "key pressed in (it comes with the gearbox; else a DIN 6885 key that size), so "
+               "it stays when the crank comes off.",
+               "handle", lines=(
+                   "The plungers' starting setting: turn the arm on the journal until it drops "
+                   "into a click (each ball in a hole). Turn each plunger in by its hex until "
+                   f"it stops hard (its nose on the ring), then out {_turns(SET_BACK)}, and "
+                   "snug its jam nut holding its back still: the clutch now slips about where "
+                   "it will be set. Never turn a plunger nearer that stop than "
+                   f"{_turns(NEAR_STOP)}: at the stop its ball can't climb out of its hole, "
+                   "and the clutch is locked solid.",
+                   "The crank's hub onto the input shaft, its keyway over the key, and the "
+                   "hub's M3 thumb screw down onto the key by hand (snug: it only keeps the hub "
+                   "on; it comes off the same way). Stand at the drive side's rear corner to "
+                   "turn it, the neck in view past the stand. The clutch is set on a measured "
+                   "start once the cradle is built (the last step, \"Before the first pour\").",
+                   "Then the rod's check: from rest (the cradle neck up) turn the handle "
+                   "4 turns one way and, if the rear tie's screw head under the drive side's "
+                   "cradle link never passed over the rod, back to rest and 4 turns the other "
+                   "way. Where the head is over the rod, press the rod up against its washer "
+                   "and slide a sheet of paper between them: it must pass. If it drags, take "
+                   "the crankpin's top screw and washer off, file 0.1 mm off the crankpin's "
+                   "top end, sand the rod's spacer to keep its play, and check again.")),
+            self.first_pour(view, spec),
         ]
         ops = [replace(op, pieces=tuple(p for p in op.pieces if p.name in view.z))
                for op in ops]
-        return [op for op in ops if op.pieces]
+        return [op for op in ops if op.pieces or op.tag == "clutch"]
+
+    @staticmethod
+    def first_pour(view, spec: HandleSpec):
+        """The drive's last step, the cradle built (design review round 3's stand and use
+        M2: the hand crank's step had set the clutch "with the heaviest full bottle in the
+        cradle" before the cradle box existed): the start measured, the clutch set on it under
+        the ceiling (:func:`clutch_ceiling`, its M1) and checked on its printed stub in the
+        riser locator's pocket (its m12: no vise), the worm's hold, and the toggle zones found
+        by the crank and the rod and painted on the gearbox's far face (its M4)."""
+        from spiderpig.construction.assembly import FINISH, Op
+
+        key = getattr(getattr(view.ctx, "config", None), "linkage", "")
+        start = _drawn_start(view, spec)
+        new = round(start * NRV050.eta_static / NRV050.eta_new()) if start else 0
+        drawn = drawn_clutch(key) if key in DESIGN_START_NM else None
+        cap_set = drawn["set_grip_n"] if drawn else 0.0
+        ceiling = drawn["hi_grip_n"] if drawn else 0.0
+        tz = f"{TOGGLE_TURNS:g}"
+        reading = (f" (a full 6 L reads about {start:g} N on this crank, up to {new:g} N "
+                   "while the gearbox is new)" if start else "")
+        top = (f", but at most {cap_set:g} N ({cap_set / 9.81:.1f} kg): no pull may ever read "
+               f"over {ceiling:g} N ({ceiling / 9.81:.1f} kg), whatever the start (a new "
+               "gearbox's start reads high, and the cradle's parts are rated at that ceiling)"
+               if drawn else "")
+        return Op(FINISH, (3,), (), "Before the first pour",
+                  "The cradle built, and at every set-up after it: the clutch set on a "
+                  "measured start, the worm's hold, the toggle zones' marks.", "clutch",
+                  count=False, lines=(
+                      "The start: the heaviest full bottle you'll pour (a 6 L at most) in "
+                      "the cradle, set for it; turn the handle slowly from rest and stop "
+                      "where it is heaviest (about level); let go. The luggage scale on the "
+                      "grip's middle, pulled square to the arm, slowly: the reading where the "
+                      "handle starts to turn is the start" + reading + ".",
+                      f"The target: {CLUTCH_SET:g} times the start" + top + ".",
+                      "The check, on its stub (no vise): the bottle out, the riser out of "
+                      "its locator and the printed check stub's bar down into the locator's "
+                      "pocket, its post up; the hand crank off the gearbox (its thumb screw) "
+                      "and its hub down over the post, its keyway on the post's key, its "
+                      "thumb screw snug; the arm pointing out over the board's notch. The "
+                      "luggage scale on the grip's middle, pulled square to the arm, slowly: "
+                      "the reading where the arm clicks round is the slip.",
+                      "Over the target: turn one plunger out an eighth of a turn (a hex key "
+                      "in its back, about 3 % of the slip; the three in turn); under: in an "
+                      "eighth; each time hold its back and snug its jam nut, and pull again. "
+                      f"It is set when three pulls in a row read within "
+                      f"{CLUTCH_CHECK * 100:g} % of the target and none over the ceiling.",
+                      f"Never nearer the stop than {_turns(NEAR_STOP)}: if it still reads "
+                      "under the target with all three there, leave it (under is the safe "
+                      "side) while it reads 1.1 times your start or more; less, and a "
+                      "plunger is weak (no maker states their tolerance): replace it.",
+                      "Check it so at every set-up, after greasing it, after a trip in a hot "
+                      "car, and every month or ten pours while it stands set up: the grease "
+                      "under the balls ages and the slip drifts with it, and only the check "
+                      "keeps it under the ceiling. Once a year grease the ring's holes, the "
+                      "washer and the journal again and look at the holes: any bright land "
+                      "you can see round a hole's edge, a new ring.",
+                      "The worm's hold: the bottle back in, turn to level, let go, tap the "
+                      "table and watch a pencil line across the crank's arm and the outer "
+                      "plate for 10 minutes: it must not move. If it creeps back toward rest, "
+                      "the worm holds less than drawn: an O-ring (about 15 x 2 mm) between "
+                      "the hub's face and the gearbox's input seal adds a little drag (1 to 2 "
+                      "N at the grip) and doubles the margin; a bottle that creeps never tips "
+                      "further, it settles back neck up.",
+                      f"The toggle zones (the use limits' rule 3): the {tz} handle turns "
+                      "either side of rest and of full tilt, where no clutch bounds the force. "
+                      "Find each toggle by the crank and the rod, not by the bottle (it barely "
+                      "moves there): at rest the crank's arm lies folded under the rod, the two "
+                      "one straight line, the rod's end over the arm's; at full tilt the arm "
+                      "and the rod make one straight line, end to end.",
+                      "On the gearbox's far face the output hub turns with the crank. At rest "
+                      "draw an arrow on the hub's end with the paint pen, from its middle to "
+                      "its rim, and a mark on the housing at its tip; turn the handle "
+                      f"{tz} turns one way and mark the housing at the tip, then back through "
+                      f"rest {tz} turns the other way and mark it; paint the housing's rim red "
+                      "between those two outer marks. Likewise at full tilt. While the arrow "
+                      "points into a red arc: hands out, and nothing added under the cradle "
+                      "box."))
 
     def motion(self, got: Realized) -> Motion:
         """Each part rides its host: the block's plates, the shaft, the tie and
@@ -1549,10 +1825,11 @@ class HandCrank(Group):
         big_r = PLUNGER["ball_d"] / 2
         a_seat = cl["seat_d"] / 2
         xb = r1 + math.sqrt(big_r ** 2 - a_seat ** 2)  # a ball's centre, seated on its edge
-        pushed = 0.5                                    # drawn half a millimetre in (about 34 N)
+        setting = plunger_setting()                     # drawn at the guide's start: the
+        pushed = setting["start_push_mm"]               # felt stop, SET_BACK turns out
         x_front = xb - big_r + PLUNGER["travel"] - pushed   # the body's nose face
-        climb = big_r - math.sqrt(big_r ** 2 - a_seat ** 2)
-        if pushed + climb > PLUNGER["travel"] - 0.2 or x_front < a_in - 1e-6:
+        if min(setting["start_room_mm"], setting["limit_room_mm"]) < 0.2 - 1e-9 or \
+                x_front < a_in - 1e-6:
             raise ConstructionError("the clutch's plungers can't climb out of their seats")
         x_back = x_front + PLUNGER["length"]
         nut_af, nut_h, nut_key = NUT_HALF
@@ -1568,9 +1845,10 @@ class HandCrank(Group):
         boss = rod(boss_r, a_in, reach)
         bar = Box(ARM_T, arm_len, ARM_W).moved(Location((reach - ARM_T / 2, -arm_len / 2, 0.0)))
         holes = []
-        for y, zz in balls:
+        for y, zz in balls:     # each nut's pocket from the boss's inner face: its floor
+            #                     takes the spring's push (design review round 3's m2)
             holes += [rod(PLUNGER["thread"] / 2 + 0.2, a_in - 1, reach + 1, y, zz),
-                      hex_x(nut_af + 0.3, reach - nut_h, reach + 1, y, zz)]
+                      hex_x(nut_af + NUT_POCKET, a_in - 1, a_in + nut_h, y, zz)]
         down = Location((0.0, -throw, 0.0))            # the arm's end
         g_d, bolt_len, _, head_h, bolt_key = spec.bolt
         arm = difference(union([boss, bar]), rod(jr + 0.2, a_in - 1, reach + 1), *holes,
@@ -1634,8 +1912,8 @@ class HandCrank(Group):
                              Sphere(big_r).moved(Location((xb, y, zz)))])
             bodies += [hw(f"handle_plunger{i}", plunger, PLUNGER["key"]),
                        hw(f"handle_plunger_nut{i}",
-                          difference(hex_x(nut_af, reach - nut_h, reach, y, zz),
-                                     rod(PLUNGER["thread"] / 2, reach - nut_h - 1, reach + 1,
+                          difference(hex_x(nut_af, a_in, a_in + nut_h, y, zz),
+                                     rod(PLUNGER["thread"] / 2, a_in - 1, a_in + nut_h + 1,
                                          y, zz)), nut_key),
                        hw(f"handle_plunger_jam{i}",
                           difference(hex_x(jam_af, reach, reach + jam_h, y, zz),

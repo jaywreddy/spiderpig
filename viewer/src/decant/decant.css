@@ -153,7 +153,14 @@ body:not(.side-open) #side { display: none; }
 }
 #play { min-width: 44px; }
 .track { flex: 1; min-width: 120px; position: relative; padding-bottom: 14px; }
-#slider { width: 100%; accent-color: #6aa8ff; }
+#slider { width: 100%; accent-color: #6aa8ff; position: relative; }
+/* the toggle zones under the slider: the gearbox's red arcs (cradle_report.motion's
+   toggle_turns), where no clutch bounds the force */
+.zones { position: absolute; left: 8px; right: 8px; top: 50%; height: 6px; margin-top: -10px;
+         pointer-events: none; }
+.zones span { position: absolute; top: 0; bottom: 0; background: rgba(220, 60, 50, 0.55);
+              border-radius: 2px; }
+.readout .zone { color: #ff7a6e; font-weight: 600; }
 .ticks { position: absolute; left: 8px; right: 8px; bottom: 0; height: 12px; }
 .ticks span {
   position: absolute; transform: translateX(-50%);

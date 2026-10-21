@@ -9,13 +9,18 @@ the whole turn, the crank-rocker's toggles included (design review rounds 1 and 
   N·m", a maximum: round 2's M-1 withdrew round 1's "rating at a hand's speed" and its 2 x
   momentary limit) against the walking peak and against the clutch's cap
   (:data:`GEARBOX_CAP_FLOOR`).
-* **The clutch** (:func:`drive_limits`): set on the bench to slip at
-  ``handcrank.CLUTCH_SET`` x the start the user measures, checked within
-  ``handcrank.CLUTCH_CHECK``; its cap the check's top through the worm at the hand's fastest
-  (``handcrank.HAND_RPM``: the crank torque no push at the grip exceeds,
-  ``config.PRODUCT_CLUTCH_NM``, the jam's torque ``cradle_report.jam_nm``); its drift
-  unchecked over the greased friction and the seats' wear, and dry
-  (``handcrank.clutch_drift``), with the cap it would give.
+* **The clutch** (:func:`drive_limits`): set to slip at ``handcrank.CLUTCH_SET`` x the start
+  the user measures, never over its ceiling (``handcrank.clutch_ceiling``: design review round
+  3's M1), checked within ``handcrank.CLUTCH_CHECK`` on its stub; its cap the check's top
+  through the worm at the hand's fastest (``handcrank.HAND_RPM``: the crank torque no push at
+  the grip exceeds while the check holds, ``config.PRODUCT_CLUTCH_NM``, the jam's torque
+  ``cradle_report.jam_nm``), the same set on a new box, more at a fast spin
+  (``handcrank.HAND_FAST_RPM``); its drift unchecked over the greased friction and the seats'
+  wear, and dry (``handcrank.clutch_drift``), with the cap it would give; the plungers'
+  settings and their reach (``handcrank.plunger_setting``, ``plunger_reach``), the grip's
+  couple on the journal (``handcrank.journal_share``).
+* **The riser** (:func:`riser_rating`): the gearbox's clamped stack on four class 8.8 studs,
+  walking and at the cap over the whole turn (design review round 3's M2).
 * **The worm's efficiency band** (round 2's M-5): the grip at the worst start run in and new
   (``handcrank.RUNIN_LOSS``); the clutch's margin over the start, set on a measurement, is the
   same at either.
@@ -30,6 +35,8 @@ the whole turn, the crank-rocker's toggles included (design review rounds 1 and 
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 JAM_FLOOR = 1.3         # the jam safety factor every part keeps (tests/test_cradle.py)
@@ -41,6 +48,87 @@ check's top and the hand's fastest."""
 BANDS = (0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0)
 """The excluded bands round each toggle the capped case is rated outside (crank degrees)."""
 OUTPUT = "gearbox output (overhung)"
+RISER = "gearbox riser"
+RISER_MU = 0.15
+"""The riser's faces' friction for its slip (steel, 6061, 5052, the gearbox's die-cast face,
+bare but perhaps oiled by a weeping seal): RoyMech's greasy mild steel's middle (0.09-0.19);
+dry steel on aluminium is 0.47-0.61 (``handcrank.DRY_MU``)."""
+SS304_YIELD = 205.0     # MPa: the riser's sleeves, 304 annealed (ASTM A276's minimum)
+E_STEEL, E_ALU_ = 200000.0, 69000.0
+
+
+def riser_rating(box, notes: dict, f, t_nm) -> dict:
+    """The gearbox's riser (``handcrank.riser_for``, design review round 3's M2: four M8
+    studs had carried the gearbox in bending over 18.7 mm, rated nowhere) at a rod force ``f``
+    (N, at the rod's mid-plane) and a crank torque ``t_nm`` (N·m, the housing's reaction),
+    each a number or an array. The rigid housing hangs from the plate on four clamped
+    columns (the ring, a sleeve, the shims) on the 85 mm PCD: each takes a quarter of the
+    force and its share of the turn, ``V`` (the worst, the two aligned), the force's moment
+    about the columns' mid-height as push-pull pairs, ``N`` (the worst stud's), and the
+    columns' end moments, ``m = V H / 2`` (fixed at the face and at the plate: the four keep
+    the housing from tilting). The clamp from the thin nut's torque over the nut factor's band
+    (``handcrank.RISER_NUT_K``), the stud's share of the pull ``phi`` (its stiffness and the
+    stack's). Rated: the stud (class 8.8's proof, its tension with the joint closed or, open,
+    the column's moment on the sleeve's radius, with the side load's shear if it slips: von
+    Mises), the sleeve's bending (open), the ring's bearing under the sleeve; and its slip at
+    :data:`RISER_MU` (the friction; the snug sleeve and the stud's shear hold it if it does).
+    ``least``: the least of the strength rows."""
+    from spiderpig.construction.handcrank import (
+        HAND_CRANK,
+        RISER_NUT_K,
+        RISER_NUT_NM,
+        RISER_SHIM,
+        RISER_SLEEVE,
+        RISER_STUD,
+        STUD_PROOF_MPA,
+    )
+
+    f = np.asarray(f, float)
+    t_nm = np.asarray(t_nm, float)
+    r = box.pcd / 2
+    h = float(notes.get("riser_height_mm", 25.2))
+    face = float(notes.get("face_z_mm", -h))
+    lever = float(notes.get("rod_mid_z_mm", 0.0)) - (face + h / 2)
+    d = RISER_STUD[0]
+    a_s = 36.6                                      # M8's stress area (ISO 898-1)
+    a_minor = math.pi / 4 * (d - 1.22687 * 1.25) ** 2
+    sl_od, sl_id, sl_len, _ = RISER_SLEEVE
+    a_sl = math.pi / 4 * (sl_od ** 2 - sl_id ** 2)
+    z_sl = math.pi * (sl_od ** 4 - sl_id ** 4) / (32 * sl_od)
+    kern = (sl_od ** 2 + sl_id ** 2) / (8 * sl_od)
+    t_ring = float(notes.get("riser_ring_mm", 3.175))
+    shims = float(notes.get("riser_shims_mm", h - t_ring - sl_len))
+    t_plate = float(notes.get("plate_inner_z_mm", 4.75)) - (face + h)
+    k_b = E_STEEL * a_s / (h + t_plate)
+    k_m = 1.0 / (sl_len / (193000.0 * a_sl) + t_ring / (E_ALU_ * a_sl)
+                 + shims / (193000.0 * math.pi / 4 * (RISER_SHIM[0] ** 2 - RISER_SHIM[1] ** 2))
+                 + t_plate / (E_ALU_ * math.pi / 4 * (13.0 ** 2 - (d + 0.6) ** 2)))
+    phi = k_b / (k_b + k_m)
+    p_lo = RISER_NUT_NM * 1000.0 / (RISER_NUT_K[1] * d)
+    p_hi = RISER_NUT_NM * 1000.0 / (RISER_NUT_K[0] * d)
+    v = f / 4 + t_nm * 1000.0 / (4 * r)
+    n = f * lever / (2 * r)
+    m = v * h / 2
+    clamp = p_lo - (1 - phi) * n                    # the tension side's least
+    opens = m > clamp * kern
+    t_stud = np.maximum(p_hi + phi * n, n + m / (sl_od / 2))
+    vm = np.sqrt((t_stud / a_s) ** 2 + 3 * (v / a_minor) ** 2)
+    sf_stud = STUD_PROOF_MPA / vm
+    sf_sleeve = np.where(opens, SS304_YIELD / np.maximum(m / z_sl, 1e-9), np.inf)
+    bearing = (p_hi + (1 - phi) * n) / a_sl + m / z_sl
+    sf_ring = HAND_CRANK.bearing_mpa / bearing
+    least = np.minimum(np.minimum(sf_stud, sf_sleeve), sf_ring)
+    slip = RISER_MU * np.maximum(clamp, 0.0) / np.maximum(v, 1e-9)
+
+    def out(x):
+        x = np.asarray(x, float)
+        return round(float(x), 2) if x.ndim == 0 else x
+    return {"side_n": out(v), "axial_n": out(n), "end_moment_nm": out(m / 1000.0),
+            "clamp_n": [round(p_lo), round(p_hi)], "phi": round(phi, 3),
+            "lever_mm": round(lever, 1), "opens": bool(np.any(opens)),
+            "sf_stud": out(sf_stud), "sf_sleeve": out(np.minimum(sf_sleeve, 99.0)),
+            "sf_ring_bearing": out(sf_ring), "least": out(least),
+            "slip_sf": out(slip), "slip_mu": RISER_MU}
 
 
 def drive_limits(box, spec, peak: float, start_nm: float, notes: dict) -> dict:
@@ -59,6 +147,7 @@ def drive_limits(box, spec, peak: float, start_nm: float, notes: dict) -> dict:
         CLUTCH_SET,
         END_SCREW_NM,
         HAND_CRANK,
+        HAND_FAST_RPM,
         HAND_RPM,
         KEYED_PLATES,
         LIGHT_LOAD_N,
@@ -66,11 +155,17 @@ def drive_limits(box, spec, peak: float, start_nm: float, notes: dict) -> dict:
         SEAT_WEAR,
         clutch,
         clutch_drift,
+        journal_share,
+        plunger_reach,
+        plunger_setting,
     )
     from spiderpig.cradle_report import JAM_HAND_N, push_nm
 
     grip_r = spec.throw
-    got = clutch(start_nm, grip_r, box)
+    # the ceiling (design review round 3's M1): the drawn 6 L's window top, whatever the
+    # start the user reads
+    ceiling = CLUTCH_SET * (1 + CLUTCH_CHECK) * start_nm
+    got = clutch(start_nm, grip_r, box, ceiling)
     cap = got["crank_cap_nm"]
     push = push_nm(box, grip_r)
     eta_hand = got["eta_hand"]
@@ -85,8 +180,11 @@ def drive_limits(box, spec, peak: float, start_nm: float, notes: dict) -> dict:
     drift = clutch_drift()
     unchecked = got["set_nm"] * drift["greased_worn"][1] * box.ratio * eta_hand
     # set on a new box's start, not checked again once it has run in (its efficiency at
-    # speed up, its start down): the most it then lets through
-    set_new = clutch(start_new, grip_r, box)["hi_nm"] * box.ratio * eta_hand
+    # speed up, its start down): the most it then lets through, under the ceiling (and
+    # without it, as round 3's review found it), and the margin it leaves the new box
+    new_set = clutch(start_new, grip_r, box, ceiling)
+    set_new = new_set["hi_nm"] * box.ratio * eta_hand
+    set_new_open = clutch(start_new, grip_r, box)["hi_nm"] * box.ratio * eta_hand
     one = HAND_CRANK.keyway_one()
     lot = HAND_CRANK.capacity()["arm keyway"]
     return {
@@ -123,16 +221,29 @@ def drive_limits(box, spec, peak: float, start_nm: float, notes: dict) -> dict:
             "unchecked_margin": round(CLUTCH_SET * drift["greased_worn"][0], 2),
             "set_new_cap_nm": round(set_new, 1),
             "set_new_gearbox_sf": round(box.rated_nm / set_new, 2),
+            "set_new_no_ceiling_cap_nm": round(set_new_open, 1),
+            "new_box_margin": new_set["margin"],
+            "ceiling_input_nm": round(ceiling, 3), "ceiling_grip_n": got["hi_grip_n"],
+            "fast_rpm": HAND_FAST_RPM, "fast_cap_nm": got["fast_cap_nm"],
+            "fast_gearbox_sf": round(box.rated_nm / got["fast_cap_nm"], 2),
+            "journal": journal_share(spec),
             "seat_wear_mm": SEAT_WEAR,
             "plunger_n": got["plunger_n"], "plunger_range_n": list(PLUNGER["force"]),
+            "plunger_setting": plunger_setting(),
+            "plunger_reach": plunger_reach(got["set_nm"]),
+            "checked": "on its printed stub in the riser locator's pocket: the last build "
+                       "step, every set-up, after greasing, after a hot car, and every month or "
+                       "ten pours standing set up",
         },
         "keyway": {"plates": KEYED_PLATES, "one_plate_nm": round(one, 1),
                    "plates_nm": round(lot, 1),
                    "one_plate_sf_walk": round(one / max(peak, 1e-9), 2),
                    "one_plate_sf_cap": round(one / cap, 2),
                    "plates_sf_cap": round(lot / cap, 2)},
-        "end_screw": {"nm": END_SCREW_NM, "grade": "A2-70 M10",
-                      "grade_max_nm": 30.0, "basis": "TR Fastenings, A2-70 at friction 0.1"},
+        "end_screw": {"nm": END_SCREW_NM, "grade": "A2-70 M10 ISO 7380",
+                      "grade_max_nm": 15.0,
+                      "basis": "TR Fastenings' maximum for ISO 7380 in A2-70 (its socket "
+                               "screws' table)"},
     }
 
 
@@ -145,18 +256,20 @@ def _offsets(ts, tilt) -> tuple[np.ndarray, np.ndarray]:
 
 
 def clutch_case(config, mech, ts, tilt, cap: float, rod: dict, crankpin: dict, jam_nm: float,
-                output_allowed_n: float | None = None) -> dict:
+                output_allowed_n: float | None = None, riser: tuple | None = None) -> dict:
     """The clutch's cap ``cap`` (N·m) on a blocked cradle (``mech`` fabricated; ``ts`` the
     crank angles, ``tilt`` the bottle's there, degrees) over the whole turn: for each
     excluded band round the toggles (:data:`BANDS`, crank degrees; 0: none) every part rated
     outside it at the cap by the report's own model (``cradle_report.structure`` with that
     ``skip``, its joint rows, :func:`spiderpig.strength.check`, the crank's row at ``cap``),
     the rod's buckling (``rod``), the crankpin's bending (``crankpin``) and the gearbox's
-    output shaft's radial load (``output_allowed_n``, at the rod's plane) from the rod's
-    force; each part's least safety factor and the worst. Per part, the least band it holds
-    :data:`JAM_FLOOR` and 1 outside; the band outside which every part holds 1.3, in crank
-    degrees, tilt from each end and handle turns; the rod's force round each toggle at 1°
-    (``rod_by_deg``). ``jam_nm``: the 40 N push's torque, for comparison."""
+    output shaft's radial load (``output_allowed_n``, at the rod's plane) and the gearbox's
+    riser (``riser``: the box and the build's notes, :func:`riser_rating` at the rod's force and
+    the cap) from the rod's force; each part's least safety factor and the worst. Per part,
+    the least band it holds :data:`JAM_FLOOR` and 1 outside; the band outside which every
+    part holds 1.3, in crank degrees, tilt from each end and handle turns; the rod's force
+    round each toggle at 1° (``rod_by_deg``). ``jam_nm``: the 40 N push's torque, for
+    comparison."""
     from spiderpig import strength
     from spiderpig.construction import cradle as cr
     from spiderpig.cradle_report import (
@@ -184,6 +297,8 @@ def clutch_case(config, mech, ts, tilt, cap: float, rod: dict, crankpin: dict, j
     secant_sf = rod_secant_sf(f_rod, rod) if "eccentricity_mm" in rod else rod_sf
     pin_sf = crankpin["capacity_nm"] * 1000.0 / (f_rod * crankpin["lever_mm"])
     out_sf = None if output_allowed_n is None else output_allowed_n / f_rod
+    riser_sf = None if riser is None else np.asarray(
+        riser_rating(riser[0], riser[1], f_rod, np.full_like(f_rod, cap))["least"], float)
 
     def outside(b: float) -> dict:
         skip = off < b - 1e-9
@@ -201,6 +316,8 @@ def clutch_case(config, mech, ts, tilt, cap: float, rod: dict, crankpin: dict, j
         least["crankpin"] = round(float(pin_sf[keep].min()), 2)
         if out_sf is not None:
             least[OUTPUT] = round(float(out_sf[keep].min()), 2)
+        if riser_sf is not None:
+            least[RISER] = round(float(riser_sf[keep].min()), 2)
         worst = min(least, key=least.__getitem__)
         return {"band_deg": b, "worst": [least[worst], worst], "parts": least,
                 "rod_n": round(float(f_rod[keep].max()), 1)}

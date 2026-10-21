@@ -239,6 +239,14 @@ CRADLE_FLAT = (
 """A cradle's board flatness check (design review round 2's minor 9), before the drive side
 stands on it and before its cleats are glued."""
 
+FIRST_POUR = Stage(FINISH, None, "Before the first pour", where="robot",
+                   tags=(("clutch",),), strict=True,
+                   intro="The cradle stands built on its board: only now can a bottle go in.")
+"""A cradle's last build step (``construction.handcrank.HandCrank.first_pour``): the clutch
+set on a start measured with a bottle in the cradle, the worm's hold, the toggle zones'
+marks; the trip's way back sends the user here (design review round 3's stand and use M2: the
+clutch had been set at the hand crank's step, before the cradle box existed)."""
+
 CRADLE_ORDER: tuple[Stage, ...] = (
     # a decanting cradle (construction.cradle): the drive side bottom up with its tie rods,
     # bolted to the base plate (it can't stand alone: the gearbox outboard, the rods and
@@ -301,6 +309,7 @@ CRADLE_ORDER: tuple[Stage, ...] = (
           tags=(("base_R",),), strict=True),
     Stage(FINISH, None, "The board's cleats and finish", where="robot",
           tags=(("board",),), strict=True),
+    FIRST_POUR,
     Stage(USE, None, "Using it", where="robot", tags=USE_TAGS),
     Stage(OTHER, None, "Remaining parts", where="robot"),
 )
@@ -347,6 +356,7 @@ CRADLE_MODULE_ORDER: tuple[Stage, ...] = (
           tags=(("over_link",),), strict=True),
     Stage(FINISH, None, "Onto the base board: its cleats and finish", where="robot",
           tags=(("board",),), strict=True),
+    FIRST_POUR,
     Stage(USE, None, "Using it", where="robot", tags=USE_TAGS),
     Stage(OTHER, None, "Remaining parts", where="robot"),
 )

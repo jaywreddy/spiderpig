@@ -19,7 +19,7 @@ import {
 } from './pack';
 import { createPour, type RoomData } from './pour';
 import {
-  fractionAtTurns, phaseAt, tiltAt, tiltWords, turnsAt, type CradleMotion,
+  fractionAtTurns, inToggleZone, phaseAt, tiltAt, tiltWords, toggleZones, turnsAt, type CradleMotion,
 } from './motion';
 
 interface CradleCard { key: string; name: string; notes: string; verdict: 'build' | 'study'; why: string }
@@ -244,6 +244,7 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
     slider.max = String(m.ratio);
     const fullAt = (m.turns_to_full / m.ratio) * 100;
     $('tick-full').style.left = `${fullAt}%`;
+    renderZones(m);
     f = fractionAtTurns(m, turns ?? 0);
     dirty = true;
     pour.detach();
@@ -565,7 +566,19 @@ function readouts(m: CradleMotion): void {
     ? `tipping: ${left.toFixed(1)} turns to full tilt`
     : `returning: ${left.toFixed(1)} turns to rest`;
   $('tilt-bar').style.width = `${Math.max(0, Math.min(1, (tilt - m.rest_deg) / (m.full_deg - m.rest_deg))) * 100}%`;
+  $('zone').hidden = !inToggleZone(m, turns);
   if (document.activeElement !== slider) slider.value = String(turns);
+}
+
+/** The toggle zones as red bands on the slider's track (the gearbox's red arcs). */
+function renderZones(m: CradleMotion): void {
+  const box = $('zones');
+  box.replaceChildren(...toggleZones(m).map(([a, b]) => {
+    const band = document.createElement('span');
+    band.style.left = `${(a / m.ratio) * 100}%`;
+    band.style.width = `${((b - a) / m.ratio) * 100}%`;
+    return band;
+  }));
 }
 
 const clock = new THREE.Timer();
