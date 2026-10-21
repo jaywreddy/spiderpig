@@ -4452,8 +4452,8 @@ def _block_xy(key: str) -> tuple[np.ndarray, list[np.ndarray]]:
     return pts[lk.crank[0]][0], at
 
 
-LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 12.7, "drive_box": 9.9},
-                                      "decanter_hinge": {"cradle": 12.0}}
+LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 12.3, "drive_box": 9.7},
+                                      "decanter_hinge": {"cradle": 11.9}}
 """What a person lifts onto and off the lay-flat blocks, or off the board (kg;
 ``cradle_pack.rest_poses``' masses, held to them in ``tests/test_cradle.py``): B's cradle off
 its board, and its drive side with the cradle box (the first build's lay); A's cradle off its

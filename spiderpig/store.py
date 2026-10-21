@@ -451,7 +451,7 @@ class Store:
                 body = mech.body(name)
                 entry = {**part.to_dict(), "pose": part.pose, "color": body.color,
                          "file": None, "same_as": None, "mirror": False,
-                         **({"turn": body.turn} if body.turn else {})}
+                         **({"turn": turn} if (turn := getattr(body, "turn", "")) else {})}
                 twin = mirror_twin(name)
                 if twin in design.parts and is_mirror(design.parts[twin], part):
                     entry.update(same_as=twin, mirror=True)

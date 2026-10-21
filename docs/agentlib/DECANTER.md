@@ -2561,6 +2561,7 @@ passed (`/root/scratch/decant/simplify/r2/check.md`; DECISIONS.md, "simplificati
 | sway at the bottle, 20 N (bar 5 mm) | 3.89 mm (3.91) | 4.42 mm |
 | clashes, 6 crank angles and both tilt ends | 0 | 0 |
 | the device | 15.80 kg (16.23) | 15.55 kg (15.58) |
+| the lifts (`cradle.LIFTS`) | 12.3 kg the cradle, 9.7 the drive side with the box (12.7, 9.9) | 11.9 kg (12.0) |
 | the stack | 80.95 mm in 15 layers, proven (81.03) | as before |
 
 **The BOM** (`spiderpig build`, the refitted fit): B USD 1,002.06 -> 940.34 (purchases 279.70
