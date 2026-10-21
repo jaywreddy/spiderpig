@@ -3637,6 +3637,11 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                 board_window=[float(cf.lip[0]) + BOARD_WINDOW[0],
                               float(cf.lip[0]) + BOARD_WINDOW[1], -BOARD_WINDOW[2],
                               BOARD_WINDOW[2], BOARD_WINDOW[3]])
+    for b in bodies + extras:
+        # every cut file turned to its least-area box (simplification round 2's C1:
+        # SendCutSend prices a part by its box; the walkers' files lie as they did)
+        if b.fab == "laser":
+            b.turn = "least"
     return Mechanism(name=f"{side.name}_cradle", bodies=bodies + extras,
                      connections=connections, meta=meta,
                      bom_extras=list(side.bom_extras) + list(passive.bom_extras) + glue)

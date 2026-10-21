@@ -1408,6 +1408,49 @@ def test_the_cradle_passes_the_cut_rules(key):
     assert got["ok"], got
 
 
+def _dxf_box_areas(path, degs) -> list[float]:
+    """A DXF's every entity flattened to points, its bounding box's area (mm^2) turned by
+    each of ``degs``."""
+    import ezdxf
+    from ezdxf import path as dxf_path
+
+    pts = np.array([(v.x, v.y) for e in ezdxf.readfile(str(path)).modelspace()
+                    for v in dxf_path.make_path(e).flattening(0.01)])
+    out = []
+    for d in degs:
+        a = math.radians(d)
+        q = pts @ np.array([[math.cos(a), math.sin(a)], [-math.sin(a), math.cos(a)]])
+        w, h = q.max(0) - q.min(0)
+        out.append(float(w * h))
+    return out
+
+
+@pytest.mark.slow
+@pytest.mark.construction
+@pytest.mark.parametrize("key", CRADLES)
+def test_the_cradles_cut_files_lie_in_their_least_box(key, tmp_path):
+    """Simplification round 2's C1: SendCutSend prices a part by its box (b6 turned 26.75 deg
+    quoted USD 5.24 less the pair), so each of a cradle's per-part DXFs lies within 0.5 deg
+    of its least-area box (``Body.turn`` "least", :func:`layout.least_box_degrees`): no
+    turn of the file, at 0.25 deg steps over a half turn, has a box smaller than the best
+    within 0.5 deg of it as written. b6, the inner plate and b2 do turn (the walkers'
+    files lie as they did: the identity gate)."""
+    from spiderpig.hardware.bom import group_made
+    from spiderpig.layout import save_parts
+
+    cfg = BuildConfig(linkage=key, robot=False)
+    mech = cache.cached_product(cfg, 1.0)
+    assert all(b.turn == "least" for b in mech.bodies if b.fab == "laser")
+    rows = save_parts(group_made(mech.bodies, "laser"), tmp_path, cfg.sheet)
+    assert rows
+    near = [k / 20 for k in range(-10, 11)]
+    every = [k / 4 for k in range(-360, 360)]
+    for row in rows:
+        best_near = min(_dxf_box_areas(tmp_path / row["file"], near))
+        best = min(_dxf_box_areas(tmp_path / row["file"], every))
+        assert best >= best_near * (1 - 1e-4), (row["file"], best, best_near)
+
+
 def _outline_turns(part) -> tuple[list[float], list[tuple[str, float]]]:
     """A plate's top outline (its outer wire), in order: every tangent break's turn (degrees,
     + convex, - re-entrant) and each edge's kind (``L``, ``+`` a convex arc, ``-`` a concave

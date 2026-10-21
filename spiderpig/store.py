@@ -448,8 +448,10 @@ class Store:
         if mech is not None:
             parts_dir.mkdir(parents=True)
             for name, part in design.parts.items():
-                entry = {**part.to_dict(), "pose": part.pose, "color": mech.body(name).color,
-                         "file": None, "same_as": None, "mirror": False}
+                body = mech.body(name)
+                entry = {**part.to_dict(), "pose": part.pose, "color": body.color,
+                         "file": None, "same_as": None, "mirror": False,
+                         **({"turn": body.turn} if body.turn else {})}
                 twin = mirror_twin(name)
                 if twin in design.parts and is_mirror(design.parts[twin], part):
                     entry.update(same_as=twin, mirror=True)
@@ -502,7 +504,8 @@ class Store:
                 solids[e["name"]] = src.mirror(Plane.XY) if e.get("mirror") else src
         bodies = [Body(name=e["name"], part=solids[e["name"]], color=e.get("color"),
                        pose=Pose(np.array(e["pose"], dtype=float)), rigid_with=e.get("rigid_with"),
-                       fab=e.get("fab"), bom_key=e.get("bom_key"), sheet=e.get("sheet"))
+                       fab=e.get("fab"), bom_key=e.get("bom_key"), sheet=e.get("sheet"),
+                       turn=e.get("turn", ""))
                   for e in entries]
         meta = dict(manifest.get("meta", {}))
         meta["fastened"] = [tuple(p) for p in manifest.get("fastened", [])]
