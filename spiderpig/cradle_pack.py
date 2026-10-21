@@ -155,6 +155,8 @@ def _size(key: str | None) -> str:
 
 
 def _join(xs: Sequence[str]) -> str:
+    if not xs:
+        return ""
     return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " and " + xs[-1]
 
 
@@ -631,44 +633,42 @@ def level(points: Sequence[np.ndarray], tilt: float = 0.0) -> float:
 
 PACK_PLANS: dict[str, vp.Plan] = {
     "decanter_rcm": vp.Plan(
-        "B: the cradle box on the board as it stands, the hand crank in its bay, the drive "
-        "panel over it, the passive panel on top",
+        "B: the drive panel bay down on the board, the passive panel over it, the cradle box "
+        "standing on top",
         steps=(
-            vp.Step("box", down="bottom", spin=0, corner="-x-z",
-                    why="standing as in use (its axis level, its saddles' open "
-                        "tops up), on the board along its length, toward its -z side: 723 "
-                        "mm from its cradle links' front pins to its rails' end, the box's "
-                        "length"),
-            vp.Step("hand_crank", into="box", region=(0.0, 0.03, 0.5, 0.48), after=("box",),
-                    why="in the cradle box's bay, on the board between its two cradle "
-                        "links, in front of the front saddle: caged by the box (the packing "
-                        "review's m3; it had lain loose on the board beside the box, 134 mm "
-                        "free to slide)"),
-            vp.Step("drive", down="outer", spin=0, after=("box", "hand_crank"),
-                    why="as it lay when the box came off, its outer plate down: its plates "
-                        "over the box, the gearbox down beside it onto the board, on printed "
-                        "spacers (the heaviest module low)"),
-            vp.Step("passive", down="bay", spin=180, corner="+x+z", after=("drive",),
-                    why="last, its bay face down over the drive panel's, turned end for end, "
-                        "its links between the drive panel's, on printed spacers (a quarter "
-                        "turn until the side frames' redesign of 2026-10-20: its inner "
-                        "plate's bottom chord then lands on the drive panel's b2 and b3, "
-                        "171 L)"),
+            vp.Step("drive", rot=((1, 0, 0), (0, 0, -1), (0, 1, 0)), corner="+x+z",
+                    why="first, its bay face down on printed spacers on the board, its outer "
+                        "plate up, the gearbox up at the board's far end: the heaviest piece "
+                        "lowest, resting on its inner plate and links, never on its gearbox"),
+            vp.Step("passive", rot=((0, -1, 0), (0, 0, -1), (1, 0, 0)), corner="-x-z",
+                    after=("drive",),
+                    why="its outer plate down over the drive panel, turned a quarter, beside "
+                        "the drive panel's gearbox, on printed spacers"),
+            vp.Step("box", rot=((-1, 0, 0), (0, 1, 0), (0, 0, -1)), corner="+x-z",
+                    after=("passive",),
+                    why="standing as in use, turned end for end, on printed spacers on the "
+                        "two panels"),
+            vp.Step("hand_crank", rot=((1, 0, 0), (0, 0, 1), (0, -1, 0)), corner="-x+z",
+                    after=("box",),
+                    why="on the board beside the drive panel, between its two spacers"),
+            vp.Step("risers", after=("hand_crank",),
+                    why="on the drive panel's outer plate beside its gearbox"),
         ),
         note="B's pieces since pack turn 1 (2026-10-14): the board (its four brackets on it "
              "since turn 2), the passive side panel, the cradle box, the drive side panel, "
-             "the hand crank, the riser; the printed spacers where the pads were and beside "
-             "what would slide (voxpack.spacers, turn 2). The box's length is the cradle "
-             "box's (723 mm levelled, 41 mm longer than the board) and its height the board, "
-             "the cradle box standing (178 mm; 212 since simplification round 2, b6 cut to "
-             "its band round the racking brace's boss and pad) and the two panels nested over "
-             "it. Before "
-             "turn 1 the drive side carried the cradle box, 441 mm across the bay whichever "
-             "way it lay: the box was the board's footprint times that, about 211 L. (The other "
-             "orders tried: the passive panel on the board, the drive panel bay to bay over "
-             "it and the box on top, 182 L; the drive panel on the board under the passive, "
-             "the box on top, 186 L; turn 2: the riser in the box's bay too, 158.5 L, the "
-             "drive panel then over it.)"),
+             "the hand crank, the riser; the printed spacers (voxpack.spacers, turn 2). Pack "
+             "turn 3 (2026-10-21): the drive panel bay down on the board, the passive panel "
+             "over it, the cradle box standing on top, 744 x 366 x 601 mm, 164.0 L (the "
+             "keep-clear search's, 6 seeds x 100 s), where turn 2's plan (the cradle box on "
+             "the board, the drive panel over it, its gearbox down beside the box, the passive "
+             "panel on top) made 745 x 394 x 600, 175.9 L since round 2's brace stood the box "
+             "212.5 mm tall: past 15 in deep, USPS's 108 in of length and girth, Oversized. "
+             "(The other orders tried: turn 1's, the passive panel on the board, the drive "
+             "panel bay to bay over it and the box on top, 182 L; the drive panel outer plate "
+             "down on the board under the passive, the box on top, 186 L; turn 2: the riser "
+             "in the box's bay too, 158.5 L, the drive panel then over it; turn 3: the "
+             "passive panel beside the box under the drive panel, 162.1 L, which rests the "
+             "drive panel on its gearbox.)"),
     "decanter_hinge": vp.Plan(
         "A: both side panels face down on the board, end to end, the loose parts in their "
         "open triangles",
@@ -1132,6 +1132,8 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
     for mod in mods:
         if mod["key"] in taped:         # (taped to the piece it rests on: moves with it)
             mod["taped"] = taped[mod["key"]]
+    for sp in kit:                      # (what a spacer bears on: never a part kept clear)
+        sp.bears = tuple(n for n in sp.bears if not keep_clear(n, inp["linkage"]))
     _number(kit, len(mods))
     for mod in mods:
         mod["pads"] = [{k: v for k, v in q.items() if k != "piece"}
@@ -1334,7 +1336,7 @@ SET_LINKS: dict[str, dict[str, str]] = {
                  "b3 across their paint line at J2 (b5 hangs on its one pin), and turn pins X "
                  "and Y so each R-clip lies along its link as the picture shows: no spacer "
                  "touches a clip (they keep a cell clear of them), but a clip standing out "
-                 "would meet the cradle box.",
+                 "would meet a spacer.",
         "passive": "Before it goes in, set its links as on the way back: a strip of masking "
                    "tape across b3 and the inner bar at their paint line, and one across b5 "
                    "and b3 at J2 (no worm holds this side), each R-clip along its link.",
@@ -1350,6 +1352,9 @@ ARROW_END: dict[str, str] = {"decanter_rcm": "the cradle box's base stop end",
 
 LAYER_PIECES = ("drive", "passive")
 """The pieces that start a layer of the box steps (:func:`box_layers`): the side panels."""
+LAYER_MOST = 9
+"""The most a box step places (pieces and spacers): more, and it splits before a piece (a
+step with too many items leaves its picture no room on its page)."""
 
 
 def box_layers(layout: dict) -> list[list[tuple[str, dict]]]:
@@ -1375,7 +1380,26 @@ def box_layers(layout: dict) -> list[list[tuple[str, dict]]]:
             out[layer_of[d["under"]]].append((kind, d))
         else:
             out[cur].append((kind, d))
-    return [layer for layer in out if layer]
+    split: list[list[tuple[str, dict]]] = []
+    for layer in (layer for layer in out if layer):
+        units: list[list[tuple[str, dict]]] = [[]]       # (each piece and what precedes it)
+        for kind, d in layer:
+            units[-1].append((kind, d))
+            if kind == "piece":
+                units.append([])
+        if not units[-1]:
+            units.pop()
+        elif len(units) > 1:
+            tail = units.pop()                            # (what follows the last piece)
+            units[-1] += tail
+        part: list[tuple[str, dict]] = []
+        for u in units:
+            if part and len(part) + len(u) > LAYER_MOST:
+                split.append(part)
+                part = []
+            part += u
+        split.append(part)
+    return split
 
 
 def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str, list[str]]]]:
@@ -1424,26 +1448,20 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str
                                  f"{wide:.0f} mm long, {w[1]:.0f} mm tall and {thick:.0f} mm "
                                  f"thick, taped, stood on its edge on the carton's floor "
                                  f"against {held}'s end.")
-                elif d.get("taped"):
-                    bears = _join([part_words(n) for n in d.get("bears", ())])
-                    tape = (f", a strip of tape over it onto "
-                            f"{labels.get(d['taped'], part_words(d['taped']))}: nothing else "
-                            "holds it along there.")
-                    items.append(f"{tag} on {on(d['on'])}, under where {held} comes down "
-                                 f"({bears}){tape}" if way == "support" else
-                                 f"{tag} on {on(d['on'])}, against {held}'s side{tape}")
-                elif way == "restraint +y":
+                bears = _join([part_words(n) for n in d.get("bears", ())]) or "its plates"
+                tape = (f", a strip of tape over it onto "
+                        f"{labels.get(d['taped'], part_words(d['taped']))}: nothing else "
+                        "holds it there." if d.get("taped") else "")
+                if way == "restraint +y":
                     items.append(f"{tag} on {held}, holding it down: what goes in over it "
-                                 "(or the lid) comes down on it.")
+                                 f"(or the lid) comes down on it{tape or '.'}")
                 elif way.startswith("restraint"):
-                    items.append(f"{tag} on {on(d['on'])}, against {held}'s side."
-                                 if d["under"] in done else
-                                 f"{tag} on {on(d['on'])}, where {held} will stand beside "
-                                 "it.")
+                    items.append(f"{tag} on {on(d['on'])}, "
+                                 + (f"against {held}'s side" if d["under"] in done else
+                                    f"where {held} will stand beside it") + (tape or "."))
                 else:
-                    bears = _join([part_words(n) for n in d.get("bears", ())])
                     items.append(f"{tag} on {on(d['on'])}, under where {held} comes down "
-                                 f"({bears}): its lips seat round them.")
+                                 f"({bears})" + (tape or ": its lips seat round them."))
                 continue
             face = {"bottom": "standing as in use", "outer": "its outer plate down",
                     "bay": "its bay face down"}.get(d.get("down", "")

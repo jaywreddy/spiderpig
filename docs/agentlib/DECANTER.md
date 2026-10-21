@@ -1275,47 +1275,45 @@ guide's and the cradle page's, and since the pack's turn 2 the guide's "Into its
 "Out of its box" steps between them, `cradle_pack.box_steps`; the cradle box on its own
 since the pack's turn 1, the same day). The base board (its four brackets on it since the
 pack's turn 2, the clutch's check stub taped in its riser locator's pocket since turn 3), the
-passive side panel, the cradle box, the drive side panel, the riser and the hand crank, 11
-printed spacers and 2 corrugated fillers that hold them. No tool, no small part left
-loose: 745 x 394 x 600 mm outside, 175.9 L (the real-shape packer's plan, on the planner's
+drive side panel, the passive side panel, the cradle box, the hand crank and the riser, and
+17 printed spacers that hold them. No tool, no small part left loose: 744 x 366 x 601 mm
+outside, 164.0 L, 17.6 kg with its spacers (the real-shape packer's plan, on the planner's
 16-layer stack, with round 2's NRV050, the riser's lifts, the side frames' redesign of
-2026-10-20, simplification round 2's racking brace and the pack's turn 3), 17.5 kg with its
-spacers and fillers, where the drive side carrying the cradle box had packed in 699 x 498 x
-608, 212 L (its flat pack had been 112).
-- **Pack turn 3** (2026-10-21, packing review 2's B1, M1-M5; DECISIONS.md): the box as
-  round 2 left it, 745 x 394 x 600, 175.9 L, but now a pack, not a placement:
+2026-10-20, simplification round 2's racking brace and the pack's turn 3), where the drive
+side carrying the cradle box had packed in 699 x 498 x 608, 212 L (its flat pack had been
+112).
+- **Pack turn 3** (2026-10-21, packing review 2's B1, M1-M5; DECISIONS.md): 745 x 394 x
+  600, 175.9 L before, since round 2's brace stood the cradle box 212.5 mm tall.
+  - **The order:** the drive panel goes in first, its bay face down on spacers on the
+    board, its gearbox up; the passive panel over it, outer plate down, turned a quarter
+    beside the gearbox; the cradle box standing on top, turned end for end; the hand crank
+    on the board beside the drive panel, taped to it; the riser on the drive panel's outer
+    plate. The keep-clear search's (6 seeds x 100 s round no plan) best, 164.0 L. Turn 2's
+    order (the box on the board, the drive panel over it with its gearbox down beside the
+    box, the passive panel on top) packs in 175.9 L on 11 prints (512 g, 18.8 h) under the
+    same rules, 394 mm tall: past 15 in deep, USPS's 108 in of length and girth, Oversized
+    in any carton ("The carton and shipping" below). The other orders tried: the passive
+    panel beside the box under the drive panel, 162.1 L, rests the drive panel on its
+    gearbox.
   - **B1, the load paths:** nothing bears on the lip gauge, a pin or its R-clip, the
-    gearbox or a screw head (`cradle_pack.KEEP_CLEAR`); the drive panel rests on its outer
-    plate on five spacers over the cradle links' edges, the rear saddle's hub and the hand
-    crank's arm (its gearbox 3-6 mm clear: it had carried 78 % of the panel), the passive
-    panel on its links b2 and b3 and its outer plate (it had carried 56 % on a button head),
-    the cradle box on the board (its only +x stop had been the lip gauge, rated to 1.4 g).
-    Settled on the real meshes (packing review 2's `settle.py`): the drive panel 37.4 N on
-    spacer 3 and 30.0 N on spacer 4, both under its outer plate, none on the gearbox; the
-    passive panel 19.7 N on b2, 4.8 N on b3, 1.4 N on its outer plate.
+    gearbox or a screw head (`cradle_pack.KEEP_CLEAR`): the drive panel rests on its inner
+    plate and links on five spacers on the board (in turn 2's order it had carried 78 % on
+    its gearbox), the passive panel on its outer plate on five over the drive panel's (56 %
+    had been on a button head), the cradle box on its links and brace on three (its only +x
+    stop had been the lip gauge, rated to 1.4 g). SETTLE
   - **M4, lifting:** the judge counts up (`voxpack.metrics`); every piece and spacer is held
-    each way, up too, to a cell (3 mm): the riser has a cap, the board two corrugated
-    fillers at its ends (it slid 36-48 mm along the carton, the cradle box's length).
+    each way, up too, to a cell (3 mm): the riser under a cap, the hand crank and two
+    spacers taped (`taped`) where nothing else held them.
   - **M1, what moves:** the clips keep a cell clear; each panel's free links are taped at
     their paint lines before it goes in (the passive side's b3 to its inner bar and b5 to
     b3, the drive side's b5 to b3: `cradle_pack.SET_LINKS`), as the way back already did.
   - **M3, the prints:** PETG (sliced by BambuStudio 2.08, X1C, 0.20 mm, 15 % gyroid, two
-    walls: 512 g, 18.8 h; turn 2's 14 TPU spacers were 651 g, 43.1 h), 11 prints where
-    there were 14 (three pairs joined, `voxpack._bridges`; spacer 3 and spacer 12 taped to
-    what they stand on, `Spacer.taped`), each its number and an arrow engraved.
+    walls, Bambu PETG Basic: 717 g, 31.4 h for the 17; turn 2's 14 in TPU 95A were 651 g,
+    43.1 h), each its number and an arrow engraved, none over the bed.
   - **M2, the guide:** a picture of the pack for each box step, the spacers in it numbered;
     the spacers in the print list; 3 box steps each way where there were 6, and the trip's
     18 steps where there were 31 (`cradle.TRIP_MERGES`).
-  - **M5, the carton:** Uline's S-4509 cut at its 16 in score (275# board, rated to 65
-    lb; "The carton and shipping" below).
-  - **The volume:** unchanged. The cradle box stands 212.5 mm tall since round 2's brace;
-    standing is its least height (on its side 291 mm), and the two panels nest over it as
-    they did. The searches round no plan with the new rules (6 seeds x 100 s) found 164.0
-    L at best, the cradle box on top of the two panels on 25 spacers, three of them free to
-    slide; the plan's layout with the drive panel over the box and the passive panel beside
-    it (162.1 L, a search without the rules) leaves the drive panel resting on its gearbox.
-    A cut or stock carton bills the 70 lb USPS price either way (the dimensional weight is
-    over 70 lb from 13 in up): litres no longer buy postage.
+  - **M5, the carton:** "The carton and shipping" below.
 - **Pack turn 2** (2026-10-20, the packing review's L1, M1, M2 and minors): 740 x 337 x 600,
   149.4 L before.
   - The brackets stay on the board (L1, "The brackets" under "The base board"): the
@@ -1558,17 +1556,20 @@ and its brackets: its studs and knobs with it), the cradle box (both cradle link
 knobs, post and lip gauge, the light, the base stop), the drive side panel (the gearbox and
 every part of that side but its cradle link and the hand crank: the worm holds its links as
 cranked) and the hand crank. Each side's b5, hanging on J2, swings into its panel
-(`cradle_pack.tuck`). B's plan (`cradle_pack.PACK_PLANS`): the cradle box in first, on the
-board as it stands in use, along its length; the hand crank in its bay; the drive panel as
-it lay when the box came off, its outer plate down, its plates over the box and its
-gearbox down beside it, on five printed spacers; the passive panel last, its bay face down
-over the drive panel's, turned end for end, on six; the riser in the board's front notch;
-the mass centre 41 % up the box. The box's length is the cradle box's, 723 mm levelled
-from its links' front pins Y (122 mm in front of the mouth) to its rails' end (600 behind
-it), 41 mm longer than the board; its height the board, the box standing (178 mm) and the
-two panels nested over it. Packed the other ways a person would try: the passive panel on
-the board, the drive panel bay to bay over it, the box on top, 182 L; the drive panel on the
-board under the passive panel, the box on top, 186 L.
+(`cradle_pack.tuck`). B's plan (`cradle_pack.PACK_PLANS`, pack turn 3): the drive panel
+first, its bay face down on five printed spacers on the board, its gearbox up at the
+board's far end; the passive panel over it on five, its outer plate down, turned a quarter
+beside the gearbox; the cradle box standing on top on three, turned end for end; the hand
+crank on the board beside the drive panel, taped to it; the riser on the drive panel's outer
+plate beside its gearbox, under a cap; the mass centre 38 % up the box. The box's length is
+the cradle box's, 723 mm levelled from its links' front pins Y (122 mm in front of the
+mouth) to its rails' end (600 behind it), 41 mm longer than the board. (Turn 2's: the
+cradle box in first, on the board as it stands in use; the hand crank in its bay; the drive
+panel outer plate down over the box, its gearbox down beside it; the passive panel bay face
+down over the drive panel's, turned end for end: 175.9 L since round 2's brace. Packed the
+other ways a person would try in turn 1: the passive panel on the board, the drive panel bay
+to bay over it, the box on top, 182 L; the drive panel outer plate down on the board under
+the passive panel, the box on top, 186 L.)
 
 **The pack's leads, measured** (turn 1, 2026-10-14, on round 1's design and its 17-layer
 plan; `--split` and a board swapped for a smaller box in a scratch driver; each searched
@@ -1780,16 +1781,18 @@ carton in the 30 x 24 in footprint whose inside takes the pack (its parts' bound
 mm, any way round on the floor), cut down at a score line where it has them, and whose board
 Uline's table rates (UPS's guideline) for the pack's weight with its carton (4 lb):
 - **S-12613** (30 x 24 x 12 in, 275# double wall, rated to 80 lb, $11.71 a box in tens) is
-  Uline's only double-wall carton in the footprint: 305 mm inside, too shallow for B's 384
+  Uline's only double-wall carton in the footprint: 305 mm inside, too shallow for B's 357
   since round 2's racking brace (turn 2's 308 mm pack would have fitted). S-4417, the 200#
-  single wall named until turn 3, is rated to 40 lb, under B's 42.6.
+  single wall named until turn 3, is rated to 40 lb, under B's 45.
 - **B: S-4509** (30 x 24 x 24 in, 275# single wall, scored at 24, 22, 20, 18, 16 and 14 in,
-  rated to 65 lb, $11.64 a box, $116.40 the bundle of 10) cut down at its 16 in score:
-  27, 23 and 20 mm spare round the pack (its spacers and fillers hold the pieces; the spare
-  is the carton's), 42.6 lb. USPS Ground Advantage retail, zones 1 / 4 / 5 / 8: $99.00 /
-  $133.50 / $165.70 / $235.30 (95 lb dimensional, the 70 lb price, the 30 in and 2 cubic
-  feet fees). A box cut to the pack, 745 x 394 x 600 mm: $93.50 / $128.00 / $160.20 /
-  $229.80 (83 lb dimensional; the 22 in fee).
+  rated to 65 lb, $11.64 a box, $116.40 the bundle of 10) cut down at its 14 in score: it
+  takes the pack's parts with 1 mm round them (the review's m5; 32, 3 and 23 mm spare),
+  45.3 lb. But its outside, 30.5 x 24.5 x 14.75 in, is 111 in of length and girth: USPS
+  Ground Advantage retail bills it Oversized, zones 1 / 4 / 5 / 8 $116.00 / $177.35 /
+  $211.30 / $301.75. A carton made to the pack's box (744 x 366 x 601 mm, 29.3 x 14.4 x 23.7
+  in: no stock size is; a box maker's, or one cut and taped down from a larger carton) is
+  108 in and bills the 70 lb price: $93.50 / $128.00 / $160.20 / $229.80, $51.10 less at
+  zone 5. Turn 2's order (394 mm) is Oversized in any carton.
 - **A:** S-12613 ("A in its pack" above): the 200# boxes that would take it at 10 in are
   rated to 40 lb, under its 40.8.
 - The review's carrier option, the carton inside an outer one with 2 in of foam all round:

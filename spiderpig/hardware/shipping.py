@@ -160,12 +160,37 @@ def carton_for(inside_mm: tuple[float, float, float], kg: float) -> dict | None:
     return best[1] if best else None
 
 
+FIT_MM = 1.0
+"""mm a carton's inside clears the pack's parts' bounds each way (the review's m5: the
+model's 3 mm all round cost an inch)."""
+
+
+def _made_to_size(pack: dict, kg: float, stock: dict) -> list[str]:
+    """A line for a carton made to the pack's own box (its outside, ``pack["box"]``), where
+    USPS bills it less than the stock one (``stock``: its :func:`usps`)."""
+    out = tuple(float(v) / IN for v in pack["box"]["outside_mm"])
+    post = usps(out, kg / 0.45359237 + CARTON_LB)       # type: ignore[arg-type]
+    if post["usd"][5] >= stock["usd"][5] - 0.005:
+        return []
+    o = " x ".join(f"{v:.1f}" for v in out)
+    return [f"A carton made to the pack's own box ({o} in outside: no stock size is; a box "
+            "maker cuts one, or one is cut and taped down from a larger carton) bills "
+            + " / ".join(f"zone {z} ${p:.2f}" for z, p in post["usd"].items())
+            + f": ${stock['usd'][5] - post['usd'][5]:.2f} less a shipment at zone 5"
+            + (", the stock one being Oversized (over 108 in of length and girth)"
+               if stock["oversized"] else "") + "."]
+
+
 def ship_lines(name: str, pack: dict, kg: float) -> list[str]:
     """ORDER.md's "Ship it" lines for a cradle's pack payload ``pack`` (``cradle_pack``'s:
-    its box) weighing ``kg`` with its spacers: the carton (:func:`carton_for`), how it is cut
-    and filled, its rating, the postage, and what the pack is for."""
+    its box, its parts' bounds ``packed_mm``) weighing ``kg`` with its spacers: the carton
+    (:func:`carton_for`: the parts' bounds and :data:`FIT_MM` all round, packing review 2's
+    m5), how it is cut and filled, its rating, the postage, a carton made to the pack's own
+    box where USPS bills that less, and what the pack is for."""
     inside = tuple(float(v) for v in pack["box"]["inside_mm"])
-    got = carton_for(inside, kg)    # type: ignore[arg-type]
+    parts = pack.get("packed_mm")
+    fit = tuple(float(v) + 2 * FIT_MM for v in parts) if parts else inside
+    got = carton_for(fit, kg)       # type: ignore[arg-type]
     lines = ["## Ship it (the carton)", ""]
     dims = " x ".join(f"{v:.0f}" for v in inside)
     if got is None:
@@ -191,6 +216,7 @@ def ship_lines(name: str, pack: dict, kg: float) -> list[str]:
         "(the pack's spacers hold every piece; the filler only stops the pack shifting in the "
         "carton). The bundle is bought whole (Uline sells by the bundle): ship one, keep the "
         "rest for the trips.",
+        *_made_to_size(pack, kg, post),
         f"USPS Ground Advantage Retail ({o[0]:g} x {o[1]:g} x {o[2]:g} in outside: "
         f"{post['dim_lb']} lb dimensional, billed {min(post['billed_lb'], 70)} lb"
         + (", oversized" if post["oversized"] else f", fees ${post['fees']:.2f}") + "): "

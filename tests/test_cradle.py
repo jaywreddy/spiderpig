@@ -4208,7 +4208,7 @@ and 90 L since the side frames' redesign of 2026-10-20, the drive panel turned a
 252 mm and 107 L since design review round 3's frames, the strut G-O 140 mm, the rail 60 and
 a column E2: its drive panel's outer plate stands on printed spacers 64 mm over the passive
 panel round its gearbox, pack turn 3)."""
-MODULE_BOX = (30.0, 397.0, 600.0, 725.0, 177.0)
+MODULE_BOX = (30.0, 370.0, 600.0, 725.0, 166.0)
 """A cradle packed as modules (B): its box, outside, along the board no more than 30 mm (its
 walls and clearances take 16) over the larger of the board's length and the cradle box's
 (725 mm: levelled, from its cradle links' front pins to its rails' end), at most 340 mm tall
@@ -4225,8 +4225,9 @@ chords, the passive panel turned end for end over the drive panel): 740 x 337 x 
 pack turn 2 (its brackets on the board, the hand crank in the cradle box's bay, printed
 spacers): 739 x 318 x 600, 141 L; simplification round 2's racking brace (the box 212 mm
 tall): 745 x 394 x 600, 176 L; pack turn 3 (nothing bearing on a gauge, a clip, the gearbox or
-a screw head; caps, fillers): 745 x 394 x 600, 175.9 L. Read off the board, so a larger board
-moves the bound with it."""
+a screw head; caps; the drive panel bay down on the board, the passive panel over it, the
+cradle box standing on top): 744 x 366 x 601, 164.0 L, under USPS's 108 in of length and
+girth. Read off the board, so a larger board moves the bound with it."""
 SPACER_SLIVER = 10.0
 """mm^3: the most a printed spacer may share with a part the pack test tessellates afresh
 (:func:`test_the_cradle_packs_in_one_box`): the chords of a curved part's mesh lie a

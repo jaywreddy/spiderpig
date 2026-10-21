@@ -2549,8 +2549,8 @@ def spacers(g: Grid, rows: Sequence[dict], avoid: np.ndarray | None = None,
     # a support that still slides goes, where what it carries rests without it
     for n in reversed(range(len(st.made))):
         sp = st.made[n]
-        if sp.why != "support":
-            continue
+        if sp.why != "support" or any(sp.key in o.on for o in st.made):
+            continue                    # (not one another spacer stands on)
         free = st.slide(st.mask(sp.cols), up=True)
         p = next((o for o in st.ids(sp.under) if o >= 0), None)
         if max(free.values()) <= SPACER_HOLD or p is None or "com_mm" not in rows[p]:
@@ -2618,7 +2618,9 @@ def _bridges(st: _Spacers) -> None:
             sa.cols = np.concatenate([sa.cols, got, sb.cols])
             sa.pads = tuple(dict.fromkeys(sa.pads + sb.pads))
             sa.bears = tuple(sorted(set(sa.bears) | set(sb.bears)))
-            sa.on = tuple(sorted(set(sa.on) | set(sb.on)))
+            sa.on = tuple(sorted((set(sa.on) | set(sb.on)) - {sa.key, sb.key}))
+            for other in made:              # (what stood on b stands on a now)
+                other.on = tuple(dict.fromkeys(sa.key if o == sb.key else o for o in other.on))
             st.drop(b, keep_cells=True)
             joined = True
             break
