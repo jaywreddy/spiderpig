@@ -2366,7 +2366,7 @@ def _carriers(res, links, theta_ok: bool = True) -> dict:
     carrier's sections turn about the mouth with its tie rods, by ``alpha(z)`` along them;
     a carrier's two ends at different ``z`` are forced against each other beyond its bores'
     play (:data:`CARRIER_PLAY`). The rear carrier's two side blocks (``cradle.REAR_FOOT_Z``)
-    are joined by a printed bridge under the V block (15 x 10 mm, ``cradle._rear_saddle``),
+    are joined by a printed bridge under the V block (``cradle.REAR_BRIDGE``),
     its ends forced across (its radius from the mouth times the blocks' relative turn, less
     the floating -z block's play) and twisted (that turn): fixed at both blocks, its
     stress and its safety factor across its layers at :data:`TRANSIENT_SF` (once a pour).
@@ -2392,10 +2392,10 @@ def _carriers(res, links, theta_ok: bool = True) -> dict:
     d_turn = np.abs(turn(rear, (za + zc) / 2) - turn(rear, -(za + zb) / 2))
     xs = cr.REAR_LEAD[0]
     rear_s = next(s for s in cr.SADDLES if set(s.ties) == set(rear))
-    yb = rear_s.y0 + 5.0
+    bw, bt = cr.REAR_BRIDGE
+    yb = rear_s.y0 + bt / 2
     r_b = math.hypot(xs, yb)
     lb = 2 * (za + 0.5)
-    bw, bt = 15.0, 10.0
     forced = np.maximum(r_b * d_turn - CARRIER_PLAY, 0.0)
     ei = E_PETG * bw * bt ** 3 / 12
     m_b = 6 * ei * forced / lb ** 2

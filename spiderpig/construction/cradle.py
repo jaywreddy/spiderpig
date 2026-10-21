@@ -2022,6 +2022,11 @@ REAR_FOOT_Z = (88.5, 103.5, 126.0)  # the carrier's side blocks across: inner fa
 #                                     one's outer (it only rides the rods since the post
 #                                     left it: 15 mm), the +z one's (the post and the screw)
 REAR_FOOT_TOP = -121.0        # their tops
+REAR_BRIDGE = (15.0, 6.0)     # the bridge joining them under the V block: along x, its height
+#                               (10 until simplification round 1: the racking box forces its
+#                               ends against each other, cradle_report._carriers, and a
+#                               forced bar's stress grows with its depth: 1/2 in 6061 tie rods
+#                               had taken a 10 mm one to 2.33 x across its layers, bar 2.5)
 REAR_SET_Z = 103.0            # the M3 set screws up from the +z block onto the tie rods
 REAR_BOSS = (12.0, -110.0, -57.0)   # the V block's boss round the post: radius, bottom, top
 #                                     (at its lowest: over the carrier's collar)
@@ -2218,7 +2223,8 @@ def _rear_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
     n_t, r_t, r_i, h_t = LOCK_TEETH
     part = union([_box(x0, x1, s.y0, REAR_FOOT_TOP, za, zc),
                   _box(x0, x1, s.y0, REAR_FOOT_TOP, -zb, -za),
-                  _box(xs - 7.5, xs + 7.5, s.y0, s.y0 + 10.0, -za - 0.5, za + 0.5),
+                  _box(xs - REAR_BRIDGE[0] / 2, xs + REAR_BRIDGE[0] / 2, s.y0,
+                       s.y0 + REAR_BRIDGE[1], -za - 0.5, za + 0.5),
                   _box(tx0, tx1, REAR_FOOT_TOP - 1.0, at, tz0, tz1),
                   _box(ax, tx1, ab, at, tz0, tz1),
                   _rod_y(xs, zs, ARM_PAD, ab, at),

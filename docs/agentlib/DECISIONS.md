@@ -2998,3 +2998,69 @@ identity gate against `planner-f667d6b` is identical.
   `fasteners.py`), `spiderpig/construction/handcrank.py` (`DESIGN_START_NM` only),
   `spiderpig/construction/__init__.py` (`STEEL_FEET`'s pillars), `spiderpig/cradle_pack.py`
   (the `"feet"` rest), `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`.
+
+### 2026-10-21: the cradle box as a 3D frame, the rear post in 6061 and its lead screw printed (simplification round 1's box checker; the user's materials rule)
+
+The round's box review found `cradle_report.box_racking` holding the cradle links rigid out
+of their plane: a 4.75 mm link is 5-13 x softer there than the tie rods it was to fix. The
+checker rated the box as it is, then took the materials rule's two steel parts out of the
+rear saddle. Products only: the walkers' identity gate is identical.
+
+- **The box, a 3D frame** (`cradle_structure.box_frame`, `TieRod`, `BoxLinks`,
+  `BOX_HOLDS`; `cradle_report.box_racking`, `box_links`, `box_rods`): both cradle links
+  grillages of their chords, held at their pins three ways (the rows take the worst), the
+  rods 3D beams, each end joint rigid in bending and holding its twist to its friction
+  (6.84 N·m: the face and the threadlocked screw's head at `SLIP_MU`), past it slipping. In
+  the rigid limit it is the old model exactly (a test holds it); the review's grillage
+  probe agrees once its ground springs (an identity of 1 N/mm on every dof, 9 % of the box)
+  are taken out.
+  - Walking it holds, both cradles: no joint slips (B's twist 5.83 N·m at worst, A's 5.63),
+    the faces shut 4.3-4.9 x, the rods 7.2-7.5, the link with its in-plane stress 5.2-5.6.
+    The box racks 0.5-0.6°, ten times the old figure; the rear carrier's bridge takes its
+    turn at 5.1-6.0 (bar 2.5).
+  - **The jam's share settled at all of the couple** (`JAM_SHARE` 1.0): a block on the
+    passive side's linkage, or on the bottle or a saddle through the drive half, puts the
+    whole couple through some length of the box from the drive link; the twist, which
+    governs, is the whole couple's either way. Half the couple over the whole bay (the old
+    case) understated the twist by two.
+  - **At the cap the box doesn't hold** (B: the rods 0.40, their screws 0.85, the link 0.17;
+    A 0.38, 0.82, 0.16): the joints slip from 30-36 N·m across and the links bend past
+    yield. It holds about 55 N·m across at SF 1.3 (92 dry), a quarter of the cap's 224
+    (A 271). On the old model B's rods had held 1.73 at half the couple. `OPEN_AT_CAP`
+    names the three box rows on both cradles; the tests xfail on them. Today's steel fails
+    as 1/2 in 6061 does (55.5 against 54.7 N·m): the materials rule doesn't move it. For the
+    drive area: no cap above the running peak brings the box to 1.3 (15.6 N·m would).
+    A racking member is the user's call.
+  - The stand review's R1 (rear rods 5/8 in 6061 on A2-70 at 4 N·m) slips walking: stiffer
+    rods take more of the twist, and A2-70's preload holds less.
+- **The rear post in 5/8 in 6061-T6511** (`cradle.POST_D`, `POST_YIELD`, `POST_M`;
+  `cradle_catalog`'s `rod_6061_5_8_150`, Speedy Metals 2439, USD 1.80 against MISUMI's
+  19.25): faced, its flats milled and its foot tapped M6 on the Carvera, an M6 x 12 up into
+  it. Its roll at 7.1 x 241 MPa (bar 3). PETG on bare aluminium has one cited figure, PET's
+  0.220-0.304 at 24.6-42.5 °C (Aduli 2023, an undergraduate paper; `PETG_ALU`): the 750 ml's
+  drawer 2.44 (bar 2) on its most.
+- **The rear lead screw printed** (`cradle.LEAD_SCREW`, `LEAD_THREAD`, `_lead_thread`,
+  `LEAD_NUT`, `LEAD_FLOAT`, `THRUST`): 13 mm, not the review's 16 (16 would not pass the
+  tower arm's bushing, so the arm, its teeth and the knob would all grow and the arm come
+  off), 4 starts, 8 mm a turn; its thread one sweep of its cross-section on a helical spine
+  (a fused 4-start sweep took over two minutes). Its nut floats in a hex pocket, so the post
+  takes all the roll and the nut's set screw goes; its shoulder sits on a printed thrust
+  ring on the TPU washer. The knob's teeth hold its turn back counted frictionless (0.6
+  MPa); knocked 2.87 across its layers (bar 2.5). ServoCity's cart closes (USD 18.97 and
+  its 8.99 shipping). Printing: the screw alone 2:41 (a slender part waits on its layers),
+  1:02 added on the rear carrier's plate (BambuStudio 2.08).
+- **The rail liners' print pose:** on their sheets, pegs up (they had stood on their pegs:
+  19 mm² on the bed, 2:52 against 1:38), and a mirrored print posed then mirrored
+  (`build.export_prints`: a pose with a turn about Z had stood the mirrored liner 170 mm up,
+  6:02). 5.6 h of TPU printing less.
+- **Not taken:** the light's clip on a slide-in dovetail (the clip's flange is 8 mm long
+  behind the front tie's set screw and Tf2's bore, which leave no room for a tail along x,
+  and z needs a slot across the floor that breaks into the back face); sparse printing
+  (sliced, the carriers' and V blocks' PETG drops a third but only 4.6 h of 39 h, and the
+  post socket, the bosses, the T-slot and the tower need modifier volumes the repo doesn't
+  emit: the rows are rated solid).
+- **The BOM:** B USD 1,380.45 to 1,343.83, A 1,157.43 to 1,120.81 (-36.62 each: the post
+  -17.45, ServoCity -18.97, the post's screw -0.11, a set screw -0.09).
+- **Where:** `spiderpig/cradle_structure.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/construction/cradle.py`, `spiderpig/hardware/cradle_catalog.py`,
+  `spiderpig/build.py`, `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`.
