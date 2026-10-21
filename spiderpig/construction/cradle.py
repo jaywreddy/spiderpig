@@ -9,8 +9,8 @@ one side at a time like any mechanism. The bottle lies between two sides, the **
 * **The passive side** (``R.``) is the drive side's own parts mirrored, without the crank,
   the rod and the rod's pin (:func:`passive_side`): the cradle box drives it; its plates
   keep the drive's holes, so each plate pair is one part, flipped.
-* **The cradle box**: four tie rods (12 mm steel standoffs made to length, MISUMI NETRF12)
-  between the two cradle links, at the linkage's tie points (``decanters.TIES``), each
+* **The cradle box**: four tie rods (1/2 in 6061-T6511 rounds made to length, faced and tapped
+  M6 at home) between the two cradle links, at the linkage's tie points (``decanters.TIES``), each
   screwed through its cradle link from outside. Two printed saddles ride on them, each a
   carrier on its two rods (an M3 set screw up from its underside onto each) and a V block
   that rides up and down in it on a thumbscrew (:class:`Saddle`): the front one under the
@@ -66,7 +66,19 @@ from typing import cast
 
 import numpy as np
 from build123d import Axis as BAxis
-from build123d import Box, Cylinder, Face, Location, Plane, Solid, Wire
+from build123d import (
+    Box,
+    Cylinder,
+    Face,
+    Helix,
+    Line,
+    Location,
+    Plane,
+    Polyline,
+    Solid,
+    Wire,
+    sweep,
+)
 
 from spiderpig.construction.base import (
     FRAME_INNER,
@@ -92,6 +104,7 @@ from spiderpig.shapes import (
     cut_holes,
     difference,
     disc,
+    intersection,
     moved,
     pill,
     pills,
@@ -146,11 +159,14 @@ DECANTER_PROFILE = ((0.0, 28.6), (6.3, 38.8), (21.7, 84.2), (30.0, 95.8), (40.7,
 radius) traced from RIEDEL's drawing (the vessel study of 2026-10-10, ``DECANTER.md``)."""
 BAY = 260.0            # between the two inner plates' bay faces: a 174 mm bottle, and a
 #                         decanter up to 240 mm across stands wholly between the side stacks
-TIE_D = 12.0            # the cradle box's tie rods: MISUMI NETRF12 (12 mm, M6 x 12 deep each
-#                         end; design review round 2's M1, 2026-10-15: the passive half's moment
+TIE_D = 12.7            # the cradle box's tie rods: 1/2 in 6061-T6511 round, M6 x 12 deep each
+#                         end (hardware.cradle_catalog.al_rod; the simplification round 1,
+#                         2026-10-21, the materials rule: MISUMI's 12 mm NETRF12 steel since
+#                         design review round 2's M1, 2026-10-15: the passive half's moment
 #                         crosses the bay in them racking, and a NETRF10's M5 end joints worked
 #                         at their gapping moment walking, its tapped ends yielded jammed:
-#                         cradle_report.box_racking)
+#                         cradle_report.box_racking). Their centres stayed (decanters.TIES), so
+#                         their tops stand 0.35 mm higher than the 12 mm rods'
 TIE_THREAD = 12.0
 M5 = screw("bhcs", "5")
 M6 = screw("bhcs", "6")
@@ -172,14 +188,15 @@ TIE_TIGHTEN_NM = 6.0    # the tie rods' screws tightened (the guide), and STEEL_
 #                         a foot's washer and into the rods' mild-steel taps for no joint that
 #                         needs it. (6 N·m on A2-70 button heads until design review round 3;
 #                         4 until 2026-10-20)
-STEEL_FEET: dict[str, tuple[str, ...]] = {"decanter_hinge": ("G",)}
+STEEL_FEET: dict[str, tuple[str, ...]] = {}
 """The pillars whose foot (its end on the outer plate) takes the tie rods' class 10.9 button head
-at :data:`TIE_TIGHTEN_NM` in both sides, not an A2-70 one at ISO 7380's 4 N·m: A's pillar G,
-whose foot lifted walking at the A2-70 head's least preload (1.06 x its decompression,
-2026-10-20: ``cradle_report.post_joints``). Steel by the wine: the tie rods themselves are bare
-carbon steel (MISUMI NETRF12, oiled), these heads lie outside the bay the wine runs in (on the
-cradle links' outer faces, outside the outer plate), unplated (an electroplated 10.9 risks
-hydrogen embrittlement), oiled with the rods."""
+at :data:`TIE_TIGHTEN_NM` in both sides, not an A2-70 one at ISO 7380's 4 N·m: none since the
+simplification round 1 (2026-10-21, the materials rule). A's pillar G, whose foot had lifted
+walking at the A2-70 head's least preload on its 12 mm steel post (1.06 x its decompression,
+2026-10-20), stays shut on the 1/2 in 6061 one (``cradle_report.post_joints``). The tie rods'
+heads stay class 10.9 (:data:`TIE_M`): outside the bay the wine runs in (on the cradle links'
+outer faces), unplated (an electroplated 10.9 risks hydrogen embrittlement), greased or
+threadlocked into the aluminium rods."""
 SMALL_TIE_D = 10.0      # a 10 mm standoff (MISUMI NETRF10, M5 x 10 deep each end): a base or
 #                         bay tie, a 10 mm column
 TIE_SCREW = 12.0        # M5 x 12 button heads through a 3.2-4.8 mm plate: 7.2-8.8 mm in the tie
@@ -352,9 +369,11 @@ FRONT_WALL_RELIEF = 6.0     # the carrier's back wall's notch this much under th
 #                             the pad clears it by 3.0 mm
 
 SADDLES = (
-    # the neck's V block in a box guide in its carrier (its underside 6.05 mm under the 12 mm
-    # tie rods: an M3 x 6 set screw up to each); it bears on the neck to FRONT_BEAR
-    Saddle("front_saddle", ("Tf1", "Tf2"), (45.0, 85.0), -60.0, (48.3, 79.0), -41.9,
+    # the neck's V block in a box guide in its carrier (its underside 5.7 mm under the 1/2 in
+    # tie rods: an M3 x 5 set screw up to each); it bears on the neck to FRONT_BEAR; at its
+    # lowest it sits 0.05 mm over the rods' tops (-41.6: 0.35 mm higher since the 12 mm
+    # rods, the simplification round 1, 2026-10-21; its V's apex where it was)
+    Saddle("front_saddle", ("Tf1", "Tf2"), (45.0, 85.0), -60.0, (48.3, 79.0), -41.55,
            _apex(DESIGN.r_neck), -10.0, 15.0),
     # the body's V block, under a 750 ml's body (its base at 300); the base stop's rails'
     # flanges continue its V behind it to 588, under a 6 L's whole body, so lying level or
@@ -457,11 +476,12 @@ class Stand:
     """A cradle's frame plates as a truss (mm, relative to the bottle's mouth at rest).
 
     ``nodes``: the free points; a member may also name O or a pillar. ``outer``/``inner``:
-    each plate's members (pills of ``member_r``). ``columns``: a 10 mm steel standoff between
-    a side's two plates there. ``feet``: where the outer plates stand on the table (a TPU
-    boot each). ``base_ties``: a tie rod across the whole cradle, outer plate to outer plate
-    through both stacks (clear of the decanter: never in front). ``bay_ties``: a tie rod
-    across the bay between the two inner plates (where nothing of the cradle passes)."""
+    each plate's members (pills of ``member_r``). ``columns``: a post between a side's two
+    plates there (``column_d``: 1/2 in 6061 rod since simplification round 1). ``feet``:
+    where the outer plates stand on the table (a TPU boot each). ``base_ties``: a tie rod
+    across the whole cradle, outer plate to outer plate through both stacks (clear of the
+    decanter: never in front). ``bay_ties``: a tie rod across the bay between the two inner
+    plates (where nothing of the cradle passes)."""
 
     nodes: Mapping[str, tuple[float, float]]
     outer: tuple[tuple[str, str], ...]
@@ -483,7 +503,8 @@ class Stand:
 BASE_SHEET = "birch_9mm"        # the base board, both sides' outer plates bolted onto it:
 #                                 Baltic birch plywood, routed (2026-10-13, the user's)
 BASE_T = 9.0                    # its thickness
-WOOD_GLUE = "wood_glue"         # its cleats and the riser locator's layers glued (Titebond II)
+WOOD_GLUE = "wood_glue_woodcraft"   # its cleats and the riser locator's layers glued
+#                                     (Titebond II, from Woodcraft with the panels)
 GREASE = "grease_h1"            # every greased face (NSF H1: the saddles' sit in the wine's
 #                                 path; design review round 3's stand and use, m10: "any
 #                                 lithium or PTFE grease", unbought, had been a shop supply)
@@ -534,6 +555,16 @@ CLEAT_LEAD = 2.0                # a lead-in sanded at 45° on each cleat's top e
 #                                 so the rails find their slots blind (round 2: 0.15 mm a side)
 CLEAT_END_R = 5.0               # a cleat's four corners rounded (design review round 2,
 #                                 2026-10-15: no square birch ends)
+HOME_SHEET = "birch_3_8_panel"  # the cleats and the riser locator: Woodcraft's 3/8 in (9 mm)
+#                                 Baltic birch panels, cut at home on the Makera Carvera
+#                                 (simplification round 1, 2026-10-21, the user's choice;
+#                                 SendCutSend's routed BASE_SHEET before: the board stays)
+CARVERA_LONGEST = 285.0         # a part's longest side cut on the Carvera: a 12 in panel's
+#                                 300 mm nest (sheet_catalog.CARVERA_PANEL) less the packer's
+#                                 3 mm margins, with room
+CLEAT_JOINT = 1.0               # a cleat longer than that comes in equal pieces butted end to
+#                                 end on its pencil marks, this far apart, each glued along its
+#                                 length (B's 452 mm ones in two), their joint ends square
 BOARD_WINDOW = (285.0, 390.0, 105.0, 20.0)
 """A window through the base board under the base stop's lowest sweep (design review round
 2, 2026-10-14): from and to (x behind the mouth), its half-width across the bay's middle and
@@ -630,7 +661,9 @@ STANDS: dict[str, Stand] = {
                ("C2", "D1")),
         inner=(("G", "C1"), ("G", "C2"), ("C1", "C2"), ("C2", "D1"), ("D1", "D2"),
                ("G", "D1"), ("D2", "D3"), ("D3", "E1"), ("E1", "E2")),
-        columns=("C1", "C2", "D1", "D2", "D3", "E1", "E2"),
+        # (the simplification round 1, 2026-10-21: no column at C2, idle at 5.4 x the clutch's
+        # cap on steel, 9 on 6061; its node stays both plates' corner)
+        columns=("C1", "D1", "D2", "D3", "E1", "E2"),
         feet=("Ff", "Fm", "Fr"),
         # the strut from the hinge back to the gearbox: the gearbox's node O leans on it
         # across the plate (the legs from O buckled sideways at walking SF 3.0), and with the
@@ -646,7 +679,7 @@ STANDS: dict[str, Stand] = {
         # to D3, 60 to E1 and 40 along the rail to E2 (its bottom edge clear of the riser locator
         # in the board's notch), the rail 60
         wide={("G", "O"): 70.0, ("Ff", "O"): 28.0, ("O", "Fm"): 28.0, ("O", "Fr"): 28.0,
-              ("Ff", "Fm"): _RAIL_A, ("Fm", "Fr"): _RAIL_A, ("G", "D1"): 11.8,
+              ("Ff", "Fm"): _RAIL_A, ("Fm", "Fr"): _RAIL_A, ("G", "D1"): 11.3,
               ("G", "Ff"): 24.0, ("G", "C1"): 20.0, ("G", "C2"): 20.0, ("C1", "C2"): 20.0,
               ("C2", "D1"): 17.0, ("D1", "D2"): 20.0, ("D2", "D3"): 20.0,
               ("D3", "E1"): 30.0, ("E1", "E2"): 20.0},
@@ -681,7 +714,9 @@ STANDS: dict[str, Stand] = {
                ("Ff", "Fr"), ("O2", "Fr")),
         inner=(("O1", "O2"), ("O2", "D1"), ("O1", "D1"), ("D1", "D2"), ("D2", "E1"),
                ("E1", "E2")),
-        columns=("D1", "D2", "E1", "E2"),
+        # (the simplification round 1, 2026-10-21: no column at D1, idle at 8.9 x the clutch's
+        # cap; its node stays the inner plate's corner)
+        columns=("D2", "E1", "E2"),
         feet=("Ff", "Fr"),
         # (design review round 2's B1, 2026-10-15: the front leg 40 mm wide, O2 to the foot;
         # at 24 its strip at the columns' holes and down to the foot held the clutch's cap
@@ -694,7 +729,7 @@ STANDS: dict[str, Stand] = {
         # the front tie rod Tf2 passing it leaves)
         wide={("O2", "O"): 44.0, ("O2", "Ff"): 20.0, ("Ff", "Fr"): _RAIL_B, ("O", "Fr"): 40.0,
               ("O1", "O"): 36.0, ("O2", "Fr"): 20.0, ("D2", "E1"): 30.0, ("E1", "E2"): 30.0,
-              ("D1", "D2"): 22.0, ("O1", "D1"): 13.5},
+              ("D1", "D2"): 22.0, ("O1", "D1"): 13.0},
         column_d=12.0,
         # (round 1, 2026-10-14: with the corrected centre of mass and the board 40 mm
         # toward the drive side, BASE_Z, the rear edge binds: 682 mm is the least board
@@ -1053,7 +1088,7 @@ class CradleTies(Group):
                    f"(threadlocker, {TIE_TIGHTEN_NM:g} N·m on the key: closed, the joint holds "
                    "the box's walking moment without working); the rods "
                    "stand up from its bay side. It goes onto the stack rods up, its bores "
-                   "down over the steel and the pins it rides.", "cradle_link",
+                   "down over the posts and the pins it rides.", "cradle_link",
                    sub=True), *ops]
 
     def motion(self, got: Realized) -> Motion:
@@ -1417,18 +1452,18 @@ def _standoff(length: float) -> str:
     return netrf10(round(length, 1))
 
 
-def _standoff12(length: float) -> str:
-    """The catalog key of a 12 mm NETRF12 standoff ``length`` mm long (a tie rod, a 12 mm
-    column, the rear post)."""
-    from spiderpig.hardware.cradle_catalog import netrf12
+def _rod(length: float, d: float = TIE_D) -> str:
+    """The catalog key of a 6061-T6511 round ``d`` mm, ``length`` mm long, tapped M6 both ends
+    (a tie rod, a post: ``hardware.cradle_catalog.al_rod``)."""
+    from spiderpig.hardware.cradle_catalog import al_rod
 
-    return netrf12(round(length, 1))
+    return al_rod(d, round(length, 1))
 
 
 def _tie(xy, z0: float, z1: float, d: float = TIE_D, thread: float = TIE_THREAD) -> Shape3D:
-    """A steel standoff (``d``: 12 mm a NETRF12, 10 a NETRF10) from z0 to z1, its ends
-    tapped (modelled as holes the screw's size, ``thread`` deep: M5 in a 10 mm, M6 in a
-    12 mm)."""
+    """A tie rod or post (``d``: 12.7 mm a 1/2 in 6061 round tapped M6, 10 a NETRF10 steel
+    standoff tapped M5) from z0 to z1, its ends tapped (modelled as holes the screw's size,
+    ``thread`` deep)."""
     tap = 2.5 if d <= SMALL_TIE_D else 3.0
     return difference(disc(xy, d / 2, z0, z1),
                       *[disc(xy, tap, a, b)
@@ -1458,14 +1493,14 @@ class ColumnParts:
     face: str | None = None     # a fender washer between each end and its plate (its key)
 
     def key(self, length: float) -> str:
-        """The standoff's catalog key for a ``length`` mm gap: a 12 mm one by the pillars'
+        """The post's catalog key for a ``length`` mm gap: a 1/2 in 6061 one by the pillars'
         own rule (``StandoffAxle.segment``: the same length as a pillar's in the same gap, so
-        the side's posts are one part number, bought at its quantity's price)."""
+        the side's posts are one part number, faced to one length)."""
         if self.d > SMALL_TIE_D:
             from spiderpig.construction.pivots.standoff import StandoffAxle
 
             got = StandoffAxle().cradle_shaft().segment(length)
-            return _standoff12(got if got is not None else length)
+            return _rod(got if got is not None else length, self.d)
         return _standoff(length)
 
 
@@ -1491,11 +1526,16 @@ def face_washer() -> tuple[float, float, float]:
 
 def column_parts(stand: Stand) -> ColumnParts:
     """:class:`ColumnParts` of ``stand``'s columns: a NETRF10 on M5 x 12 button heads in
-    5.5 mm holes, or a NETRF12 (12 mm, M6 x 12 deep each end) on M6 x 16 button heads (A2-70)
-    and DIN 125 washers in 6.4 mm holes (design review round 2's m2: the heads had borne on
-    the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated class)."""
+    5.5 mm holes, or a 1/2 in 6061-T6511 round (M6 x 12 deep each end, tapped at home: the
+    simplification round 1, 2026-10-21; MISUMI's 12 mm NETRF12 steel before) on M6 x 16
+    button heads (A2-70) and DIN 125 washers in 6.4 mm holes (design review round 2's m2: the
+    heads had borne on the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated
+    class)."""
     if stand.column_d > SMALL_TIE_D:
-        return ColumnParts(12.0, 12.0, M6, 16.0, POST_HOLE, "m6_washer", FACE_WASHER)
+        from spiderpig.hardware.cradle_catalog import ROD_HALF, ROD_THREAD
+
+        return ColumnParts(ROD_HALF, ROD_THREAD, M6, 16.0, POST_HOLE, "m6_washer",
+                           FACE_WASHER)
     return ColumnParts(SMALL_TIE_D, 10.0, M5, TIE_SCREW, TIE_HOLE)
 
 
@@ -1639,7 +1679,11 @@ def seat(size: BottleSize, at: Setting | None = None) -> tuple[float, float, flo
     return yf - xf * math.tan(slope), slope, 0.0
 
 
-SET_SCREW = 6.0            # the M3 cup-point set screw locking a carrier on each tie
+SET_SCREW = 6.0            # an M3 cup-point set screw (the light's clip, the rear knob's hub,
+#                            the barrel nut's)
+CARRIER_SET_SCREW = 5.0    # the M3 cup-point set screw locking a carrier on each tie: 5 mm
+#                            since the 1/2 in tie rods (the simplification round 1,
+#                            2026-10-21: an M3 x 6 left 5.7 mm under a 12.7 mm rod)
 SET_PILOT = 2.6            # its printed pilot (the screw cuts its own thread in PLA)
 CLEAR = 0.3                # a sliding fit's clearance, each side
 
@@ -1786,7 +1830,7 @@ FRONT_CHEEK = 13.0            # the cheek's top over the lip gauge's post (at th
 #                               between the gauge's cheeks, against the post's face (to its
 #                               36.5 top), so the guide holds dry (the spill washes its
 #                               grease out); 8.5 mm under the gauge's bridge at full travel
-FRONT_FLOOR = -43.0           # its floor's top (the tie rods' tops, at -42, stand proud)
+FRONT_FLOOR = -43.0           # its floor's top (the tie rods' tops, at -41.6, stand proud)
 FRONT_TAB = (56.0, 72.0, -28.0)     # the V block's tab into the +z wall: x span, its top
 FRONT_JACK = (65.0, 40.0)     # the thumbscrew (x, z): an M6 x 60 hex screw, fully threaded;
 #                               midway between the front tie rods, its tip in the carrier's
@@ -1880,11 +1924,13 @@ def _front_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
         x, y = ties[n]
         cuts.append(Cylinder(TIE_D / 2 + 0.15, 2 * 60.0 + 4).moved(Location((x, y, 0.0))))
         under = y - TIE_D / 2
-        if under - SET_SCREW - 0.05 < s.y0:
-            raise ValueError(f"{s.name}: an M3 x {SET_SCREW:g} set screw doesn't fit under "
+        if under - CARRIER_SET_SCREW - 0.05 < s.y0:
+            raise ValueError(f"{s.name}: an M3 x {CARRIER_SET_SCREW:g} set screw doesn't fit "
+                             f"under "
                              f"tie {n} ({under - s.y0:.1f} mm)")
         cuts.append(_rod_y(x, 0.0, SET_PILOT / 2, s.y0 - 2.0, under))
-        screws.append(_rod_y(x, 0.0, 1.25, under - 0.05 - SET_SCREW, under - 0.05))
+        screws.append(_rod_y(x, 0.0, 1.25, under - 0.05 - CARRIER_SET_SCREW,
+                             under - 0.05))
     return difference(part, *cuts), screws
 
 
@@ -2010,6 +2056,11 @@ REAR_FOOT_Z = (88.5, 103.5, 126.0)  # the carrier's side blocks across: inner fa
 #                                     one's outer (it only rides the rods since the post
 #                                     left it: 15 mm), the +z one's (the post and the screw)
 REAR_FOOT_TOP = -121.0        # their tops
+REAR_BRIDGE = (15.0, 6.0)     # the bridge joining them under the V block: along x, its height
+#                               (10 until simplification round 1: the racking box forces its
+#                               ends against each other, cradle_report._carriers, and a
+#                               forced bar's stress grows with its depth: 1/2 in 6061 tie rods
+#                               had taken a 10 mm one to 2.33 x across its layers, bar 2.5)
 REAR_SET_Z = 103.0            # the M3 set screws up from the +z block onto the tie rods
 REAR_BOSS = (12.0, -110.0, -57.0)   # the V block's boss round the post: radius, bottom, top
 #                                     (at its lowest: over the carrier's collar)
@@ -2027,15 +2078,30 @@ POST_WEB = (7.0, 6.0)         # the post's boss's web to the flats (half-length;
 REAR_FLANGE = (-67.0, -55.0, 96.0)  # its flats along its top: bottom, top, half-width
 VEE_T = 7.5                   # its V shell, square to the V (9 before review round 2: the
 #                               lighter block keeps the stand's rear tip over 25°)
-LEAD = 8.0                    # the lead screw: Tr8 x 8 (2 mm pitch, 4 starts), 8 mm a turn
-LEAD_SCREW = (8.0, 150.0, 5.5, -146.0)   # its diameter, length, root, foot (cradle y)
-LEAD_FLAT = (1.0, 12.0)       # a flat filed on its top end (design review round 3, mounting
-#                               m3): depth, length; the knob's hub's set screw bears on it, so
-#                               the hub holds the screw by its shape, not by a cup point's
-#                               friction on a thread crest
-LEAD_NUT = (12.0, 16.0)       # its bronze barrel nut in the boss from below: OD, length
-COLLAR = (21.0, 9.0)          # its clamping collar in the carrier's pocket: OD, length
-BRAKE_T = 1.5                 # the TPU brake washer under the collar
+LEAD = 8.0                    # the lead screw: 4 starts, 2 mm apart, 8 mm a turn
+LEAD_SCREW = (13.0, 150.0, 11.4, -146.0)   # its thread's diameter, length, root, foot
+#                               (cradle y): printed in PETG, standing (simplification round
+#                               1, 2026-10-21: a ServoCity Tr8 x 8 stainless screw, bronze
+#                               barrel nut and aluminium collar until then). 13 mm passes the
+#                               tower arm's bushing and the knob's teeth as the 8 mm screw
+#                               did (16 mm would not: the arm, its teeth and the knob would
+#                               all grow, and the screw couldn't go in through the arm)
+LEAD_THREAD = (4, 0.8, 0.6, 30.0)   # its thread: starts, depth, crest (along the axis),
+#                               flank angle off the radial plane (60° included: each flank
+#                               overhangs 60° standing, 0.8 mm deep, as printed threads do)
+LEAD_SPIGOT = 8.0             # its foot's spigot, in the carrier's bore under the pocket
+LEAD_TOP = 10.0               # its top in the knob's hub (from the hub's bottom up)
+LEAD_FLAT = (1.0, 12.0)       # a flat on its top (design review round 3, mounting m3; printed
+#                               since simplification round 1): depth, length; the knob's hub's
+#                               set screw bears on it, so the hub holds the screw by its shape
+LEAD_NUT = (19.0, 16.0)       # its printed nut (PETG), up into the V block's boss from below:
+#                               across its flats, length. It floats there (LEAD_FLOAT), so the
+#                               screw carries the block's weight only and the post its roll
+LEAD_FLOAT = 0.5              # the nut's play in its hex pocket, each side (its flats key it)
+LEAD_PLAY = 0.25              # the nut's thread's clearance on the screw's, each side
+THRUST = (21.0, 9.0)          # the printed thrust ring in the carrier's pocket, the screw's
+#                               shoulder on it (the old collar's place): OD, height
+BRAKE_T = 1.5                 # the TPU brake washer under the thrust ring
 TOWER = (333.0, 351.0, 101.0, 119.0)    # the carrier's tower beside the screw: x, z spans
 ARM = (307.0, -25.0, -17.0)   # its arm over the screw's top, a bushing round it: front x,
 #                               bottom, top (over the boss at full rise)
@@ -2049,22 +2115,23 @@ REAR_HUB = (16.0, -13.5, 4.0, (11.0, 2.0))  # the knob's hub on the screw's top 
 #                                             height), an M3 set screw onto the screw
 REAR_KNOB = (13.0, -17.0, 0.0, 3.6)     # the knob: radius, bottom and top (down, on the arm),
 #                                         its lift off the teeth (to turn it)
-LEAD_KEYS = ("lead_screw_8x8_150", "lead_nut_8x8_barrel", "lead_collar_8x8")
-"""(hardware.cradle_catalog: ServoCity 3501, 3500 and 3504 series)"""
-POST = (150.0, -141.0)        # the post: a 15 mm steel standoff (M8 ends), nickel plated
-#                               (MISUMI PETR15-150: a sliding guide in a wine cradle, bare
-#                               steel rusts; review round 2, m3), its length and foot. It takes
-#                               the roll of a load hung at the screw: 15 mm since round 2 (12
-#                               mm took a hung 6 L and the parts riding the block at 2.99 x
-#                               its yield)
-POST_KEY = "standoff_15_m8_nickel_150"      # (hardware.cradle_catalog: MISUMI PETR15-150)
-POST_D = 15.0
+POST = (150.0, -141.0)        # the post: 5/8 in 6061-T6511 rod (simplification round 1,
+#                               2026-10-21: no steel; a 15 mm MISUMI PETR15-150 nickel-plated
+#                               steel standoff until then), cut 6 in by the supplier, faced to
+#                               length, its flats milled and its foot tapped M6 on the Carvera:
+#                               its length and foot. It takes the roll of a load hung at the
+#                               screw, all of it since the nut floats
+POST_KEY = "rod_6061_5_8_150"       # (hardware.cradle_catalog: Speedy Metals 2439)
+POST_D = 15.875
+POST_YIELD = 241.3            # MPa: 6061-T6511 rod's least (the Aluminum Association's Table
+#                               11.1, extruded rod 0.250 in and over: 35 ksi)
 POST_FLATS = (13.0, 10.0)     # its wrench flats at each end: across, along it (the boss rides
 #                               the round between them)
 POST_COLLAR = (4.0, -111.0)   # the carrier's collar round the post's socket: wall, top (the
 #                               socket 30 mm deep, from the post's foot)
-M8 = screw("bhcs", "8")
-POST_SCREW = 12.0             # M8 x 12 up into it from under the carrier, 8.6 mm in it
+POST_M = M6                   # its foot's screw (an M8 until simplification round 1: one tap,
+#                               the tie rods' M6, for every rod end)
+POST_SCREW = 12.0             # M6 x 12 up into it from under the carrier, 8.6 mm in it
 SEAT_R, SEAT_DEPTH = TIE_D / 2 + 0.15, 2.0  # the rear V block's seats on the tie rods
 GUSSET = (45.0, -90.0)        # under its +z flat beside the bosses (from 22.5 in front of
 #                               the post's to 22.5 behind the screw's): along x, its bottom
@@ -2171,11 +2238,10 @@ def _tslot_lead_in(x: float, inward: int) -> list[Shape3D]:
 def _rear_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
                  ) -> tuple[Shape3D, list[Shape3D]]:
     """The rear saddle's carrier (cradle frame): two side blocks on the two tie rods, joined
-    under the V block by a bridge; the +z one holds the steel post (in a socket 30 mm deep,
-    a collar round its top, an M8 button head up into it from below, its head sunk) and
-    beside it the lead screw (a
-    pocket for its clamping collar on a TPU brake washer, open outboard to reach the
-    collar's screw, and a blind bore for its foot), and a tower beside the screw up to an
+    under the V block by a bridge; the +z one holds the aluminium post (in a socket 30 mm
+    deep, a collar round its top, an M6 button head up into it from below, its head sunk)
+    and beside it the lead screw (a pocket for its printed thrust ring on a TPU brake
+    washer, and a blind bore for its foot's spigot), and a tower beside the screw up to an
     arm over its top: a bushing round it (a knock at the knob goes into the tower, not the
     screw), a star of teeth on the arm round it that the knob drops over (its lock,
     :func:`_lead_screw`), and the scale on the tower's face, read by the lead screw boss's
@@ -2191,7 +2257,8 @@ def _rear_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
     n_t, r_t, r_i, h_t = LOCK_TEETH
     part = union([_box(x0, x1, s.y0, REAR_FOOT_TOP, za, zc),
                   _box(x0, x1, s.y0, REAR_FOOT_TOP, -zb, -za),
-                  _box(xs - 7.5, xs + 7.5, s.y0, s.y0 + 10.0, -za - 0.5, za + 0.5),
+                  _box(xs - REAR_BRIDGE[0] / 2, xs + REAR_BRIDGE[0] / 2, s.y0,
+                       s.y0 + REAR_BRIDGE[1], -za - 0.5, za + 0.5),
                   _box(tx0, tx1, REAR_FOOT_TOP - 1.0, at, tz0, tz1),
                   _box(ax, tx1, ab, at, tz0, tz1),
                   _rod_y(xs, zs, ARM_PAD, ab, at),
@@ -2202,14 +2269,13 @@ def _rear_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
     named = sorted(top0 + (DESIGN.r - z.r) * math.sqrt(2) for z in SIZES)[::-1]
     graded = [top0 + y - s.top for y in _graded(s, DESIGN.r, 10.0, 70.0, 170.0)]
     graded = [y for y in graded if all(abs(y - n) > 1.5 for n in named)]
-    floor = REAR_FOOT_TOP - 0.5 - COLLAR[1] - BRAKE_T     # the collar pocket's floor
+    floor = REAR_FOOT_TOP - 0.5 - THRUST[1] - BRAKE_T     # the thrust ring's pocket's floor
     gz = tz0 + 10.0                           # the named grooves' end; their dots after
     cuts = [_rod_y(xp, zp, POST_D / 2 + 0.15, POST[1], POST_COLLAR[1] + 1.0),
-            _rod_y(xp, zp, M8.head_d / 2 + 0.3, s.y0 - 1.0, s.y0 + M8.head_h + 0.25),
-            _rod_y(xp, zp, CLEARANCE["8"] / 2, s.y0, POST[1] + 0.5),
-            _rod_y(xs, zs, LEAD_SCREW[0] / 2 + 0.2, LEAD_SCREW[3] - 0.5, floor + 0.01),
-            _rod_y(xs, zs, COLLAR[0] / 2 + 0.4, floor, REAR_FOOT_TOP + 1.0),
-            _box(xs - 6.0, xs + 6.0, floor, REAR_FOOT_TOP + 1.0, zs, zc + 1.0),
+            _rod_y(xp, zp, POST_M.head_d / 2 + 0.3, s.y0 - 1.0, s.y0 + POST_M.head_h + 0.25),
+            _rod_y(xp, zp, CLEARANCE[f"{POST_M.d:g}"] / 2, s.y0, POST[1] + 0.5),
+            _rod_y(xs, zs, LEAD_SPIGOT / 2 + 0.2, LEAD_SCREW[3] - 0.5, floor + 0.01),
+            _rod_y(xs, zs, THRUST[0] / 2 + 0.4, floor, REAR_FOOT_TOP + 1.0),
             _rod_y(xs, zs, LEAD_SCREW[0] / 2 + 0.2, ab - 1.0, at + h_t + 1.0),
             *[_box(tx0 - 0.01, tx0 + 0.8, y - 0.25, y + 0.25, tz0 - 1.0, gz) for y in named],
             *[_rod_x(y, gz + DOT_PITCH * (k + 0.75), DOT[0], tx0 - 0.01, tx0 + DOT[1])
@@ -2223,26 +2289,29 @@ def _rear_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
         x, y = ties[n]
         cuts.append(Cylinder(TIE_D / 2 + 0.15, 2 * zc + 4).moved(Location((x, y, 0.0))))
         under = y - TIE_D / 2
-        if under - SET_SCREW - 0.05 < s.y0:
-            raise ValueError(f"{s.name}: an M3 x {SET_SCREW:g} set screw doesn't fit under "
+        if under - CARRIER_SET_SCREW - 0.05 < s.y0:
+            raise ValueError(f"{s.name}: an M3 x {CARRIER_SET_SCREW:g} set screw doesn't fit "
+                             f"under "
                              f"tie {n} ({under - s.y0:.1f} mm)")
         cuts.append(_rod_y(x, REAR_SET_Z, SET_PILOT / 2, s.y0 - 2.0, under))
-        screws.append(_rod_y(x, REAR_SET_Z, 1.25, under - 0.05 - SET_SCREW, under - 0.05))
+        screws.append(_rod_y(x, REAR_SET_Z, 1.25, under - 0.05 - CARRIER_SET_SCREW,
+                             under - 0.05))
     return difference(part, *cuts), screws
 
 
 @_part_memo
 def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
-              ) -> tuple[Shape3D, Shape3D, Shape3D, Shape3D]:
+              ) -> tuple[Shape3D, Shape3D, Shape3D]:
     """The rear V block at its lowest (cradle frame): a V shell (:data:`VEE_T`) sitting on
     the tie rods in a seat over each, its flats along the top (the base stop's guide groove
     along each, its T-slot under the +z one, its scale across the +z one), at the +z end a
     boss round the post (a sliding fit) and beside it a low one round the lead screw (its
-    bronze barrel nut in a bore from below, an M3 set screw holding it from turning: the
-    block bears down on it), webbed to each other and to the flats, a gusset under the +z
+    printed nut in a hex pocket from below, floating in it, :data:`LEAD_FLOAT`: its flats
+    keep it from turning, the block bears down on it), webbed to each other and to the
+    flats, a gusset under the +z
     flat beside them (they carry the roll of a load at the axis held at the screw), a
     socket under each flat at its back end for a rail's tongue, its TPU liner pegged into
-    the V. (The block, its liner, the barrel nut, its set screw.)"""
+    the V. (The block, its liner, the nut.)"""
     x0, x1 = s.vee
     xp, zp = REAR_POST
     xs, zs = REAR_LEAD
@@ -2276,8 +2345,7 @@ def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
     cuts = [_rod_y(xp, zp, POST_D / 2 + 0.2, REAR_BOSS[1] - 1.0, REAR_BOSS[2] + 1.0),
             *[Cylinder(SEAT_R, 40.0).moved(Location((*ties[n], 0.0))) for n in s.ties],
             _rod_y(xs, zs, LEAD_SCREW[0] / 2 + 0.5, LEAD_BOSS[1] - 1.0, LEAD_BOSS[2] + 1.0),
-            _rod_y(xs, zs, nd / 2 + 0.1, LEAD_BOSS[1] - 1.0, LEAD_BOSS[1] + nl),
-            _rod_z(xs, LEAD_BOSS[1] + nl / 2, SET_PILOT / 2, zs + nd / 2 - 0.5, zs + rs + 1.0),
+            _hex_y(xs, zs, nd + 2 * LEAD_FLOAT, LEAD_BOSS[1] - 1.0, LEAD_BOSS[1] + nl),
             _box(x0 - 1.0, x1 + 1.0, hi - depth, hi + 1.0, g0, g1),
             _box(x0 - 1.0, x1 + 1.0, hi - depth, hi + 1.0, -g1, -g0),
             *_tslot(TSLOT[0], x1 + 1.0),
@@ -2292,12 +2360,66 @@ def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
                      SOCKET_BOTTOM - 1.0, SOCKET_BOTTOM + RAIL_HEAD_SINK)
               for x in RAIL_SCREW_X for sign in (-1, 1)]]
     vee, liner = _vee_block(s, difference(block, *cuts), REAR_PEGS)
-    nut = difference(_rod_y(xs, zs, nd / 2, LEAD_BOSS[1], LEAD_BOSS[1] + nl),
-                     _rod_y(xs, zs, LEAD_SCREW[0] / 2, LEAD_BOSS[1] - 1.0,
+    nut = difference(_hex_y(xs, zs, nd, LEAD_BOSS[1], LEAD_BOSS[1] + nl),
+                     _rod_y(xs, zs, LEAD_SCREW[0] / 2 + LEAD_PLAY, LEAD_BOSS[1] - 1.0,
                             LEAD_BOSS[1] + nl + 1.0))
-    z0 = zs + nd / 2 + 0.05
-    set_screw = _rod_z(xs, LEAD_BOSS[1] + nl / 2, 1.25, z0, z0 + SET_SCREW)
-    return vee, liner, nut, set_screw
+    return vee, liner, nut
+
+
+@_part_memo
+def _rear_nut_threaded() -> Shape3D:
+    """The rear V block's printed nut as it prints (:func:`_rear_vee`'s, the block at its
+    lowest): its bore threaded (:func:`_lead_thread`, :data:`LEAD_PLAY` out). The assembly
+    holds its plain bore (``meta["print_shapes"]``: only its print file is threaded)."""
+    xs, zs = REAR_LEAD
+    nd, nl = LEAD_NUT
+    return difference(_hex_y(xs, zs, nd, LEAD_BOSS[1], LEAD_BOSS[1] + nl),
+                      _lead_thread(LEAD_BOSS[1] - 1.0, LEAD_BOSS[1] + nl + 1.0, LEAD_PLAY))
+
+
+def _thread_profile(u: float, r_root: float, r_crest: float) -> float:
+    """The lead screw's thread's radius ``u`` mm along the axis from a root's middle
+    (:data:`LEAD_THREAD`: a symmetric trapezoid, one pitch long)."""
+    starts, _, crest, flank_deg = LEAD_THREAD
+    pitch = LEAD / starts
+    flank = (r_crest - r_root) * math.tan(math.radians(flank_deg))
+    root = pitch - crest - 2 * flank
+    u = u % pitch
+    for run, a, b in ((root / 2, r_root, r_root), (flank, r_root, r_crest),
+                      (crest, r_crest, r_crest), (flank, r_crest, r_root)):
+        if u < run:
+            return a + (b - a) * u / run
+        u -= run
+    return r_root
+
+
+LEAD_SECTION = 48             # the thread's cross-section's points round a turn (7.5° apart)
+
+
+def _lead_thread(y0: float, y1: float, grow: float = 0.0) -> Shape3D:
+    """The rear lead screw's threaded length up y from ``y0`` to ``y1`` at :data:`REAR_LEAD`
+    (``grow``: its surface that much out all round, a nut's threaded bore): the thread's
+    cross-section square to the axis (its radius round a turn, :func:`_thread_profile`,
+    :data:`LEAD_THREAD`'s starts) swept up the axis turning a turn per :data:`LEAD` (a
+    helical spine beside it): one sweep, no booleans, a right-hand thread. Its phase is
+    the same at every ``y`` whatever ``y0``."""
+    xs, zs = REAR_LEAD
+    d, _, root_d, _ = LEAD_SCREW
+    r_root, r_crest = root_d / 2 + grow, d / 2 + grow
+    turn0 = 2 * math.pi * y0 / LEAD
+    pts = []
+    for i in range(LEAD_SECTION):
+        th = 2 * math.pi * i / LEAD_SECTION
+        r = _thread_profile(-LEAD * th / (2 * math.pi), r_root, r_crest)
+        pts.append((r * math.cos(th + turn0), r * math.sin(th + turn0), 0.0))
+    section = Face(Wire(Polyline(*pts, close=True).edges()))
+    length = y1 - y0
+    spine = Helix(pitch=LEAD, height=length, radius=r_crest + 5.0)
+    spine = spine.rotate(BAxis.Z, math.degrees(turn0))
+    solid = sweep(section, path=Wire([Line((0, 0, 0), (0, 0, length))]), binormal=spine)
+    solid = solid if isinstance(solid, Solid) else solid.solids()[0]
+    # its axis (z) up the cradle frame's y, at the screw
+    return solid.rotate(BAxis.X, -90.0).moved(Location((xs, y0, zs)))
 
 
 @dataclass(frozen=True)
@@ -2305,50 +2427,62 @@ class LeadScrew:
     """The rear thumbscrew's parts (:func:`_lead_screw`, cradle frame)."""
 
     screw: Shape3D
-    collar: Shape3D
+    thrust: Shape3D
     brake: Shape3D
     hub: Shape3D
     knob: Shape3D
     set_screw: Shape3D
+    threaded: Shape3D           # the screw as it prints (``screw``: its thread's envelope)
 
 
 @_part_memo
 def _lead_screw() -> LeadScrew:
-    """The rear thumbscrew (cradle frame): the Tr8 x 8 lead screw from its foot in the
-    carrier's bore up through its clamping collar (in the carrier's pocket on a TPU brake
-    washer: the block's load on the collar's face slows the screw turning back by it), the
-    V block's barrel nut and the tower's bushing; on its top a printed hub (an M3 set screw
-    onto the screw, out through its +z flat) and the knob, which slides up and down the
-    hub's hex: down, its underside's star socket sits over the star of teeth on the
-    tower's arm and the screw can't turn (review round 2, N5: an 8 mm lead turns back
-    under the block's load, and the brake alone held only dry; the hub's set screw bears on
-    a flat filed on the screw's top, :data:`LEAD_FLAT`); lifted
-    :data:`REAR_KNOB`'s lift off the teeth, it turns the screw. The set screw's end rides a
-    slot in the knob's wall, which reaches it. (:class:`LeadScrew`.)"""
+    """The rear thumbscrew (cradle frame): the printed lead screw (simplification round 1:
+    PETG, standing; :data:`LEAD_SCREW`, :data:`LEAD_THREAD`), its foot's spigot
+    (:data:`LEAD_SPIGOT`) in the carrier's bore, its shoulder on a printed thrust ring in
+    the carrier's pocket on a TPU brake washer (the block's load on it slows the screw
+    turning back), threaded up through the V block's floating nut to under the tower's arm,
+    plain through the arm's bushing, and its top (:data:`LEAD_TOP`) in a printed hub (an M3
+    set screw onto a flat printed on it, :data:`LEAD_FLAT`, out through the hub's +z flat)
+    and the knob, which slides up and down the hub's hex: down, its underside's star socket
+    sits over the star of teeth on the tower's arm and the screw can't turn (review round
+    2, N5: an 8 mm lead turns back under the block's load); lifted :data:`REAR_KNOB`'s lift
+    off the teeth, it turns the screw. The set screw's end rides a slot in the knob's wall,
+    which reaches it. (:class:`LeadScrew`.)"""
     xs, zs = REAR_LEAD
     d, length, _, foot = LEAD_SCREW
-    od, cl = COLLAR
-    top = REAR_FOOT_TOP - 0.5
-    screw_ = _rod_y(xs, zs, 0.97 * d / 2, foot, foot + length)
-    collar = difference(_rod_y(xs, zs, od / 2, top - cl, top),
-                        _rod_y(xs, zs, d / 2, top - cl - 1.0, top + 1.0))
-    brake = difference(_rod_y(xs, zs, od / 2, top - cl - BRAKE_T, top - cl),
-                       _rod_y(xs, zs, d / 2 + 0.3, top - cl - BRAKE_T - 1.0, top - cl + 1.0))
+    od, cl = THRUST
+    top = REAR_FOOT_TOP - 0.5                  # the thrust ring's top: the screw's shoulder
     af, h0, h1, (fr, fh) = REAR_HUB
     kr, k0, k1, lift = REAR_KNOB
     n_t, r_t, r_i, h_t = LOCK_TEETH
     screw_top = foot + length
+    thread_top = ARM[1] - 1.0                  # under the arm: the nut's highest reach
+    rise = max(setting(z).rear for z in SIZES)
+    if LEAD_BOSS[1] + LEAD_NUT[1] + rise > thread_top - 1.0:
+        raise ValueError("the rear lead screw's thread ends under its nut's highest reach")
+    ends = [_rod_y(xs, zs, LEAD_SPIGOT / 2, foot, top + 0.01),
+            _rod_y(xs, zs, d / 2, thread_top - 0.01, h0 + 0.01),
+            _rod_y(xs, zs, LEAD_TOP / 2, h0, screw_top)]
+    screw_ = union([ends[0], _rod_y(xs, zs, d / 2, top, thread_top), *ends[1:]])
+    threaded = union([ends[0], _lead_thread(top, thread_top), *ends[1:]])
+    thrust = difference(_rod_y(xs, zs, od / 2, top - cl, top),
+                        _rod_y(xs, zs, LEAD_SPIGOT / 2 + 0.2, top - cl - 1.0, top + 1.0))
+    brake = difference(_rod_y(xs, zs, od / 2, top - cl - BRAKE_T, top - cl),
+                       _rod_y(xs, zs, LEAD_SPIGOT / 2 + 0.3, top - cl - BRAKE_T - 1.0,
+                              top - cl + 1.0))
     flat_d, flat_l = LEAD_FLAT
-    z_flat = zs + d / 2 - flat_d                # the flat's face, the set screw's tip on it
-    screw_ = difference(screw_, _box(xs - d, xs + d, screw_top - flat_l, screw_top + 1.0,
-                                     z_flat, zs + d))
+    z_flat = zs + LEAD_TOP / 2 - flat_d         # the flat's face, the set screw's tip on it
+    flat = _box(xs - d, xs + d, screw_top - flat_l, screw_top + 1.0, z_flat, zs + d)
+    screw_, threaded = difference(screw_, flat), difference(threaded, flat)
     y_set = (h0 + screw_top) / 2               # the set screw's height, on the screw's flat
     if y_set < screw_top - flat_l + 2.0:
         raise ValueError("the rear knob hub's set screw misses its lead screw's flat")
     hub = difference(union([_hex_y(xs, zs, af, h0, h1), _rod_y(xs, zs, fr, h1 - 0.01,
                                                                 h1 + fh)]),
-                     _rod_y(xs, zs, d / 2 + 0.05, h0 - 1.0, screw_top + 0.3),
-                     _rod_z(xs, y_set, SET_PILOT / 2, zs + d / 2 - 0.5, zs + af / 2 + 1.0))
+                     _rod_y(xs, zs, LEAD_TOP / 2 + 0.05, h0 - 1.0, screw_top + 0.3),
+                     _rod_z(xs, y_set, SET_PILOT / 2, zs + LEAD_TOP / 2 - 0.5,
+                            zs + af / 2 + 1.0))
     set_screw = _rod_z(xs, y_set, 1.25, z_flat + 0.05, z_flat + 0.05 + SET_SCREW)
     slot_r = 1.6                               # the slot round the set screw's end
     knob = difference(
@@ -2365,13 +2499,13 @@ def _lead_screw() -> LeadScrew:
         raise ValueError("the rear knob's lift doesn't clear its teeth")
     if z_flat + 0.05 + SET_SCREW > zs + kr - 1.0:
         raise ValueError("the rear knob hub's set screw stands out of the knob")
-    return LeadScrew(screw_, collar, brake, hub, knob, set_screw)
+    return LeadScrew(screw_, thrust, brake, hub, knob, set_screw, threaded)
 
 
 def _post_y(xz: tuple[float, float], y0: float, y1: float) -> Shape3D:
-    """The rear post up y from ``y0`` to ``y1`` (:data:`POST`): a :data:`POST_D` steel
-    standoff, its ends tapped M8, its wrench flats at each end (:data:`POST_FLATS`, facing
-    ±x)."""
+    """The rear post up y from ``y0`` to ``y1`` (:data:`POST`): a :data:`POST_D` 6061 rod,
+    its foot tapped for :data:`POST_M`, its wrench flats at each end (:data:`POST_FLATS`,
+    facing ±x)."""
     x, z = xz
     across, along = POST_FLATS
     r = POST_D / 2
@@ -2379,8 +2513,7 @@ def _post_y(xz: tuple[float, float], y0: float, y1: float) -> Shape3D:
              for xa, xb in ((x - across / 2, x - r - 1.0), (x + across / 2, x + r + 1.0))
              for a, b in ((y0 - 1.0, y0 + along), (y1 - along, y1 + 1.0))]
     return difference(_rod_y(x, z, r, y0, y1), *flats,
-                      *[_rod_y(x, z, M8.d * 0.42, a, b) for a, b in ((y0 - 1, y0 + 16.0),
-                                                                    (y1 - 16.0, y1 + 1))])
+                      _rod_y(x, z, POST_M.d * 0.42, y0 - 1, y0 + 12.0))
 
 
 # --- the base stop: a gate on the rear V block's flats and the rails behind it -----------
@@ -3016,10 +3149,19 @@ def _cleats(xs: list[float], y_top: float, face: float, sign: int, t_frame: floa
     xs = sorted(xs)
     for xa, xb in itertools.pairwise(xs):
         a, b = xa + BRACKET[0] / 2 + gap, xb - BRACKET[0] / 2 - gap
+        n = math.ceil((b - a) / CARVERA_LONGEST - 1e-9)       # its pieces (the Carvera's bed)
+        each = (b - a - (n - 1) * CLEAT_JOINT) / n
         for z0, z1 in ((face + sign * play, face + sign * (play + width)),
                        (inner - sign * play, inner - sign * (play + width))):
             za, zb = sorted((z0, z1))
-            out.append(_rounded(a, b, za, zb, y_top, y_top + BASE_T, CLEAT_END_R))
+            whole = _rounded(a, b, za, zb, y_top, y_top + BASE_T, CLEAT_END_R)
+            if n == 1:
+                out.append(whole)
+                continue
+            for i in range(n):          # the whole cleat's outline, cut square between
+                x0 = a + i * (each + CLEAT_JOINT)
+                out.append(intersection(whole, _box(x0, x0 + each, y_top - 1.0,
+                                                    y_top + BASE_T + 1.0, za - 1.0, zb + 1.0)))
     return out
 
 
@@ -3100,13 +3242,16 @@ def passive_side(side: Mechanism, design) -> Mechanism:
         c for c in side.connections if c[0][1] in names and c[1][1] in names])
 
 
-KEEPER = (7.4, 0.4)
+KEEPER = (7.38, 0.36)
 """The keepers of the cradle link's quick-release pins (B's X and Y, both sides; the pack's
-turn 1, 2026-10-14): the printed ring each clevis pin's plan puts in the gap between its
+turn 1, 2026-10-14): the printed ring each clip pin's plan puts in the gap between its
 lowest link (b4, b5) and the cradle link, printed in TPU 95A with its bore (mm) under the
-8 mm pin, so it grips the pin (:func:`spiderpig.cradle_report.keepers`); and the least
-interference a print may come out with (mm, on the diameter: the pin 7.95-7.99 mm, McMaster's
--0.05/-0.01, and the bore printed to within 0.15 mm). A side lying down with its pins' clips
+pin, so it grips the pin (:func:`spiderpig.cradle_report.keepers`); and the least
+interference a print may come out with (mm, on the diameter: the 5/16 in hard-anodized 6061
+stick as calipered, within 0.038 mm, the keeper printed to it, ``rod_pin.MATCH_TOL``, since
+simplification round 1, 2026-10-21, and the bore printed to within 0.15 mm; it was 7.4 and 0.4
+on McMaster's 8 mm clevis pin, 7.95-7.99: the rod's wider tolerance keeps the tight end's push
+on under 120 N). A side lying down with its pins' clips
 out holds them by their keepers: each pin's head is under its link with nothing under it,
 and a bare pin drops out. So the cradle box lifts off the drive side as it lies
 (:func:`module_steps`), and the passive panel lifts off with its pins and their keepers on
@@ -3260,7 +3405,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
     for n, p in tie_points(topo, lk).items():
         xy = tuple(build.xy(p))
         extras.append(hardware(f"tie_{n}", _tie(xy, -half, half), host, fab="purchased",
-                               bom_key=_standoff12(tie_len), color=TIE_COLOR))
+                               bom_key=_rod(tie_len), color=TIE_COLOR))
         for s, sign in (("L", -1), ("R", 1)):
             face = sign * (z_mid - link_bottom)      # the link's outer face
             extras.append(hardware(f"tie_{n}_screw{s}", _screw(xy, face, sign), host,
@@ -3310,57 +3455,58 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                                bom_key=key, color=color))
 
     lead = _lead_screw()
-    rear_vee, rear_liner, rear_nut, rear_nut_set = _rear_vee(rear, cf.ties)
+    rear_vee, rear_liner, rear_nut = _rear_vee(rear, cf.ties)
     for s, (carrier, sets), (vee, liner, nut), (jack, knob), du, keys in (
             (front, _front_saddle(front, cf.ties), _front_vee(front),
              _jack(FRONT_JACK, 6.0, FRONT_SCREW, (M6_HEX[0], M6_HEX[2]), FRONT_HEAD_Y,
                    KNOB_R[0]), at.front, (FRONT_NUT_KEY, FRONT_JACK_KEY)),
             (rear, _rear_saddle(rear, cf.ties), (rear_vee, rear_liner, rear_nut),
-             (lead.screw, lead.knob), at.rear, (LEAD_KEYS[1], LEAD_KEYS[0]))):
+             (lead.screw, lead.knob), at.rear, (None, None))):
         if s is front:                  # the light's clip's screws' pilots
             carrier = difference(carrier, *clip_pilots)
         put(s.name, carrier, "printed", SADDLE_COLOR)
         put(f"{s.name}_vee", vee, "printed", VEE_COLOR, dy=du)
         put(f"{s.name}_liner", liner, "printed", LINER_COLOR, dy=du)
-        put(f"{s.name}_nut", nut, "purchased", TIE_COLOR, keys[0], dy=du)
-        put(f"{s.name}_jack", jack, "purchased", TIE_COLOR, keys[1])
+        # (the rear's nut and screw printed since simplification round 1)
+        put(f"{s.name}_nut", nut, "purchased" if keys[0] else "printed",
+            TIE_COLOR if keys[0] else KNOB_COLOR, keys[0], dy=du)
+        put(f"{s.name}_jack", jack, "purchased" if keys[1] else "printed",
+            TIE_COLOR if keys[1] else KNOB_COLOR, keys[1])
         put(f"{s.name}_knob", knob, "printed", KNOB_COLOR)
         # a set screw up from its underside holds the carrier on each tie
         fastened.extend((s.name, f"tie_{n}") for n in s.ties)
         for n, set_screw in zip(s.ties, sets, strict=True):
             name = f"{s.name}_set_screw_{n}"
-            put(name, set_screw, "purchased", TIE_COLOR, f"m3_set_screw_{SET_SCREW:g}")
+            put(name, set_screw, "purchased", TIE_COLOR,
+                f"m3_set_screw_{CARRIER_SET_SCREW:g}")
             fastened += [(name, s.name), (name, f"tie_{n}")]
         fastened += [(f"{s.name}_vee", f"{s.name}_liner"), (f"{s.name}_nut", f"{s.name}_vee"),
                      (f"{s.name}_nut", f"{s.name}_jack"), (f"{s.name}_knob", f"{s.name}_jack"),
                      (f"{s.name}_jack", s.name), ("bottle", f"{s.name}_liner")]
-    # the rear lead screw's collar on its brake washer, its knob's hub, the set screws in
-    # the hub and on its barrel nut
+    # the rear lead screw's thrust ring on its brake washer, its knob's hub, the set screw
+    # in the hub
     set_key = f"m3_set_screw_{SET_SCREW:g}"
-    put("rear_saddle_lead_clamp", lead.collar, "purchased", TIE_COLOR, LEAD_KEYS[2])
+    put("rear_saddle_thrust", lead.thrust, "printed", KNOB_COLOR)
     put("rear_saddle_brake", lead.brake, "printed", LINER_COLOR)
     put("rear_saddle_hub", lead.hub, "printed", KNOB_COLOR)
     put("rear_saddle_hub_set_screw", lead.set_screw, "purchased", TIE_COLOR, set_key)
-    put("rear_saddle_nut_set_screw", rear_nut_set, "purchased", TIE_COLOR, set_key, dy=at.rear)
-    fastened += [("rear_saddle_lead_clamp", "rear_saddle_jack"),
-                 ("rear_saddle_lead_clamp", "rear_saddle"), ("rear_saddle_brake", "rear_saddle"),
+    fastened += [("rear_saddle_thrust", "rear_saddle_jack"),
+                 ("rear_saddle_thrust", "rear_saddle"), ("rear_saddle_brake", "rear_saddle"),
                  ("rear_saddle_brake", "rear_saddle_jack"),
-                 ("rear_saddle_brake", "rear_saddle_lead_clamp"),
+                 ("rear_saddle_brake", "rear_saddle_thrust"),
                  ("rear_saddle_hub", "rear_saddle_jack"), ("rear_saddle_hub", "rear_saddle_knob"),
                  ("rear_saddle_hub_set_screw", "rear_saddle_hub"),
                  ("rear_saddle_hub_set_screw", "rear_saddle_knob"),
-                 ("rear_saddle_hub_set_screw", "rear_saddle_jack"),
-                 ("rear_saddle_nut_set_screw", "rear_saddle_vee"),
-                 ("rear_saddle_nut_set_screw", "rear_saddle_nut")]
+                 ("rear_saddle_hub_set_screw", "rear_saddle_jack")]
     # the rear V block's post, screwed up into from under the carrier
     y_head = rear.y0 + 0.25
     put("rear_saddle_post", _post_y((xp, zp), POST[1], POST[1] + POST[0]), "purchased",
         TIE_COLOR, POST_KEY)
     put("rear_saddle_post_screw",
-        union([_rod_y(xp, zp, M8.head_d / 2, y_head, y_head + M8.head_h),
-               _rod_y(xp, zp, M8.shank_d / 2, y_head + M8.head_h,
-                      y_head + M8.head_h + POST_SCREW)]),
-        "purchased", TIE_COLOR, M8.key(POST_SCREW))
+        union([_rod_y(xp, zp, POST_M.head_d / 2, y_head, y_head + POST_M.head_h),
+               _rod_y(xp, zp, POST_M.shank_d / 2, y_head + POST_M.head_h,
+                      y_head + POST_M.head_h + POST_SCREW)]),
+        "purchased", TIE_COLOR, POST_M.key(POST_SCREW))
     fastened += [("rear_saddle_post", "rear_saddle"), ("rear_saddle_post", "rear_saddle_vee"),
                  ("rear_saddle_post_screw", "rear_saddle"),
                  ("rear_saddle_post_screw", "rear_saddle_post")]
@@ -3437,14 +3583,14 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                                        fab="purchased" if key else "printed", bom_key=key,
                                        color=TIE_COLOR if key else KNOB_COLOR))
         cleats += [hardware(f"base_cleat_{s}{i}", part, frame_host, fab="laser",
-                            sheet=BASE_SHEET, color=BOARD_COLOR)
+                            sheet=HOME_SHEET, color=BOARD_COLOR)
                    for i, part in enumerate(_cleats([xy[0] for xy in feet_xy.values()], y_top,
                                                     face, sign, t_frame))]
     plate_part, foot_xz = _base_plate(cf.lip, stand, y_top, base_holes, base_z(lk))
     extras.append(hardware("base_plate", plate_part, frame_host, fab="laser",
                            sheet=BASE_SHEET, color=BOARD_COLOR))
     extras += cleats
-    extras += [hardware(f"riser_locator_{k}", part, frame_host, fab="laser", sheet=BASE_SHEET,
+    extras += [hardware(f"riser_locator_{k}", part, frame_host, fab="laser", sheet=HOME_SHEET,
                         color=BOARD_COLOR)
                for k, part in enumerate(_riser_locator(cf.lip, y_top - BASE_T - FOOT_PAD_H))]
     glue = [BomLine(WOOD_GLUE, 1, "the base board's cleats and the riser locator's layers"),
@@ -3471,8 +3617,14 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                  ("led_set_screw", "led_clip"), ("led_set_screw", "led")]
     fastened += [(f"led_clip_screw{i}", n) for i in range(len(clip_screws))
                  for n in ("led_clip", SADDLES[0].name)]
+    # the printed thread only in the print files (the assembly holds its envelope)
+    print_shapes = {"rear_saddle_jack": _place(lead.threaded, cf.lip, cf.tilt),
+                    "rear_saddle_nut": _place(moved(_rear_nut_threaded(),
+                                                    Location((0.0, at.rear, 0.0))),
+                                              cf.lip, cf.tilt)}
     meta = dict(side.meta, cradle=True, cradle_layer=plan.layers[cradle_link(lk)],
                 print_poses=print_poses([b.name for b in extras + bodies], cf.tilt),
+                print_shapes=print_shapes,
                 cradle_lip=[float(cf.lip[0]), float(cf.lip[1])], cradle_tilt=float(cf.tilt),
                 mid_plane=z_mid, bay_mm=BAY, lip_height_mm=LIP_HEIGHT,
                 tie_mm=tie_len, base_tie_mm=foot_len, bay_tie_mm=bay_len, fastened=fastened,
@@ -3567,9 +3719,9 @@ def assembly(view) -> list:
                           "bay_tie", side=s))
     saddles = [n for s in SADDLES for n in (s.name, *(f"{s.name}_{p}" for p in (
         "vee", "liner", "nut", "jack", "knob"))) if n in view.z]
-    saddles += [n for n in ("rear_saddle_post", "rear_saddle_post_screw", "rear_saddle_lead_clamp",
+    saddles += [n for n in ("rear_saddle_post", "rear_saddle_post_screw", "rear_saddle_thrust",
                             "rear_saddle_brake", "rear_saddle_hub", "rear_saddle_hub_set_screw",
-                            "rear_saddle_nut_set_screw", "front_saddle_gauge",
+                            "front_saddle_gauge",
                             "front_saddle_gauge_pin", "front_saddle_gauge_nut") if n in view.z]
     sets = view.named(r"\w+_saddle_set_screw_\w+")
     if saddles:
@@ -3582,28 +3734,25 @@ def assembly(view) -> list:
                       "block down into the carrier's box, its tall cheek against the tall "
                       "wall, the M6 thumbscrew down through the tab's nut into its foot's bore "
                       "(a dab of grease on its thread: stainless in stainless galls dry), the "
-                      "knob pressed onto its head. The rear one: the plated steel post into "
-                      "the carrier's socket beside the lead screw's pocket, an M8 button head "
-                      "up into it from below (threadlocker); the bronze barrel nut up into the "
-                      "block's lead-screw boss, its M3 set screw snug on it (threadlocker: "
-                      "it keeps the nut from turning); the TPU brake "
-                      "washer and the clamping collar into the carrier's pocket, the collar's "
-                      "pinch screw toward the pocket's open side; the block's post boss down "
-                      "over the post; the lead screw down through the tower's arm, the barrel "
-                      "nut and the collar into its foot's bore, and the collar's pinch screw "
-                      "tight with the collar down on its washer. The knob's hub up into the "
-                      "knob from below (its flange holds the knob on), the hub onto the "
-                      "screw's top, its M3 set screw snug through the slot in the knob's "
-                      "side onto a flat filed on the screw's top (1 mm deep, its top 12 mm, "
-                      "a flat file, before the hub goes on; threadlocker: the set screw "
-                      "holds the screw to the knob by that flat). Then grease the "
-                      "lead screw's thread above the collar only (the barrel nut's travel: "
-                      "run the block up and down once to spread it), never the collar, its "
-                      "washer or the knob's teeth. The knob turns the screw only lifted off "
-                      "its teeth; let go, it drops back onto them (press it down until it "
-                      "seats) and the screw can't turn: try it, the knob down, by turning the "
-                      "lead screw by its collar and pressing the block down hard (neither may "
-                      "move). The lip gauge onto the front "
+                      "knob pressed onto its head. The rear one: the aluminium post into "
+                      "the carrier's socket beside the lead screw's pocket, its milled flats "
+                      "at the top, an M6 button head up into its tapped foot from below "
+                      "(threadlocker); the printed nut up into the block's lead-screw boss, "
+                      "its hex in the hex pocket (it floats there: loose is right); the TPU "
+                      "brake washer and the printed thrust ring into the carrier's pocket; the "
+                      "block's post boss down over the post; the printed lead screw down "
+                      "through the tower's arm and turned down through the nut, its foot's "
+                      "spigot into its bore and its shoulder down on the thrust ring. The "
+                      "knob's hub up into the knob from below (its flange holds the knob on), "
+                      "the hub onto the screw's top, its M3 set screw snug through the slot "
+                      "in the knob's side onto the flat printed on the screw's top "
+                      "(threadlocker: the set screw holds the screw to the knob by that "
+                      "flat). Run the block up and down once, dry: the printed thread runs "
+                      "dry, never greased, nor the thrust ring, its washer or the knob's "
+                      "teeth. The knob turns the screw only lifted off its teeth; let go, it "
+                      "drops back onto them (press it down until it seats) and the screw "
+                      "can't turn: try it, the knob down, by pressing the block down hard (it "
+                      "may not move). The lip gauge onto the front "
                       "carrier's post, a cheek either side, its bridge flat on the post's "
                       "top: the M5 tap bolt through them and the post from the front, its "
                       "nylon-insert nut behind, tight (it doesn't move: a bottle is uncorked "
@@ -3718,7 +3867,160 @@ def assembly(view) -> list:
                               (intro if tag == "pack" and i == 1 else "") + m.text,
                               f"{tag}_{i:02d}", count=False, lines=m.lines,
                               scene=cast(Scene | None, m.scene)))
+    return ops + shop_ops(view)
+
+
+ARRIVAL_LEAST_T: dict[str, dict[str, float]] = {"decanter_rcm": {"b1": 5.79}}
+"""Per cradle, a link's least thickness on arrival (mm, calipered at its middle): B's rod b1,
+0.250 in 5052, buckles at the clutch's cap at 1.72 on its nominal thickness, and Euler's load
+goes as its cube, so 1.3 needs 0.756 of it cubed (SendCutSend's 0.250 in may come 0.027 in
+thin: 1.22 there; simplification round 1's drive check). Thinner: ask SendCutSend for a
+remake."""
+POST_OVER = (12.85, 13.10, "33/64 in")
+"""A pivot post calipered over the first (mm: ANSI H35.2's +-0.009 in on the 1/2 in rod, and
+the laser's +-0.127 on its link's 13.05 mm bore: a post at its top won't go into a bore at
+its bottom) has its link's bore opened with this drill (mm, its size; simplification round
+1's stand check, C3)."""
+FACE_SQUARE_DEG = 0.1
+"""Each rod's ends faced square on the Carvera to this (degrees: 0.02 mm across a 12.7 mm
+face, a machinist's square shows no light under it): an end face 0.25° out takes most of a
+tie rod's end joint's gap moment (simplification round 1's box review)."""
+
+
+def shop_ops(view) -> list:
+    """The cradle's shop work before its first part goes on (``construction.assembly``'s
+    ``SHOP`` stage; simplification round 1, 2026-10-21: the posts, tie rods, pins and the
+    crankpin are 6061 rod made at home, and the cleats and the riser locator are cut on the
+    Carvera): the arrival checks, the rods cut to length and faced, drilled and tapped, the
+    pins cut to their calipered stacks, the Carvera's birch. No part goes on in them: each
+    says what it makes, from the bodies' catalog keys (``view.keys``)."""
+    import re
+
+    from spiderpig import linkage
+    from spiderpig.construction.assembly import SHOP, Op, Scene
+    from spiderpig.construction.pivots import rod_pin as rp
+    from spiderpig.hardware.order import PIN_TAKE_UP_MM
+
+    key = str(view.meta.get("cradle_linkage") or "")
+    if not key:
+        return []
+    lk = linkage.get(key)
+    keys = {n: str(k or "") for n, k in view.keys.items()}
+    crankpin = [n for n in keys if n.endswith(".crankpin")]
+    hard = sorted(n for n, k in keys.items() if k.startswith("rod6061ha_12p7_m6_")
+                  and n not in crankpin)
+    plain = sorted(n for n, k in keys.items() if k.startswith("rod6061_"))
+    pins = sorted(n for n, k in keys.items() if k in rp.ROD_KEY.values()
+                  and re.fullmatch(r"[LR]\.pin_\w+_pin", n))
+    clips = [n for n in pins if f"{n[:-4]}_clip" in view.z]
+    ops: list = []
+    # the arrival checks
+    least = ARRIVAL_LEAST_T.get(key, {})
+    lines = [f"{link}: caliper its thickness at its middle, away from its bosses: at least "
+             f"{t:g} mm (its buckling at the clutch's cap goes as its thickness cubed; "
+             "SendCutSend's 0.250 in may come 0.69 mm thin). Thinner: ask SendCutSend for a "
+             "remake before anything is drilled to it." for link, t in least.items()]
+    lines.append(rp.ARRIVAL_WORDS)
+    ops.append(Op(SHOP, (0,), (), "Arrival checks", "Caliper the rods as they arrive (three "
+                  "places along each, a micrometer or the caliper's jaws square on it): "
+                  f"{rp.STOCK_WORDS}", "arrival", count=False, lines=tuple(lines)))
+    # the rods to length, faced
+    pivots = {j: [n for n, (js, _) in lk.links.items() if j in js] for j in lk.frame
+              if j != lk.crank[0]}
+    lo, drill_mm, drill = POST_OVER
+    bores = "; ".join(f"{j}'s {' and '.join(ls)}" for j, ls in pivots.items())
+    rods_text = (
+        f"Saw the pivot posts ({len(hard)}: the pillars a link turns on, {', '.join(pivots)}) "
+        "from the hard-anodised 1/2 in rod, each 1.5 mm over its length (the BOM's cut list), "
+        "a fine-tooth hacksaw in the vise, the rod wrapped in tape where the jaws hold it. "
+        f"The plain posts and tie rods ({len(plain)}) and the riser's sleeves come cut, 1.5 "
+        "mm over (Speedy Metals, +1/8 -0 in).")
+    rod_lines = (
+        "Face every piece square to its length on the Carvera: the pieces lying along X in "
+        "the vise against one stop, a batch a setup, an end mill's flank across the end, then "
+        "re-clamped once for the other end. Each to its length within 0.05 mm (a side's "
+        "posts all one length: they set its plates' gap), each end square to "
+        f"{FACE_SQUARE_DEG:g}° (a machinist's square on it shows no light under it; 0.02 mm "
+        "across the face). Break the edges with a file.",
+        f"Caliper each pivot post at its journal, where its link turns: over {lo:g} mm, open "
+        f"that link's bore with a {drill} ({drill_mm:.2f} mm) drill, in the drill press, the "
+        f"link clamped flat on scrap ({bores}). Its sawn and faced ends are bare (the hard "
+        "coat is on its journal), and so are its taps. The crankpin likewise (sawn from the "
+        f"same stick, the pins' step): over {lo:g} mm, open the rod b1's bore and the crank "
+        "block's plates' holes for it with the same drill.",
+        "The riser's studs: saw the heads off four M8 x 60 A2-70 hex screws (Fastenal's), "
+        "each cut to 45 mm, its end filed and a nut run off it; drill the four sleeves 8.0 mm "
+        "through, square, in the drill press.")
+    ops.append(Op(SHOP, (1,), (), "Rods to length, faced", rods_text, "rods", count=False,
+                  lines=rod_lines,
+                  scene=Scene("built", show=("*",),
+                              marks=(r"[LR]\.pillar_\w+", r"[LR]\.stand_column_\w+",
+                                     r"tie_T[a-z]+\d"))))
+    # drilled and tapped
+    m6 = 2 * (len(hard) + len(plain)) + 2 * len(crankpin) + 1      # (+ the rear post's foot)
+    m3 = 2 * (len(pins) - len(clips)) + len(clips)
+    tap_lines = (
+        f"M6 ({m6} ends: each post and tie rod both ends, the crankpin both ends, the rear "
+        "saddle's post's foot): a 5.0 mm drill 14 mm deep, then the M6 x 1 plug tap and the "
+        "bottoming tap 12 mm deep, by the T-handle wrench, Tap Magic for aluminium, backed "
+        "off half a turn each turn. The drill press square to the face (the rod in a "
+        "V-block), or a printed drilling guide over the end.",
+        f"M3 ({m3} ends: each screw-ended pin both ends, each clip pin its head end): a 2.5 mm "
+        "drill 8 mm deep, the M3 x 0.5 tap 6 mm; blow the chips out. Each clip pin's cross "
+        "hole: 2 mm through, at the length the pins' step gives, in a V-block.",
+        "The rear saddle's post: its two wrench flats milled on the Carvera, 13 mm across, "
+        "10 mm long at its top.")
+    ops.append(Op(SHOP, (3,), (), "Drilled and tapped", "Every rod's tapped ends, on the "
+                  "bench drill and by hand, once each piece is to its length:", "taps",
+                  count=False, lines=tap_lines))
+    # the pins to their stacks
+    if pins or crankpin:
+        stock = rp.PIN_STOCK_WORDS
+        ops.append(Op(SHOP, (2,), (), "Pins cut to their stacks",
+                      f"Each link pin cut from {stock} to its own stack: caliper its links "
+                      "and the printed spacers between them, as the stack steps put them on "
+                      "(the arrival's figures), add them up, and cut the pin at that stack + "
+                      f"{PIN_TAKE_UP_MM:g} mm (+0.1/-0: a hacksaw 1 mm over, then faced on "
+                      "the Carvera in the vise, or filed to the caliper), its ends square; "
+                      f"{len(pins)} pins" + (f", {len(clips)} of them clip pins" if clips
+                                             else "") + ". The crankpin likewise, to its "
+                      "drawn length (its plates' stack and its washer).", "pins",
+                      count=False, lines=rp.PIN_LINES,
+                      scene=Scene("built", show=("*",),
+                                  marks=(r"[LR]\.pin_\w+_pin", r"L\.crankpin"))))
+    # the birch on the Carvera
+    homes = sorted(n for n in view.z if re.fullmatch(r"base_cleat_\w+|riser_locator_\d+", n))
+    if homes:
+        ops.append(Op(SHOP, (4,), (), "The cleats and the riser locator, on the Carvera",
+                      CARVERA_TEXT[0], "carvera", count=False, lines=CARVERA_TEXT[1:],
+                      scene=Scene("built", show=("board",),
+                                  marks=(r"base_cleat_\w+", r"riser_locator_\d+"))))
     return ops
+
+
+CARVERA_TEXT = (
+    "From the 3/8 in Baltic birch panels (ORDER.md: Woodcraft): saw each 12 x 12 in panel to "
+    "about 238 mm wide, square, to go under the Carvera's 240 mm (its bed is 360 x 240 mm).",
+    "Workholding: the panel flat on the wasteboard, double-sided tape over its whole underside "
+    "and pressed down with a roller or a block (or four screws through it outside the parts); "
+    "zero the bit on the panel's top, its X and Y on the panel's sawn corner.",
+    "Each panel's nest is ORDER.md's Carvera list's sheet (`*_sheet_Carvera_*.dxf`: the parts "
+    "laid out on 300 x 235 mm, 3 mm in from its edges): the outlines with a 1/8 in (3.175 mm) "
+    "single-flute end mill "
+    "for wood, through in three or four passes, a tab or two on each part (tape alone can let "
+    "a narrow cleat shift on the last pass); the files are the parts' nominal size, Makera CAM "
+    "offsets the bit.",
+    f"The lead-in: a 90° chamfer bit along each cleat's long top edges, {CLEAT_LEAD:g} mm (the "
+    "rail finds its slot blind on the way back; either edge can go to the rail), before the "
+    "parts are cut free.",
+    "Cut the tabs and sand them flush, each cleat's long faces before all (a nub there takes "
+    "up the rail's play). A cleat longer than the bed comes in pieces (B's 452 mm ones in "
+    f"two): they go onto the board end to end on its pencil line, {CLEAT_JOINT:g} mm apart, "
+    "each glued along its length.",
+)
+"""The Carvera's step (``carvera``: :func:`shop_ops`), the cleats and the riser locator cut at
+home from Woodcraft's 3/8 in Baltic birch (simplification round 1, 2026-10-21, the user's
+choice; SendCutSend's routed birch before, its tabs sanded)."""
 
 
 SIDES_LR = ("L", "R")
@@ -3948,25 +4250,36 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
 
 TOOLS = (
     "Turning: a torque wrench (4 to 15 N·m: the drive's M6 screws, the posts' and tie rods' "
-    "screws, the gearbox's riser, its end screw), hex keys (2.5 to 6 mm, and one for the "
+    "screws, the gearbox's riser, its end screw), hex keys (2 to 6 mm, and one for the "
     "clutch plungers' backs), 8, 10 and two 13 mm wrenches and a 3/4 in one (the plungers' jam "
-    "nuts), E-ring pliers",
-    "Measuring: a caliper with a depth rod (the links' thickness on arrival, the gearbox's "
-    "go/no-go), a luggage scale (the clutch's start and setting, the empty grip, the board "
-    "brackets' nuts on a wrench), a kitchen scale (the keepers)",
+    "nuts)",
+    "Measuring: a caliper with a depth rod (the links' thickness on arrival, b1's least, each "
+    "rod stick and pivot post, the pins' stacks, the gearbox's go/no-go), a machinist's "
+    "square (the rods' faced ends), a luggage scale (the clutch's start and setting, the "
+    "empty grip, the board brackets' nuts on a wrench), a kitchen scale (the keepers)",
+    "Cutting and tapping the rod: a fine-tooth hacksaw (the pivot posts, the pins and the "
+    "crankpin from their hard-anodized sticks, the riser's studs from A2-70 screws), the "
+    "Carvera with its vise and an aluminium end mill (every rod's ends faced square, the rear "
+    "post's flats), M3 x 0.5 and M6 x 1 taps (plug and bottoming) in a T-handle tap wrench, "
+    "Tap Magic for aluminium, drills 2.0 mm (the clip pins' cross holes), 2.5 and 5.0 mm (the "
+    "taps), 8.0 mm (the riser's sleeves), 21/64 and 25/64 in (a pin stick over its size) and "
+    "33/64 in (a pivot post over its size), a drill press with a V-block (or a printed "
+    "drilling guide)",
+    "The Carvera's birch: a saw to take each 12 in panel under the bed's 240 mm, double-sided "
+    "tape, a 1/8 in single-flute end mill for wood and a 90° chamfer bit (the cleats' "
+    "lead-ins)",
     "Shaping: a deburring tool with a countersink blade, a flat file and fine sandpaper on a "
     "flat block (the links that arrive as cut, the laser-cut edges, the router's tabs on the "
-    "birch, the keyed plates' slots, the lead screw's flat, the cleats' lead-ins), a 14 mm "
-    "drill bit (the hand crank's hub, by hand) and a 7 mm one (its shank under sandpaper: a "
-    "tight pin hole), a drill (the gearbox's run-in, before it goes on the cradle, never "
-    "after), a hacksaw (the gearbox riser's studs, from a threaded rod)",
-    "A soldering iron (the heat-set inserts) and a vise (the knobs' nuts, the clutch "
+    "board, the Carvera's tabs, the keyed plates' slots), a 14 mm drill bit (the hand crank's "
+    "hub, by hand), a drill (the gearbox's run-in, before it goes on the cradle, never after)",
+    "A vise (the knobs' nuts, the hand crank's knobs onto their screws' heads, the clutch "
     "plungers' nuts)",
-    "Clamps or weights for the glue; a short tube over an 8 mm pin (the keepers)",
+    "Clamps or weights for the glue; a short tube over a 5/16 in pin (the keepers)",
     "Marking and handling: paper, a pencil, a paint pen and red paint (the pack marks, the "
-    "gearbox's toggle arcs), masking tape, a folded towel",
-    "Also: the food-grade grease (the BOM's: the saddles, the clutch, and wiped thin on the "
-    "steel standoffs), a clear polyurethane and a brush (the base board)",
+    "gearbox's toggle arcs, each stick's reading), masking tape, a folded towel",
+    "Also: the food-grade grease (the BOM's: the saddles, the clutch, and wiped thin on every "
+    "hard-anodized journal a link turns on), a clear polyurethane and a brush (the base "
+    "board)",
 )
 """The tools the cradle's guide names, grouped (design review round 2's m10: some 24, named
 only inside the steps): the guide's cover and ``ASSEMBLY.md`` list them."""
@@ -3975,10 +4288,11 @@ BOARD_TEXT = (
     "The board stays bare until both sides stand on it: wood glue holds bare wood, not a "
     "finish, so its cleats are glued first and it is finished after (the cleats and its "
     "finish: the last step before it's used).",
-    "First sand the router's tabs flush on every routed edge: SendCutSend's router leaves "
-    "small tabs where it held the board, the riser locator's layers and the cleats (about "
-    "4.8 mm wide, half the birch deep; it can't detab birch), the cleats' long faces before "
-    f"all: a nub there takes up the rail's {CLEAT[1]:g} mm of play.",
+    "First sand the router's tabs flush on the board's routed edges: SendCutSend's router "
+    "leaves small tabs where it held the board (about 4.8 mm wide, half the birch deep; it "
+    "can't detab birch). The cleats and the riser locator's layers come off the Carvera "
+    "with their own tabs sanded already (the shop step), the cleats' long faces before all: "
+    f"a nub there takes up the rail's {CLEAT[1]:g} mm of play.",
     "The riser locator's two layers glued face to face, bare, their outlines flush (wood "
     "glue, weighted 30 minutes); it drops into the notch, its ears in the notch's bays.",
     "The TPU feet pushed up into the board's corner holes (a twist helps them through).")
@@ -4106,8 +4420,8 @@ def _block_xy(key: str) -> tuple[np.ndarray, list[np.ndarray]]:
     return pts[lk.crank[0]][0], at
 
 
-LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 14.0, "drive_box": 11.0},
-                                      "decanter_hinge": {"cradle": 13.2}}
+LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 12.7, "drive_box": 9.9},
+                                      "decanter_hinge": {"cradle": 12.0}}
 """What a person lifts onto and off the lay-flat blocks, or off the board (kg;
 ``cradle_pack.rest_poses``' masses, held to them in ``tests/test_cradle.py``): B's cradle off
 its board, and its drive side with the cradle box (the first build's lay); A's cradle off its
@@ -4293,9 +4607,12 @@ def _board_finish(key: str, modules: bool) -> tuple[str, str, tuple[str, ...]]:
                 "2.5 mm over the bolt); the washers and the thumb knobs on, by hand, the "
                 "passive side's only started."))
     lines += [
-        "Each rail's cleats (a pair between each two of its brackets): slide one against each "
-        "face of the rail, nothing between (the rail is their gauge: it drops back in under "
-        "a hand's press), and pencil round them.",
+        "Each rail's cleats (a pair between each two of its brackets), their chamfered "
+        f"lead-in ({CLEAT_LEAD:g} mm, cut on the Carvera) up and to the rail, so the rails find "
+        "their slots blind on the way back: slide one against each face of the rail, nothing "
+        "between (the rail is their gauge: it drops back in under a hand's press), and pencil "
+        "round them. A cleat in pieces (B's, two each) goes end to end on its line, "
+        f"{CLEAT_JOINT:g} mm apart.",
         "The hand crank off (its thumb screw); " + (
             "loosen the knobs a few turns (two at least) and lift the cradle straight up off "
             "its brackets (they stay on the board, finished round)" if board else
@@ -4308,10 +4625,9 @@ def _board_finish(key: str, modules: bool) -> tuple[str, str, tuple[str, ...]]:
             if key in LAY_BLOCKS else
             "; stand it on the bench or the floor beside the board on its brackets' feet, as "
             "it stood on the board: it stands there while the glue and the finish cure."),
-        "Glue the cleats on their marks to the bare board (Titebond II, a thin bead, "
-        "weighted or clamped 30 minutes); wipe off the squeeze-out.",
-        f"Once dry, sand a {CLEAT_LEAD:g} mm lead-in at 45° along each cleat's top edge by "
-        "its rail, so the rails find their slots blind on the way back.",
+        "Glue the cleats on their marks to the bare board, each piece along its whole length "
+        "(Titebond II, a thin bead, weighted or clamped 30 minutes); wipe off the "
+        "squeeze-out, out of the lead-in above all.",
         "Then the finish, on bare wood only after the glue (Titebond's FAQ: its glues bond "
         "bare wood, and over a finish a bond holds only as well as the finish holds the "
         f"wood; {TITEBOND_FAQ}): polyurethane every face and edge of the board, the cleats "
@@ -4775,8 +5091,9 @@ def module_steps(lk, pins) -> tuple[list[ModuleStep], list[ModuleStep]]:
 
 
 PETG_PARTS = ("front_saddle", "front_saddle_vee", "front_saddle_gauge", "rear_saddle",
-              "rear_saddle_vee", "rear_saddle_hub", "rear_saddle_knob", "base_stop_rail0",
-              "base_stop_rail1", "base_stop_gate")
+              "rear_saddle_vee", "rear_saddle_hub", "rear_saddle_knob", "rear_saddle_jack",
+              "rear_saddle_nut", "rear_saddle_thrust", "base_stop_rail0", "base_stop_rail1",
+              "base_stop_gate")
 """The printed parts that carry the bottle or hold it where it is (``meta["petg"]``,
 ``hardware.bom.part_filament``): printed solid in PETG, whose layers bond about as well as
 PLA's (Prusament's datasheets: 18 and 17 MPa across them) and whose resin deflects at 64 °C
@@ -4787,7 +5104,7 @@ reach 11 MPa for as long as a bottle rests, so the guide keeps the cradle under 
 unloaded takes)."""
 FRONT_MOVES = ("front_saddle_vee", "front_saddle_liner", "front_saddle_nut")
 REAR_MOVES = ("rear_saddle_vee", "rear_saddle_liner", "rear_saddle_nut",
-              "rear_saddle_nut_set_screw", "base_stop_rail0", "base_stop_rail1",
+              "base_stop_rail0", "base_stop_rail1",
               "base_stop_rail0_liner", "base_stop_rail1_liner", *(f"base_stop_screw{i}"
                                                                    for i in range(4)))
 STOP_MOVES = ("base_stop_gate", "base_stop_lock", "base_stop_knob", "base_stop_washer0",
@@ -4880,12 +5197,16 @@ def print_poses(names, tilt: float) -> dict[str, list[tuple[str, float]]]:
         if n.startswith("foot_bracket_") and n.endswith("_knob"):
             out[n] = [("X", -90.0)]          # on its top: the nut's pocket open upward
         elif n in carriers or n.endswith(("_knob", "_vee")) or n in (
-                "led_clip", "rear_saddle_brake", "base_stop_rail0", "base_stop_rail1"):
+                "led_clip", "rear_saddle_brake", "base_stop_rail0", "base_stop_rail1",
+                "rear_saddle_jack", "rear_saddle_nut", "rear_saddle_thrust"):
             out[n] = [("Z", t), ("X", 90.0)]
         elif n == "rear_saddle_hub":
             out[n] = [("Z", t), ("X", -90.0)]
         elif n in ("base_stop_rail0_liner", "base_stop_rail1_liner"):
-            out[n] = [("Z", t), ("X", 45.0 if n == "base_stop_rail0_liner" else -45.0)]
+            # its sheet on the bed, its pegs up (simplification round 1, 2026-10-21: turned
+            # the other way, 45°, it stood on its pegs, 19 mm² on the bed, the rest on
+            # supports: 2:52 to print, not 1:38, BambuStudio 2.08)
+            out[n] = [("Z", t), ("X", -135.0 if n == "base_stop_rail0_liner" else 135.0)]
         elif n.endswith("_liner"):
             out[n] = [("Z", t), ("X", -90.0)]
         elif n == "base_stop_gate":          # on its top: its ears' roots and its pointer

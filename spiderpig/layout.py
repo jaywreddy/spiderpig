@@ -91,6 +91,21 @@ def sheet_service(key: str) -> str:
         return ""
 
 
+def sheet_route(key: str) -> str:
+    """Who cuts sheet ``key``: its service (:func:`sheet_service`), else the machine its item
+    names to cut it at home (``dims["home"]``: a decanting cradle's cleats and riser locator
+    on the user's Carvera, simplification round 1), else ``""``. Its files' folder and
+    ORDER.md's cut list go by it; only a service's sheet is its cutting line's, a home
+    machine's is bought like any part."""
+    from spiderpig.hardware.catalog import get
+
+    try:
+        d = get(key).dims
+    except KeyError:
+        return ""
+    return str(d.get("service") or d.get("home") or "")
+
+
 # ---------------------------------------------------------------------------
 # Exact contours
 # ---------------------------------------------------------------------------
@@ -585,8 +600,8 @@ def save_sheets(
     written: list[Path] = []
     rows = []
     packed = pack_sheets(mech, default, sheet_size, margin)
-    for key in sorted(packed, key=lambda k: (sheet_service(k), k != default, k)):
-        service = sheet_service(key)
+    for key in sorted(packed, key=lambda k: (sheet_route(k), k != default, k)):
+        service = sheet_route(key)
         k = sheet_kerf(key) if kerf is None else kerf
         written += _write_sheets(packed[key], Path(f"{prefix}_{_slug(service)}_{key}"), k,
                                  key, service, rows)
@@ -655,10 +670,10 @@ def save_parts(groups, out_dir, default: str, kerf: float | None = None,
 
     out_dir = Path(out_dir)
     rows: list[dict] = []
-    for g in sorted(groups, key=lambda g: (sheet_service(sheet_key(g.ref, default)),
+    for g in sorted(groups, key=lambda g: (sheet_route(sheet_key(g.ref, default)),
                                            sheet_key(g.ref, default), g.ref.name)):
         key = sheet_key(g.ref, default)
-        service = sheet_service(key)
+        service = sheet_route(key)
         k = sheet_kerf(key) if kerf is None else kerf
         sketch = _profile(g.ref, blank(key), margin)
         x0, y0, x1, y1 = _bbox_2d(sketch)

@@ -2998,3 +2998,203 @@ identity gate against `planner-f667d6b` is identical.
   `fasteners.py`), `spiderpig/construction/handcrank.py` (`DESIGN_START_NM` only),
   `spiderpig/construction/__init__.py` (`STEEL_FEET`'s pillars), `spiderpig/cradle_pack.py`
   (the `"feet"` rest), `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`.
+
+### 2026-10-21: the cradle box as a 3D frame, the rear post in 6061 and its lead screw printed (simplification round 1's box checker; the user's materials rule)
+
+The round's box review found `cradle_report.box_racking` holding the cradle links rigid out
+of their plane: a 4.75 mm link is 5-13 x softer there than the tie rods it was to fix. The
+checker rated the box as it is, then took the materials rule's two steel parts out of the
+rear saddle. Products only: the walkers' identity gate is identical.
+
+- **The box, a 3D frame** (`cradle_structure.box_frame`, `TieRod`, `BoxLinks`,
+  `BOX_HOLDS`; `cradle_report.box_racking`, `box_links`, `box_rods`): both cradle links
+  grillages of their chords, held at their pins three ways (the rows take the worst), the
+  rods 3D beams, each end joint rigid in bending and holding its twist to its friction
+  (6.84 N·m: the face and the threadlocked screw's head at `SLIP_MU`), past it slipping. In
+  the rigid limit it is the old model exactly (a test holds it); the review's grillage
+  probe agrees once its ground springs (an identity of 1 N/mm on every dof, 9 % of the box)
+  are taken out.
+  - Walking it holds, both cradles: no joint slips (B's twist 5.77 N·m at worst, A's 5.57),
+    the faces shut 4.3-5.0 x, the rods 7.3-7.6, the link with its in-plane stress 5.3-5.7.
+    The box racks 0.5-0.6°, ten times the old figure. The rear carrier's bridge, forced by
+    it, 6 mm deep (`cradle.REAR_BRIDGE`; 10 before): 8.5 (bar 2.5); 1/2 in 6061 rods take a
+    10 mm one to 2.33, a 6 mm one 3.87.
+  - **The jam's share settled at all of the couple** (`JAM_SHARE` 1.0): a block on the
+    passive side's linkage, or on the bottle or a saddle through the drive half, puts the
+    whole couple through some length of the box from the drive link; the twist, which
+    governs, is the whole couple's either way. Half the couple over the whole bay (the old
+    case) understated the twist by two.
+  - **At the cap the box doesn't hold** (B: the rods 0.40, their screws 0.86, the link 0.18;
+    A 0.39, 0.83, 0.16): the joints slip from 30-36 N·m across and the links bend past
+    yield. It holds about 55 N·m across at SF 1.3 (92 dry), a quarter of the cap's 221
+    (A 268). On the old model B's rods had held 1.73 at half the couple. `OPEN_AT_CAP`
+    names the three box rows on both cradles; the tests xfail on them. Today's steel fails
+    as 1/2 in 6061 does (55.5 against 54.7 N·m): the materials rule doesn't move it. For the
+    drive area: no cap above the running peak brings the box to 1.3 (15.7 N·m would).
+    A racking member is the user's call.
+  - The stand review's R1 (rear rods 5/8 in 6061 on A2-70 at 4 N·m) slips walking: stiffer
+    rods take more of the twist, and A2-70's preload holds less.
+- **The rear post in 5/8 in 6061-T6511** (`cradle.POST_D`, `POST_YIELD`, `POST_M`;
+  `cradle_catalog`'s `rod_6061_5_8_150`, Speedy Metals 2439, USD 1.80 against MISUMI's
+  19.25): faced, its flats milled and its foot tapped M6 on the Carvera, an M6 x 12 up into
+  it. Its roll at 7.1 x 241 MPa (bar 3). PETG on bare aluminium has one cited figure, PET's
+  0.220-0.304 at 24.6-42.5 °C (Aduli 2023, an undergraduate paper; `PETG_ALU`): the 750 ml's
+  drawer 2.44 (bar 2) on its most.
+- **The rear lead screw printed** (`cradle.LEAD_SCREW`, `LEAD_THREAD`, `_lead_thread`,
+  `LEAD_NUT`, `LEAD_FLOAT`, `THRUST`): 13 mm, not the review's 16 (16 would not pass the
+  tower arm's bushing, so the arm, its teeth and the knob would all grow and the arm come
+  off), 4 starts, 8 mm a turn; its thread one sweep of its cross-section on a helical spine
+  (a fused 4-start sweep took over two minutes). Its nut floats in a hex pocket, so the post
+  takes all the roll and the nut's set screw goes; its shoulder sits on a printed thrust
+  ring on the TPU washer. The knob's teeth hold its turn back counted frictionless (0.6
+  MPa); knocked 2.87 across its layers (bar 2.5). ServoCity's cart closes (USD 18.97 and
+  its 8.99 shipping). Printing: the screw alone 2:41 (a slender part waits on its layers),
+  1:02 added on the rear carrier's plate (BambuStudio 2.08). Its thread and its nut's are
+  drawn in their print files only (`meta["print_shapes"]`, `build.export_prints`'
+  `shapes`): the assembly holds their envelopes (the helical solid had taken B's clash
+  check from 9.6 to 22 s an angle, its bottles' hits from 10 to 55 s).
+- **The lighter box moves the drive's numbers:** -0.18 kg (the post -128 g, the screw's
+  parts -50 g) takes B's worst start to 2.690 N·m (2.719) and A's to 2.827 (2.858)
+  (`handcrank.DESIGN_START_NM`), the drawn clutch's caps to 63.2 and 66.4 N·m (63.9, 67.2:
+  `config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`), the lifts to 13.8 and 10.8 kg on B, 13.0
+  on A (`cradle.LIFTS`). Every other jam row moves by about 1 % with it (B's pillar O1
+  1.38).
+- **The rail liners' print pose:** on their sheets, pegs up (they had stood on their pegs:
+  19 mm² on the bed, 2:52 against 1:38), and a mirrored print posed then mirrored
+  (`build.export_prints`: a pose with a turn about Z had stood the mirrored liner 170 mm up,
+  6:02). 5.6 h of TPU printing less.
+- **Not taken:** the light's clip on a slide-in dovetail (the clip's flange is 8 mm long
+  behind the front tie's set screw and Tf2's bore, which leave no room for a tail along x,
+  and z needs a slot across the floor that breaks into the back face); sparse printing
+  (sliced, the carriers' and V blocks' PETG drops a third but only 4.6 h of 39 h, and the
+  post socket, the bosses, the T-slot and the tower need modifier volumes the repo doesn't
+  emit: the rows are rated solid).
+- **The BOM:** B USD 1,380.45 to 1,343.83, A 1,157.43 to 1,120.81 (-36.62 each: the post
+  -17.45, ServoCity -18.97, the post's screw -0.11, a set screw -0.09).
+- **Where:** `spiderpig/cradle_structure.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/construction/cradle.py`, `spiderpig/hardware/cradle_catalog.py`,
+  `spiderpig/build.py`, `spiderpig/api/`, `spiderpig/config.py` and
+  `spiderpig/construction/handcrank.py` (the caps and starts), `spiderpig/hardware/bom.py`
+  (the print and grease notes), `tests/test_cradle.py`, `docs/agentlib/DECANTER.md`.
+
+### 2026-10-21: simplification round 1 (the user's materials rule; the stand, drive and box checks merged; the user's decisions)
+
+The round's three checked branches merged into one (`r1-check-stand` aa0146d, then
+`r1-check-drive` 8bed533, then `r1-check-box` 23fe2c8, all from f5e2737), and the user's
+three decisions of 2026-10-21 applied. The user's ask (2026-10-20): "Let's laser cut
+everything we can but for things that absolutely can't be can we cut it in that? Iterate on
+each to see where we can simplify and reduce price", and the materials rule: "Why ... are you
+even considering steel? Nothing here needs more than Al, and even that only on a couple parts
+maybe." Products only: the walkers' identity gate is identical.
+
+**What merged.**
+- The stand (its check): every post, pillar, column and tie rod 1/2 in 6061-T6511 rod
+  (`cradle_catalog.al_rod`, `al_rod_hard`, `ROD_*`: the Aluminum Association's Table 11.1,
+  35 ksi); B's column D1 and A's C2 gone; A's pillar G foot on A2-70 at 4 N·m (`STEEL_FEET`
+  empty); the carriers' set screws M3 x 5; B's O1-D1 and A's G-D1 inner members 0.5 mm
+  narrower; `standoff.NECK_WALL` 0.85; the front V block's underside 0.35 mm up; the riser
+  on 6061 sleeves and classed A2-70 studs (Fastenal's M8 x 60 screws, their heads sawn off)
+  at 9 N·m, its sleeves' crush rated; the thread-strip rows; `OPEN_GRIP` closed (A's grip
+  21.3 N run in); the tie rods keep their class 10.9 screws at 6 N·m.
+- The drive (its check): b4 in 0.187 in 5052 at a 28 mm chord, b5 26 mm; the hand crank's
+  knobs on captured nuts; the crank block in three files; every link pin 6061 rod (5/16 in;
+  3/8 in at B's P and A's E: `construction.pivots.rod_pin`); B re-planned in 15 layers,
+  81.03 mm, proven (84.55 in 16); the crankpin 1/2 in 6061 tapped M6 both ends.
+- The box (its check): the cradle box a 3D frame (`cradle_structure.box_frame`,
+  `JAM_SHARE` 1.0) and its three cap rows in `OPEN_AT_CAP`; the rear post 5/8 in 6061; the
+  printed 13 mm lead screw; the rear carrier's bridge 6 mm; the rail liners' print pose;
+  the threads in the print files only.
+
+**The conflicts, resolved on purpose.**
+- The start, the cap and the lifts: each branch had set them for its own masses. Taken
+  again from the merged cradle's report as they had been (the report's `handle_torque_nm`
+  into `handcrank.DESIGN_START_NM`, `drawn_clutch`'s `crank_cap_nm` into
+  `config.PRODUCT_CLUTCH_NM` and `PRODUCT_JAM_NM`, `cradle_pack.rest_poses`' masses into
+  `cradle.LIFTS`), after the decisions below (the drive branch's rods had been massed as
+  steel: their catalog items named no material): B 2.629 N·m, 61.8 N·m, 12.7 / 9.9 kg; A
+  2.763, 64.9, 12.0 kg (f5e2737: B 2.719, 63.9, 14.0 / 11.0; A 2.858, 67.2, 13.2).
+- The box model ran on the stand's rods: `box_rods`' stock 6061 (`TIE_STOCK`, the catalog's
+  `ROD_E` and `ROD_YIELD`, its taps' roots `ROD_ROOT`). On the 12.7 mm face the joint holds
+  6.99 N·m of twist (6.84 on the 12 mm steel), its face alone 3.74, its gap moment 7.52;
+  the moment crosses 0.60-0.82 in the rods' twist (the test's bar from 0.7 to 0.55).
+- The drive's lower stack shortens every post (B's 68.3 mm): O1 still runs through to the
+  inner plate (the stand's `NECK_WALL`), every post is held at both plates (`check_spans`,
+  the report's posts' foot and tip moments), and no MISUMI post line survives (the posts
+  are the stand's rod; the BOM has no MISUMI cart).
+- The keepers' test takes the drive's 7.38 / 0.36 keeper and the stand's lighter box.
+
+**The user's decisions (2026-10-21), applied:**
+1. "**The board: keep SendCutSend's routed 9 mm birch board.** Move only the cleats and the
+   riser locator to the Carvera, cut from 3/8 in Baltic birch panels (Woodcraft; check_stand's
+   option (c), −USD 71.38). B's 452 mm cleats come in two halves that fit the 360 × 240 bed;
+   they're glued along their length." Done: `sheet_catalog`'s `birch_3_8_panel` (Woodcraft
+   #131140, USD 3.97, 12 x 12 in, its nest 300 x 235 mm, `CARVERA_PANEL`), no service: its
+   panels are bought (`bom.cut_by`), its files the Carvera's (`dims["home"]`,
+   `layout.sheet_route`: `laser/parts/Carvera_birch_3_8_panel/`, the nests
+   `*_sheet_Carvera_*.dxf`), ORDER.md's Carvera list with its note (`order.HOME_HEADS`,
+   `SERVICE_NOTES`), off SendCutSend's cutting line; `cradle.HOME_SHEET`; a cleat longer
+   than `CARVERA_LONGEST` in equal pieces butted `CLEAT_JOINT` apart, its joint ends square
+   (B's in two, 225.5 mm); the shop step's workholding (taped down over its whole face) and
+   its chamfered lead-in (a 90° bit, 2 mm), the board step's cleats laid lead-in up.
+2. "**Aluminium pivots: hard-anodised (Type III) 6061 rod, greased, for every surface where
+   a link or part turns.**" Done for every one, no pin left plain: McMaster sells its
+   hard-anodized 6061 rod in every diameter the pins need (the family page rendered
+   2026-10-21: 6750K14 5/16 in USD 11.81 a foot, 6750K15 3/8 in 12.32, 6750K16 1/2 in
+   16.52; each extruded, +-0.008 or 0.009 in, a 0.001 in hard coat): the pins
+   (`rod_pin.ROD_KEY`), the pivot posts (the stand's) and the crankpin, sawn from the posts'
+   stick (`handcrank` through `al_rod_hard`). So the review's R5 (3/8 in for every pin) isn't
+   needed, and no geometry moved (the holes 8.2 and 9.79 mm, the plan the drive's). The
+   anodise and the tolerance: `rod_pin.ROD_TOL` +-0.008 in and `COAT` 0.025 mm on the
+   diameter (McMaster doesn't say whether its tolerance is the coated rod's) put a stick at
+   its top 0.09 mm over a laser hole at its bottom, so the guide calipers each stick on
+   arrival and opens its links' holes with a 21/64 or 25/64 in drill over 8.05 or 9.64 mm
+   (`rod_pin.PIN_OVER`), the pivot posts and the crankpin over 12.85 mm to 13.10
+   (`cradle.POST_OVER`); B's keepers are printed to the stick as read (`rod_pin.MATCH_TOL`:
+   their rows unchanged). The diametral play at a pin 0.26 nominal, up to 0.59 (the
+   cold-finished rod's 0.43). Alcobra's cart goes.
+3. "**The cradle box's jam case:** the user chose a racking brace, which round 2 will
+   design." Kept as the box branch left it: its three rows in `OPEN_AT_CAP` (xfailed); no
+   brace drawn.
+
+**And:**
+- The guide's shop stage (`assembly.SHOP_STAGE`, `cradle.shop_ops`), before the first part:
+  the arrival checks (B's b1 at least 5.79 mm: `cradle.ARRIVAL_LEAST_T`, the drive check's
+  1.72 to 1.3 on the thickness cubed); the rods sawn, faced square on the Carvera to 0.1°
+  (`FACE_SQUARE_DEG`) and calipered; the pins cut to their calipered stacks + 0.3 mm
+  (`order.MEASURED_PINS` now names the pin sticks, `order.ROD_PIN_NOTE`); every end drilled
+  and tapped (M6, M3); the Carvera's birch. No "steel standoffs" text is left
+  (`assembly.CRADLE_ORDER`, `bom.CRADLE_GREASE_NOTE`: every hard-anodized journal greased,
+  the bare columns and tie rods not); `cradle.TOOLS` names the taps, the T-handle wrench,
+  the 2, 2.5, 5 and 8 mm drills and the Carvera's bits (no soldering iron, no E-ring pliers).
+- The carts folded to seven and the upload: Belmetric's into Bolt Depot (its 7313, 6379,
+  6380), Accu's class 10.9 into Fastenal (1139912, 50 for USD 9.93), Altex's grease and
+  Harfington's shims into McMaster (1378K31, 98089A336), the Home Depot's glue into
+  Woodcraft (08L42); Alcobra gone (the pins hard-anodized). The rods stay Speedy Metals'
+  (cut to length; its USD 20 minimum and its process fee on a line of more than ten pieces
+  in ORDER.md's `bom.CRADLE_CARTS_NOTE`, with McMaster's 8974K28 as the one-cart-fewer
+  option). Unpriced shipping: McMaster, Bolt Depot, Fastenal, Phidgets, Battery Junction,
+  Speedy.
+- The cutting fit, checked on 2026-10-21's live quotes, not refitted
+  (`bom.CRADLE_LIVE_QUOTES`): the outer plate 175.72 against the fit's 190.12 (+8.2 %), the
+  inner 104.54 against 97.00 (-7.2 %); one law per sheet can't take one of them down without
+  taking the other 15 % under its own quote.
+
+**The numbers** (`cradle_report.report` on the merged head):
+- B: every cap row 1.53 or more but the box's open rows (b6), every rated-band row 1.44 or
+  more 30° from the toggles (the gearbox riser); the box at the cap open (its rods 0.58, their
+  screws 1.08, the cradle link 0.18); walking: every row 4.28 or more, the post joints'
+  `open_x` 0.86 (O2's foot), the box's `slip_x` 0.73, its gap 3.19; the grip 21.0 N run in
+  (23.9 new; the bar 22); tipping 27.1°, 52.5 N at the top; sway 3.91 mm; the side frame's
+  buckling 2.13; the device 16.23 kg.
+- A: every cap row 1.40 or more but the box's (b2), the rated band 1.37 (the riser); the box
+  open (0.55, 1.02, 0.16); walking 3.72 or more, `open_x` 0.83; the grip 21.3 N (24.2 new);
+  tipping 26.0°, 43.2 N; sway 4.42 mm; buckling 2.32; 15.58 kg.
+- The BOM: B USD 1,380.45 to 1,007.55 (-372.90), A 1,157.43 to 847.47 (-309.96; one line
+  unpriced, A's M3 x 12 button head at McMaster), before shipping.
+
+- **Where:** the three branches' files (their entries above and their check reports,
+  `/root/scratch/decant/simplify/r1/check_*.md`); `spiderpig/construction/assembly.py`,
+  `construction/cradle.py`, `construction/pivots/rod_pin.py`, `construction/handcrank.py`,
+  `config.py`, `cradle_report.py`, `layout.py`, `materials.py`, `hardware/` (`bom.py`,
+  `order.py`, `sheet_catalog.py`, `cradle_catalog.py`, `parts.py`), `tests/test_cradle.py`,
+  `docs/agentlib/DECANTER.md`.

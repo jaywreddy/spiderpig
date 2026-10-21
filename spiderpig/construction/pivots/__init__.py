@@ -28,6 +28,14 @@ key                 construction
                     spacer, a hairpin cotter through its hole from the bay: a decanting
                     cradle's quick-release pins (B's X and Y since 2026-10-13,
                     ``config.PRODUCT_PIN_JOINTS``, :mod:`construction.pivots.clevis`)
+``rod516``          a 5/16 in 6061-T6 rod pin cut to its stack, an M3 button head and
+                    a wide washer on each tapped end, on the pivot pin's column: a
+                    decanting cradle's pins since 2026-10-21 (the materials rule,
+                    :mod:`construction.pivots.rod_pin`)
+``rod38``           the same in 3/8 in: B's rod pin P, A's E
+``rodclip516``      a 5/16 in 6061-T6 rod pin, its head an M3 button head and washer,
+                    a hairpin cotter through its drilled hole, on the clevis pin's
+                    column: B's X and Y since 2026-10-21
 ==================  ================================================================
 
 Every pivot's spacer rings and gap rings are printed, one sleeve per run of them between
@@ -48,6 +56,7 @@ from __future__ import annotations
 from spiderpig.construction.pivots.chicago import CHICAGO_M6, ChicagoAxle
 from spiderpig.construction.pivots.clevis import CLEVIS8
 from spiderpig.construction.pivots.pivot_pin import PIVOT8
+from spiderpig.construction.pivots.rod_pin import ROD38, ROD516, RODCLIP516
 from spiderpig.construction.pivots.standoff import StandoffAxle
 
-PIVOTS = (ChicagoAxle(), StandoffAxle(), CHICAGO_M6, PIVOT8, CLEVIS8)
+PIVOTS = (ChicagoAxle(), StandoffAxle(), CHICAGO_M6, PIVOT8, CLEVIS8, ROD516, ROD38, RODCLIP516)

@@ -102,7 +102,7 @@ def test_cradle_defaults_and_the_hand_crank_only_for_cradles():
     assert is_cradle(cfg)
     assert (cfg.crank, cfg.sheet, cfg.frame_sheet, cfg.crank_sheet) == (
         "hand", "al5052_3p2mm", "al5052_4p8mm", "al6061_3p2mm")
-    assert (cfg.pin, cfg.pillar, cfg.params.link_radius) == ("pivot8", "standoff", 12.0)
+    assert (cfg.pin, cfg.pillar, cfg.params.link_radius) == ("rod516", "standoff", 12.0)
     assert BuildConfig(linkage="decanter_hinge", robot=False, pin="chicago6").pin == "chicago6"
     from spiderpig.materials import link_sheets
 
@@ -302,6 +302,13 @@ def test_a_cradles_cutting_fit_holds_to_the_live_quotes():
     assert totals["A"][0] == pytest.approx(573.82)
     for live, fit in totals.values():
         assert fit == pytest.approx(live, rel=0.02)
+    # and the frame plates' live quotes of 2026-10-21 (simplification round 1), checked, not
+    # fitted: the outer +8.2 %, the inner -7.2 %
+    from spiderpig.hardware.bom import CRADLE_LIVE_QUOTES
+
+    for _, key, part, q, area, cut, n, long_, short, usd in CRADLE_LIVE_QUOTES:
+        got = cut_estimate(key, [CutPart(area, q, cut, n, long_, short)], CRADLE_CUT_FITS[key])
+        assert got == pytest.approx(usd, rel=0.11), part
 
 
 @pytest.mark.no_fabricate
@@ -309,9 +316,10 @@ def test_the_take_up_rates_each_pin_against_its_sheets_tolerances():
     """``cradle_report.take_up`` (design review round 2's M5): each pin's play against its
     links' sheets at their published over-thickness, worst case and RSS. On B's pins as
     reviewed (their wobble notes' plays), P (b1 0.250 in + b2, 0.187 in 5052 since design
-    review round 3) and Y (b5 + b6 0.187 in) come out short worst case; J, both 7075, keeps
-    0.09 mm, K (b2 5052, b4 7075) 0.04. The pillars too (round 3's laser-cut parts minor 9).
-    A rating: the guide and ORDER.md carry the fix."""
+    review round 3), K, X and Y (two 0.187 in 5052 links each since b4 went to 5052 in
+    simplification round 1) come out short worst case; J (b3 7075, b4 5052) keeps 0.04 mm.
+    The pillars too (round 3's laser-cut parts minor 9). A rating: the guide and ORDER.md
+    carry the fix."""
     from types import SimpleNamespace
 
     from spiderpig.cradle_report import take_up
@@ -325,12 +333,12 @@ def test_the_take_up_rates_each_pin_against_its_sheets_tolerances():
     got = take_up(cfg, SimpleNamespace(meta={"wobble": wobble}, bodies=[]))
     by = {r["pin"]: r for r in got["rows"]}
     assert set(by) == {*plays, "pillar O1"}
-    assert got["short_worst"] == ["P", "Y"]
+    assert got["short_worst"] == ["K", "P", "X", "Y"]
     assert got["short_rss"] == ["P"]
     assert by["P"]["growth_worst_mm"] == pytest.approx(0.915, abs=1e-3)
     assert by["P"]["margin_worst_mm"] == pytest.approx(-0.541, abs=1e-3)
-    assert by["J"]["margin_worst_mm"] == pytest.approx(0.092, abs=1e-3)
-    assert by["K"]["margin_worst_mm"] == pytest.approx(0.041, abs=1e-3)
+    assert by["J"]["margin_worst_mm"] == pytest.approx(0.041, abs=1e-3)
+    assert by["K"]["margin_worst_mm"] == pytest.approx(-0.01, abs=1e-3)
     assert by["pillar O1"]["margin_worst_mm"] == pytest.approx(0.222, abs=1e-3)
     assert [x["sheet"] for x in by["P"]["links"]] == ["al5052_6p35mm", "al5052_4p8mm"]
     assert got["fix"]
@@ -367,17 +375,17 @@ def test_a_cradle_side_stays_inside_its_claims(key, t, groups):
 
 
 @pytest.mark.construction
-def test_a_cradle_pin_is_a_hardened_pivot_pin_made_to_its_stack():
-    """The pins (``PIVOT8``): MISUMI's hardened 8 mm pivot pin, an E-ring at each end, L
-    made to its stack to the 0.1 mm (no take-up, its play the least and under a step more);
-    every link's hole the running fit (the M6 Chicago barrel's 8.2 mm), nothing bonded,
-    threaded or glued; rated as a solid 8 mm rod at class 8.8's yield."""
+def test_a_cradle_pin_is_a_6061_rod_pin_made_to_its_stack():
+    """The pins (``rod_pin``, simplification round 1: no steel in a structural part): a
+    6061-T6 hard-anodized rod cut to its stack to the 0.1 mm (no take-up, its play the least
+    and under a step more), an M3 button head and a wide washer on each tapped end
+    (threadlocker 222); A's rod pin E 3/8 in, its links' holes the rod and the running fit
+    (9.79 mm), nothing bonded or glued; rated as a solid rod at 6061-T6's minimum yield."""
     import math
 
     from spiderpig.construction.axle import AxleGroup
     from spiderpig.construction.base import Build, Realized
-    from spiderpig.construction.pivots.chicago import CHICAGO_M6
-    from spiderpig.construction.pivots.pivot_pin import PIVOT8
+    from spiderpig.construction.pivots.rod_pin import END_SCREW, END_WASHER, LOCK, ROD38
     from spiderpig.fabricate import design_side, template_for
     from spiderpig.hardware.catalog import get
 
@@ -386,23 +394,26 @@ def test_a_cradle_pin_is_a_hardened_pivot_pin_made_to_its_stack():
     design = design_side(tmpl, cfg)
     build = Build(design.ctx, design.plan, tmpl.freeze_at(1.0))
     (pin,) = [g for g in design.groups if isinstance(g, AxleGroup) and not g.pillar]
-    assert pin.construction.key == PIVOT8.key
-    assert PIVOT8.hole() == pytest.approx(CHICAGO_M6.hole())
+    assert pin.construction.key == ROD38.key
+    assert ROD38.hole() == pytest.approx(3 / 8 * 25.4 + 0.2625)
     got = pin.realize(build, Realized())
     assert set(got.cuts) == set(pin.axis.members)
     for m in pin.axis.members:
-        assert [x.d for x in got.cuts[m]] == [pytest.approx(PIVOT8.hole())]
-    assert got.extras == []                     # no epoxy, no threadlocker
-    note = got.notes["pivot_pin"][pin.name]
+        assert [x.d for x in got.cuts[m]] == [pytest.approx(ROD38.hole())]
+    assert [x.key for x in got.extras] == [LOCK]        # no epoxy; threadlocker 222
+    note = got.notes["rod_pin"][pin.name]
     shaft = pin.construction.shaft
     assert shaft.min_play - 1e-9 <= note["play_mm"] < shaft.min_play + 0.1
     assert note["length_mm"] == pytest.approx(note["stack_mm"] + note["play_mm"])
     (body,) = [b for b in got.bodies if b.name.endswith("_pin")]
-    assert body.bom_key == note["item"]
-    assert get(body.bom_key).offer.sku == f"CCGH8-{note['length_mm']:g}-NC2.4"
+    assert body.bom_key == note["item"] == "rod6061ha_38_305"
+    assert get(body.bom_key).offer.vendor
+    ends = [b for b in got.bodies if "_screw_" in b.name or "_washer_" in b.name]
+    assert sorted(b.bom_key for b in ends) == sorted([END_SCREW[2]] * 2 + [END_WASHER] * 2)
     section = got.notes["wobble"][pin.name]["section"]
-    assert section["yield_mpa"] == 640.0
-    assert section["z_bend_mm3"] == pytest.approx(math.pi * 8 ** 3 / 32, abs=1e-3)
+    assert section["yield_mpa"] == 241.3
+    assert section["z_bend_mm3"] == pytest.approx(math.pi * (3 / 8 * 25.4) ** 3 / 32,
+                                                  abs=1e-3)
 
 
 @pytest.mark.construction
@@ -446,10 +457,21 @@ def test_a_clevis_pin_takes_up_its_stack_and_its_clip_a_gap():
     from spiderpig.config import PRODUCT_PIN_JOINTS
     from spiderpig.construction import ConstructionError
     from spiderpig.construction.pivots.clevis import CLEVIS8
+    from spiderpig.construction.pivots.rod_pin import CLIP_STEP, RODCLIP516
     from spiderpig.hardware.catalog import get
     from spiderpig.stack import GAP_MAX
 
-    assert {PRODUCT_PIN_JOINTS["decanter_rcm"][j] for j in "XY"} == {"clevis8"}
+    assert {PRODUCT_PIN_JOINTS["decanter_rcm"][j] for j in "XY"} == {"rodclip516"}
+    # the 6061 clip pin (simplification round 1): its usable length to the 0.5 mm, its
+    # spacer the rest; its head the washer and the button head on its tapped end
+    rod = RODCLIP516.shaft
+    f = rod.take_up(13.1)
+    assert f.length == 13.5
+    assert f.length % CLIP_STEP == 0.0
+    assert f.shims_lo + 13.1 + f.play == pytest.approx(13.5)
+    assert rod.outer(13.1) == pytest.approx(13.5 - 13.1 + rod.item()["head_h"])
+    assert rod.section().yield_mpa == 241.3
+    assert rod.key_of(13.5) == "rod6061ha_516_305"
     shaft = CLEVIS8.shaft
     f = shaft.take_up(11.2)
     assert (f.length, f.shims_lo) == (15.0, pytest.approx(3.5))
@@ -473,15 +495,17 @@ def test_a_clevis_pin_takes_up_its_stack_and_its_clip_a_gap():
 
 @pytest.mark.slow
 @pytest.mark.construction
-def test_bs_x_and_y_are_clevis_pins_its_clips_over_the_cradle_link():
-    """B's pins X and Y (``clevis8``): the plan claims the head and spacer in the two layers
-    outside b4 (b5), the clip's whole reach in the gap over the cradle link and the pin's end
-    in the inner plate's open (a seat; the plate keeps off its path); built, the pin, its
-    printed spacer and its clip, every link's hole the M6 barrel's 8.2 mm, the spacer the
-    take-up to the 0.1 mm, the clip over the link by its play, the side within its claims."""
+def test_bs_x_and_y_are_clip_pins_its_clips_over_the_cradle_link():
+    """B's pins X and Y (``rodclip516``: 5/16 in 6061 rod, simplification round 1): the plan
+    claims the head and spacer in the two layers outside b4 (b5), the clip's whole reach in
+    the gap over the cradle link and the pin's end in the inner plate's open (a seat; the plate
+    keeps off its path); built, the rod, its washer and button head, its clip (and its printed
+    spacer where the take-up leaves one), every link's hole 8.2 mm, the usable length the
+    stack, the spacer and the play, the clip over the link by its play."""
     from spiderpig.construction.axle import AxleGroup
     from spiderpig.construction.base import Build, Realized
-    from spiderpig.construction.pivots.clevis import CLEVIS8, CLIP_REACH
+    from spiderpig.construction.pivots.clevis import CLIP_REACH
+    from spiderpig.construction.pivots.rod_pin import END_SCREW, END_WASHER, LOCK, RODCLIP516
     from spiderpig.fabricate import design_side, template_for
 
     cfg = BuildConfig(linkage="decanter_rcm", robot=False)
@@ -492,7 +516,7 @@ def test_bs_x_and_y_are_clevis_pins_its_clips_over_the_cradle_link():
     link = cr.cradle_link(cfg.lk)
     for j, bar in (("X", "b4"), ("Y", "b5")):
         (g,) = [g for g in design.groups if isinstance(g, AxleGroup) and g.name == f"pin:{j}"]
-        assert g.construction.key == CLEVIS8.key
+        assert g.construction.key == RODCLIP516.key
         k0, k1 = plan.layers[bar], plan.layers[link]
         assert k1 == plan.top - 1
         mine = plan.shapes(group=g.name)
@@ -504,19 +528,21 @@ def test_bs_x_and_y_are_clevis_pins_its_clips_over_the_cradle_link():
         assert (tip.layer, tip.seat) == (plan.top, True)
         got = g.realize(build, Realized())
         stem = g.name.replace(":", "_")
-        assert {b.name for b in got.bodies} >= {f"{stem}_pin", f"{stem}_spacer_lo",
-                                                f"{stem}_clip"}
+        assert {b.name for b in got.bodies} >= {f"{stem}_pin", f"{stem}_washer_lo",
+                                                f"{stem}_screw_lo", f"{stem}_clip"}
         keys = {b.name: b.bom_key for b in got.bodies}
-        assert keys[f"{stem}_pin"] == "clevis_pin8_15"
+        assert keys[f"{stem}_pin"] == "rod6061ha_516_305"
+        assert (keys[f"{stem}_washer_lo"], keys[f"{stem}_screw_lo"]) == (END_WASHER,
+                                                                          END_SCREW[2])
         assert keys[f"{stem}_clip"] == "hairpin_cotter_2x50"
-        assert got.extras == []                 # nothing threaded, glued or locked
+        assert [x.key for x in got.extras] == [LOCK]
         for m in g.axis.members:
             assert [x.d for x in got.cuts[m]] == [pytest.approx(8.2)]
-        note = got.notes["clevis_pin"][g.name]
-        assert note["usable_mm"] == 15.0
-        assert note["spacer_mm"] + note["stack_mm"] + note["play_mm"] == pytest.approx(15.0)
-        assert 0.25 - 1e-9 <= note["play_mm"] < 0.35
-        assert got.notes["wobble"][g.name]["section"]["yield_mpa"] == 205.0
+        note = got.notes["rod_clip_pin"][g.name]
+        assert note["spacer_mm"] + note["stack_mm"] + note["play_mm"] == pytest.approx(
+            note["usable_mm"])
+        assert 0.25 - 1e-9 <= note["play_mm"] < 0.25 + 0.5 + 0.1
+        assert got.notes["wobble"][g.name]["section"]["yield_mpa"] == 241.3
 
 
 @pytest.mark.construction
@@ -684,10 +710,10 @@ def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
     foot's oversize hole (the side settles where the linkage puts it), an 18-8 fender washer
     over the hole, an 18-8 M6 nut in a printed thumb knob, the knob clear of the bracket's
     upright and the upright's M5 screw head, a thread past the nut and the bolt's end in the
-    knob; the hand crank's hub an M3 thumb screw down to the input key through a brass
-    heat-set insert (round 1: a printed thread undone at every pack wears), its head clear of
-    the hub."""
-    from spiderpig.construction.handcrank import HANDLE_THUMB, INSERT, HandCrank
+    knob; the hand crank's hub an M3 socket head in a printed knob down to the input key
+    through a captured M3 nut (round 1: a printed thread undone at every pack wears;
+    simplification round 1: the nut for the brass insert), the knob clear of the hub."""
+    from spiderpig.construction.handcrank import HANDLE_THUMB, NUT, HandCrank
 
     bracket, parts, _ = cr._bracket((0.0, 12.5), 0.0, 0.0, 1, 4.75)   # (its screw 12.5 up)
     by = {suffix: (part, key) for part, key, suffix in parts}
@@ -708,12 +734,17 @@ def test_a_base_bracket_takes_a_thumb_knob_and_the_hand_crank_a_thumb_screw():
     got, _ = hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame")
     bodies = {b.name: b for b in got}
     thumb = bodies["handle_thumb_screw"]
-    assert thumb.bom_key == f"m3_thumb_screw_{HANDLE_THUMB[0]:g}"
-    assert bodies["handle_insert"].bom_key == INSERT[2]
-    for part in ("handle", "handle_insert"):
-        inter = thumb.part & bodies[part].part
-        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3, part
-    reach = thumb.part.bounding_box().max.Z
+    assert thumb.bom_key == f"m3_shcs_a2_{HANDLE_THUMB[0]:g}"
+    assert bodies["handle_nut"].bom_key == NUT
+    assert bodies["handle_cap_nut"].bom_key == NUT
+    assert bodies["handle_knob"].fab == "printed"
+    for a, b in (("handle_thumb_screw", "handle"), ("handle_thumb_screw", "handle_knob"),
+                 ("handle_nut", "handle"), ("handle_cap_nut", "handle"),
+                 ("handle_cap_screw", "handle"), ("handle_cap_screw", "handle_cap_knob"),
+                 ("handle_cap_screw", "handle_cap"), ("handle_knob", "handle")):
+        inter = bodies[a].part & bodies[b].part
+        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3, (a, b)
+    reach = bodies["handle_knob"].part.bounding_box().max.Z
     assert reach > hc.box.crank_hub_r + HANDLE_THUMB[2]
 
 
@@ -923,9 +954,9 @@ def test_the_riser_holds_the_gearbox_as_a_clamped_stack():
     """The riser rated (design review round 3's M2, ``cradle_drive.riser_rating``): at a
     rod force and torque like B's walking peak it doesn't slip at the faces' oiled friction
     (``RISER_MU``) by 2 x; at B's and A's capped jam 30° from the toggles (the review's rod
-    forces) every strength row holds 1.3 (the stud in class 8.8 at its proof, the sleeve,
-    the ring's bearing); the 18-8 set screws round 2 had, carried in bending over 18.7 mm,
-    were SF 0.55-0.62 (the review's)."""
+    forces) every strength row holds 1.3 (the stud in A2-70 at its proof, the sleeve in
+    bending and crushed, the ring's bearing); the 18-8 set screws round 2 had, carried in
+    bending over 18.7 mm, were SF 0.55-0.62 (the review's)."""
     from spiderpig.construction.handcrank import NRV050
     from spiderpig.cradle_drive import riser_rating
 
@@ -933,11 +964,18 @@ def test_the_riser_holds_the_gearbox_as_a_clamped_stack():
              "riser_ring_mm": 3.175, "riser_shims_mm": 2.025, "plate_inner_z_mm": 4.75}
     walk = riser_rating(NRV050, notes, 410.0, 35.8)
     assert walk["slip_sf"] >= 2.0, walk
-    assert walk["least"] >= 2.0, walk
+    assert min(walk["sf_stud"], walk["sf_sleeve"], walk["sf_ring_bearing"]) >= 2.0, walk
+    # the simplification round 1 (2026-10-21): the sleeve crushed by the clamp at its most
+    # preload and the column's moment, rated at its yield (a 304 one, annealed, took B's cap
+    # past it: 0.92); a 6061 sleeve from the posts' 1/2 in rod holds it
+    assert walk["sf_sleeve_crush"] >= 1.5, walk
+    assert walk["least"] == min(walk["sf_stud"], walk["sf_sleeve"], walk["sf_ring_bearing"],
+                                walk["sf_sleeve_crush"])
     for f, cap in ((1931.9, 63.7), (2301.7, 67.1)):
         got = riser_rating(NRV050, notes, f, cap)
         assert got["least"] >= 1.3, got
         assert got["sf_stud"] >= 1.3, got
+        assert got["sf_sleeve_crush"] >= 1.3, got
 
 
 def p_ok(name: str, pieces) -> bool:
@@ -1069,8 +1107,9 @@ def test_the_base_board_is_rounded_offset_and_locates_its_riser():
     assert ear is not None                               # its ear
     assert sum(p.volume for p in ear.solids()) > 1.0
     cleats = cr._cleats([-110.0, 386.0], y_top, 209.7, 1, 4.775)
-    assert len(cleats) == 2
+    assert len(cleats) == 4         # (two 452 mm cleats, each in two for the Carvera's bed)
     for c in cleats:
+        assert c.bounding_box().size.X <= cr.CARVERA_LONGEST
         b = c.bounding_box()
         assert -110.0 + cr.BRACKET[0] / 2 <= b.min.X
         assert 386.0 - cr.BRACKET[0] / 2 >= b.max.X
@@ -1579,10 +1618,11 @@ def test_the_cradle_stands_turns_easily_and_holds():
     # frames too since their redesign (2026-10-20: the column E1 under the front leg)
     _holds_the_jam(r, "decanter_hinge")
     _the_structure_is_rated(r, ("b2",), {"pillar:G"},
-                            {"column:C1", "column:C2", "column:D1", "column:D2", "column:D3",
+                            {"column:C1", "column:D1", "column:D2", "column:D3",
                              "column:E1", "column:E2"})
     _holds_the_clutchs_cap(r, "decanter_hinge")
-    _the_grip_is_open(_the_drive_keeps_its_bars(r) + _open_joints(r, "decanter_hinge"))
+    _the_grip_is_open(_the_drive_keeps_its_bars(r) + _open_joints(r, "decanter_hinge")
+                      + _open_at_cap(r, "decanter_hinge"))
 
 
 def _the_drive_keeps_its_bars(r: dict) -> list[str]:
@@ -1631,26 +1671,36 @@ def _the_drive_keeps_its_bars(r: dict) -> list[str]:
 
 
 def _holds_the_jam(r: dict, key: str) -> None:
-    """Every row of the report holds the jam at SF 1.3 or more, the side frames' posts and
-    plates included (their redesign, 2026-10-20: nothing open at the clutch's cap,
-    ``cradle_report.OPEN_AT_CAP``); the cradle box's tie rods and their end joints among the
-    rows (design review round 2's M1); the rod as a beam-column at its far pin's offset (its
-    minor 1); the side's stiffness across (its M3: a hand's 20 N sideways on the bottle sways
-    the pivots under 5 mm)."""
+    """Every row of the report holds the jam at SF 1.3 or more but the parts open at the
+    clutch's cap (``cradle_report.OPEN_AT_CAP``: the cradle box since simplification round
+    1), and nothing under it is off that list; the side frames' posts and plates among them
+    (their redesign, 2026-10-20); the cradle box's tie rods, their end joints and the cradle
+    link out of its plane among the rows (design review round 2's M1, the box a 3D frame
+    since simplification round 1), walking every end joint closed and none slipping in twist
+    at its least preload, the rear carrier's bridge riding the racking box within its bar;
+    the rod as a beam-column at its far pin's offset (its minor 1); the side's stiffness
+    across (its M3: a hand's 20 N sideways on the bottle sways the pivots under 5 mm)."""
     from spiderpig.cradle_report import OPEN_AT_CAP
 
-    assert key not in OPEN_AT_CAP
+    open_at_cap = OPEN_AT_CAP.get(key, {})
     rows = r["strength"]["rows"]
-    held = [(x["joint"], x["jam_sf"]) for x in rows if x["jam_sf"] is not None]
+    held = [(x["joint"], x["jam_sf"]) for x in rows
+            if x["jam_sf"] is not None and x["joint"] not in open_at_cap]
     assert min(sf for _, sf in held) >= 1.3, held
+    under = {x["joint"] for x in rows if x["jam_sf"] is not None and x["jam_sf"] < 1.3}
+    assert under <= set(open_at_cap), under
     assert {"frame:outer", "frame:inner"} <= {j for j, _ in held}
     box = {x["joint"]: x for x in rows if x["kind"] == "box"}
-    assert set(box) == {"box:tie rods", "box:tie rod ends"}
+    assert set(box) == {"box:tie rods", "box:tie rod ends", "box:cradle link"}
     from spiderpig.cradle_report import OPEN_JOINTS
 
     open_ = OPEN_JOINTS.get(key, {})
-    gap = r["structure"]["box"]["cases"]["walk"]["gap_ratio"]          # closed walking at the
+    walk = r["structure"]["box"]["cases"]["walk"]
+    gap = walk["gap_ratio"]                                            # closed walking at the
     assert gap >= (0.9 if "tie rod ends" in open_ else 1.0), gap       # least preload
+    assert walk["slip_x"] <= 1.0, walk["slip_x"]                       # and not turning
+    for hv in walk["holds"].values():
+        assert hv["carriers"]["rear_bridge"]["ok"], hv["carriers"]
     assert r["rod"]["sf_secant_jam"] >= 1.5
     # design review round 3: the sway with the rail's rock in its cleats (M6); the side as one
     # frame buckling (M2) among the rows above; the posts' screwed ends (M5): at the cap their
@@ -1665,6 +1715,15 @@ def _holds_the_jam(r: dict, key: str) -> None:
     joints = r["structure"]["joints"]["worst"]
     assert joints["jam"]["screw_sf"] >= 1.3, joints
     assert joints["jam"]["bearing_sf"] >= 1.0, joints
+    # the simplification round 1 (2026-10-21): the posts' and tie rods' M6 threads tapped in
+    # 6061 hold the screws' most at 1.3, and strip only past the screw's proof (the screw
+    # goes first)
+    assert joints["jam"]["strip_sf"] >= 1.3, joints
+    assert joints["walk"]["strip_sf"] >= 1.3, joints
+    assert r["structure"]["joints"]["thread"]["over_proof"] >= 1.0
+    ties = r["structure"]["tie_threads"]
+    assert min(ties["walk"]["strip_sf"], ties["jam"]["strip_sf"]) >= 1.3, ties
+    assert ties["over_proof"] >= 1.0, ties
     assert joints["walk"]["slip_x"] <= 1.0, joints
     assert joints["walk"]["open_x"] <= (1.1 if "posts" in open_ else 1.0), joints
 
@@ -1683,6 +1742,24 @@ def _open_joints(r: dict, key: str) -> list[str]:
         assert is_open, f"{key}: {what} holds now: drop it from OPEN_JOINTS"
         got.append(why)
     return got
+
+
+def _open_at_cap(r: dict, key: str) -> list[str]:
+    """The parts open at the clutch's cap as ``cradle_report.OPEN_AT_CAP`` says (the user's
+    call), for the test's xfail: each under 1.3 there, named with its SF; an entry that holds
+    now fails."""
+    from spiderpig.cradle_report import OPEN_AT_CAP
+
+    rows = {x["joint"]: x for x in r["strength"]["rows"]}
+    open_ = OPEN_AT_CAP.get(key, {})
+    got = []
+    for k in open_:
+        sf = rows[k]["jam_sf"]
+        assert sf is not None
+        assert sf < 1.3, f"{key}: {k} holds the cap now: drop it"
+        got.append(f"{k} {sf:g} at the cap")
+    why = sorted(set(open_.values()))
+    return [f"open at the clutch's cap: {', '.join(got)} ({'; '.join(why)})"] if got else []
 
 
 def _the_grip_is_open(grip: list[str]) -> None:
@@ -1704,6 +1781,7 @@ def _holds_the_clutchs_cap(r: dict, key: str) -> None:
     frames too since their redesign (2026-10-20; the band round a toggle where any falls
     under 1.3 is reported, no wider); the keyed plates at the cap."""
     from spiderpig.cradle_drive import OUTPUT, RISER
+    from spiderpig.cradle_report import OPEN_AT_CAP
 
     clutch = r["drive"]["clutch"]
     assert clutch["margin"] >= clutch["margin_floor"]
@@ -1728,16 +1806,18 @@ def _holds_the_clutchs_cap(r: dict, key: str) -> None:
     assert r["drive"]["output_overhung"]["sf_walk"] >= 3.0
     capped = r["jam_capped"]
     assert capped["crank_nm"] == clutch["crank_cap_nm"]
-    away = capped["by_band"][-1]["parts"]
-    assert min(away.values()) >= 1.3, away          # every part 30° from the toggles,
-    assert OUTPUT in capped["parts"]                # the output shaft among them,
-    assert RISER in capped["parts"]                 # and the gearbox's riser
+    open_ = OPEN_AT_CAP.get(key, {})
+    away = {k: v for k, v in capped["by_band"][-1]["parts"].items() if k not in open_}
+    assert min(away.values()) >= 1.3, away          # every part 30° from the toggles but
+    assert OUTPUT in capped["parts"]                # the open ones, the output shaft among
+    assert RISER in capped["parts"]                 # them, and the gearbox's riser
     bands = [(x["band_deg"], x["worst"]) for x in capped["by_band"]]
-    held = [v["holds_1p3_outside_deg"] for v in capped["parts"].values()]
+    held = [v["holds_1p3_outside_deg"] for k, v in capped["parts"].items() if k not in open_]
     assert None not in held, bands                  # (5° steps: where the old case
     holds = max(held)                               # skipped, now rated at a bound)
     assert holds <= 30.0, bands
-    assert capped["holds_1p3_outside_deg"] == holds, bands
+    if not open_:
+        assert capped["holds_1p3_outside_deg"] == holds, bands
     assert capped["by_band"][0]["band_deg"] == 0.0              # the whole turn rated
     from spiderpig.construction.handcrank import TOGGLE_TURNS
 
@@ -1778,18 +1858,19 @@ def test_b_stands_turns_easily_and_holds():
     walk = [x["walk_sf"] for x in rows if x["walk_sf"] is not None]
     assert min(walk) >= 2.0, [(x["joint"], x["walk_sf"]) for x in rows]
     _holds_the_jam(r, "decanter_rcm")
-    # the quick-release clevis pins at X and Y (2026-10-13): stronger than the M6 Chicago
-    # screws they replaced (1.72 and 1.49 jammed); K and J2 clevis pins too, P and J the
-    # hardened pivot pins (design review round 1): no Chicago screw left
+    # the quick-release pins at X and Y (2026-10-13; 6061 rod clip pins since simplification
+    # round 1): stronger than the M6 Chicago screws they replaced (1.72 and 1.49 jammed);
+    # every pin 6061 rod, P the 3/8 in one: no steel pin left
     quick = {x["joint"]: x for x in rows if x["joint"] in ("pin:X", "pin:Y")}
     assert set(quick) == {"pin:X", "pin:Y"}
     for x in quick.values():
-        assert "clevis" in x["section"], x
+        assert "a clip's" in x["section"], x
         assert x["jam_sf"] >= 2.0, x
         assert x["walk_sf"] >= 6.0, x
     pins = {x["joint"]: x["section"] for x in rows if x["kind"] == "pin"}
-    assert {j for j, s in pins.items() if "clevis" in s} == {"pin:K", "pin:J2", "pin:X", "pin:Y"}
-    assert {j for j, s in pins.items() if "pivot pin" in s} == {"pin:P", "pin:J"}
+    assert all("6061-T6 rod pin" in s for s in pins.values()), pins
+    assert {j for j, s in pins.items() if "a clip's" in s} == {"pin:X", "pin:Y"}
+    assert {j for j, s in pins.items() if "3/8 in" in s} == {"pin:P"}
     # X's and Y's TPU keepers (pack turn 1): each holds its pin 10 x its weight at the least
     # interference a print gives and TPU's least published modulus, and goes on by hand
     k = r["keepers"]
@@ -1797,16 +1878,19 @@ def test_b_stands_turns_easily_and_holds():
                                                                 for j in "XY"}
     assert k["least_ratio"] >= k["bar"] == 10.0
     # design review round 2's M3: against the most the way back can put on a pin's tip,
-    # half the 3.6 kg cradle box, the bench push screens each keeper 1.5 x over it; printed
-    # at 7.4 mm, at least 0.4 mm of grip; still on by hand, a tube over the pin
-    assert cr.KEEPER == (7.4, 0.4)
-    assert 3.3 < k["box_kg"] < 3.9          # (the 12 mm tie rods since round 2: 3.2 before)
+    # half the 3.1 kg cradle box, the bench push screens each keeper 1.5 x over it; printed
+    # at 7.38 mm on the 5/16 in rod, at least 0.36 mm of grip; still on by hand, a tube over
+    # the pin (7.4 and 0.4 on the 8 mm clevis pin)
+    assert cr.KEEPER == (7.38, 0.36)
+    assert 2.8 < k["box_kg"] < 3.3          # (the 1/2 in 6061 tie rods since the simplification
+    #                                         round 1: 3.6 on round 2's 12 mm steel, 3.2 before)
     assert 13.0 < k["load_n"] < 18.0
     assert k["load_ratio"] >= k["load_bar"] == 1.5
     assert all(x["push_on_n"] <= k["push_on_bar_n"] == 120.0 for x in k["rows"])
     # the packing review's m1 (pack turn 2): at the tight end too (the bore 0.15 mm under,
-    # the pin at its most: 0.74 mm), still by hand with a tube over the pin
-    assert k["tight_mm"] == pytest.approx(0.74)
+    # the pin at its most as its keeper is printed for it, 7.976 mm: 0.75 mm), still by hand
+    # with a tube over the pin
+    assert k["tight_mm"] == pytest.approx(0.75)
     assert all(x["push_on_tight_n"] <= k["push_on_bar_n"] for x in k["rows"])
     # and its M2: the box onto the drive side lying down, pin X first: its centre of mass
     # lies past X from Y, so turned about X it lifts off Y's tip (the other way round it
@@ -1818,7 +1902,7 @@ def test_b_stands_turns_easily_and_holds():
     assert pour["rear"]["tip_deg"] > r["stand"]["edges"]["rear"]["tip_deg"]
     assert all(e["tip_deg"] >= 25.0 for e in pour.values())
     _the_structure_is_rated(r, ("b2", "b6"), {"pillar:O1", "pillar:O2"},
-                            {"column:D1", "column:D2", "column:E1", "column:E2"})
+                            {"column:D2", "column:E1", "column:E2"})
     # the known limits (not designed for): a block near the mouth multiplies the pins' loads;
     # where the frame starts to give, in newtons at the grip (design review round 2's M2)
     front = r["blocked"]["cases"]["front saddle"]
@@ -1837,7 +1921,7 @@ def test_b_stands_turns_easily_and_holds():
         assert th["sf_1p3"]["grip_n"] < th["within_grip_n"], th
     _holds_the_clutchs_cap(r, "decanter_rcm")
     assert not _the_drive_keeps_its_bars(r)
-    _the_grip_is_open(_open_joints(r, "decanter_rcm"))
+    _the_grip_is_open(_open_joints(r, "decanter_rcm") + _open_at_cap(r, "decanter_rcm"))
 
 
 def _the_structure_is_rated(r: dict, links, pillars, columns) -> None:
@@ -1873,7 +1957,15 @@ def test_the_cradle_has_an_assembly_order(key):
     own picture; B's trip apart and back after them, a step each. B's passive side panel is
     built whole on the bench and lowered onto its cradle link, the cradle lying on its drive
     side on the riser's blocks (its M1)."""
-    from spiderpig.construction.assembly import FINISH, JOIN, STACK, UNIT, USE, assembly_steps
+    from spiderpig.construction.assembly import (
+        FINISH,
+        JOIN,
+        SHOP,
+        STACK,
+        UNIT,
+        USE,
+        assembly_steps,
+    )
     from spiderpig.fabricate import design_side, template_for
 
     cfg = BuildConfig(linkage=key, robot=False)
@@ -1882,7 +1974,21 @@ def test_the_cradle_has_an_assembly_order(key):
     steps = assembly_steps(cache.cached_product(cfg, 1.0), design)   # (fabricate's product)
     link = cr.cradle_link(cfg.lk)
     modules = key in cr.PACK_POSES
-    first = steps[0]
+    # the shop work first (simplification round 1): the arrival checks, the rods, the pins,
+    # the taps, the Carvera's birch; no part goes on in them
+    shop = [s for s in steps if s.stage == SHOP]
+    assert [s.title for s in shop] == ["Arrival checks", "Rods to length, faced",
+                                       "Pins cut to their stacks", "Drilled and tapped",
+                                       "The cleats and the riser locator, on the Carvera"]
+    assert steps[:len(shop)] == shop
+    assert not any(s.adds for s in shop)
+    words = " ".join(t for s in shop for t in s.text)
+    for w in ("0.1°", "M6", "M3", "threadlocker 222", "12.85 mm", "13.10 mm", "+ 0.3 mm",
+              "chamfer", "double-sided tape", "Tap Magic", "hard-anodized"):
+        assert w in words, w
+    assert ("at least 5.79 mm" in words) is (key == "decanter_rcm")     # B's b1 on arrival
+    assert "steel standoff" not in " ".join(t for s in steps for t in s.text)
+    first = steps[len(shop)]
     assert first.sub
     assert {"L.gearbox", "L.crank_shaft"} <= set(first.adds)
     (ties,) = [s for s in steps if f"L.{link}" in s.adds]
@@ -2040,12 +2146,14 @@ def test_the_cradle_builds_an_order_without_a_walkers_words(tmp_path):
 @pytest.mark.usefixtures("cached_cradle_fabrications")
 def test_verify_rates_a_cradles_joints_at_its_own_loads(key):
     """``api.verify`` rates a cradle's joints at its own statics (cradle_report.loads), as an
-    audit does: A and B fail on nothing, their side frames included since the redesign of
-    2026-10-20 (a joint under jam SF 1 is verify's failure; the report's tests hold every
-    part at 1.3; design review round 2 had left the side frames open at the clutch's cap,
-    ``cradle_report.OPEN_AT_CAP``). One cradle per test (each a ``standard`` verify: a build,
-    the contract, the clashes; its fabrications from the test cache)."""
+    audit does: A and B fail on nothing but the parts open at the clutch's cap
+    (``cradle_report.OPEN_AT_CAP``: the cradle box as a 3D frame since simplification round
+    1; a joint under jam SF 1 is verify's failure; the report's tests hold every other part
+    at 1.3), their side frames included since the redesign of 2026-10-20; then xfail on the
+    open ones. One cradle per test (each a ``standard`` verify: a build, the contract, the
+    clashes; its fabrications from the test cache)."""
     from spiderpig import api
+    from spiderpig.cradle_report import OPEN_AT_CAP
 
     d = api.resolve({"kind": "mechanism", "linkage": {"key": key}}, store=None)
     if key == "decanter_hinge":
@@ -2055,10 +2163,16 @@ def test_verify_rates_a_cradles_joints_at_its_own_loads(key):
         assert "servo" not in floor.detail.lower()
         assert not [r for r in q.rows if r.requirement == "size.mass_g"]  # a build weighs it
     rep = api.verify(d, "standard")
-    assert not [f.message for f in rep.failures], key
-    assert rep.ok, key
+    other = [f.message for f in rep.failures if f.code != "joint_overload"]
+    assert not other, (key, other)
+    culprits = {c["joint"] for f in rep.failures for c in f.culprits}
+    assert culprits <= set(OPEN_AT_CAP.get(key, {})), culprits
+    assert rep.ok == (not culprits), key
     (joints,) = [r for r in rep.rows if r.requirement == "strength.joints"]
     assert joints.value is not None
+    if culprits:
+        pytest.xfail(f"{key}: open at the clutch's cap (cradle_report.OPEN_AT_CAP): "
+                     f"{sorted(culprits)}")
 
 
 @pytest.mark.slow
@@ -2416,9 +2530,13 @@ def test_a_product_is_rated_on_its_alloys_minimum_and_a_walker_on_its_typical():
     """Design review round 3's M1: the cradles had been rated on 5052-H32's typical 193 MPa;
     a product now takes each alloy's specified minimum in its gauge (ASTM B209: 5052-H32
     23.0 ksi, 6061-T6 35.0, 7075-T6 0.190 in 69.0), a walker keeps the typical value its
-    rules were set on (the identity gate holds them), and the posts' steel its stated
-    material's (MISUMI's EN 1.0038 equivalent: 235 MPa)."""
-    from spiderpig.hardware.cradle_catalog import NETRF10_YIELD
+    rules were set on (the identity gate holds them), the crankpin's steel its stated
+    material's (MISUMI's EN 1.0038 equivalent: 235 MPa), and the posts' and tie rods' 6061-T6511
+    rod ASTM B221's (35 ksi, 241.3 MPa; the simplification round 1, 2026-10-21)."""
+    from spiderpig.construction.pivots.standoff import StandoffAxle
+    from spiderpig.cradle_report import column_section
+    from spiderpig.hardware.catalog import get
+    from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, ROD_YIELD, al_rod
     from spiderpig.materials import allowable_mpa, sheet
 
     cradle = BuildConfig(linkage="decanter_rcm", robot=False)
@@ -2429,6 +2547,13 @@ def test_a_product_is_rated_on_its_alloys_minimum_and_a_walker_on_its_typical():
     assert allowable_mpa(cradle, "al7075_4p8mm") == pytest.approx(475.7, abs=0.05)
     assert allowable_mpa(walker, "al5052_2mm") == sheet("al5052_2mm").yield_mpa == 193.0
     assert NETRF10_YIELD == 235.0
+    assert ROD_YIELD == 241.3
+    pillar = StandoffAxle().cradle_shaft()
+    assert pillar.od == 12.7
+    assert pillar.yield_mpa == ROD_YIELD
+    assert get(pillar.segment_key(71.8)).dims["material"] == "aluminium"
+    assert get(al_rod(12.7, 274.9)).dims["yield_mpa"] == ROD_YIELD
+    assert column_section(cr.STANDS["decanter_rcm"])[0] == 12.7
 
 
 @pytest.mark.strength
@@ -2458,28 +2583,110 @@ def test_a_post_ends_face_lifts_past_its_kern_and_bears_at_its_edge():
 
 @pytest.mark.strength
 @pytest.mark.no_fabricate
+def _box_case(key: str = "decanter_rcm", moment_nm: float = 100.0):
+    """A cradle's joints at crank angle 0 (the linkage alone, no build) and one case whose
+    drive pins put ``moment_nm`` on the cradle link about the mouth, at its first pin."""
+    from spiderpig.linkage.engine import LegSolution
+
+    lk = linkage.get(key)
+    link = cr.cradle_link(lk)
+    pts = {n: np.asarray(p, float).reshape(1, 2)
+           for n, p in LegSolution(linkage_key=key).joints_at(0.0).items()}
+    pins = [j for j in lk.links[link][0] if j not in TIES and j not in ("Lc", "Ax")]
+    joints = [(j, link, "other") for j in pins]
+    mouth = pts[cr.mouth_name(lk)][0]
+    q = pts[pins[0]][0] - mouth
+    f = np.array([-q[1], q[0]]) / float(q @ q) * moment_nm * 1000.0      # r x f = M
+    vecs = np.zeros((1, len(joints), 2))
+    vecs[0, 0] = f
+    return joints, pts, vecs
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
 def test_the_cradle_box_racks_on_its_tie_rods():
-    """``cradle_report.box_racking`` (design review round 2's M1): the passive half's share of
-    what the drive side's pins put on the cradle about the mouth crosses the bay in the four
-    tie rods, each fixed at both ends: shared by their stiffness at their radii from the mouth
-    (``12 E I / L^3`` across, ``G J / L`` in twist), the rear rods most."""
-    from spiderpig.cradle_report import PASSIVE_SHARE, box_racking
-    from spiderpig.cradle_structure import E_STEEL
+    """``cradle_report.box_racking`` (design review round 2's M1; a 3D frame since
+    simplification round 1): walking, the passive half's share of what the drive side's pins
+    put on the cradle about the mouth crosses the bay (jammed, all of the couple). Held rigid
+    out of their plane, the cradle links fix each rod at both ends, the old model: the rods
+    share by their stiffness at their radii from the mouth (``12 E I / L^3`` across, ``G J /
+    L`` in twist), the rear rods most. As the 4.75 mm plates they are (grillages of their
+    chords), the box racks several times more and the moment crosses mostly in the rods'
+    twist, held at the pins every way it can be (stiffest first); the passive link in
+    equilibrium."""
+    from spiderpig import cradle_structure as cs
+    from spiderpig.cradle_report import (
+        JAM_SHARE,
+        PASSIVE_SHARE,
+        box_links,
+        box_racking,
+        box_rods,
+    )
 
     cfg = BuildConfig(linkage="decanter_rcm", robot=False)
-    pts = {"Lc": np.zeros((1, 2)), "X": np.array([[100.0, 0.0]])}
-    joints = [("X", "b6", "b4")]
-    vecs = np.array([[[0.0, 1000.0]]])                  # 100 N·m about the mouth
-    got = box_racking(cfg, joints, pts, {"walk": (vecs, np.zeros(1, bool), None)}, 274.9)
-    case = got["cases"]["walk"]
-    assert case["crossing_nm"] == pytest.approx(PASSIVE_SHARE * 100.0)
-    d, L = cr.TIE_D, 274.9
-    ei, gj = E_STEEL * math.pi * d ** 4 / 64, E_STEEL / 2.6 * math.pi * d ** 4 / 32
+    joints, pts, vecs = _box_case()
+    got = box_racking(cfg, joints, pts, {"walk": (vecs, np.zeros(1, bool), None),
+                                         "jam": (vecs, np.zeros(1, bool), None)}, 274.9)
+    assert got["cases"]["walk"]["crossing_nm"] == pytest.approx(PASSIVE_SHARE * 100.0)
+    assert got["cases"]["jam"]["crossing_nm"] == pytest.approx(JAM_SHARE * 100.0)
+    assert {r["joint"] for r in got["rows"]} == {"box:tie rods", "box:tie rod ends",
+                                                  "box:cradle link"}
+    links = box_links(cfg, joints, pts, 274.9)
+    assert links.pins == (("X", "Y"), ("X", "Y"))
+    assert ("X", "Lc") in dict(links.segs)              # (split at the mouth on it)
+    rods = box_rods(cfg)
+    M = 20.0e3                                          # (under the joints' slip)
+    rigid = cs.box_frame(links, rods, [M], hold="held", rigid_links=True)
+    L = 274.9
+    ei, gj = rods["Tr2"].ei(), rods["Tr2"].gj()
     r = {n: math.hypot(*TIES[n]) for n in TIES}
-    theta = case["crossing_nm"] * 1000 / sum(12 * ei / L ** 3 * x * x + gj / L for x in r.values())
-    assert case["rods"]["Tr2"]["shear_n"] == pytest.approx(12 * ei / L ** 3 * r["Tr2"] * theta,
-                                                           rel=0.01)
-    assert max(case["rods"].values(), key=lambda x: x["end_nm"]) is case["rods"]["Tr2"]
+    theta = M / sum(12 * ei / L ** 3 * x * x + gj / L for x in r.values())
+    assert float(rigid.theta[0]) == pytest.approx(theta, rel=1e-4)
+    assert float(rigid.shear["Tr2"][0, 0]) == pytest.approx(12 * ei / L ** 3 * r["Tr2"] * theta,
+                                                            rel=1e-4)
+    assert float(rigid.end_moment["Tr2"][0].max()) == pytest.approx(
+        6 * ei / L ** 2 * r["Tr2"] * theta, rel=1e-4)
+    k = [cs.box_frame(links, rods, [M], hold=h).stiffness for h in cs.BOX_HOLDS]
+    assert k[0] >= k[1] >= k[2]
+    assert rigid.stiffness > 5 * k[0]                   # the plates give
+    for h in cs.BOX_HOLDS:
+        res = cs.box_frame(links, rods, [M], hold=h)
+        assert sum(float(res.twist[n][0]) for n in TIES) > 0.55 * M    # mostly in twist
+        #                     (the 1/2 in 6061 rods' G: 0.60 held, 0.74 pinned, 0.82 free)
+        f = {n: res.ends[n] @ cs.rod_k(rods[n], L).T for n in TIES}  # the links' on the rods
+        about = sum(TIES[n][0] * f[n][0, 7] - TIES[n][1] * f[n][0, 6] + f[n][0, 11]
+                    for n in TIES)
+        assert about == pytest.approx(M, rel=1e-6)                   # the passive link holds
+
+
+@pytest.mark.strength
+@pytest.mark.no_fabricate
+def test_a_tie_rods_end_joint_slips_past_its_friction():
+    """A tie rod's end joint (``cradle_structure.TieRod``): its twist held by its face's and,
+    its screw threadlocked into the rod, its head's friction on the cradle link (the M6 class
+    10.9 button head at 6 N·m: 3.8 kN at friction 0.2, 7.0 N·m on the 1/2 in rod's face; the
+    face alone 3.7), its face shut to the preload over its kern (7.5 N·m). Past that twist the
+    joint turns on the link (``box_frame``): the rod carries no more, the rest of the moment
+    goes into bending the links out of their plane, and the box racks far more."""
+    from spiderpig import cradle_structure as cs
+    from spiderpig.cradle_report import SLIP_MU, box_links, box_rods
+
+    cfg = BuildConfig(linkage="decanter_rcm", robot=False)
+    rod = box_rods(cfg)["Tr2"]
+    assert rod.preload == pytest.approx(3777, abs=1)
+    assert rod.slip_nmm(SLIP_MU) / 1000 == pytest.approx(6.99, abs=0.01)
+    assert rod.slip_nmm(SLIP_MU, locked=False) / 1000 == pytest.approx(3.74, abs=0.01)
+    assert rod.gap_nmm() / 1000 == pytest.approx(7.52, abs=0.01)
+    joints, pts, _ = _box_case()
+    links = box_links(cfg, joints, pts, 274.9)
+    rods = box_rods(cfg)
+    res = cs.box_frame(links, rods, [10.0e3, 200.0e3], hold="pinned")
+    for n in TIES:
+        assert not res.slipped[n][0]
+        assert res.slipped[n][1]
+        assert float(res.twist[n][1]) == pytest.approx(rod.slip_nmm(SLIP_MU), rel=1e-6)
+        assert float(res.twist_stuck[n][1]) > rod.slip_nmm(SLIP_MU)
+    assert abs(float(res.theta[1])) > 20 * 2 * abs(float(res.theta[0]))   # far softer
 
 
 @pytest.mark.no_fabricate
@@ -2499,6 +2706,7 @@ def test_the_saddles_hold_a_full_6_l():
     (m3), and the lip gauge at a wet bottle's slide onto its pad (m1: its peak over the
     static pull, the gauge's parts rated at it)."""
     from spiderpig.cradle_report import (
+        PETG_ALU,
         PETG_STEEL,
         PLA_ALLOW,
         PRINTED,
@@ -2537,13 +2745,20 @@ def test_the_saddles_hold_a_full_6_l():
     assert "in its layers" in ears["basis"]
     assert ears["sf"] >= SUSTAINED_SF
     assert "across" in rows["base stop's gate (its plate hanging from its top bar)"]["basis"]
-    # the rear lock's set screws: the hub's on a flat on the screw, the nut's by friction
-    # through its printed thread across its layers
+    # the rear lock: the hub's set screw on a flat printed on the screw; the printed nut
+    # floating in its hex pocket, kept from turning by its flats (simplification round 1:
+    # the screw, the nut and the thrust ring printed, the post 5/8 in 6061 taking all of
+    # the roll); the screw knocked across its layers
     hub = rows["rear knob's hub on the lead screw (its M3 set screw on the flat)"]
-    nut = rows["rear barrel nut in its boss (its M3 set screw)"]
-    assert "across" in nut["basis"]
+    nut = rows["rear nut in its hex pocket (its flats)"]
     assert min(hub["sf"], nut["sf"]) >= SUSTAINED_SF
     assert cr.LEAD_FLAT[0] > 0.0
+    assert "across" in rows["rear lead screw (bending)"]["basis"]
+    assert rows["rear lead screw's thread (bearing on its flanks)"]["sf"] >= SUSTAINED_SF
+    assert rows["rear nut on the V block"]["sf"] >= SUSTAINED_SF
+    assert rows["rear post (bending)"]["limit_mpa"] == cr.POST_YIELD
+    turned = rows["rear knob, turned (the bottle out)"]
+    assert turned["grip_n"] < 10.0                          # (a fingertip's turn)
     # a wet bottle's slide onto the pad: it can start in the swing only under tan 30° / √2,
     # and its peak over the static pull is what the gauge's parts are rated at
     slide = got["slide"]
@@ -2562,7 +2777,8 @@ def test_the_saddles_hold_a_full_6_l():
     assert {(r["bottle"], r["guide"]) for r in guides} == {
         (z.name, g) for z in cr.SIZES for g in ("rear", "front")}
     assert all(r["ok"] and r["mu_jam"] >= 2 * r["mu"] for r in guides)
-    assert all(r["mu"] == PETG_STEEL["dry"][1] for r in guides)       # (both dry)
+    assert all(r["mu"] == (PETG_ALU if r["guide"] == "rear" else PETG_STEEL)["dry"][1]
+               for r in guides)                         # (both dry; the rear on 6061)
     rear = {r["bottle"]: r for r in guides if r["guide"] == "rear"}
     assert rear[cr.STANDARD.name]["mu_jam"] == pytest.approx(
         rear[cr.STANDARD.name]["engagement_mm"] / 54.0, abs=1e-3)
@@ -2670,7 +2886,7 @@ def test_the_parts_that_carry_the_bottle_print_solid_in_petg():
     assert part_filament(SimpleNamespace(name="rear_saddle_vee"), {},
                          "pla_filament") == "pla_filament"         # (a walker: no "petg")
     assert "PETG at 100 % infill" in CRADLE_PRINT_NOTE
-    assert "above its collar" in CRADLE_GREASE_NOTE
+    assert "runs dry" in CRADLE_GREASE_NOTE             # (the printed lead screw)
     assert "knob's teeth" in CRADLE_GREASE_NOTE
 
 
@@ -3945,7 +4161,8 @@ def test_a_cradles_links_are_closed_bossed_and_claimed(key):
         if body_class(link) == "b1":
             assert 2 * chord_r(cfg, link, *segs[0]) == 26.0
             box = ol.face.bounding_box()
-            assert pytest.approx(2 * 15.8, abs=1e-6) == box.max.Y - box.min.Y
+            assert pytest.approx(2 * PRODUCT_BOSS_R[key]["b1"]["M"], abs=1e-6) == (
+                box.max.Y - box.min.Y)
         shapes = claims[link].make(layout)
         for k in (0, ctx.topo.geometry.samples // 3):
             held = [plates.flat_pill(local(s.shape.at, k), local(s.shape.at, k), s.shape.r)
@@ -4001,10 +4218,15 @@ def test_the_boards_bay_points_the_locators_ears_and_the_cleats_ends_are_rounded
                 assert not solid_at(part, x0 + e * 3.0, s * (edge + 1.0), yl)
         inter = part & board
         assert inter is None or sum(p.volume for p in inter.solids()) < 1e-3
-    for c in cr._cleats([-110.0, 386.0], y_top, 209.7, 1, 4.775):
+    pieces = cr._cleats([-110.0, 386.0], y_top, 209.7, 1, 4.775)
+    ends = (min(c.bounding_box().min.X for c in pieces),
+            max(c.bounding_box().max.X for c in pieces))
+    for c in pieces:        # a cleat's own ends rounded, its pieces' joint ends square
         b = c.bounding_box()
         assert pytest.approx(cr.CLEAT[0]) == b.max.Z - b.min.Z
         yc = y_top + cr.BASE_T / 2
-        assert not solid_at(c, b.min.X + 0.5, b.min.Z + 0.5, yc)
-        assert solid_at(c, b.min.X + cr.CLEAT_END_R, b.min.Z + 0.5, yc)
-        assert solid_at(c, b.min.X + 0.5, (b.min.Z + b.max.Z) / 2, yc)
+        for x, e in ((b.min.X, 1), (b.max.X, -1)):
+            outer = min(abs(x - ends[0]), abs(x - ends[1])) < 1e-6
+            assert solid_at(c, x + e * 0.5, b.min.Z + 0.5, yc) is not outer
+            assert solid_at(c, x + e * cr.CLEAT_END_R, b.min.Z + 0.5, yc)
+            assert solid_at(c, x + e * 0.5, (b.min.Z + b.max.Z) / 2, yc)

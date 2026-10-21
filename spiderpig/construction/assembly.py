@@ -35,6 +35,7 @@ from spiderpig.hardware.sheet_catalog import SCS_DEBURR_MM
 STACK, UNIT, JOIN = "stack", "unit", "join"
 CHASSIS, WIRING, DECK, OTHER = "chassis", "wiring", "deck", "other"
 CRADLE, FINISH, USE = "cradle", "finish", "use"     # a decanting cradle's own stages
+SHOP = "shop"           # ... and its shop work before the first part goes on
 SIDES = ("L", "R")
 EPS = 0.05
 
@@ -239,13 +240,12 @@ CRADLE_ARRIVAL = (
     "turns of a countersink by hand (the deburring tool's countersink blade): those edges "
     "are the clutch's ball seats, and it goes on that face out, to the balls. Caliper every "
     "link at its pin holes and note it: a sheet may run thick (SendCutSend's tables: up to "
-    "+0.69 mm at 0.250 in, +0.23 mm at 0.187 in), and the pivot pins are ordered from these "
-    "figures (ORDER.md: each pin's stack + 0.3 mm). Each 8 mm pin, when it comes, must "
-    "slide through its links' holes by hand before it goes on: the 0.250 in rod's can come "
-    "out up to 0.05 mm under the pin (SendCutSend's +/-0.005 in and its taper on thick "
-    "sheet, the hole narrowest at the exit face); open a tight one from that face, fine "
-    "sandpaper rolled round a 7 mm drill bit's shank, a few twists at a time (or an 8 mm "
-    "H8 reamer by hand), until the pin slides.")
+    "+0.69 mm at 0.250 in, +0.23 mm at 0.187 in), and the pins are cut from these figures "
+    "(the pins' step: each pin's stack + 0.3 mm). Each pin, once cut, must slide through its "
+    "links' holes by hand before it goes on: the 0.250 in rod's can come out up to 0.05 mm "
+    "under (SendCutSend's +/-0.005 in and its taper on thick sheet, the hole narrowest at "
+    "the exit face); open a tight one from that face, fine sandpaper rolled round a drill "
+    "bit's shank a size under the pin, a few twists at a time, until the pin slides.")
 """What a cradle's guide says of the cut parts before the first one goes on (design review
 round 2's M3 and M5: the links SendCutSend can't deburr, the sheets' thickness against the
 pins' take-up; round 3's laser-cut parts minors 2, 3, 4 and 6: the clutch's seats broken
@@ -292,20 +292,30 @@ set on a start measured with a bottle in the cradle, the worm's hold, the toggle
 marks; the trip's way back sends the user here (design review round 3's stand and use M2: the
 clutch had been set at the hand crank's step, before the cradle box existed)."""
 
+SHOP_STAGE = Stage(SHOP, None, "Shop work, before the build",
+                   tags=(("arrival",), ("rods",), ("pins",), ("taps",), ("carvera",)),
+                   strict=True, intro=CRADLE_ARRIVAL)
+"""A cradle's first stage (simplification round 1, 2026-10-21: its posts, tie rods, pins and
+crankpin are 6061 rod made at home, its cleats and riser locator cut on the user's Carvera;
+``construction.cradle.shop_ops``): the parts as they arrive, the rods cut and faced, the pins
+cut to their stacks, every rod end drilled and tapped, the birch."""
+
 CRADLE_ORDER: tuple[Stage, ...] = (
-    # a decanting cradle (construction.cradle): the drive side bottom up with its tie rods,
-    # bolted to the base plate (it can't stand alone: the gearbox outboard, the rods and
-    # saddles inboard), the box on the rods, then the passive side: its cradle link onto
-    # the rods, its stack slid in from outside, what goes over the link, its inner plate
-    # last (2026-10-10 review round 2: the plate had gone on a bay tie A doesn't have)
+    # a decanting cradle (construction.cradle): the shop work first, then the drive side
+    # bottom up with its tie rods, bolted to the base plate (it can't stand alone: the
+    # gearbox outboard, the rods and saddles inboard), the box on the rods, then the passive
+    # side: its cradle link onto the rods, its stack slid in from outside, what goes over
+    # the link, its inner plate last (2026-10-10 review round 2: the plate had gone on a bay
+    # tie A doesn't have)
+    SHOP_STAGE,
     Stage(STACK, "L", "Drive side: stack",
-          intro=CRADLE_ARRIVAL + " "
-                "The drive side (the crank's) is built bottom up on its outer frame plate, "
+          intro="The drive side (the crank's) is built bottom up on its outer frame plate, "
                 "in the plan's layer order, the gearbox under the plate first: it stands "
-                "the plate up off the bench while the stack goes on. The steel standoffs "
-                "(tie rods, columns, pillars, the crank's) are bare 1018 steel: wipe each "
-                "with a thin film of the food-grade grease (a rag) before it goes in, and "
-                "keep the cradle dry. Break the "
+                "the plate up off the bench while the stack goes on. The posts (pillars "
+                "and columns) and tie rods are the 6061 rod faced and tapped in the shop "
+                "steps; a link turns on each pivot post's, each pin's and the crankpin's "
+                "hard coat: wipe each of those with a thin film of the food-grade grease "
+                "(a rag) as it goes in (the bare columns and tie rods take none). Break the "
                 "laser-cut edges where hands go (a file or fine sandpaper): the bay side and "
                 "the frame plates' tops."),
     Stage(UNIT, "L", "Drive side: inner plate",
@@ -314,10 +324,10 @@ CRADLE_ORDER: tuple[Stage, ...] = (
           intro="On the bench."),
     Stage(JOIN, "L", "Drive side: inner plate onto the stack", where="robot",
           tags=(("pillar_screws", "column_screws"),),
-          intro="The inner plate onto its stack: the tops of the steel standoffs that reach "
-                "it into it. Once their screws are tight the cradle link must still swing "
-                "freely on the steel it rides (its printed parts stop 0.3 mm short of the "
-                "steel): turn the gearbox's input shaft by hand (the worm can't be "
+          intro="The inner plate onto its stack: the tops of the posts that reach it into "
+                "it. Once their screws are tight the cradle link must still swing freely on "
+                "the post it rides (its printed parts stop 0.3 mm short of the post's "
+                "length): turn the gearbox's input shaft by hand (the worm can't be "
                 "turned from the link) and feel for a bind; if it binds, sand the spacer "
                 "under the inner plate."),
     Stage(FINISH, None, "Drive side onto the base board", where="robot",
@@ -345,10 +355,10 @@ CRADLE_ORDER: tuple[Stage, ...] = (
                 ("pillar_screws", "column_screws")),
           titles=(("pillar_screws", "Inner plate's screws"),
                   ("column_screws", "Inner plate's screws")),
-          text=(("plate", "The passive side's inner plate over the steel standoffs' tops, "
+          text=(("plate", "The passive side's inner plate over the posts' tops, "
                           "its bay face to the bay."),),
           intro="The passive stack set down on the base board 7-15 mm out from its place "
-                "(inside its carriage bolts) and pushed home, the steel the cradle link "
+                "(inside its carriage bolts) and pushed home, the post the cradle link "
                 "rides up through the link; then what goes over the link, and the "
                 "inner plate. With its screws tight, turn the crank "
                 "through a whole pour: both cradle links must swing freely."),
@@ -394,8 +404,8 @@ CRADLE_MODULE_ORDER: tuple[Stage, ...] = (
           intro="On the bench."),
     Stage(JOIN, "R", "Passive side panel: inner plate onto the stack",
           tags=(("pillar_screws", "column_screws"),), strict=True,
-          intro="The inner plate onto its stack, on the bench: the tops of the steel "
-                "standoffs that reach it into it. Once their screws are tight the links must "
+          intro="The inner plate onto its stack, on the bench: the tops of the posts "
+                "that reach it into it. Once their screws are tight the links must "
                 "swing freely."),
     Stage(FINISH, None, "Passive side panel: brackets", tags=(("brackets_R",),),
           strict=True),

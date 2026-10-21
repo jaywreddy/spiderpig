@@ -18,6 +18,11 @@ and the light.
   design review round 2 of 2026-10-14 the docs and the cradle page called A "the one to
   build" and opened on it.)
 
+Simplification round 1 (2026-10-21: the user's materials rule, no steel in a structural
+part, and the Carvera for what the laser can't cut) made every post, tie rod, pin and the
+crankpin 6061 rod and cut the cleats and the riser locator at home: its state, numbers and
+open items are under "Simplification round 1".
+
 The adversarial reviews of 2026-10-10 (mechanical, fabrication, code) shaped what follows.
 Each finding and its fix is in [DECISIONS.md](DECISIONS.md).
 
@@ -81,11 +86,12 @@ stops there:
   - Code: `spiderpig/construction/cradle.py`; the linkages are in
     `spiderpig/linkages/decanters.py`.
 - **The cradle box.**
-  - Four tie rods run between the two cradle links, at `decanters.TIES`. Each is a 12 mm
-    steel standoff made to length (MISUMI NETRF12, M6 ends, since design review round 2's
-    M1: the box's racking), with an M6 x 16 button head through the link into each end
-    (class 10.9 steel since 2026-10-20: A2-70 at ISO 7380's 4 N·m left the joints at their
-    gap). Two carry the front saddle under the neck, two the
+  - Four tie rods run between the two cradle links, at `decanters.TIES`. Each is a 1/2 in
+    6061-T6511 rod cut to length by Speedy Metals, faced square and tapped M6 at home
+    (`cradle_catalog.al_rod`, since simplification round 1, 2026-10-21, the user's
+    materials rule; a 12 mm steel standoff, MISUMI NETRF12, from design review round 2's M1),
+    with an M6 x 16 button head through the link into each end (class 10.9 steel since
+    2026-10-20: A2-70 at ISO 7380's 4 N·m left the joints at their gap). Two carry the front saddle under the neck, two the
     rear saddle 275 and 360 mm behind the mouth.
   - Two printed saddles ride on the tie rods (`cradle.SADDLES`; since 2026-10-14, under
     "The saddles, adjustable"). Each is a carrier locked on its rods by M3 set screws up
@@ -94,8 +100,9 @@ stops there:
       thumbscrew at its end. Its V bears on the neck only to 64.5 mm from the mouth
       (`cradle.FRONT_BEAR`, since design review round 3): behind that it is relieved 6 mm,
       and the carrier's back wall notched 6 mm deeper, so no shoulder lands on either.
-    - The rear one carries the body: its V block rides a 15 mm plated steel post and,
-      27 mm beside it at the same end, a coarse lead screw (8 mm a turn) that pushes it up
+    - The rear one carries the body: its V block rides a 5/8 in 6061 post and, 27 mm
+      beside it at the same end, a printed coarse lead screw (13 mm, 8 mm a turn; both
+      since simplification round 1) that pushes it up
       (since review round 2; the post had been at the far end, and the block jammed on it);
       the screw's knob drops onto a ring of teeth that lock it. The base stop's two rails
       continue its V behind it on 45° flanges to 580 mm, so a 6 L's whole body is carried:
@@ -441,11 +448,16 @@ stops there:
     held 1.72 and 1.49).
   - K's and J2's heads stand under b2 and b3, their clips in the gap over b4 and b5, their
     ends in the cradle link's layer, where b6 never comes near them.
-  - B's stack is 84.65 mm a side in 16 layers (84.05 until round 2's M6 tie screws' heads
+  - B's stack is 81.03 mm a side in 15 layers, proven (simplification round 1's rod pins:
+    K and J2 lost the clevis pins' head and spacer layers); 84.65 mm in 16 layers before
+    (84.05 until round 2's M6 tie screws' heads
     under the cradle link; the planner of 2026-10-14: 84.23 in 17 before it; 79.68 until 2026-10-14: the clevis pin at K moves b2 and b3 a layer up, and
     b6 is 0.187 in).
-- **The pillars** are 12 mm steel standoffs (MISUMI NETRF12, M6 ends;
-  `StandoffAxle.cradle_shaft`), each made to its plates' gap: a 6 L's jam bent the 10 mm
+- **The pillars** are 1/2 in 6061-T6511 rod since simplification round 1 (2026-10-21):
+  sawn from McMaster's hard-anodized 6750K16 where a link turns on them (B's O1 and O2, A's
+  G: `cradle_catalog.al_rod_hard`), faced and tapped M6 at home; the stand's columns plain
+  rod from Speedy Metals (`al_rod`). Until then 12 mm steel standoffs (MISUMI NETRF12, M6
+  ends; `StandoffAxle.cradle_shaft`), each made to its plates' gap: a 6 L's jam bent the 10 mm
   ones (SF 0.78 at B's O2). An M6 button head goes through each plate without a washer, to
   6 N·m; its 3.3 mm head stands outside the plate, where a cradle's side is open
   (`StandoffAxle.outside`). The stand's columns are 12 mm too (NETRF12 on M6 x 12 button
@@ -809,35 +821,50 @@ block travels 15 mm, the rear one 72: a neck from 28 to 48 mm across, a body fro
     bottle's setting (45 before, 32 before round 2), the block jams raising only past
     friction 0.69 (`cradle_report.drawers`; 2.3 x the most cited for printed PETG on steel,
     dry: the guide's grease helps, but a spill washes it out; it had held 1.9 x dry).
-- **Rear:** the V block's two bosses at its +z end ride a 15 mm steel post, nickel plated
-  (MISUMI PETR15-150), and 27 mm behind it a Tr8 x 8 lead screw (8 mm a turn: 9 turns end
-  to end), whose bronze barrel nut sits in its boss from below, an M3 set screw on it. Both
-  stand in the carrier's +z side block: the post in a socket 30 mm deep (a collar round
-  its top), an M8 button head up into it; the screw's foot through its clamping collar in
-  a pocket on a TPU washer. A tower on
+- **Rear:** the V block's two bosses at its +z end ride a 5/8 in 6061-T6511 post (Speedy
+  Metals, cut 6 in, faced to length, its flats milled and its foot tapped M6 on the
+  Carvera; a 15 mm nickel-plated steel standoff, MISUMI PETR15-150, until simplification
+  round 1), and 27 mm behind it a printed lead screw (`cradle.LEAD_SCREW`: PETG, 13 mm, 4
+  starts, 8 mm a turn, 9 turns end to end; a ServoCity Tr8 x 8 stainless screw, bronze
+  barrel nut and aluminium collar until then), whose printed hex nut floats in its boss's
+  hex pocket from below (`cradle.LEAD_FLOAT`: its flats keep it from turning). Both stand
+  in the carrier's +z side block: the post in a socket 30 mm deep (a collar round its top),
+  an M6 button head up into it; the screw's foot's spigot in a bore, its shoulder on a
+  printed thrust ring in a pocket on a TPU washer. A tower on
   that block rises beside the screw to an arm over its top: a bushing round the screw, and
   a star of 12 teeth on it under the knob (`cradle.LOCK_TEETH`).
   - The screw pushes the block up beside its guide, so it can't cock it: raising it jams
     only past friction `engagement / 54` (the boss's 53 mm on the post's round, between
-    its wrench flats: 40.1 mm at a 750 ml's setting): 0.74 to 0.98, against the 0.24-0.30
-    measured for printed PETG on steel dry (`cradle_report.drawers`, a row per bottle in
-    `saddles`). (The post had been at -z, 213 mm across from the screw: it jammed past
+    its wrench flats: 40.1 mm at a 750 ml's setting): 0.74 to 0.98, against 0.22-0.30 for
+    PET on bare aluminium dry at room temperature (`cradle_report.PETG_ALU`: the only cited
+    figure, an undergraduate paper's, so the guide's bench check matters; 0.24-0.30 for
+    printed PETG on steel before), 2.44 x at a 750 ml's setting (`cradle_report.drawers`, a
+    row per bottle in `saddles`). (The post had been at -z, 213 mm across from the screw: it jammed past
     0.15, 0.095 at a 750 ml's setting: review round 2, N1.)
-  - An 8 mm lead isn't self-locking (the thread's lead angle, 20°, is over its friction's).
-    The knob locks it: it slides up and down a hex hub set-screwed on the screw's top (on a
-    flat filed there, since round 3), and
+  - An 8 mm lead may not hold itself (the printed thread's lead angle is 11.9°; PETG on
+    PETG's friction is unmeasured, none counted). The knob locks it: it slides up and down
+    a hex hub set-screwed on the screw's top (on a flat printed there; filed on the steel
+    screw from round 3), and
     down, its underside's star socket sits over the arm's teeth, so the screw can't turn
     (`cradle._lead_screw`). Lifted 3.6 mm off them, it turns the screw; let go and pressed
     down, it locks it again, a twelfth of a turn at most from where it was (0.7 mm of the
     block, 0.2 mm at the mouth). The teeth carry the thread's turn back under a hung 6 L,
-    greased, at 0.4 MPa. The collar's TPU washer under the block's load still slows the
-    screw with the knob lifted (4.1 x its turn back, dry; 0.8 x greased: not a hold).
+    frictionless, at 0.6 MPa. The thrust ring's TPU washer under the block's load still
+    slows the screw with the knob lifted (3.1 x its turn back, dry; 0.6 x greased: not a
+    hold). The thread runs dry. Turned with the bottle out, the knob takes about 93 N·mm
+    (7 N at its rim).
   - The screw holds the block at its +z end. A bottle's weight at the axis rolls the block
-    about it, and the post takes that couple (it is 22 x stiffer than the lead screw's
-    core): 15 mm, as it takes a 6 L hung a hair off the rods and the 1.0 kg riding the
-    block at 5.7 x its yield (12 mm, round 1's, took it at 2.99 x once the parts riding
-    the block were counted at their weight). Its friction also makes a loaded block hard
-    to drive down.
+    about it, and the post takes all that couple (the nut floats, so the screw takes
+    none): 5/8 in 6061 takes a 6 L hung a hair off the rods and the parts riding the block
+    at 7.1 x its 241 MPa least yield (the steel 15 mm had taken its share at 5.7 x; 12 mm,
+    round 1's, 2.99 x). Its friction also makes a loaded block hard to drive down.
+  - The printed screw is knocked at the knob at SF 2.87 across its layers (bar 2.5: a 50 N
+    knock midway between the nut and the bushing, on its thread's root); its thread bears
+    at 0.5 MPa, the nut on its pocket's ceiling at 0.8 MPa under a hung 6 L. A 24 h bench
+    hold is the guide's: a 12 kg hang, the knob down, dry and greased, the block mustn't
+    drop 0.2 mm. Its thread is drawn in its print file only (`meta["print_shapes"]`): the
+    assembly holds its envelope, so the clash checks stay quick (the helical solid had
+    taken B's from 9.6 to 22 s an angle, its bottles' hits from 10 to 55 s).
   - The screw's knob sits at |z| 110, 10 mm outboard of a 6 L's widest as it's laid in.
     A knock at the knob goes into the tower's arm, not the screw, which is held at both
     ends (`saddles`: 5.8 MPa across the tower's layers at 50 N).
@@ -1307,7 +1334,8 @@ of the same day), where the drive side carrying the cradle box had packed in 699
    hand on the cradle box while the other works: lying, the cradle tips past 18.9° and 21.3
    N at its top.
    - **The lifts** (design review round 3's stand and use, M5): off the board onto the
-     blocks and back up onto the board, the cradle is 14.0 kg (`cradle.LIFTS`, held to
+     blocks and back up onto the board, the cradle is 13.8 kg (14.0 until simplification
+     round 1; `cradle.LIFTS`, held to
      `rest_poses`' masses), lifted by its outer plates' 4.75 mm top edges 430 mm apart,
      their tops 465 mm over a counter. The NIOSH lifting equation's recommended limit
      there is 11.7 kg before its distance, asymmetry and coupling multipliers (load
@@ -1792,32 +1820,62 @@ as a beam between both plates) missed. They feed `strength.check` (`loads_doc`'s
   holds it across is rated: since round 2 that is the side's own stiffness there
   (`cradle_report.side_stiffness`, 12.4 N/mm at B's O). The members there as cantilevers had
   given 2.9 N/mm and ranked O-Fr's sway first (round 2's minor 3).
-- **The cradle box across the bay** (`cradle_report.box_racking`, round 2's M1). The passive
-  side holds its cradle link in place but lets it turn about the mouth: B's double
+- **The cradle box across the bay** (`cradle_report.box_racking`, round 2's M1; a 3D frame
+  since simplification round 1, 2026-10-21: `cradle_structure.box_frame`). The passive side
+  holds its cradle link in place but lets it turn about the mouth: B's double
   parallelogram, A's hinge at G.
-  - So the passive half's share crosses the bay in the four tie rods racking: half of what
-    the drive side's pins put on the cradle about the mouth.
-  - Each rod is a steel beam fixed at both ends, sharing by its stiffness at its radius from
-    the mouth (73-385 mm). The rear rods take most.
-  - Walking, 25.6 N·m crosses: the rear rod Tr2's end takes 4.9 N·m, SF 7.6 on its tapped
-    end.
-  - The end joint stays closed: its M6 x 16 button head in class 10.9 steel at 6 N·m
-    (`cradle.TIE_M`, `TIE_TIGHTEN_NM`; 2026-10-20) gives 3.8 kN of preload at friction 0.2,
-    over its 12 mm face's kern 7.28 N·m, 1.48 x the end moment (A 1.47). Design review
-    round 3 had drawn A2-70 at ISO 7380's most, 4 N·m (2.5 kN, 4.85 N·m: 0.98, at its gap,
-    an open item); a full-strength A2-70 head (an ISO 4017 hex, 4.15 mm, at TR's 5.9 N·m)
-    needs a 4.4 mm clearance gap under the cradle link, over the planner's 4 mm, and the
-    extra layer it then takes leaves neither cradle a plan (B's pin K would span 19.1 mm).
-    The 10.9 head is the A2-70 one's shape, so nothing else moved; its torque is 3/4 of ISO
-    7380's most in 10.9 (8 N·m, TR Fastenings), at most 7.0 kN, 52 % of what its head
-    carries (80 % of 10.9's proof). Steel by the wine: the rods themselves are bare steel
-    (oiled), the heads on the cradle links' outer faces, outside the bay the wine runs in;
-    unplated (an electroplated 10.9 risks hydrogen embrittlement), oiled with the rods. The
-    10 mm rods' M5 joints had worked well past their gapping moment on every pour.
-  - Jammed at the cap (a block mid-bay, half the couple: 112 N·m on B, 136 on A), the rods
-    hold 1.73 (A 1.43), the end screws' prying 3.73 (A 3.06) on the 10.9 head's 13.3 kN.
-  - All of the couple on the passive half (a block at that side's end) would take the rods
-    to 0.87 (A 0.71): a known limit.
+  - So what the passive side can't hold crosses the bay in the box: walking half of what
+    the drive side's pins put on the cradle about the mouth (`cradle_report.PASSIVE_SHARE`:
+    the bottle and the box straddle the bay's middle); jammed, all of the clutch's couple
+    (`cradle_report.JAM_SHARE`, 1.0 since simplification round 1; half until then). A block
+    on the passive side's linkage puts the whole couple across the bay; a block on the
+    bottle or a saddle (a decanter's rim under the mouth) puts it through the drive half,
+    the passive half carrying nothing: the same twist in every rod, less bending. The whole
+    couple across the whole bay holds both.
+  - The box: both cradle links as grillages of their chords out of their plane, at their
+    cut widths (`cradle_report.box_links`; B's X-Y split at the mouth on it), each held at
+    its pins three ways (`cradle_structure.BOX_HOLDS`: each pin fixing the link, holding it
+    across only, or nothing but the box held across at one pin; the truth lies between and
+    the rows take the worst); the four tie rods as 3D beams on their tie nodes; each end
+    joint rigid in bending (its face shut: `cradle_structure.TieRod.gap_nmm`; gapped, the
+    screw is still far stiffer than the link) and in twist up to its friction, the face's
+    and, the screw threadlocked into the rod, its head's (`TieRod.slip_nmm`, at
+    `cradle_report.SLIP_MU`: 6.84 N·m with the class 10.9 M6 at 6 N·m, 3.58 the face
+    alone), past it slipping.
+  - Until then the links were held rigid out of their plane, each rod fixed at both ends,
+    and the box racked on the rods' bending (B 565 N·m/°). A link is a 4.75 mm plate, 5-13
+    x softer out of its plane than the rods it was to fix (the design review's finding,
+    `r1/review_box.md`): the box racks on the rods' twist (B 44-52 N·m/° by the hold; A
+    45-50), most of its moment crossing as the rods' torque.
+  - Walking (25.4 N·m across) it holds: B racks 0.49-0.58°, A 0.51-0.56°; each rod's
+    joints take up to 5.77 N·m of twist (A 5.57), under their 6.84 (`slip_x` 0.84, A 0.81:
+    none slips, no fretting); the faces stay shut (B 4.98 x their gapping moment, A 4.33);
+    the rods' tapped ends 7.31 (A 7.61), the cradle link out of its plane with its in-plane
+    stress 5.26 (A 5.70). The mouth doesn't move (both remote centres are on one axis); the
+    saddles at mid-bay lag the drive side by about half the angle. The rear carrier's two
+    side blocks turn 0.37-0.43° against each other, and its printed bridge under the V
+    block (`cradle.REAR_BRIDGE`, 6 mm deep since simplification round 1: a forced bar's
+    stress grows with its depth) takes it at SF 8.5-10.1 across its layers (bar 2.5, each
+    pour; 1/2 in 6061 rods 3.87, where the 10 mm bridge had 2.33); the front
+    carrier's ends turn 0.19-0.21° on its rods, its bores' play 0.86°.
+  - Jammed it doesn't: every joint's twist passes its friction (B 43-50 N·m stuck against
+    6.84, A 53-59), they slip, and what's left goes into bending the links out of their
+    plane, far past yield (B at its 63.2 N·m cap, 221 N·m across: the rods 0.40, their
+    screws 0.86, the link 0.18; A at 66.4, 268 across: 0.39, 0.83, 0.16), the box racking
+    tens of degrees on the linear model. Half the couple (the old case) fails
+    too (the link about 0.5). The box holds about 55 N·m across at SF 1.3 (B and A,
+    steel or 1/2 in 6061 rods, the worst hold; 92 with dry faces, steel on aluminium's
+    least 0.47), a quarter of the cap's, and slips from 30-36 N·m: an open item at the
+    clutch's cap (`cradle_report.OPEN_AT_CAP`, the user's call).
+  - No cheap fix closes it: a second screw doesn't fit a 12-16 mm rod's end with its M6
+    tap, and a key there would bear at 200-400 MPa in the 4.75 mm link; threadlocker is
+    already on; a wider chord only slows it; dry faces (threadlocker on the thread only)
+    give 92 N·m; a lower cap would have to sit under the running peak (55 / 221.1 of 63.2
+    N·m is 15.7). What would: a racking member that doesn't go through the rods' ends
+    (a diagonal tie under the rear saddle, or both sides driven), each a redesign.
+  - Rods with stiffer twist attract more of it: rear rods of 5/8 in 6061 on A2-70 screws at
+    4 N·m (the stand review's R1) slip walking (their joints hold 5.14 N·m, the rear rods'
+    stuck twist 6.5-8.0).
   - Since round 2 the rods are MISUMI NETRF12 (12 mm, M6 x 12 deep each end): USD 21.07 at
     one to four, 15.33 at five, 7.73 at ten (NETRF12-274.9's page, rendered 2026-10-15;
     NETRF10's 15.30, 11.08 and 5.57).
@@ -2290,7 +2348,7 @@ side as one frame):
 | swing | −50.0° to +30.0°, the mouth still (0 mm), every bottle's mouth on the pivot |
 | transmission | 36.7° at worst (the rod's); the parallelograms 48.5° and 51.5° |
 | gearbox | NRV050: 35.8 N·m peak, SF 2.37 on its 85 N·m maximum, the clutch's cap 1.33 x under it; 21.7 N at the 125 mm grip at the worst start run in, 24.7 new (the bar 22 N, MIL-STD-1472H) |
-| jam (63.9 N·m, the clutch's cap) | pillar O1 1.37 (on its box, through to the inner plate since design review round 3), column E2 1.46, b6 1.48, b4 1.49 (its chord's buckling), the outer plate 1.52 (the rail at column E2), pin K 1.53 (clevis), the inner plate 1.53, pillar O2 1.55, the tie rods 1.74, b2 1.9 (0.187 in 5052 since round 3), b1 1.99, column E1 1.99, pin Y 2.13 (clevis), the side's buckling 2.15, pin J2 2.28 (clevis), the crank's keyway 2.33, b3 2.46, pin X 2.47 (clevis), the tie rods' end screws 2.53, column D2 2.56, pin P 2.76 (steel), b5 4.46, column D1 8.9, pin J 11.25 (steel): every part 1.3 or more on round 3's model (minimum yields, second order, both plates' idealizations: "The structure model corrected") |
+| jam (63.9 N·m, the clutch's cap; 63.2 since simplification round 1's lighter box, every row about 1 % up) | pillar O1 1.37 (on its box, through to the inner plate since design review round 3), column E2 1.46, b6 1.48, b4 1.49 (its chord's buckling), the outer plate 1.52 (the rail at column E2), pin K 1.53 (clevis), the inner plate 1.53, pillar O2 1.55, b2 1.9 (0.187 in 5052 since round 3), b1 1.99, column E1 1.99, pin Y 2.13 (clevis), the side's buckling 2.15, pin J2 2.28 (clevis), the crank's keyway 2.33, b3 2.46, pin X 2.47 (clevis), column D2 2.56, pin P 2.76 (steel), b5 4.46, column D1 8.9, pin J 11.25 (steel): every part 1.3 or more on round 3's model (minimum yields, second order, both plates' idealizations: "The structure model corrected") but the cradle box: rated as a 3D frame since simplification round 1 (all of the couple across it; the cap 63.2 since its lighter box), its rods 0.40, their screws 0.86 and the cradle link out of its plane 0.18, open (`cradle_report.OPEN_AT_CAP`; "The cradle box across the bay") |
 | walking | every joint, link, column and plate 4.13 or more (the crank's keyway; the outer plate 4.51); the output shaft's radial load 8.2 (410 N at the rod's plane, 69.4 mm past the hub, against 3363 N) |
 | rod, crankpin | buckling 1.78 × its jam force (1.9 as a beam-column); the crankpin 2.03 jammed |
 | the clutch's cap over the whole turn | every part 1.34 or more 30° and more from the toggles (pillar O1 and b6); 1.17 at ±25°, 0.96 at ±20° (the outer plate, pillar O1, column E2; round 2's pillar O2 0.6 and 0.49); the gearbox's output shaft 1.3 outside ±25°, 1 outside ±20°; the rod buckles within ±16° of rest, ±9° of full tilt (rounds 1 and 2's drive reviews) |
@@ -2378,6 +2436,91 @@ reported; [DECISIONS.md](DECISIONS.md) has the entry):
 - **A crank 280–320 mm behind the mouth:** the lever crosses b3, the stack's order
   changes, and pin P (10.3 mm span) and pillar O2 fall to jam SF 1.2–1.3.
 
+## Simplification round 1 (2026-10-21)
+
+The user's ask (2026-10-20): laser cut everything that can be, the Makera Carvera for what
+can't, and simplify each part for price; and the materials rule: no steel in any structural
+part, aluminium only where a part needs it. The round's brainstorms, reviews and checks are
+in `/root/scratch/decant/simplify/r1/`; the three checked branches (the stand, the drive,
+the cradle box) were merged and the user's three decisions of 2026-10-21 applied
+([DECISIONS.md](DECISIONS.md), "simplification round 1").
+
+**What the cradles are made of now:**
+
+| part | f5e2737 | now |
+|---|---|---|
+| posts (pillars, columns), tie rods | 12 mm 1018 steel standoffs (MISUMI NETRF12) | 1/2 in 6061-T6511 rod: the pivot posts (B's O1, O2; A's G) sawn from McMaster's hard-anodized 6750K16, the columns and tie rods cut to length by Speedy Metals; each faced square and tapped M6 at home. B's column D1 and A's C2 gone |
+| link pins | hardened CCGH8 and 18-8 clevis pins | 5/16 in hard-anodized 6061 (McMaster 6750K14), 3/8 in at B's P and A's E (6750K15), cut to their calipered stacks, M3 button heads and wide washers on their tapped ends (`construction.pivots.rod_pin`) |
+| crankpin | NETRF12 steel | 1/2 in hard-anodized 6061, sawn from the pivot posts' stick, tapped M6 both ends (capacity 47.4 N·m) |
+| rear saddle | MISUMI PETR15 steel post, ServoCity's lead screw and nut | a 5/8 in 6061 post, a printed 13 mm lead screw, nut and thrust ring |
+| the gearbox's riser | class 8.8 studs, 304 sleeves | A2-70 studs (Fastenal's M8 x 60 hex screws, heads sawn off), 6061 sleeves; 18-8 shims |
+| b4, b5 | 7075 at 24 mm, b5 24 mm | b4 0.187 in 5052 at a 28 mm chord, b5 26 mm |
+| cleats, riser locator | SendCutSend's routed 9 mm birch | Woodcraft's 3/8 in Baltic birch panels, cut at home on the Carvera (B's 452 mm cleats in two); the board stays SendCutSend's |
+| the hand crank's knobs | heat-set inserts | captured nuts |
+
+**Every surface a link turns on is hard anodized and greased** (the user's decision): the
+pivot posts, every pin and the crankpin. The bores (5052, 7075, the 0.250 in rod) turn on a
+coat harder than themselves, greased with the BOM's food-grade grease at each set-up; no
+source puts a number on the wear at this duty (9-10 MPa walking, 42-51 at the cap, about
+±40° a pour, a few thousand pours: the drive check's §1.4), so the guide looks for scoring at
+each set-up. McMaster's hard-anodized rod is extruded, +-0.008 in (5/16 and 3/8 in) or
++-0.009 in (1/2 in) with a 0.001 in coat: the guide calipers each stick on arrival and opens
+the laser-cut holes of the links it goes through when it reads over 8.05 mm (5/16 in),
+9.64 mm (3/8 in) or 12.85 mm (1/2 in: the posts' and the crankpin's 13.05 mm bores to 13.10).
+A pin's play is 0.26 mm nominal, up to 0.59 (the cold-finished rod's 0.43; the 8 mm g6
+pins' 0.34): the mouth sags a few tenths of a millimetre more at worst, against the stream's
+21 mm to the decanter's rim; its kinematic wander stays 0.0.
+
+**The numbers** (the report on the merged head; f5e2737's in brackets):
+
+| | B (`decanter_rcm`) | A (`decanter_hinge`) |
+|---|---|---|
+| a full 6 L's worst start at the input (`handcrank.DESIGN_START_NM`) | 2.629 N·m (2.719) | 2.763 (2.858) |
+| the clutch's cap (`config.PRODUCT_CLUTCH_NM`); spun at 200 rpm | 61.8 N·m (63.9); 65.8 | 64.9 (67.2); 69.1 |
+| the running peak at the crank | 34.7 N·m (35.9) | 36.5 (37.7) |
+| every cap row but the box's | 1.53 or more (b6) | 1.40 or more (b2) |
+| `jam_capped`, 30° and more from the toggles | 1.44 (the gearbox riser; 1.33 pillar O1) | 1.37 (the riser; 1.38) |
+| the box at the cap (`OPEN_AT_CAP`) | rods 0.58, their screws 1.08, the cradle link 0.18 | 0.55, 1.02, 0.16 |
+| walking: every row; the post joints' `open_x` (bar 1.0) | 4.28 or more; 0.86 (0.99) | 3.72 or more; 0.83 (0.70 on 10.9) |
+| the box walking: `slip_x`, gap ratio | 0.73, 3.19 | 0.68, 2.82 |
+| the grip, run in / new (bar 22 N) | 21.0 / 23.9 N | 21.3 / 24.2 N (`OPEN_GRIP` closed) |
+| tipping (bar 25°); the push at the top (bar 25 N) | 27.1°, 52.5 N | 26.0°, 43.2 N |
+| sway at the bottle, 20 N (bar 5 mm); frame buckling | 3.91 mm; 2.13 | 4.42 mm; 2.32 |
+| the device | 16.23 kg (17.60) | 15.58 kg (16.87) |
+| the lifts (`cradle.LIFTS`) | 12.7 kg the cradle, 9.9 the drive side with the box | 12.0 kg |
+| B's stack | 81.03 mm in 15 layers, proven (84.55 in 16) | 65.95 mm in 12 |
+
+**The BOM** (`spiderpig build`): B USD 1,007.55 (f5e2737: 1,380.45, -372.90): purchases 279.70, SendCutSend's cutting 727.85 (the fit); A USD 847.47 (1,157.43, -309.96): 254.50 and 592.97, one line unpriced (A's tube joint's M3 x 12 button head, McMaster's 100-pack). Out: MISUMI's posts, tie rods, crankpin, rear post and hardened pins, the 18-8 clevis pins, ServoCity's lead screw and nut, the riser's class 8.8 studs and 304 sleeves, B's column D1 and A's C2, and SendCutSend's routed cleats and locator (USD 97.28 on B: three Woodcraft panels, 11.91, in their place). In: the hard-anodized rods (B USD 57.17: two feet of 1/2 in, a foot each of 5/16 and 3/8 in; A 28.84), Speedy's cut rods (B 14.47, A 17.93), Fastenal's classed screws and studs.
+
+**The carts** (folded: ORDER.md's `bom.CRADLE_CARTS_NOTE`): seven and the upload, from twelve on the merged branches: SendCutSend (the upload: the aluminium and the board), McMaster-Carr (the hard-anodized rods, the clutch's plungers, the R-clips, the grease, the riser's shims), Bolt Depot (the stainless screws, nuts and washers), Fastenal (the classed A2-70 screws and studs, the tie rods' class 10.9 screws), Speedy Metals (the plain rods cut to length: one cradle's under its USD 20 minimum, B 14.47, A 17.93, both 32.40; a process fee of about USD 8 on a line of more than ten pieces), Phidgets (the gearbox), Woodcraft (the panels and the glue) and Battery Junction (the light). Shipping is priced for SendCutSend (free over USD 39) and Woodcraft (USD 13.99 standard to 94103); McMaster, Bolt Depot, Fastenal, Phidgets, Battery Junction and Speedy are unpriced. One cart fewer: McMaster's multipurpose 6061 rod (8974K28, +-0.006 in, 6 ft USD 13.75) for Speedy's pieces, every piece sawn at home.
+
+**Home work** (estimates, the checks'): B about 8 h at the bench and on the Carvera (the posts, tie rods and sleeves faced, drilled and tapped, 4.5 h; the pins and the crankpin cut, faced and tapped, 2-2.5 h; the birch, 1.5 h), A about 7.5 h (5.5, 0.5, 1.5); the tools to buy about USD 45 (the taps, wrench and drills 26.19-28.43 shipped, Makera's two bits 7.98 + 10.00 shipping, Tap Magic 9.95). Printing: the mounting parts slice to 48:53 h (the box check: PETG 40:19, PLA 0:50, TPU 7:44); the rest isn't sliced (B prints 2.03 kg of PETG, 0.50 of PLA and 1.77 of TPU at 100 %).
+
+**Open items:**
+- **The cradle box at the clutch's cap** (`OPEN_AT_CAP`'s three rows, both cradles): the
+  joints slip and the links bend past yield; the user chose a racking brace, round 2 designs
+  it. Walking holds.
+- **Wear on the hard coat:** cited as the fix for aluminium galling, unquantified at this
+  duty; the guide's scoring check at each set-up is the screen.
+- **The anodized rod's tolerance:** McMaster doesn't say whether its +-0.008 in is the coated
+  rod's; the guide's caliper rule covers either (`rod_pin.PIN_OVER`, `cradle.POST_OVER`).
+- **The steel left:** the tie rods' eight class 10.9 M6 screws (Fastenal 1139912, the box
+  review's preload), the riser's four A2-70 studs and its 18-8 shims (no 8 mm aluminium ring
+  shim at McMaster), the clutch's three plungers, the gearbox's own shaft, worm and key and
+  its output shaft, and the commodity stainless screws, nuts and washers.
+- **First-article bench checks:** the rear post's drawer at a 750 ml setting, dry (PETG on
+  6061: one cited figure); the printed lead screw's 24 h hold with 12 kg on the V block.
+- **B's rod b1 on arrival** (at least 5.79 mm: its buckling falls to 1.22 on SendCutSend's
+  thinnest 0.250 in).
+- **Fastenal's 1139912** names no standard on its page (its head is ISO 7380's), and
+  Fastenal refused scripts on the day; check the head on the page as it goes in the cart.
+- **A's tip margin** stays the tightest: 26.0° against the 25° bar.
+- **The packs** stay open (`PACK_OPEN`, `pack-inspect --plan default`): B 742 x 350 x 600
+  mm, 155.9 L (157.5 at f5e2737), its drive panel unsupported on the cradle box, 16 spacers
+  (408 g); A 700 x 252 x 607 mm, 106.9 L, a piece out of order (its panels over `PACK_BOX`'s
+  215 mm).
+
+
 ## Building one
 
 ```bash
@@ -2387,7 +2530,30 @@ spiderpig bake --linkage decanter_rcm                            # the viewer's 
 ```
 
 The assembly guide's order is `construction.assembly.CRADLE_MODULE_ORDER` on B and
-`CRADLE_ORDER` on A (B's guide: 55 steps, 66 pages; A's: 28 steps, 38 pages):
+`CRADLE_ORDER` on A:
+0. **The shop work** (`assembly.SHOP_STAGE`, `cradle.shop_ops`; simplification round 1,
+   2026-10-21: the posts, tie rods, pins and crankpin are 6061 rod made at home, the cleats
+   and the riser locator cut on the Carvera), five steps before the first part goes on:
+   - the arrival checks: the cut parts labelled, deburred and calipered (`CRADLE_ARRIVAL`);
+     B's rod b1 at least 5.79 mm thick (`cradle.ARRIVAL_LEAST_T`: its buckling at the cap
+     goes as its thickness cubed); each rod stick calipered and its reading written on it,
+     a pin stick over 8.05 mm (5/16 in) or 9.64 mm (3/8 in) opening its links' holes with a
+     21/64 or 25/64 in drill (`rod_pin.PIN_OVER`), B's keepers printed to the 5/16 in stick
+     as read (their STL scaled by (reading - 0.56) / 7.38);
+   - the rods to length: the pivot posts sawn from their hard-anodized stick, every piece
+     faced square on the Carvera (to 0.05 mm in length, 0.1° square: `cradle.FACE_SQUARE_DEG`),
+     each pivot post and the crankpin calipered at its journal (over 12.85 mm, its link's
+     13.05 mm bore opened to 13.10: `cradle.POST_OVER`), the riser's studs sawn from A2-70
+     screws, its sleeves drilled;
+   - the pins cut to their calipered stacks + 0.3 mm (`order.PIN_TAKE_UP_MM`, ORDER.md's
+     pins note: `order.ROD_PIN_NOTE`), the crankpin to its drawn length;
+   - every tapped end drilled and tapped (M6 at the posts', tie rods' and crankpin's ends and
+     the rear post's foot; M3 at the pins'; the clip pins' 2 mm cross holes);
+   - the cleats and the riser locator on the Carvera (`cradle.CARVERA_TEXT`): each 12 in
+     panel sawn to 238 mm wide, taped down over its whole face, the outlines with a 1/8 in
+     single-flute end mill, tabs, a 2 mm chamfered lead-in along each cleat's long top edges
+     with a 90° chamfer bit, B's 452 mm cleats in two pieces each (`cradle.CARVERA_LONGEST`,
+     `CLEAT_JOINT`: butted 1 mm apart, each glued along its length).
 1. **The drive side**, bottom up on its outer plate:
    - the gearbox under the plate first;
    - the crank block from its lowest plate, the two standoffs screwed to it on the bench;
@@ -2396,9 +2562,9 @@ The assembly guide's order is `construction.assembly.CRADLE_MODULE_ORDER` on B a
    - its cradle link goes on with the four tie rods already screwed to it;
    - its inner plate.
 2. **The base board, bare:** the router's tabs sanded flush first (SendCutSend's router
-   leaves 4.8 mm tabs on the birch, which it can't detab: a nub on a cleat's face takes up
-   the rail's 0.15 mm of play; design review round 3's laser-cut parts minor 7), its riser
-   locator's layers glued, its feet, bolts in; the drive side onto it (it can't stand
+   leaves 4.8 mm tabs on the birch, which it can't detab; design review round 3's
+   laser-cut parts minor 7; the Carvera's cleats and locator come with theirs sanded), its
+   riser locator's layers glued, its feet, bolts in; the drive side onto it (it can't stand
    alone). On B its studs go on at the bench first, the side lying on the riser's blocks,
    its brackets onto the board, and it drops into their open slots, the knobs snugged
    (`cradle.studs_first`, `DROP_DRIVE`; round 3's M3). No cleats and no finish yet: they go
@@ -2432,8 +2598,8 @@ The assembly guide's order is `construction.assembly.CRADLE_MODULE_ORDER` on B a
    pencilled round it with a sheet of paper for the play; the cradle lifted off and laid on
    its drive side on the riser's blocks (A stood on its brackets' feet beside the board: on
    its side it tipped at 13.4° since round 3's structure); the cleats glued to the bare
-   board, their lead-ins
-   sanded; then every face and edge of the board, the cleats and the locator finished with
+   board, their Carvera-cut lead-ins up and to the rail (sanded by hand until simplification
+   round 1); then every face and edge of the board, the cleats and the locator finished with
    polyurethane; the cradle back on, the passive side's knobs snugged at level, the checks.
 7. **Using it** (round 2's M4, each its own step with its own picture, in this order, the
    order `construction.assembly.USE_TAGS` gives: untagged they had sorted alphabetically,
@@ -2459,7 +2625,15 @@ Things to know before cutting and on the bench:
     x0.78, 0.250 in x0.76, 6061 x0.72, the birch x0.75. It had been a flat 0.72.
   - Every quoted file is within 11 % (`tests/test_cradle.py` holds it). B comes to USD
     760.28 against 758.19 quoted, A to 580.03 against 573.82.
-  - Today's files, after round 3's structure (2026-10-20: its wider frames, b2 in 5052,
+  - Today's files, after simplification round 1 (2026-10-21: the posts, tie rods, pins and
+    crankpin 6061 rod, b4 in 5052, the cleats and locator on the Carvera, the carts folded):
+    B's cutting USD 727.85 (the birch now the board alone), the whole build USD 1,007.55
+    (purchases 279.70); A's cutting 592.97, the whole build 847.47 (purchases 254.50, one
+    line unpriced). Checked on 2026-10-21's live quotes of B's frame plates, not refitted
+    (`bom.CRADLE_LIVE_QUOTES`): the outer plate 175.72 the pair against the fit's 190.12
+    (+8.2 %), the inner 104.54 against 97.00 (-7.2 %); one law per sheet can't take one down
+    without taking the other 15 % under its own quote.
+  - After round 3's structure (2026-10-20: its wider frames, b2 in 5052,
     b3 and b4 bossed, A's column E2, the posts one length on fender washers): B's cutting USD
     857.41 (5052 0.187 in 413.44, 7075 96.98), the whole build USD 1,380.45 (purchases
     523.04); A's cutting USD 699.25 (5052 0.187 in 356.24), the whole build 1,157.43
@@ -2553,22 +2727,30 @@ Things to know before cutting and on the bench:
   the output hub, the housing's rim red 2.5 handle turns either side of each toggle, the
   toggles found by the crank and the rod: round 3's stand and use M4).
 - **Tools** (`cradle.TOOLS`, the guide's cover and `ASSEMBLY.md`; one list since the stand
-  merge): a torque wrench from 4 to 15 N·m, hex keys, 8, 10, two 13 mm and a 3/4 in wrench,
-  a caliper with a depth rod, a luggage scale, a 14 mm drill bit and a drill (the run-in),
-  a hacksaw (the riser's studs), a soldering iron, a flat file, a vise (pressing nuts), a
-  paint pen and red paint.
+  merge; simplification round 1 added the rod's): a torque wrench from 4 to 15 N·m, hex keys,
+  8, 10, two 13 mm and a 3/4 in wrench, a caliper with a depth rod, a machinist's square, a
+  luggage scale, a fine-tooth hacksaw (the hard-anodized sticks, the riser's studs), the
+  Carvera with its vise and an aluminium end mill (the rods' faces, the rear post's flats),
+  a 1/8 in single-flute end mill and a 90° chamfer bit (the birch), M3 and M6 taps (plug and
+  bottoming) in a T-handle wrench, Tap Magic, drills of 2.0, 2.5, 5.0 and 8.0 mm, 21/64,
+  25/64 and 33/64 in (a stick or a post over its size), a drill press with a V-block, a
+  14 mm drill bit and a drill (the run-in), a flat file, a vise (pressing nuts), a paint pen
+  and red paint. (No soldering iron since the drive check's knobs on captured nuts, no
+  E-ring pliers since its rod pins.) The tools to buy, priced by the round's checkers on
+  2026-10-21: the taps, wrench and drills USD 26.19 (BoltsandNuts, shipped free) or 28.43
+  (Drills and Cutters, shipped); Makera's 3.175 mm single flute USD 2.99 and its 90° chamfer
+  4.99 (+10.00 shipping); Tap Magic aluminium 4 oz USD 9.95.
 - **Glue the input shaft's key** into its keyseat (threadlocker or super glue): it falls out
   when the crank comes off otherwise.
-- **Grease the steel standoffs thin:** they are bare 1018. Wipe each with a film of the
-  food-grade grease the BOM buys (Super Lube 21030, NSF H1: `cradle.GREASE`, design review
-  round 3's stand and use, m10: the front saddle's box guide, its thumbscrew and the rear
-  lead screw sit in the wine's path, and "any lithium or PTFE grease" had been an unbought
-  shop supply), grease the crankpin where the rod turns on it, and keep the cradle dry; the decanting step wipes the
-  front saddle, the tie rods and the light after each pour. (Stainless tie rods, round 2's
-  m8, are not priced: MISUMI's SETRF10 page refuses a script, HTTP 403 when fetched on
-  2026-10-15, and the review's figure, USD 18.52 each at five against NETRF10's 11.08 (+37.20
-  for five), came from MISUMI's price API with the grade unconfirmed. The rods are NETRF12
-  since round 2's structure.)
+- **Grease every hard-anodized journal thin** (simplification round 1, the user's choice of
+  2026-10-21: the pivot posts, every link pin and the crankpin, where a link turns, are
+  McMaster's hard-anodized 6061; the bare 6061 columns and tie rods carry no link and take
+  none): a film of the food-grade grease the BOM buys (McMaster 1378K31, NSF H1 with PTFE,
+  Super Lube 21030's specs; `cradle.GREASE`, design review round 3's stand and use, m10: the
+  front saddle's box guide and its thumbscrew sit in the wine's path) on each journal as it
+  goes in and at each set-up, the crankpin where the rod turns on it a full film; the
+  decanting step wipes the front saddle, the tie rods and the light after each pour. (Until
+  then the steel standoffs, bare 1018, were wiped against rust.)
 - **The worm's hold:** with a full bottle at level, tap the table and watch a pencil line
   across the crank and the plate for 10 minutes (the guide's last build step).
   The clone's mesh isn't Motovario's: a 16 % drop in its friction loses self-locking. One

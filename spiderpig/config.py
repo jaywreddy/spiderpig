@@ -262,28 +262,32 @@ the defaults. A decanting cradle's links are 22 mm wide (two plate thicknesses o
 its pins' 8.2 mm holes, the 8 mm pivot pin's or the M6 Chicago barrel's: SendCutSend's rule)
 and its frame arms 24 mm; its pins' spacer rings 12.5 mm (the 8 mm pin and a wall)."""
 
-PRODUCT_PINS: dict[str, str] = {CRADLE: "pivot8"}
+PRODUCT_PINS: dict[str, str] = {CRADLE: "rod516"}
 """Per product: the link pin a design gets when it names the default (``chicago``): a
-decanting cradle's 8 mm hardened steel pivot pins (:data:`construction.pivots.pivot_pin.PIVOT8`,
-since 2026-10-13: a 6 L bottle's jam bent the M6 Chicago screw's stainless barrel;
-``chicago6`` is still there, ``--pin chicago6``), but at :data:`PRODUCT_PIN_JOINTS`."""
+decanting cradle's 5/16 in 6061-T6 rod pins, cut to their stacks, an M3 button head and a
+washer on each tapped end (:data:`construction.pivots.rod_pin.ROD516`, simplification round
+1, 2026-10-21: the user's materials rule, no steel in a structural part; the 8 mm hardened
+steel pivot pins of 2026-10-13, ``pivot8``, and ``chicago6`` are still there, ``--pin``), but
+at :data:`PRODUCT_PIN_JOINTS`."""
 
 PRODUCT_PIN_JOINTS: dict[str, dict[str, str]] = {
-    "decanter_rcm": dict.fromkeys(("K", "J2", "X", "Y"), "clevis8"),
+    "decanter_rcm": {"X": "rodclip516", "Y": "rodclip516", "P": "rod38"},
+    "decanter_hinge": {"E": "rod38"},
 }
 """Per product linkage, with its product's own pin (:data:`PRODUCT_PINS`): the joints that take
 another pin instead. B's X and Y, where its cradle link meets each side, take a
-quick-release clevis pin (``clevis8``, 2026-10-13: the passive side panel slides off its
-cradle link once their two clips are out, ``cradle_pack``); so do its K and J2 (design
-review round 1, 2026-10-14: the 18-8 pin holds their jam at SF 1.4 or more, where J2's M6
-Chicago screw had held 1.40 on an unstated alloy, with threadlocker and pliers). Its rod's
-pin P keeps the hardened steel (as a clevis pin it would hold 1.1), as A's one pin E does,
-and so does J: a clevis pin's clip and end stand in the cradle link's layer, and b6's rear
-arm X-Tr1 passes right over J (the planner finds no plan). Two pin types, no Chicago
-screw, nothing threadlocked."""
+quick-release pin (``rodclip516``: a hairpin cotter through the rod's drilled hole; the
+clevis pins' since 2026-10-13: the passive side panel slides off its cradle link once their
+two clips are out, ``cradle_pack``). The rod pins P (B) and E (A) are 3/8 in (``rod38``): in
+5/16 in 6061 they hold the clutch's cap at about 1.0 (the hardened 8 mm pin had held 2.75).
+K, J2 and J take the 5/16 in screw-ended pin (simplification round 1: K and J2 had been
+18-8 clevis pins for their strength alone, design review round 1; a clip at J stands in the
+cradle link's layer under b6's rear arm, no plan)."""
 
 PRODUCT_CHORD_R: dict[str, dict[str, dict[tuple[str, str], float]]] = {
-    "decanter_rcm": {"b1": {("M", "P"): 13.0}, "b6": {("X", "Tr1"): 24.0, ("X", "Y"): 16.0}},
+    "decanter_rcm": {"b1": {("M", "P"): 13.0}, "b4": {("X", "K"): 14.0},
+                     "b5": {("Y", "J2"): 13.0},
+                     "b6": {("X", "Tr1"): 24.0, ("X", "Y"): 16.0}},
     "decanter_hinge": {"b1": {("M", "E"): 13.0}, "b2": {("E", "Tr1"): 16.0}},
 }
 """Per product linkage, per link: a chord (a pair of its joints, either way round) cut wider
@@ -295,28 +299,34 @@ in bending (design review round 1, 2026-10-14; ``cradle_report.structure``):
   jam, 32 mm wide against buckling out of its plane.
 - A's cradle link b2: its chord E-Tr1, in compression from the rod's pin to the rear tie
   under the jam, 32 mm wide against buckling.
+- B's bar b4 (simplification round 1, 2026-10-21: in 0.187 in 5052): its chord X-K, in
+  compression under the jam, 28 mm wide against buckling out of its plane, its bosses'
+  width already (the blank unchanged); 24 mm in 5052 held the cap at 1.42 nominal.
+- B's cradle link b5, 26 mm wide (the same round; design review round 3's laser-cut parts
+  minor 3): at 24 mm it came as cut, not deburred.
 - Each rod b1 (0.250 in), 26 mm wide (design review round 2, 2026-10-15, laser-cut parts
   M3): SendCutSend deburrs a part of at least 1 x 3 in; at 25.2 mm (24 and its crank
   bore's boss) it came as cut, its exit face's dross on its crankpin's spacer.
 The planner claims each at its width (:class:`construction.plates.LinkPlates`)."""
 
 PRODUCT_BOSS_R: dict[str, dict[str, dict[str, float]]] = {
-    "decanter_rcm": {"b1": {"M": 15.8}, "b2": {"O2": 17.0},
-                     "b3": {"O1": 17.0, "J": 14.0, "J2": 14.0},
-                     "b4": {"X": 14.0, "J": 14.0, "K": 14.0}},
-    "decanter_hinge": {"b1": {"M": 15.8}, "b2": {"G": 17.0}},
+    "decanter_rcm": {"b1": {"M": 16.2}, "b2": {"O2": 17.0},
+                     "b3": {"O1": 17.0, "J": 14.0, "J2": 14.0}},
+    "decanter_hinge": {"b1": {"M": 16.2}, "b2": {"G": 17.0}},
 }
 """Per product linkage, per link: a boss (a disc, its radius in mm) round the hole at a
 joint, where the link's width left the hole's edge in the cut rules' warning band (design
 review round 2, 2026-10-15, laser-cut parts minor 1; SendCutSend: two thicknesses of
 material from a hole to an edge, in 7075 "to prevent microcracks"):
-- each rod b1 at its crank bore M (12.35 mm): 9.6 mm of web, 1.5 x its 0.250 in (6.45 at
-  26 mm wide);
+- each rod b1 at its crank bore M (13.05 mm since simplification round 1's 1/2 in crankpin,
+  r 16.2; 12.35 and r 15.8 before): 9.7 mm of web, 1.5 x its 0.250 in (6.45 at 26 mm wide);
 - B's arms b2 at O2 and b3 at O1, A's cradle link b2 at G, each a pillar's 12.35 mm bore
   in 0.187-0.190 in: 10.8 mm, 2.2 x (5.8 at 24 mm).
 - B's 7075 links b3 and b4 at every 8.2 mm pin hole, r 14 (design review round 3,
   2026-10-20, laser-cut parts M3: 9.9 mm, 2.05 x the 0.190 in; at 24 mm wide 7.9, 1.64 x,
-  under SendCutSend's 7075 rule; b4's blank then 28 mm, over the 25.27 mm it deburrs).
+  under SendCutSend's 7075 rule; b4's blank then 28 mm, over the 25.27 mm it deburrs). b4
+  needs none since simplification round 1 (2026-10-21): in 5052, its whole chord X-K is 28
+  mm wide (:data:`PRODUCT_CHORD_R`), the bosses' width.
 (B's cradle link b6 needs none at X: its rear arm X-Tr1's 48 mm end is one there, which
 :func:`cradle_structure.link_bending` counts for the chord Tf2-X, the one that passes pillar
 O1 by the planner's margin and can't grow.)
@@ -351,14 +361,14 @@ PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 material) when the config names the default (:data:`SHEET`): a decanting cradle is all
 aluminium, its links' 0.125 in 5052 (:data:`materials.CRADLE_LINK_SHEET`)."""
 
-PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 67.2, "decanter_rcm": 63.9}
+PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 64.9, "decanter_rcm": 61.8}
 """Per product linkage: the crank torque its joints are rated at in a jam, in place of a
 servo's firmware limit (:func:`torque_limit_nm`): a decanting cradle's, the most its hand
 crank's slip clutch lets through, however hard the push (:data:`PRODUCT_CLUTCH_NM`, since
 design review round 1; a firm 40 N push at the grip had been the case:
 :func:`spiderpig.cradle_report.jam_nm`, which a test holds these to)."""
 
-PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 67.2, "decanter_rcm": 63.9}
+PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 64.9, "decanter_rcm": 61.8}
 """Per product linkage: the most its hand crank's slip clutch lets onto the crank, however
 hard the push (design review round 2's B-1, 2026-10-14): set to slip at
 ``construction.handcrank.CLUTCH_SET`` x the start the user measures (a full 6 L's, drawn:
@@ -367,12 +377,14 @@ hard the push (design review round 2's B-1, 2026-10-14): set to slip at
 and run in after, or a start read high, can't take it over this), checked within
 ``CLUTCH_CHECK`` on its stub at every set-up, monthly and after greasing, through the NRV050's
 30:1 worm at the hand's 100 rpm (``handcrank.HAND_RPM``: ``handcrank.clutch``, which a test
-holds these to; spun at 200 rpm, 67.9 and 71.5: ``cradle_drive``'s ``fast_cap_nm``, the use
+holds these to; spun at 200 rpm, 65.8 and 69.1: ``cradle_drive``'s ``fast_cap_nm``, the use
 limits' "turn it, don't spin it"). Under the gearbox's 85 N·m maximum with margin
 (``cradle_drive.GEARBOX_CAP_FLOOR``). The crank torque to re-run a strength check at: a bound,
 unlike the push (``cradle_report``'s ``jam_capped`` rates it over the whole turn, the
 toggles included), while the check is kept (unchecked, the friction can carry it to the
-gearbox's maximum: ``handcrank.clutch_drift``)."""
+gearbox's maximum: ``handcrank.clutch_drift``). 67.2 and 63.9 until simplification round 1:
+the lighter cradle, its aluminium posts, tie rods, rear post and pins
+(``handcrank.DESIGN_START_NM``)."""
 
 
 def product_defaults(product: str) -> dict:

@@ -41,7 +41,19 @@ SERVICE_ORDER_URL = {
     "SendCutSend": "https://app.sendcutsend.com/customer#/quote",
     "Ponoko": "https://www.ponoko.com/designs",
 }
+HOME_HEADS = {
+    "Carvera": "Your Makera Carvera, at home (not an upload: the panels are in the carts "
+               "above, the files in this list and the nests of a panel each)",
+}
+"""ORDER.md's cut list's heading for the parts a machine at home cuts
+(:func:`layout.sheet_route`), in place of a service's upload."""
 SERVICE_NOTES = {
+    "Carvera": "each panel sawn to about 238 mm wide first (the bed is 360 x 240 mm), taped "
+               "down flat on the wasteboard with double-sided tape over its whole face (or "
+               "screwed outside the parts); a 1/8 in single-flute end mill for the outlines "
+               "(the files are nominal: Makera CAM offsets the bit), tabs left on every part "
+               "and sanded flush after; a 90° chamfer bit for each cleat's lead-in; the "
+               "nests (`*_sheet_Carvera_*.dxf`) lay out one panel each",
     "SendCutSend": "one part per file, units mm at upload, quantity per file as below",
     "Ponoko": "one part per file, mm, the blue CUT layer mapped to cut; 3 mm sheet arrives "
               "2.49-3.51 mm thick: measure it and rebuild with --thickness if it is off "
@@ -54,14 +66,16 @@ ACRYLIC_NOTES = {
 """What a service's note adds where the order has acrylic to cut."""
 SERVO_BOX = ("m2_self_tap_6", "servo_bus_cable_5264")
 """What comes in the servos' boxes (:data:`hardware.bom.ON_HAND`)."""
-COMPENSATES = {"SendCutSend": True, "Ponoko": False}
+COMPENSATES = {"SendCutSend": True, "Ponoko": False, "Carvera": True}
 """Whether a service offsets its cut path for the kerf itself (SendCutSend does; Ponoko
 doesn't in acrylic): what the files' own kerf (:func:`layout.sheet_kerf`, ``--kerf``)
 must be."""
-MEASURED_PINS = ("pivot_pin8_",)
-"""Catalog keys (by prefix) of the pins made to length whose length is the stack of cut
-parts they go through (MISUMI's CCGH8, :mod:`construction.pivots.pivot_pin`, made to the
-0.1 mm): ordered last, once the parts are measured (:data:`PIN_TAKE_UP_MM`)."""
+MEASURED_PINS = ("pivot_pin8_", "rod6061ha_516_", "rod6061ha_38_")
+"""Catalog keys (by prefix) of the pins whose length is the stack of cut parts they go
+through: MISUMI's CCGH8 (:mod:`construction.pivots.pivot_pin`, made to the 0.1 mm), ordered
+last, once the parts are measured; and since simplification round 1 (2026-10-21) the
+sticks of hard-anodized 6061 a cradle's pins are cut from at home
+(:mod:`construction.pivots.rod_pin`), each to its measured stack (:data:`PIN_TAKE_UP_MM`)."""
 PIN_TAKE_UP_MM = 0.3
 """mm over the measured stack a made-to-length pin's length is ordered at (design review
 round 2, M5: SendCutSend's sheets run up to +0.027 in thick at 0.250 in, more than the
@@ -75,7 +89,20 @@ MEASURED_PIN_NOTE = (
     "grooves, at that stack plus {take:g} mm (made to 0.1 mm, +0.1/-0). The clevis pins are "
     "a stock length: where a clip won't seat, sand the printed spacer under the pin's head "
     "by the excess.")
-"""ORDER.md's line for a build with :data:`MEASURED_PINS` (a cradle's)."""
+"""ORDER.md's line for a build with :data:`MEASURED_PINS` (a walker's or an older cradle's
+CCGH8)."""
+ROD_PIN_NOTE = (
+    "The pins ({pins}) are cut to length at home, once the cut parts have arrived: "
+    "SendCutSend's sheets come up to +0.027 in (0.69 mm) over at 0.250 in and +0.009 in "
+    "(0.23 mm) at 0.187 in (its spec tables), more than a pin's play. Caliper each link at "
+    "its pin holes, add up each pin's stack (its links and the printed spacers between "
+    "them, as the assembly guide stacks them) and cut each pin at that stack plus {take:g} mm "
+    "(+0.1/-0, its ends faced square; a clip pin's cross hole at its usable length plus "
+    "{take:g}): the assembly guide's \"Pins cut to their stacks\". A 1 ft stick makes ten "
+    "pins with its saw cuts. Where a clip won't seat, sand the printed spacer under the "
+    "pin's head by the excess.")
+"""ORDER.md's line for a cradle's pins cut at home from their sticks (:data:`MEASURED_PINS`'
+``rod6061ha_`` keys, simplification round 1)."""
 
 
 def kerf_note(service: str, kerfs: set[float]) -> str:
@@ -166,7 +193,10 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
                 name += f" — **{LINE_WARNINGS[r.key]}**"
             if r.key.startswith(MEASURED_PINS):
                 name += (" — **order once the cut parts are measured** (L: the measured "
-                         f"stack + {PIN_TAKE_UP_MM:g} mm; see Before you order)")
+                         f"stack + {PIN_TAKE_UP_MM:g} mm; see Before you order)"
+                         if r.key.startswith("pivot_pin8_") else
+                         " — **each pin cut at home to its measured stack** + "
+                         f"{PIN_TAKE_UP_MM:g} mm (see Before you order)")
             est = _money(r.cost_usd)
             if r.cost_usd is None:
                 unpriced += 1
@@ -209,8 +239,8 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
             by_service[r["service"]].append(r)
         for service, rows in by_service.items():
             url = SERVICE_ORDER_URL.get(service, "")
-            head = service if url or service not in ("", "any") else (
-                "your own laser (or any service): the sheet stock is in the carts above")
+            head = HOME_HEADS.get(service) or (service if url or service not in ("", "any") else (
+                "your own laser (or any service): the sheet stock is in the carts above"))
             lines += [f"### {head}" + (f": [upload and quote]({url})" if url else ""), ""]
             kerfs = {float(r.get("kerf_mm") or 0.0) for r in rows}
             acrylic = any("acrylic" in str(r.get("sheet", "")) for r in rows)
@@ -258,9 +288,12 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
     notes = [n for r in bom.purchased for n in _item_notes(r.key)]
     notes += [LINE_NOTES[r.key] for r in bom.purchased if r.key in LINE_NOTES]
     measured = [r for r in bom.purchased if r.key.startswith(MEASURED_PINS)]
-    if measured:
-        notes.append(MEASURED_PIN_NOTE.format(pins=", ".join(r.sku or r.name for r in measured),
-                                              take=PIN_TAKE_UP_MM))
+    made = [r for r in measured if r.key.startswith("pivot_pin8_")]
+    sticks = [r for r in measured if r not in made]
+    for rows, note in ((made, MEASURED_PIN_NOTE), (sticks, ROD_PIN_NOTE)):
+        if rows:
+            notes.append(note.format(pins=", ".join(r.sku or r.name for r in rows),
+                                     take=PIN_TAKE_UP_MM))
     if notes or bom.notes:
         lines += ["## Before you order", ""] + [f"* {n}" for n in dict.fromkeys(notes)] \
             + [f"* {n}" for n in bom.notes] + [""]
