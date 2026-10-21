@@ -110,11 +110,13 @@ def _stock(axle: StandoffAxle) -> tuple[tuple[float, ...], ...]:
 ALU = "#c8ccd0"
 COLUMN_TOL = 0.25    # the column within this of its gap (half the step)
 RUN_PLAY = 0.3       # a cradle's column: its links' axial running play on the standoff
-NECK_WALL = 1.2      # a cradle's printed neck at its thinnest (mm): three 0.4 mm perimeters, a
+NECK_WALL = 0.85     # a cradle's printed neck at its thinnest (mm): two 0.4 mm perimeters, a
 #                      sleeve that only locates its links (the standoff carries the clamp), so
 #                      a pillar passes a layer a link sweeps 7.4 mm from its axis (B's O1 under
 #                      b6, design review round 3's B1: with the rings' 1.5 mm wall it ended
-#                      under b6, a cantilever)
+#                      under b6, a cantilever; 1.2, three perimeters, on the 12 mm steel post
+#                      until the simplification round 1, 2026-10-21: the 1/2 in rod's 13.05 mm
+#                      bore keeps the neck's 7.375 mm radius at 0.85)
 
 
 @dataclass(frozen=True)
@@ -145,7 +147,7 @@ class StandoffAxle:
     stock: str = ""                  # "": goBILDA M4 stock lengths; "shaft": a 6 mm round
     #                                  steel standoff tapped M3 both ends, made to length
     #                                  (MISUMI NETRF6, one_piece); "shaft12": a cradle's
-    #                                  12 mm, tapped M6 (MISUMI NETRF12, cradle_shaft)
+    #                                  1/2 in 6061-T6511 rod, tapped M6 (cradle_shaft)
     outside: float | None = None     # the head room outside a frame plate (None: a layer,
     #                                  the pitch; a cradle's: its side is open there)
     face_washer: str | None = None   # a washer between each end and its plate's face (its
@@ -180,9 +182,9 @@ class StandoffAxle:
 
             return netrf10(length)
         if self.stock == "shaft12":
-            from spiderpig.hardware.cradle_catalog import netrf12
+            from spiderpig.hardware.cradle_catalog import al_rod
 
-            return netrf12(length)
+            return al_rod(self.od, length)
         from spiderpig.hardware.crank_catalog import gobilda_1501
 
         return gobilda_1501(length)
@@ -199,9 +201,9 @@ class StandoffAxle:
 
             return NETRF10_LENGTHS
         if self.stock == "shaft12":
-            from spiderpig.hardware.cradle_catalog import NETRF12_LENGTHS
+            from spiderpig.hardware.cradle_catalog import ROD_LENGTHS
 
-            return NETRF12_LENGTHS
+            return ROD_LENGTHS
         return GOBILDA_LENGTHS
 
     @property
@@ -223,21 +225,24 @@ class StandoffAxle:
                        washer_key="m3_washer_9021", shim_key="shim_din988_3x6")
 
     def cradle_shaft(self) -> StandoffAxle:
-        """A decanting cradle's pillar (``construction._axle_groups``): one 12 mm round
-        steel standoff made to the column's length (MISUMI NETRF12, 0.1 mm steps), tapped
-        M6 both ends, an M6 x 16 button head (A2-70) and a DIN 125 washer through each plate's
-        6.4 mm hole (design review round 2's m2, 2026-10-15: the 10.5 mm heads had borne on
-        the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated class). Its bottle's
-        load bends a 6 mm column between plates too far (B's O1 at the 3 L's jam: SF 0.4,
-        ``cradle_report``), a 10 mm one at the 6 L's (0.78): the 12 mm is 1.73 x the 10 mm.
-        Its heads and washers, 4.9 mm, stand outside the plates, where a cradle's side is
-        open (the bay; the outside, its gearbox at O)."""
+        """A decanting cradle's pillar (``construction._axle_groups``): one 1/2 in (12.7 mm)
+        6061-T6511 round made to the column's length (``hardware.cradle_catalog.al_rod``: cut
+        to length, faced and tapped M6 at home; the simplification round 1, 2026-10-21, the
+        materials rule: MISUMI's 12 mm NETRF12 steel before), an M6 x 16 button head (A2-70)
+        and a DIN 125 washer through each plate's 6.4 mm hole (design review round 2's m2,
+        2026-10-15: the 10.5 mm heads had borne on the bare 5052 through 6.6 mm holes, on
+        18-8 screws of no stated class). Its bottle's load bends a 6 mm column between plates
+        too far (B's O1 at the 3 L's jam: SF 0.4, ``cradle_report``), a 10 mm steel one at the
+        6 L's (0.78); 1/2 in 6061 is 1.6 x as stiff as the 10 mm steel and stronger at its
+        tapped ends (ASTM B221's 241 MPa minimum against the steel's 235). Its links turn on
+        it in 13.05 mm bores (its running fit). Its heads and washers, 4.9 mm, stand outside
+        the plates, where a cradle's side is open (the bay; the outside, its gearbox at O)."""
         from spiderpig.construction.cradle import FACE_WASHER
-        from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, NETRF12_ROOT
+        from spiderpig.hardware.cradle_catalog import ROD_HALF, ROD_ROOT, ROD_YIELD
         from spiderpig.hardware.fasteners import BUTTON_A2_70_NM
 
-        return replace(self.one_piece(), stock="shaft12", size="M6", od=12.0, id_=NETRF12_ROOT,
-                       yield_mpa=NETRF10_YIELD, end_hole=6.4, stud_hole=6.4,
+        return replace(self.one_piece(), stock="shaft12", size="M6", od=ROD_HALF, id_=ROD_ROOT,
+                       yield_mpa=ROD_YIELD, end_hole=6.4, stud_hole=6.4,
                        min_engage=6.0, min_segment=24.0, washer_key="m6_washer",
                        shim_key="m6_washer", tighten_nm=BUTTON_A2_70_NM["6"],
                        outside=5.0, neck_wall=NECK_WALL, face_washer=FACE_WASHER)
@@ -554,6 +559,10 @@ class StandoffAxle:
     # -- strength ---------------------------------------------------------------------------
 
     def section(self) -> Section:
+        if self.stock == "shaft12":
+            return Section.tube(self.od, self.id_, self.yield_mpa,
+                                name=f"{self.od:g} mm 6061-T6511 rod post (as a {self.od:g} x "
+                                     f"{self.id_:g} tube)")
         if self.stock.startswith("shaft"):
             return Section.tube(self.od, self.id_, self.yield_mpa,
                                 name=f"{self.od:g} mm 1018 steel standoff (as a {self.od:g} x "

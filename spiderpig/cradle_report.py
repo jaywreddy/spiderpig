@@ -66,7 +66,11 @@ from spiderpig.hardware.cradle_catalog import (
     NETRF10_YIELD,
     NETRF12_ID,
     NETRF12_ROOT,
-    NETRF12_THREAD,
+    ROD_E,
+    ROD_ROOT,
+    ROD_SHEAR,
+    ROD_THREAD,
+    ROD_YIELD,
 )
 from spiderpig.stack import body_class
 
@@ -1611,7 +1615,7 @@ def column_section(stand: cr.Stand) -> tuple[float, float, float]:
     design review round 3's minor 3: the tap drill's had been taken) and their depth
     (:func:`construction.cradle.column_parts`)."""
     col = cr.column_parts(stand)
-    return col.d, (NETRF12_ROOT if col.d > 10.0 else NETRF10_ROOT), col.thread
+    return col.d, (ROD_ROOT if col.d > 10.0 else NETRF10_ROOT), col.thread
 
 
 BLOCKS = {"front saddle": (55.0, -47.95), "rear saddle": (317.5, -149.0),
@@ -1789,7 +1793,7 @@ def _side_posts(config: BuildConfig, notes: dict, joints, pts, mech=None
                              f"plates (0 and {top}): the side frame rates it plate to plate")
         length = float(lz[str(top)][0]) - face
         od = float(note["section"]["bearing_d"])
-        ei = cs.E_STEEL * math.pi * od ** 4 / 64        # (solid but for its tapped ends)
+        ei = ROD_E * math.pi * od ** 4 / 64        # (solid but for its tapped ends)
         loads = []
         for jk, (jj, body, other) in enumerate(joints):
             if jj != j or other != "ground":
@@ -1803,15 +1807,17 @@ def _side_posts(config: BuildConfig, notes: dict, joints, pts, mech=None
             # of its mid-plane (a load spread evenly over t, to the moment between them)
             loads += [(jk, -0.5, z0 + t / 4 - face), (jk, -0.5, z0 + 3 * t / 4 - face)]
         out.append(cs.Post(j, np.asarray(pts[j][0], float), ei, loads,
-                           spring(stand.outer, j), spring(stand.inner, j), NETRF12_THREAD))
+                           spring(stand.outer, j), spring(stand.inner, j), ROD_THREAD,
+                           ea=ROD_E * math.pi * od ** 2 / 4))
     if length is None:
         raise ValueError(f"{lk.key}: no pillar note to read the plates' gap from")
     d, _, thread = column_section(stand)
     for n in stand.columns:
         at = (mouth + np.asarray(stand.nodes[n], float)) if n in stand.nodes else pts[n][0]
         out.append(cs.Post(f"column:{n}", np.asarray(at, float),
-                           cs.E_STEEL * math.pi * d ** 4 / 64, [],
-                           spring(stand.outer, n), spring(stand.inner, n), thread))
+                           ROD_E * math.pi * d ** 4 / 64, [],
+                           spring(stand.outer, n), spring(stand.inner, n), thread,
+                           ea=ROD_E * math.pi * d ** 2 / 4))
     return out, length
 
 
@@ -2051,9 +2057,9 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
         if not p.name.startswith("column:"):
             continue
         rated.append(_post_row(p.name, "column", {tag: got[tag][p.name] for tag in got},
-                               d, bore, NETRF10_YIELD,
-                               f"{d:g} mm steel standoff column (NETRF{d:g}, as a {d:g} x "
-                               f"{bore:g} tube at its tapped ends)"))
+                               d, bore, ROD_YIELD,
+                               f"{d:g} mm 6061-T6511 rod column (as a {d:g} x {bore:g} tube "
+                               "at its tapped ends)"))
     for plate, by in plates.items():
         row = {"joint": f"frame:{plate}", "kind": "frame", "links": [],
                "sheet": config.frame_sheet, "thickness_mm": t_frame,
@@ -2088,7 +2094,7 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
         od = float(notes[f"pillar:{p.name}"]["section"]["bearing_d"])
         pillars[p.name] = {tag: {"moment_nmm": got[tag][p.name]["moment_nm"] * 1000.0,
                                  "bending_mpa": round(post_bending(got[tag][p.name], od,
-                                                                   NETRF12_ROOT), 1),
+                                                                   ROD_ROOT), 1),
                                  "shear_n": got[tag][p.name]["shear_n"],
                                  "foot_nm": got[tag][p.name]["foot_nm"],
                                  "end_n": got[tag][p.name]["end_n"]} for tag in got}
@@ -2105,6 +2111,7 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
             "joints": post_joints(config, side, {tag: got[tag] for tag in got}),
             "stiffness": {k: v for k, v in stiff.items() if k != "across_n_mm"},
             "box": {k: v for k, v in box.items() if k != "rows"},
+            "tie_threads": tie_threads(config, box),
             "rated": rated, "pillars": pillars}
 
 
@@ -2340,8 +2347,60 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float) ->
     return out
 
 
-POST_FACE = (12.0, 6.4)     # a post's end face on its plate (mm): the 12 mm standoff's end over
-#                             the plate's 6.4 mm hole
+POST_FACE = (12.7, 6.4)     # a post's end face on its plate (mm): the 1/2 in rod's end over the
+#                             plate's 6.4 mm hole
+M6_STRIP_AREA = 12.19       # mm^2 of an M6 x 1 internal thread's shear area per mm engaged (FED-
+#                             STD-H28/2 Appendix A, A_n = pi n L D_s,min (1/2n + 0.57735 (D_s,min -
+#                             E_n,max)): 6g's 5.794 major on 6H's 5.500 pitch diameter)
+LEAD_THREAD = 0.5           # the tap's countersunk first thread, not counted engaged (mm)
+
+
+def thread_strip(engaged: float) -> tuple[float, float]:
+    """An M6 thread tapped in a 1/2 in 6061-T6511 post's or rod's end, ``engaged`` mm: what
+    strips it (N) at the rod's shear yield (von Mises, 0.577 x its minimum yield) and at its
+    shear ultimate (:data:`hardware.cradle_catalog.ROD_SHEAR`)."""
+    area = M6_STRIP_AREA * max(engaged - LEAD_THREAD, 0.0)
+    return area * 0.577 * ROD_YIELD, area * ROD_SHEAR
+
+
+def post_engaged(config: BuildConfig) -> float:
+    """How far a post's M6 x 16 end screw reaches into its tapped end (mm): its length less
+    the DIN 125 washer under its head, the frame plate and the fender washer between the
+    plate and the post's end (``construction.cradle.column_parts``; every post's both ends,
+    :data:`POST_WASHED`)."""
+    from spiderpig.hardware.catalog import get
+    from spiderpig.materials import sheet_of, thickness
+
+    col = cr.column_parts(cr.stand_of(config.lk))
+    t = thickness(config, sheet_of(config, "frame"))
+    w = float(get(col.washer).dims["t"]) if col.washer else 0.0
+    f = float(get(col.face).dims["t"]) if col.face else 0.0
+    return col.screw_len - w - t - f
+
+
+def tie_threads(config: BuildConfig, box: dict) -> dict:
+    """The tie rods' tapped ends (the simplification round 1, 2026-10-21: 6061, tapped at home):
+    each end's M6 thread (``construction.cradle.TIE_ROD_SCREW`` through the cradle link) against
+    the most its screw pulls: its preload's top at ``TIE_TIGHTEN_NM`` walking, the prying of a
+    gapped end at the jam (:func:`box_racking`'s), and against the screw's head proof (the
+    screw, not the thread, should go first). Strip SF at the rod's shear yield."""
+    from spiderpig.hardware.fasteners import BUTTON_10_9_PROOF_N, preload_band
+    from spiderpig.materials import sheet_of, thickness
+
+    link = cr.cradle_link(config.lk)
+    t = thickness(config, sheet_of(config, "link", link))
+    engaged = cr.TIE_ROD_SCREW - t
+    strip_y, strip_u = thread_strip(engaged)
+    top = preload_band(f"{cr.TIE_M.d:g}", cr.TIE_TIGHTEN_NM)[1]
+    proof = (BUTTON_10_9_PROOF_N[f"{cr.TIE_M.d:g}"] if cr.TIE_M.kind == "bhcs109"
+             else TIE_PROOF_N)
+    out = {"engaged_mm": round(engaged - LEAD_THREAD, 2), "strip_yield_n": round(strip_y),
+           "strip_ultimate_n": round(strip_u), "screw_proof_n": round(proof),
+           "over_proof": round(strip_y / proof, 2)}
+    for tag, case in box["cases"].items():
+        pull = max(top, float(case["prying_n"])) if tag == "jam" else top
+        out[tag] = {"screw_n": round(pull), "strip_sf": round(strip_y / pull, 2)}
+    return out
 POST_WASHER = (18.0, 1.6)   # the 18-8 fender washer under each post's foot (OD, its least
 #                             thickness): it spreads the face's edge into the outer plate
 POST_WASHED: dict[str, tuple[str, ...]] = {"pillar": ("foot", "end"),
@@ -2412,7 +2471,9 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
     proof (``screw_sf``), the face's peak pressure on the plate at the most preload (the
     no-tension contact, :func:`contact_peak`; at an end with a fender washer,
     ``POST_WASHED``, spread through it at 45°) over the plate's limiting surface pressure
-    (:data:`P_LIMIT_MPA`, ``bearing_sf``: VDI 2230's S_P),
+    (:data:`P_LIMIT_MPA`, ``bearing_sf``: VDI 2230's S_P), what strips the M6 thread tapped
+    in the 6061 post's end over the screw's most tension (``strip_sf``, :func:`thread_strip`
+    over :func:`post_engaged`: the simplification round 1, 2026-10-21),
     and the shear over the face's friction at the least preload (``slip_x``). Walking, every
     face must stay shut and not slip (fretting each pour); at the clutch's cap a face may
     lift (the guide re-tightens them after a slip) if the screw and the plate hold."""
@@ -2425,6 +2486,8 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
     od, bore = POST_FACE
     area = math.pi * (od * od - bore * bore) / 4
     kern = math.pi * (od ** 4 - bore ** 4) / (32 * od) / area
+    engaged = post_engaged(config)
+    strip_y, strip_u = thread_strip(engaged)
     w_od, w_t = POST_WASHER
     spread = min(w_od, od + 2 * w_t)                # its plate's face under the washer
     plate = P_LIMIT_MPA
@@ -2462,14 +2525,15 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                        "peak_mpa": (round(float(peak.max()), 1)
                                     if math.isfinite(float(peak.max())) else None),
                        "bearing_sf": round(plate / float(peak.max()), 2),
+                       "strip_sf": round(strip_y / float(screw.max()), 2),
                        "slip_x": round(float(slip.max()), 2), "at": int(i)}
                 rows.setdefault(f"{p.name} {end}", {})[tag] = row
                 w = worst.setdefault(tag, {"open_x": 0.0, "slip_x": 0.0, "screw_sf": math.inf,
-                                           "bearing_sf": math.inf})
+                                           "bearing_sf": math.inf, "strip_sf": math.inf})
                 for k in ("open_x", "slip_x"):
                     if row[k] > w[k]:
                         w[k], w[k + "_at"] = row[k], f"{p.name} {end}"
-                for k in ("screw_sf", "bearing_sf"):
+                for k in ("screw_sf", "bearing_sf", "strip_sf"):
                     if row[k] < w[k]:
                         w[k], w[k + "_at"] = row[k], f"{p.name} {end}"
     f_lo, f_hi = bands[False]
@@ -2485,6 +2549,12 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                              "proof_n": round(BUTTON_10_9_PROOF_N["6"]),
                              "decompression_nm": [round(h_lo * kern / 1000, 2),
                                                   round(h_hi * kern / 1000, 2)]}
+    out["thread"] = {"engaged_mm": round(engaged - LEAD_THREAD, 2),
+                     "strip_yield_n": round(strip_y), "strip_ultimate_n": round(strip_u),
+                     "over_proof": round(strip_y / TIE_PROOF_N, 2),
+                     "basis": "M6 x 1 tapped in 6061-T6511 (FED-STD-H28/2's internal shear area "
+                              "over the engaged length less the first thread; 0.577 x ASTM "
+                              "B221's 241 MPa minimum yield)"}
     return {**out,
             "proof_n": round(TIE_PROOF_N), "plate_mpa": plate,
             "plate_basis": P_LIMIT_BASIS, "slip_mu": SLIP_MU,

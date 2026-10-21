@@ -9,8 +9,8 @@ one side at a time like any mechanism. The bottle lies between two sides, the **
 * **The passive side** (``R.``) is the drive side's own parts mirrored, without the crank,
   the rod and the rod's pin (:func:`passive_side`): the cradle box drives it; its plates
   keep the drive's holes, so each plate pair is one part, flipped.
-* **The cradle box**: four tie rods (12 mm steel standoffs made to length, MISUMI NETRF12)
-  between the two cradle links, at the linkage's tie points (``decanters.TIES``), each
+* **The cradle box**: four tie rods (1/2 in 6061-T6511 rounds made to length, faced and tapped
+  M6 at home) between the two cradle links, at the linkage's tie points (``decanters.TIES``), each
   screwed through its cradle link from outside. Two printed saddles ride on them, each a
   carrier on its two rods (an M3 set screw up from its underside onto each) and a V block
   that rides up and down in it on a thumbscrew (:class:`Saddle`): the front one under the
@@ -146,11 +146,14 @@ DECANTER_PROFILE = ((0.0, 28.6), (6.3, 38.8), (21.7, 84.2), (30.0, 95.8), (40.7,
 radius) traced from RIEDEL's drawing (the vessel study of 2026-10-10, ``DECANTER.md``)."""
 BAY = 260.0            # between the two inner plates' bay faces: a 174 mm bottle, and a
 #                         decanter up to 240 mm across stands wholly between the side stacks
-TIE_D = 12.0            # the cradle box's tie rods: MISUMI NETRF12 (12 mm, M6 x 12 deep each
-#                         end; design review round 2's M1, 2026-10-15: the passive half's moment
+TIE_D = 12.7            # the cradle box's tie rods: 1/2 in 6061-T6511 round, M6 x 12 deep each
+#                         end (hardware.cradle_catalog.al_rod; the simplification round 1,
+#                         2026-10-21, the materials rule: MISUMI's 12 mm NETRF12 steel since
+#                         design review round 2's M1, 2026-10-15: the passive half's moment
 #                         crosses the bay in them racking, and a NETRF10's M5 end joints worked
 #                         at their gapping moment walking, its tapped ends yielded jammed:
-#                         cradle_report.box_racking)
+#                         cradle_report.box_racking). Their centres stayed (decanters.TIES), so
+#                         their tops stand 0.35 mm higher than the 12 mm rods'
 TIE_THREAD = 12.0
 M5 = screw("bhcs", "5")
 M6 = screw("bhcs", "6")
@@ -172,14 +175,15 @@ TIE_TIGHTEN_NM = 6.0    # the tie rods' screws tightened (the guide), and STEEL_
 #                         a foot's washer and into the rods' mild-steel taps for no joint that
 #                         needs it. (6 N·m on A2-70 button heads until design review round 3;
 #                         4 until 2026-10-20)
-STEEL_FEET: dict[str, tuple[str, ...]] = {"decanter_hinge": ("G",)}
+STEEL_FEET: dict[str, tuple[str, ...]] = {}
 """The pillars whose foot (its end on the outer plate) takes the tie rods' class 10.9 button head
-at :data:`TIE_TIGHTEN_NM` in both sides, not an A2-70 one at ISO 7380's 4 N·m: A's pillar G,
-whose foot lifted walking at the A2-70 head's least preload (1.06 x its decompression,
-2026-10-20: ``cradle_report.post_joints``). Steel by the wine: the tie rods themselves are bare
-carbon steel (MISUMI NETRF12, oiled), these heads lie outside the bay the wine runs in (on the
-cradle links' outer faces, outside the outer plate), unplated (an electroplated 10.9 risks
-hydrogen embrittlement), oiled with the rods."""
+at :data:`TIE_TIGHTEN_NM` in both sides, not an A2-70 one at ISO 7380's 4 N·m: none since the
+simplification round 1 (2026-10-21, the materials rule). A's pillar G, whose foot had lifted
+walking at the A2-70 head's least preload on its 12 mm steel post (1.06 x its decompression,
+2026-10-20), stays shut on the 1/2 in 6061 one (``cradle_report.post_joints``). The tie rods'
+heads stay class 10.9 (:data:`TIE_M`): outside the bay the wine runs in (on the cradle links'
+outer faces), unplated (an electroplated 10.9 risks hydrogen embrittlement), greased or
+threadlocked into the aluminium rods."""
 SMALL_TIE_D = 10.0      # a 10 mm standoff (MISUMI NETRF10, M5 x 10 deep each end): a base or
 #                         bay tie, a 10 mm column
 TIE_SCREW = 12.0        # M5 x 12 button heads through a 3.2-4.8 mm plate: 7.2-8.8 mm in the tie
@@ -352,9 +356,11 @@ FRONT_WALL_RELIEF = 6.0     # the carrier's back wall's notch this much under th
 #                             the pad clears it by 3.0 mm
 
 SADDLES = (
-    # the neck's V block in a box guide in its carrier (its underside 6.05 mm under the 12 mm
-    # tie rods: an M3 x 6 set screw up to each); it bears on the neck to FRONT_BEAR
-    Saddle("front_saddle", ("Tf1", "Tf2"), (45.0, 85.0), -60.0, (48.3, 79.0), -41.9,
+    # the neck's V block in a box guide in its carrier (its underside 5.7 mm under the 1/2 in
+    # tie rods: an M3 x 5 set screw up to each); it bears on the neck to FRONT_BEAR; at its
+    # lowest it sits 0.05 mm over the rods' tops (-41.6: 0.35 mm higher since the 12 mm
+    # rods, the simplification round 1, 2026-10-21; its V's apex where it was)
+    Saddle("front_saddle", ("Tf1", "Tf2"), (45.0, 85.0), -60.0, (48.3, 79.0), -41.55,
            _apex(DESIGN.r_neck), -10.0, 15.0),
     # the body's V block, under a 750 ml's body (its base at 300); the base stop's rails'
     # flanges continue its V behind it to 588, under a 6 L's whole body, so lying level or
@@ -630,7 +636,9 @@ STANDS: dict[str, Stand] = {
                ("C2", "D1")),
         inner=(("G", "C1"), ("G", "C2"), ("C1", "C2"), ("C2", "D1"), ("D1", "D2"),
                ("G", "D1"), ("D2", "D3"), ("D3", "E1"), ("E1", "E2")),
-        columns=("C1", "C2", "D1", "D2", "D3", "E1", "E2"),
+        # (the simplification round 1, 2026-10-21: no column at C2, idle at 5.4 x the clutch's
+        # cap on steel, 9 on 6061; its node stays both plates' corner)
+        columns=("C1", "D1", "D2", "D3", "E1", "E2"),
         feet=("Ff", "Fm", "Fr"),
         # the strut from the hinge back to the gearbox: the gearbox's node O leans on it
         # across the plate (the legs from O buckled sideways at walking SF 3.0), and with the
@@ -646,7 +654,7 @@ STANDS: dict[str, Stand] = {
         # to D3, 60 to E1 and 40 along the rail to E2 (its bottom edge clear of the riser locator
         # in the board's notch), the rail 60
         wide={("G", "O"): 70.0, ("Ff", "O"): 28.0, ("O", "Fm"): 28.0, ("O", "Fr"): 28.0,
-              ("Ff", "Fm"): _RAIL_A, ("Fm", "Fr"): _RAIL_A, ("G", "D1"): 11.8,
+              ("Ff", "Fm"): _RAIL_A, ("Fm", "Fr"): _RAIL_A, ("G", "D1"): 11.3,
               ("G", "Ff"): 24.0, ("G", "C1"): 20.0, ("G", "C2"): 20.0, ("C1", "C2"): 20.0,
               ("C2", "D1"): 17.0, ("D1", "D2"): 20.0, ("D2", "D3"): 20.0,
               ("D3", "E1"): 30.0, ("E1", "E2"): 20.0},
@@ -681,7 +689,9 @@ STANDS: dict[str, Stand] = {
                ("Ff", "Fr"), ("O2", "Fr")),
         inner=(("O1", "O2"), ("O2", "D1"), ("O1", "D1"), ("D1", "D2"), ("D2", "E1"),
                ("E1", "E2")),
-        columns=("D1", "D2", "E1", "E2"),
+        # (the simplification round 1, 2026-10-21: no column at D1, idle at 8.9 x the clutch's
+        # cap; its node stays the inner plate's corner)
+        columns=("D2", "E1", "E2"),
         feet=("Ff", "Fr"),
         # (design review round 2's B1, 2026-10-15: the front leg 40 mm wide, O2 to the foot;
         # at 24 its strip at the columns' holes and down to the foot held the clutch's cap
@@ -694,7 +704,7 @@ STANDS: dict[str, Stand] = {
         # the front tie rod Tf2 passing it leaves)
         wide={("O2", "O"): 44.0, ("O2", "Ff"): 20.0, ("Ff", "Fr"): _RAIL_B, ("O", "Fr"): 40.0,
               ("O1", "O"): 36.0, ("O2", "Fr"): 20.0, ("D2", "E1"): 30.0, ("E1", "E2"): 30.0,
-              ("D1", "D2"): 22.0, ("O1", "D1"): 13.5},
+              ("D1", "D2"): 22.0, ("O1", "D1"): 13.0},
         column_d=12.0,
         # (round 1, 2026-10-14: with the corrected centre of mass and the board 40 mm
         # toward the drive side, BASE_Z, the rear edge binds: 682 mm is the least board
@@ -1417,18 +1427,18 @@ def _standoff(length: float) -> str:
     return netrf10(round(length, 1))
 
 
-def _standoff12(length: float) -> str:
-    """The catalog key of a 12 mm NETRF12 standoff ``length`` mm long (a tie rod, a 12 mm
-    column, the rear post)."""
-    from spiderpig.hardware.cradle_catalog import netrf12
+def _rod(length: float, d: float = TIE_D) -> str:
+    """The catalog key of a 6061-T6511 round ``d`` mm, ``length`` mm long, tapped M6 both ends
+    (a tie rod, a post: ``hardware.cradle_catalog.al_rod``)."""
+    from spiderpig.hardware.cradle_catalog import al_rod
 
-    return netrf12(round(length, 1))
+    return al_rod(d, round(length, 1))
 
 
 def _tie(xy, z0: float, z1: float, d: float = TIE_D, thread: float = TIE_THREAD) -> Shape3D:
-    """A steel standoff (``d``: 12 mm a NETRF12, 10 a NETRF10) from z0 to z1, its ends
-    tapped (modelled as holes the screw's size, ``thread`` deep: M5 in a 10 mm, M6 in a
-    12 mm)."""
+    """A tie rod or post (``d``: 12.7 mm a 1/2 in 6061 round tapped M6, 10 a NETRF10 steel
+    standoff tapped M5) from z0 to z1, its ends tapped (modelled as holes the screw's size,
+    ``thread`` deep)."""
     tap = 2.5 if d <= SMALL_TIE_D else 3.0
     return difference(disc(xy, d / 2, z0, z1),
                       *[disc(xy, tap, a, b)
@@ -1458,14 +1468,14 @@ class ColumnParts:
     face: str | None = None     # a fender washer between each end and its plate (its key)
 
     def key(self, length: float) -> str:
-        """The standoff's catalog key for a ``length`` mm gap: a 12 mm one by the pillars'
+        """The post's catalog key for a ``length`` mm gap: a 1/2 in 6061 one by the pillars'
         own rule (``StandoffAxle.segment``: the same length as a pillar's in the same gap, so
-        the side's posts are one part number, bought at its quantity's price)."""
+        the side's posts are one part number, faced to one length)."""
         if self.d > SMALL_TIE_D:
             from spiderpig.construction.pivots.standoff import StandoffAxle
 
             got = StandoffAxle().cradle_shaft().segment(length)
-            return _standoff12(got if got is not None else length)
+            return _rod(got if got is not None else length, self.d)
         return _standoff(length)
 
 
@@ -1491,11 +1501,16 @@ def face_washer() -> tuple[float, float, float]:
 
 def column_parts(stand: Stand) -> ColumnParts:
     """:class:`ColumnParts` of ``stand``'s columns: a NETRF10 on M5 x 12 button heads in
-    5.5 mm holes, or a NETRF12 (12 mm, M6 x 12 deep each end) on M6 x 16 button heads (A2-70)
-    and DIN 125 washers in 6.4 mm holes (design review round 2's m2: the heads had borne on
-    the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated class)."""
+    5.5 mm holes, or a 1/2 in 6061-T6511 round (M6 x 12 deep each end, tapped at home: the
+    simplification round 1, 2026-10-21; MISUMI's 12 mm NETRF12 steel before) on M6 x 16
+    button heads (A2-70) and DIN 125 washers in 6.4 mm holes (design review round 2's m2: the
+    heads had borne on the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated
+    class)."""
     if stand.column_d > SMALL_TIE_D:
-        return ColumnParts(12.0, 12.0, M6, 16.0, POST_HOLE, "m6_washer", FACE_WASHER)
+        from spiderpig.hardware.cradle_catalog import ROD_HALF, ROD_THREAD
+
+        return ColumnParts(ROD_HALF, ROD_THREAD, M6, 16.0, POST_HOLE, "m6_washer",
+                           FACE_WASHER)
     return ColumnParts(SMALL_TIE_D, 10.0, M5, TIE_SCREW, TIE_HOLE)
 
 
@@ -1639,7 +1654,11 @@ def seat(size: BottleSize, at: Setting | None = None) -> tuple[float, float, flo
     return yf - xf * math.tan(slope), slope, 0.0
 
 
-SET_SCREW = 6.0            # the M3 cup-point set screw locking a carrier on each tie
+SET_SCREW = 6.0            # an M3 cup-point set screw (the light's clip, the rear knob's hub,
+#                            the barrel nut's)
+CARRIER_SET_SCREW = 5.0    # the M3 cup-point set screw locking a carrier on each tie: 5 mm
+#                            since the 1/2 in tie rods (the simplification round 1,
+#                            2026-10-21: an M3 x 6 left 5.7 mm under a 12.7 mm rod)
 SET_PILOT = 2.6            # its printed pilot (the screw cuts its own thread in PLA)
 CLEAR = 0.3                # a sliding fit's clearance, each side
 
@@ -1786,7 +1805,7 @@ FRONT_CHEEK = 13.0            # the cheek's top over the lip gauge's post (at th
 #                               between the gauge's cheeks, against the post's face (to its
 #                               36.5 top), so the guide holds dry (the spill washes its
 #                               grease out); 8.5 mm under the gauge's bridge at full travel
-FRONT_FLOOR = -43.0           # its floor's top (the tie rods' tops, at -42, stand proud)
+FRONT_FLOOR = -43.0           # its floor's top (the tie rods' tops, at -41.6, stand proud)
 FRONT_TAB = (56.0, 72.0, -28.0)     # the V block's tab into the +z wall: x span, its top
 FRONT_JACK = (65.0, 40.0)     # the thumbscrew (x, z): an M6 x 60 hex screw, fully threaded;
 #                               midway between the front tie rods, its tip in the carrier's
@@ -1880,11 +1899,13 @@ def _front_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
         x, y = ties[n]
         cuts.append(Cylinder(TIE_D / 2 + 0.15, 2 * 60.0 + 4).moved(Location((x, y, 0.0))))
         under = y - TIE_D / 2
-        if under - SET_SCREW - 0.05 < s.y0:
-            raise ValueError(f"{s.name}: an M3 x {SET_SCREW:g} set screw doesn't fit under "
+        if under - CARRIER_SET_SCREW - 0.05 < s.y0:
+            raise ValueError(f"{s.name}: an M3 x {CARRIER_SET_SCREW:g} set screw doesn't fit "
+                             f"under "
                              f"tie {n} ({under - s.y0:.1f} mm)")
         cuts.append(_rod_y(x, 0.0, SET_PILOT / 2, s.y0 - 2.0, under))
-        screws.append(_rod_y(x, 0.0, 1.25, under - 0.05 - SET_SCREW, under - 0.05))
+        screws.append(_rod_y(x, 0.0, 1.25, under - 0.05 - CARRIER_SET_SCREW,
+                             under - 0.05))
     return difference(part, *cuts), screws
 
 
@@ -2223,11 +2244,13 @@ def _rear_saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
         x, y = ties[n]
         cuts.append(Cylinder(TIE_D / 2 + 0.15, 2 * zc + 4).moved(Location((x, y, 0.0))))
         under = y - TIE_D / 2
-        if under - SET_SCREW - 0.05 < s.y0:
-            raise ValueError(f"{s.name}: an M3 x {SET_SCREW:g} set screw doesn't fit under "
+        if under - CARRIER_SET_SCREW - 0.05 < s.y0:
+            raise ValueError(f"{s.name}: an M3 x {CARRIER_SET_SCREW:g} set screw doesn't fit "
+                             f"under "
                              f"tie {n} ({under - s.y0:.1f} mm)")
         cuts.append(_rod_y(x, REAR_SET_Z, SET_PILOT / 2, s.y0 - 2.0, under))
-        screws.append(_rod_y(x, REAR_SET_Z, 1.25, under - 0.05 - SET_SCREW, under - 0.05))
+        screws.append(_rod_y(x, REAR_SET_Z, 1.25, under - 0.05 - CARRIER_SET_SCREW,
+                             under - 0.05))
     return difference(part, *cuts), screws
 
 
@@ -3260,7 +3283,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
     for n, p in tie_points(topo, lk).items():
         xy = tuple(build.xy(p))
         extras.append(hardware(f"tie_{n}", _tie(xy, -half, half), host, fab="purchased",
-                               bom_key=_standoff12(tie_len), color=TIE_COLOR))
+                               bom_key=_rod(tie_len), color=TIE_COLOR))
         for s, sign in (("L", -1), ("R", 1)):
             face = sign * (z_mid - link_bottom)      # the link's outer face
             extras.append(hardware(f"tie_{n}_screw{s}", _screw(xy, face, sign), host,
@@ -3329,7 +3352,8 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
         fastened.extend((s.name, f"tie_{n}") for n in s.ties)
         for n, set_screw in zip(s.ties, sets, strict=True):
             name = f"{s.name}_set_screw_{n}"
-            put(name, set_screw, "purchased", TIE_COLOR, f"m3_set_screw_{SET_SCREW:g}")
+            put(name, set_screw, "purchased", TIE_COLOR,
+                f"m3_set_screw_{CARRIER_SET_SCREW:g}")
             fastened += [(name, s.name), (name, f"tie_{n}")]
         fastened += [(f"{s.name}_vee", f"{s.name}_liner"), (f"{s.name}_nut", f"{s.name}_vee"),
                      (f"{s.name}_nut", f"{s.name}_jack"), (f"{s.name}_knob", f"{s.name}_jack"),
