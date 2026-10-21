@@ -34,7 +34,8 @@ An agent's step (a foreground command, or the wait for a background one) should 
 whole context uncached. A job longer than that runs in the background and in chunks, each
 one's end a notification. `tests/test_cradle.py`'s slow tests (each a fabrication of a
 whole cradle or more: 25-35 s fresh, 4-6 s at another crank angle in the same worker, from
-`cached_product` when it holds this code's) in five chunks at `-n 4`. Measured 2026-10-20
+`cached_product` when it holds this code's) in seven chunks, at `-n 4` but the last two,
+one test each. Measured 2026-10-20
 at load 1.5-4, the cache cold for the code but both cradles' t = 1.0 entries: 96, 87, 60,
 86 and 84 s (they were 165-260 s before the inner plate's keep-out was fused in 2D and the
 cradle box's parts memoized); every test under 65 s. What still fabricates afresh: every
@@ -46,8 +47,14 @@ pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "clash_free and dec
 pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "verify_rates or stands_turns"
 R="not clash_free and not verify_rates and not stands_turns"
 pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "$R and decanter_rcm"
-pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "$R and not decanter_rcm"
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "$R and not decanter_rcm and not packs_in_one_box and not builds_an_order"
+pytest tests/test_cradle.py -m slow -k "packs_in_one_box and decanter_hinge"
+pytest tests/test_cradle.py -m slow -k "builds_an_order"
 ```
+
+(Pack turn 3, 2026-10-21: the fifth had grown past 4 minutes, A's pack test 2 minutes and
+A's `build` test, which packs A too (its pack pose fabricated afresh), over 3: each is a
+chunk of its own.)
 
 The clash test is one test per crank angle and the verify test one per cradle (each under
 5 min, the checks as before). The identity gate likewise: `compare DIR --designs
@@ -316,17 +323,25 @@ Read the metrics, not only the picture:
   the command exits 1 (`pack_inspect.complete`). Exit 0 means every candidate holds every
   piece and part; a red line with exit 0 is a verdict (unsupported, overlaps, order faults,
   a pad with no room), not a broken pack.
-- `spacers` (since pack turn 2, 2026-10-20): the printed spacers the payload carries
+- `spacers` (since pack turn 2, 2026-10-20): the spacers the payload carries
   (`voxpack.spacers`, the layout's `spacers`, each judged as a piece of its own at its
-  place in the order: `cradle_pack.in_order`). Each is a block of the judge's empty 3 mm
-  cells, one run a column: a *support* where a piece's pads were (from what is under it
-  to the piece's underside, its lips round both), a *restraint* beside a piece that would
-  still slide (in the gap that way, standing on what is under it), each grown until it
-  doesn't slide itself; `count`, `volume_cm3` (the solid) and `grams` (as printed,
-  `cradle_pack.SPACER_FILL`), and per spacer its `key` ("spacer_01" .., in the order they
-  go in), `label`, `size_mm`, `why` (`support`, `restraint +x` ..), what it stands `on`
-  and its `words`. The build prints them (`print/pack_spacer_*.stl`, TPU 95A, the BOM's
-  printed rows) and the guide places them (B's "Into its box" steps).
+  place in the order: `cradle_pack.in_order`; one `taped` to the piece it stands on is
+  judged with that piece, `cradle_pack.judged_pieces`). Each is a block of the judge's
+  empty 3 mm cells, one run a column, never within a cell of a part nothing bears on
+  (`cradle_pack.KEEP_CLEAR`: a gauge, a clip, a pin, the gearbox, a screw head; pack turn
+  3): a *support* where a piece's pads were (from what is under it to the piece's
+  underside, its lips round both), a *restraint* beside a piece that would still slide (in
+  the gap that way, standing on what is under it), a *cap* on one that would lift
+  (`restraint +y`), a corrugated *filler* at the board's ends (`filler -x` ..: cut from a
+  spare carton, not printed), each grown until it doesn't slide itself; two of one piece
+  that face each other are joined, and one that still slides is taped to what it stands
+  on; `count`, `volume_cm3` (the solid) and `grams` (as printed, PETG:
+  `cradle_pack.spacer_grams`, walls and 15 % gyroid; a filler's corrugated), and per
+  spacer its `key` ("spacer_01" .., in the order they go in), `label`, `size_mm`, `why`,
+  what it stands `on`, `taped` and its `words`. The build prints the printed ones
+  (`print/pack_spacer_*.stl`, PETG, each laid with the least overhang, its number and an
+  arrow engraved in its top: `cradle_pack.spacer_print`), the BOM lists them, and the
+  guide places them (B's "Into its box" steps, a picture of the pack each).
 - `pads`: what the spacers replace, on a layout judged without them (a payload's modules
   carry them). `voxpack.support` puts a pad at each corner of what a piece rests on where a
   gap of up to `PAD_MAX` needs one; `voxpack.measure_pads` measures each on the real
@@ -336,10 +351,13 @@ Read the metrics, not only the picture:
   room. `count`, `volume_cm3` and `tallest_mm` total them; the sheet draws them black. With
   the spacers in, a piece rests on them and has none.
 - `restraint`, and per piece `free_mm`, `meets`, `slide_mm`: how far each piece slides
-  along x and z (and up) before it meets a neighbour or the box's wall
+  along x and z and lifts before it meets a neighbour or the box's wall or lid
   (`voxpack.free_travel`, on the 3 mm cells: the real travel is up to two cells more, a
-  spacer's one). `loose` lists the pieces (and spacers) that slide more than `CLEAR`
-  (3 mm, one cell). B's is empty; A's has one restraint spacer at 6 mm.
+  spacer's one; up counts since pack turn 3). `loose` lists the pieces (and spacers) that
+  move more than `CLEAR` (3 mm, one cell) any way. B's is empty.
+- per piece `rests` and `on`, judged with `bearless` (`cradle_pack.keep_clear_cells`):
+  a piece doesn't rest where its bottom, or what is under it, is a part nothing bears on
+  (pack turn 3, packing review 2's B1: the drive panel had rested 78 % on its gearbox).
 - `search` (with `--search`): `--seeds N` anneals N seeds (`--workers` at a time, each
   `--seconds`: 60 by default, less when the seeds' rounds would take the search past
   `pack_inspect.SEARCH_BUDGET_S` in all), keeps the best and reports every run and the
@@ -359,8 +377,10 @@ pads, the pads' blocks, the spacers in their place, the guide's box steps, the f
 travel, the score, the search and its seeds, a split, a plan that stops, the sheet: no
 fabrication) and the slow `test_the_cradle_packs_in_one_box`, which judges each cradle's
 flat pack on its real shapes with its spacers (every piece placed, every pad a block that
-fits and a spacer's, nothing past `PACK_SLIDE`). A pack is about 20 s (B) and 35 s (A)
-with its spacers, warm.
+fits and a spacer's, nothing past `PACK_SLIDE`, up too). Its packing (`pack_input`, warm)
+is about 27 s (B) and 32 s (A) with its spacers (20 and 35 s before pack turn 3's
+keep-clear, caps, bridges and taping; 46 and 63 s with them before `voxpack._gap_field`);
+A's test about 2 minutes in all.
 
 ## The identity gate (`tests/gate/identity_gate.py`)
 

@@ -135,10 +135,9 @@ def placed_pieces(inp: dict, layout: dict) -> list:
     """The pieces of ``layout`` (a pack payload) in its order, each part's mesh (of the
     cradle's input ``inp``, :func:`spiderpig.cradle_pack.gather`) moved by its piece's
     matrix or its own (:class:`spiderpig.voxpack.Packed`)."""
-    from spiderpig.cradle_pack import in_order, module_packed, spacer_packed
+    from spiderpig.cradle_pack import judged_pieces
 
-    return [module_packed(inp, d) if kind == "piece" else spacer_packed(d)
-            for kind, d in in_order(layout)]
+    return judged_pieces(inp, layout)
 
 
 def missing_of(inp: dict, layout: dict) -> tuple[list[str], list[str]]:
@@ -378,7 +377,7 @@ def sheet(title: str, subtitle: str, pieces, metrics: dict, grid, base: str | No
                  "slide: the most it moves along the floor before it meets a neighbour",
                  "    or the wall, and which way (mm, cells: the real is up to 2 more)",
                  "pads (black): blocks cut to the real gap under a piece (the cut list)",
-                 *([f"spacers: {metrics['spacers']['count']} printed in TPU, "
+                 *([f"spacers: {metrics['spacers']['count']} printed in PETG, "
                     f"{metrics['spacers']['volume_cm3']:.0f} cm3 solid, about "
                     f"{metrics['spacers']['grams']} g printed (each a piece here)"]
                    if metrics.get("spacers", {}).get("count") else []),
@@ -411,13 +410,25 @@ def sheet(title: str, subtitle: str, pieces, metrics: dict, grid, base: str | No
 def judge(inp: dict, layout: dict, name: str, out: Path, draw: bool = True,
           cell: float | None = None) -> dict:
     """Metrics, sheet and layout files of one candidate; its summary row."""
+    from spiderpig import cradle_pack
     from spiderpig import voxpack as vp
 
     t0 = time.perf_counter()
     pieces = placed_pieces(inp, layout)
-    grid = vp.occupancy(pieces, None, cell or vp.CELL)     # (the box its pieces need)
-    m = vp.metrics(pieces, grid=grid)
+    # (the box its pieces need; a packer's payload, its own box, its spacers inside it)
     said = inside_of(layout)
+    if said is not None and layout.get("spacers"):
+        # (on the grid its spacers were shaped on: the payload's floor is rounded, and a
+        # spacer's faces a hair off its cells' would claim a cell more each way)
+        said = (np.asarray(layout["spacers"][0]["org"], float), said[1])
+    need = vp.box_of(pieces)
+    fits = said is not None and bool((need[0] >= said[0] - vp.CELL).all()
+                                     and (need[1] <= said[1] + vp.CELL).all())
+    grid = vp.occupancy(pieces, said if fits else None, cell or vp.CELL)
+    # (nothing rests on a gauge, a clip, the gearbox or a screw head: packing review 2's B1)
+    m = vp.metrics(pieces, grid=grid,
+                   bearless=cradle_pack.keep_clear_cells(pieces, grid, inp.get("linkage", "")),
+                   taped=cradle_pack.taped_of(layout))
     if said is not None:          # a box the layout claims, its pieces past it (an edit's)
         m["claimed_box_inside_mm"] = [round(float(v), 1) for v in said[1] - said[0]]
         m["past_claimed_box"] = bool((grid.lo < said[0] - 0.5).any()

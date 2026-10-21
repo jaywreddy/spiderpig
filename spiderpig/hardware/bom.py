@@ -1215,12 +1215,13 @@ takes a press with less creep and cracking than PLA (``construction.printed`` pr
 snap axles in PETG for the same strain); ``None`` here leaves it in the build's filament."""
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
-CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer, the feet, the "
-                                      "pack's spacers and (B) the quick-release pins' keepers",
+CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, the brake washer, the feet and (B) "
+                                      "the quick-release pins' keepers",
                        PRESS_FILAMENT: "the saddles' carriers and V blocks, the rear knob and "
                                        "its hub, the base stop's rails and gate and the lip "
                                        "gauge, solid; the hand crank's hub, arm, cap and grip "
-                                       "(its clutch's plungers push on them always)"}
+                                       "(its clutch's plungers push on them always); the "
+                                       "pack's spacers"}
 CRADLE_PRINT_NOTE = (
     "Print the saddles' carriers and V blocks, the rear knob and its hub, the rear lead "
     "screw, its nut and its thrust ring, the base stop's rails and gate and the lip gauge in "
@@ -1240,8 +1241,9 @@ CRADLE_PRINT_NOTE = (
     "in PLA: the brackets at 20 % infill with 4 walls (B's in PETG: they stay on its "
     "board, which rides in the car, clamped for good under their nuts), the other knobs (the "
     "base board's thumb knobs, or B's studs' knobs, too) and the light's clip (on its tube's "
-    "foot, a brim) at 40 %; the TPU parts at 15-20 %, the pack's spacers (pack_spacer_*.stl, "
-    "each lying as it goes in the box) at 15 % gyroid with two walls. Each STL is posed as "
+    "foot, a brim) at 40 %; the TPU parts at 15-20 %. The pack's spacers (pack_spacer_*.stl) "
+    "in PETG at 15 % gyroid with two walls, each laid as it prints, its number and arrow "
+    "engraved in the face that goes up in the box. Each STL is posed as "
     "it should print. For a cradle that travels in a car in summer, print the knobs in PETG "
     "too.")
 """A decanting cradle's (:mod:`construction.cradle`; review round 2, N6 and m9; the drive's

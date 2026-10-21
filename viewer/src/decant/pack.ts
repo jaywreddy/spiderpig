@@ -60,27 +60,37 @@ export interface PackData {
   spacers?: PackSpacer[];
 }
 
-/** A printed spacer of a pack (``cradle_pack.spacer_json``): its label (``Spacer 4a``),
- * what it carries and stands on, and its place among the pieces' (``rank``: it goes in
- * after the piece of that index). */
+/** A printed spacer of a pack (``cradle_pack.spacer_json``): its label (``Spacer 4``),
+ * what it carries and stands on, its place among the pieces' (``rank``: it goes in after
+ * the piece of that index) and why (``support``, ``restraint +x`` .., or ``filler -x`` ..:
+ * a corrugated filler, cut from a spare carton, not printed; pack turn 3). */
 export interface PackSpacer {
   key: string;
   label: string;
   words?: string;
   rank?: number;
+  why?: string;
+}
+
+/** Whether a pack's spacer is a corrugated filler (``cradle_pack.is_filler``), not a print. */
+export function isFiller(sp: { why?: string }): boolean {
+  return (sp.why ?? '').startsWith('filler');
 }
 
 /** A pack's pieces and printed spacers in the order they go in the box, bottom up, as the
  * guide lists them (``cradle_pack.in_order``): each spacer by its ``rank`` among the pieces'
  * places, after the piece of the same place (design review round 3's stand and use, m13:
  * the page had listed the pieces alone). */
-export function packOrder(d: PackData): { label: string; how: string; spacer: boolean }[] {
-  const seq = d.modules.map((m, i) => ({ at: i, k: 0, label: m.label, how: m.how, spacer: false }));
+export function packOrder(d: PackData
+): { label: string; how: string; spacer: boolean; filler: boolean }[] {
+  const seq = d.modules.map((m, i) => ({ at: i, k: 0, label: m.label, how: m.how, spacer: false,
+                                         filler: false }));
   for (const sp of d.spacers ?? []) {
-    seq.push({ at: sp.rank ?? 0, k: 1, label: sp.label, how: sp.words ?? '', spacer: true });
+    seq.push({ at: sp.rank ?? 0, k: 1, label: sp.label, how: sp.words ?? '', spacer: true,
+               filler: isFiller(sp) });
   }
   seq.sort((a, b) => a.at - b.at || a.k - b.k);       // (stable: ties keep their order)
-  return seq.map(({ label, how, spacer }) => ({ label, how, spacer }));
+  return seq.map(({ label, how, spacer, filler }) => ({ label, how, spacer, filler }));
 }
 
 /** The clip fraction the pack's transforms start from (0, the clip's first frame, if none). */

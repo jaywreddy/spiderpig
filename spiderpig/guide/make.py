@@ -199,7 +199,8 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
         log.info("%-14s %6.2f s", key, now - since)
         return now
 
-    all_steps = with_box_steps(assembly_steps(mech, design), config, mech, store)
+    kit = box_kit(config, mech, store)
+    all_steps = with_box_steps(assembly_steps(mech, design), config, mech, store, kit=kit)
     chosen = all_steps[:max_steps] if max_steps else all_steps
     mesh_path = _meshes(mech, cache)
     t = lap("meshes", t)
@@ -210,9 +211,11 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
     jobs_all: list[dict] = []
 
     def job(rows: list, views: list[str], size, explode: float = 0.0,
-            margin: float = 0.06) -> str:
+            margin: float = 0.06, extra: str | None = None) -> str:
         spec = {"rows": rows, "views": views, "size": list(size), "explode": explode,
                 "margin": margin}
+        if extra:
+            spec["extra"] = extra
         h = f"{rkey}-{_hash(spec)}"
         spec["out"] = str(img / f"{h}.png")
         if force or not (img / f"{h}.json").is_file():
@@ -225,6 +228,24 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
     for st in all_steps:
         placed += [p for p in st.adds if p not in placed]
         if st.number not in wanted:
+            continue
+        if st.scene is not None and st.scene.pose == "box" and kit:     # (the pack's)
+            from spiderpig.guide import scenes
+
+            got, extra = scenes.box_rows(st.scene, mech, config, kit,
+                                         lambda n: _fill(fab_of.get(n)), CONTEXT_FILL,
+                                         SPACER_FILL)
+            arrays = {f"{n}|{k}": a for n, (q, i) in extra.items()
+                      for k, a in (("p", np.asarray(q, np.float64)),
+                                   ("i", np.asarray(i, np.int64)))}
+            digest = hashlib.sha256()
+            for k in sorted(arrays):            # (its name is its meshes': a job's key)
+                digest.update(k.encode() + arrays[k].tobytes())
+            path = img / f"extra-{digest.hexdigest()[:20]}.npz"
+            if not path.is_file():
+                np.savez(path, **arrays)        # type: ignore[arg-type]
+            pictures[st.number] = job([(p, f, (0, 0, 0), mark, None, m) for p, f, mark, m in got],
+                                      list(st.scene.views), PICTURE, extra=str(path))
             continue
         if st.scene is not None:            # posed its own way (a cradle's use, its trip)
             from spiderpig.guide import scenes
@@ -285,10 +306,14 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
             meta = json.loads((img / f"{h}.json").read_text())
             best: dict[str, Mark] = {}
             mine = set(st.adds)         # (a scene's highlights are no new parts: no tags)
+            boxed = st.scene is not None and st.scene.pose == "box"
             for pid, (x, y, n) in meta["marks"].items():
-                if st.scene is not None and pid not in mine:
+                if boxed and pid.startswith("spacer_"):     # (a pack's spacer: its number)
+                    lab = spacer_tag(pid, kit)
+                elif st.scene is not None and pid not in mine:
                     continue
-                lab = tags.get(body_of(pid))
+                else:
+                    lab = tags.get(body_of(pid))
                 if lab is not None and (lab not in best or n > best[lab].n):
                     best[lab] = Mark(x, y, n)
             # a part nothing shows of (under another): its tag says so
@@ -315,6 +340,7 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
                          round(by_name[ty.ref].part.volume / 1000                 # type: ignore[union-attr]
                                * filament_density(ty.filament), 1))
               for ty in types if ty.kind == "printed"]
+    prints += spacer_prints(kit)
     parts = [PartEntry(ty.label, ty.kind, ty.name, ty.qty, img / f"{thumbs[ty.label]}.png",
                        ty.file, ty.detail) for ty in types]
     title = (f"{config.linkage} {config.module} {'robot' if config.robot else 'side'}")
@@ -348,21 +374,60 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
     return GuideReport(out / "ASSEMBLY.pdf", pages, len(chosen), False, n_drawn, times)
 
 
-def with_box_steps(steps: list, config, mech, store) -> list:
+def box_kit(config, mech, store) -> dict | None:
+    """The pack payload (``cradle_pack.pack_kit``) of a cradle that packs as modules
+    (``construction.cradle.PACK_POSES``), whose box steps the guide draws; else None."""
+    from spiderpig.construction import cradle as cr
+
+    if not mech.meta.get("cradle") or config.linkage not in cr.PACK_POSES:
+        return None
+    from spiderpig.cradle_pack import pack_kit
+
+    return pack_kit(config, store)
+
+
+SPACER_FILL = (40, 150, 140)
+"""A pack step's own spacers in its picture (teal: apart from the pieces' highlight)."""
+
+
+def spacer_tag(key: str, kit: dict | None) -> str:
+    """A pack spacer's bubble in a box step's picture: ``S7`` (printed), ``F1`` (a filler)."""
+    from spiderpig.cradle_pack import is_filler
+
+    d = next((d for d in (kit or {}).get("spacers") or [] if d["key"] == key), {})
+    return ("F" if is_filler(d) else "S") + key.removeprefix("spacer_").lstrip("0")
+
+
+def spacer_prints(kit: dict | None) -> list:
+    """The pack's printed spacers in the guide's print list (packing review 2's M2): one
+    batch each, ``pack_spacer_NN.stl`` (as ``build`` writes it), PETG, its grams as
+    printed (``cradle_pack.spacer_grams``)."""
+    from spiderpig.cradle_pack import SPACER_FILAMENT, is_filler
+    from spiderpig.guide.doc import PrintBatch
+    from spiderpig.hardware.bom import _filament_name
+
+    return [PrintBatch(d["label"], f"pack_{d['key']}.stl", 1, _filament_name(SPACER_FILAMENT),
+                       round(float(d.get("mass_kg", 0.0)) * 1000.0, 1))
+            for d in (kit or {}).get("spacers") or [] if not is_filler(d)]
+
+
+def with_box_steps(steps: list, config, mech, store, kit: dict | None = None) -> list:
     """A cradle that packs as modules (``construction.cradle.PACK_POSES``): its steps with
-    the box's (``cradle_pack.box_steps`` of ``cradle_pack.pack_kit``: each piece and the
-    printed spacers into the box after taking it apart, out of it before putting it back
-    together), numbered on; any other design's as they are."""
+    the box's (``cradle_pack.box_steps`` of ``cradle_pack.pack_kit``, or ``kit``: each layer
+    of pieces and the printed spacers into the box after taking it apart, out of it before
+    putting it back together), numbered on, each with a picture of the pack as it is then
+    (a ``Scene`` posed ``"box"``: what is in, this step's own highlighted:
+    ``guide.scenes.box_rows``); any other design's as they are."""
     from dataclasses import replace
 
     from spiderpig.construction import cradle as cr
 
     if not mech.meta.get("cradle") or config.linkage not in cr.PACK_POSES:
         return steps
-    from spiderpig.construction.assembly import Step
-    from spiderpig.cradle_pack import box_steps, pack_kit
+    from spiderpig.construction.assembly import Scene, Step
+    from spiderpig.cradle_pack import box_layers, box_steps, pack_kit
 
-    kit = pack_kit(config, store)
+    kit = kit or pack_kit(config, store)
     if not kit:
         return steps
     into, out = box_steps(kit)
@@ -370,15 +435,33 @@ def with_box_steps(steps: list, config, mech, store) -> list:
     back = [i for i, s in enumerate(steps) if s.title.startswith("Back together")]
     if not apart or not back:
         return steps
+    # each step's own keys (the pieces and spacers it puts in), in order: box_steps' layers
+    layers = [[d["key"] for _, d in layer] for layer in box_layers(kit)]
+    views = ("robot^", "robot")
 
-    def made(rows, head, like) -> list:
+    def scene(shown: list[str], mine: list[str]) -> Scene:
+        return Scene("box", show=tuple(shown), marks=tuple(mine), views=views)
+
+    shown: list[str] = []
+    scenes_in = []
+    for keys in layers:
+        shown = shown + keys
+        scenes_in.append(scene(shown, keys))
+    scenes_out = []
+    for keys in reversed(layers):
+        scenes_out.append(scene(shown, keys))
+        shown = [k for k in shown if k not in keys]
+
+    def made(rows, head, like, pics) -> list:
         n = len(rows)
         return [Step(0, f"{head} {i}/{n}: {title}", like.stage, like.stage_title, None, [],
-                     [], [], list(items), like.where) for i, (title, items) in enumerate(rows, 1)]
+                     [], [], list(items), like.where,
+                     scene=pics[i - 1] if i - 1 < len(pics) else None)
+                for i, (title, items) in enumerate(rows, 1)]
 
     a, b = apart[-1] + 1, back[0]
-    got = (steps[:a] + made(into, "Into its box", steps[a - 1]) + steps[a:b]
-           + made(out, "Out of its box", steps[b]) + steps[b:])
+    got = (steps[:a] + made(into, "Into its box", steps[a - 1], scenes_in) + steps[a:b]
+           + made(out, "Out of its box", steps[b], scenes_out) + steps[b:])
     return [replace(s, number=i) for i, s in enumerate(got, 1)]
 
 

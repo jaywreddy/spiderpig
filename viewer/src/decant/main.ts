@@ -320,10 +320,12 @@ function renderPackInfo(d: PackData): void {
   }
   // the pieces as they go in the box: what is under another goes in first
   const order = packOrder(d);
-  const nSpacers = order.filter((m) => m.spacer).length;
+  const nSpacers = order.filter((m) => m.spacer && !m.filler).length;
+  const nFillers = order.filter((m) => m.filler).length;
   const h2 = document.createElement('h3');
   h2.textContent = `In the box, from the floor up (${d.modules.length} pieces`
-    + (nSpacers ? `, ${nSpacers} printed spacers)` : ')');
+    + (nSpacers ? `, ${nSpacers} printed spacers` : '')
+    + (nFillers ? `, ${nFillers} corrugated fillers` : '') + ')';
   const pieces = document.createElement('ol');
   pieces.className = 'pack-pieces';
   for (const m of order) {
