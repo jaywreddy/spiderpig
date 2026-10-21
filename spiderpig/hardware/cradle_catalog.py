@@ -1097,6 +1097,16 @@ register(
       for key, name, sku, usd, usd3, d in (
           ("rod6061ha_516_305", "5/16\"", "6750K14", 11.81, 26.25, 7.9375),
           ("rod6061ha_38_305", "3/8\"", "6750K15", 12.32, 27.38, 9.525))),
+    Item("wood_glue_woodcraft", "Titebond II Premium wood glue, 8 oz (5003)", "adhesive",
+         (Offer("Woodcraft", "https://www.woodcraft.com/products/titebond-ii-premium-wood-glue",
+                "08L42", price_usd=5.99, verified=True,
+                note="Titebond II Premium, 8 oz, item 08L42; page rendered 2026-10-21"),
+          Offer("The Home Depot", "https://homedepot.com/p/Titebond-8-oz-Titebond-II-Premium-"
+                "Wood-Glue-5003/202180087", "202180087", price_usd=5.49)),
+         notes="A decanting cradle's wood glue (construction.cradle.WOOD_GLUE: its cleats and "
+               "its riser locator's layers), in Woodcraft's cart with its birch panels "
+               "(simplification round 1: the Home Depot cart goes; the walkers' ``wood_glue`` "
+               "is the same glue)."),
     Item("m4_washer_9021", "M4 fender washer (4.3 x 12 x 1.0, DIN 9021's), 18-8 stainless",
          "washer",
          (Offer("Bolt Depot", BD + "7313", "7313", price_usd=0.08, verified=True,
