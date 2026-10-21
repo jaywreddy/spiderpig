@@ -2325,8 +2325,20 @@ def _rear_vee(s: Saddle, ties: Mapping[str, tuple[float, float]]
               for x in RAIL_SCREW_X for sign in (-1, 1)]]
     vee, liner = _vee_block(s, difference(block, *cuts), REAR_PEGS)
     nut = difference(_hex_y(xs, zs, nd, LEAD_BOSS[1], LEAD_BOSS[1] + nl),
-                     _lead_thread(LEAD_BOSS[1] - 1.0, LEAD_BOSS[1] + nl + 1.0, LEAD_PLAY))
+                     _rod_y(xs, zs, LEAD_SCREW[0] / 2 + LEAD_PLAY, LEAD_BOSS[1] - 1.0,
+                            LEAD_BOSS[1] + nl + 1.0))
     return vee, liner, nut
+
+
+@_part_memo
+def _rear_nut_threaded() -> Shape3D:
+    """The rear V block's printed nut as it prints (:func:`_rear_vee`'s, the block at its
+    lowest): its bore threaded (:func:`_lead_thread`, :data:`LEAD_PLAY` out). The assembly
+    holds its plain bore (``meta["print_shapes"]``: only its print file is threaded)."""
+    xs, zs = REAR_LEAD
+    nd, nl = LEAD_NUT
+    return difference(_hex_y(xs, zs, nd, LEAD_BOSS[1], LEAD_BOSS[1] + nl),
+                      _lead_thread(LEAD_BOSS[1] - 1.0, LEAD_BOSS[1] + nl + 1.0, LEAD_PLAY))
 
 
 def _thread_profile(u: float, r_root: float, r_crest: float) -> float:
@@ -2384,6 +2396,7 @@ class LeadScrew:
     hub: Shape3D
     knob: Shape3D
     set_screw: Shape3D
+    threaded: Shape3D           # the screw as it prints (``screw``: its thread's envelope)
 
 
 @_part_memo
@@ -2412,10 +2425,11 @@ def _lead_screw() -> LeadScrew:
     rise = max(setting(z).rear for z in SIZES)
     if LEAD_BOSS[1] + LEAD_NUT[1] + rise > thread_top - 1.0:
         raise ValueError("the rear lead screw's thread ends under its nut's highest reach")
-    screw_ = union([_rod_y(xs, zs, LEAD_SPIGOT / 2, foot, top + 0.01),
-                    _lead_thread(top, thread_top),
-                    _rod_y(xs, zs, d / 2, thread_top - 0.01, h0 + 0.01),
-                    _rod_y(xs, zs, LEAD_TOP / 2, h0, screw_top)])
+    ends = [_rod_y(xs, zs, LEAD_SPIGOT / 2, foot, top + 0.01),
+            _rod_y(xs, zs, d / 2, thread_top - 0.01, h0 + 0.01),
+            _rod_y(xs, zs, LEAD_TOP / 2, h0, screw_top)]
+    screw_ = union([ends[0], _rod_y(xs, zs, d / 2, top, thread_top), *ends[1:]])
+    threaded = union([ends[0], _lead_thread(top, thread_top), *ends[1:]])
     thrust = difference(_rod_y(xs, zs, od / 2, top - cl, top),
                         _rod_y(xs, zs, LEAD_SPIGOT / 2 + 0.2, top - cl - 1.0, top + 1.0))
     brake = difference(_rod_y(xs, zs, od / 2, top - cl - BRAKE_T, top - cl),
@@ -2423,8 +2437,8 @@ def _lead_screw() -> LeadScrew:
                               top - cl + 1.0))
     flat_d, flat_l = LEAD_FLAT
     z_flat = zs + LEAD_TOP / 2 - flat_d         # the flat's face, the set screw's tip on it
-    screw_ = difference(screw_, _box(xs - d, xs + d, screw_top - flat_l, screw_top + 1.0,
-                                     z_flat, zs + d))
+    flat = _box(xs - d, xs + d, screw_top - flat_l, screw_top + 1.0, z_flat, zs + d)
+    screw_, threaded = difference(screw_, flat), difference(threaded, flat)
     y_set = (h0 + screw_top) / 2               # the set screw's height, on the screw's flat
     if y_set < screw_top - flat_l + 2.0:
         raise ValueError("the rear knob hub's set screw misses its lead screw's flat")
@@ -2449,7 +2463,7 @@ def _lead_screw() -> LeadScrew:
         raise ValueError("the rear knob's lift doesn't clear its teeth")
     if z_flat + 0.05 + SET_SCREW > zs + kr - 1.0:
         raise ValueError("the rear knob hub's set screw stands out of the knob")
-    return LeadScrew(screw_, thrust, brake, hub, knob, set_screw)
+    return LeadScrew(screw_, thrust, brake, hub, knob, set_screw, threaded)
 
 
 def _post_y(xz: tuple[float, float], y0: float, y1: float) -> Shape3D:
@@ -3554,8 +3568,14 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                  ("led_set_screw", "led_clip"), ("led_set_screw", "led")]
     fastened += [(f"led_clip_screw{i}", n) for i in range(len(clip_screws))
                  for n in ("led_clip", SADDLES[0].name)]
+    # the printed thread only in the print files (the assembly holds its envelope)
+    print_shapes = {"rear_saddle_jack": _place(lead.threaded, cf.lip, cf.tilt),
+                    "rear_saddle_nut": _place(moved(_rear_nut_threaded(),
+                                                    Location((0.0, at.rear, 0.0))),
+                                              cf.lip, cf.tilt)}
     meta = dict(side.meta, cradle=True, cradle_layer=plan.layers[cradle_link(lk)],
                 print_poses=print_poses([b.name for b in extras + bodies], cf.tilt),
+                print_shapes=print_shapes,
                 cradle_lip=[float(cf.lip[0]), float(cf.lip[1])], cradle_tilt=float(cf.tilt),
                 mid_plane=z_mid, bay_mm=BAY, lip_height_mm=LIP_HEIGHT,
                 tie_mm=tie_len, base_tie_mm=foot_len, bay_tie_mm=bay_len, fastened=fastened,

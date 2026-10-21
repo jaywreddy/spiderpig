@@ -204,7 +204,8 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
                                     density=filament_density(filament),
                                     filaments=printed_filaments(mech, filament),
                                     stems=print_stems(labelled()),
-                                    poses=mech.meta.get("print_poses"))
+                                    poses=mech.meta.get("print_poses"),
+                                    shapes=mech.meta.get("print_shapes"))
         files += sorted((out / "print").glob("*"))
     extras = list(mech.bom_extras)
     bom_summary = None
