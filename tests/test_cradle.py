@@ -343,7 +343,8 @@ def test_the_take_up_rates_each_pin_against_its_sheets_tolerances():
     links' sheets at their published over-thickness, worst case and RSS. On B's pins as
     reviewed (their wobble notes' plays), P (b1 0.250 in + b2, 0.187 in 5052 since design
     review round 3), K, X and Y (two 0.187 in 5052 links each since b4 went to 5052 in
-    simplification round 1) come out short worst case; J (b3 7075, b4 5052) keeps 0.04 mm.
+    simplification round 1) come out short worst case, and J since b3 went to 6061 0.187 in
+    (simplification round 2: +0.229 mm against 7075 0.190 in's +0.178, 0.04 mm left before).
     The pillars too (round 3's laser-cut parts minor 9). A rating: the guide and ORDER.md
     carry the fix."""
     from types import SimpleNamespace
@@ -359,13 +360,13 @@ def test_the_take_up_rates_each_pin_against_its_sheets_tolerances():
     got = take_up(cfg, SimpleNamespace(meta={"wobble": wobble}, bodies=[]))
     by = {r["pin"]: r for r in got["rows"]}
     assert set(by) == {*plays, "pillar O1"}
-    assert got["short_worst"] == ["K", "P", "X", "Y"]
+    assert got["short_worst"] == ["J", "K", "P", "X", "Y"]
     assert got["short_rss"] == ["P"]
     assert by["P"]["growth_worst_mm"] == pytest.approx(0.915, abs=1e-3)
     assert by["P"]["margin_worst_mm"] == pytest.approx(-0.541, abs=1e-3)
-    assert by["J"]["margin_worst_mm"] == pytest.approx(0.041, abs=1e-3)
+    assert by["J"]["margin_worst_mm"] == pytest.approx(-0.01, abs=1e-3)
     assert by["K"]["margin_worst_mm"] == pytest.approx(-0.01, abs=1e-3)
-    assert by["pillar O1"]["margin_worst_mm"] == pytest.approx(0.222, abs=1e-3)
+    assert by["pillar O1"]["margin_worst_mm"] == pytest.approx(0.171, abs=1e-3)
     assert [x["sheet"] for x in by["P"]["links"]] == ["al5052_6p35mm", "al5052_4p8mm"]
     assert got["fix"]
 
@@ -1522,6 +1523,17 @@ def test_the_guide_names_the_as_cut_parts_and_the_routed_birch():
                      meta={"sheet": "al5052_3p2mm"})
     assert as_cut_words(mech) == "b4"
     assert AS_CUT in CRADLE_ARRIVAL
+    # and the pins whose links, at their sheets' thickest, outgrow the play (simplification
+    # round 2: b3 in 6061 0.187 in took J and J2 there): 7075 0.190 in + 5052 0.187 in is
+    # +0.178 + 0.229 mm, over a 0.40 mm play, not a 0.425
+    from spiderpig.construction.assembly import THICK_PINS, thick_pins_words
+
+    assert THICK_PINS in CRADLE_ARRIVAL
+    assert thick_pins_words(mech) == ""
+    pin = {"links": [{"link": "b4"}, {"link": "b6"}]}
+    mech.meta["wobble"] = {"pin:J": dict(pin, play_mm=0.40), "pin:K": dict(pin, play_mm=0.425)}
+    words = thick_pins_words(mech)
+    assert words.startswith("Pin J carries links that") and "(by 0.01 mm)" in words
     names = {t.label[:5]: t.name for t in part_types(mech)}
     assert names["LC300"].startswith("base board, CNC-routed, ")
     assert names["LC128"].startswith("crank block plate, laser-cut, ")
