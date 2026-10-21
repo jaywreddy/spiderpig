@@ -159,7 +159,7 @@ class CutFit:
     each of a file of ``q`` that times :meth:`factor` ``(q)``, plus ``deburr`` (USD a part,
     at any quantity) for each part the service deburrs (:func:`deburr_least`: its default
     finish); a blank over ``blank_cap`` cm^2 (0: none) is priced as one of ``blank_cap``,
-    its sides scaled alike; ``quoted`` says on what."""
+    a square of it (its size and shape no longer count); ``quoted`` says on what."""
 
     k: float
     area_exp: float = 0.0
@@ -183,9 +183,9 @@ class CutFit:
         blank = long_ * short / 100.0
         area = max(p.area_cm2, min(blank, lo * hi / 100.0), 1e-6)
         cut = max(p.cut_mm, 2.0 * (lo + hi), 1e-3) / 1000.0
-        if self.blank_cap and blank > self.blank_cap:
-            s = math.sqrt(self.blank_cap / blank)
-            long_, short, blank = long_ * s, short * s, self.blank_cap
+        if self.blank_cap and blank > self.blank_cap:     # its size and its shape no longer
+            long_ = short = math.sqrt(self.blank_cap * 100.0)   # count: a square of the cap
+            blank = self.blank_cap
         return self.base + self.k * (area ** self.area_exp * cut ** self.cut_exp
                                      * blank ** self.blank_exp * long_ ** self.long_exp
                                      * short ** self.short_exp)
@@ -246,7 +246,7 @@ mm; the exponents shared, ``k`` the sheet's), with two terms the 2026-10-14 law 
 
 Each of ``q`` off: the law's part times ``factor(q)`` (5052 0.187 in 0.658 at two, the
 deburring not discounted), the fee added at any quantity. On every quote of 2026-10-21, at
-its quantity -6.7 to +5.7 % and one off -9.8 to +5.2 %; on the 2026-10-14 set -7.5 to +10.8
+its quantity -6.7 to +5.7 % and one off -9.8 to +5.2 %; on the 2026-10-14 set -6.7 to +10.8
 % (that set's B inner plate, an old shape, the most). The 5052 0.250 in's factors and 10-off
 tiers no quote pins are held near the 2026-10-14 tiers. The birch (CNC routed):
 ``0.010275 x long^0.9227 x short^0.5536``, its blank's sides in mm (``k`` +2.9 % on

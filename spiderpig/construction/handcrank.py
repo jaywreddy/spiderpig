@@ -1500,7 +1500,8 @@ class HandCrank(Group):
                f"places round it; {h_drawn:.2f} mm drawn), and T, the outer plate's thickness "
                "beside its bore. Face each of the four aluminium sleeves (drilled "
                f"{sl_bore:g} mm, {sl_od:g} mm across: the shop's) on the Carvera to H - T - "
-               f"{aim:.2f} mm ({sleeve:.2f} drawn; all four one length within 0.05 mm): long "
+               f"{aim:.2f} mm ({sleeve + shaft - aim:.2f} on the drawn gearbox; all four one "
+               "length within 0.05 mm): long "
                "rather than short, as a long one is faced again and a short one can't be "
                "fixed. A sleeve down each stud onto the ring.", "gearbox", sub=True),
             Op(STACK, (-1, 2), whole(*thins), "",

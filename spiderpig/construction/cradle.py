@@ -564,7 +564,7 @@ CARVERA_LONGEST = 285.0         # a part's longest side cut on the Carvera: a 12
 #                                 3 mm margins, with room
 CLEAT_JOINT = 1.0               # a cleat longer than that comes in equal pieces butted end to
 #                                 end on its pencil marks, this far apart, each glued along its
-#                                 length (B's 452 mm ones in two), their joint ends square
+#                                 length (B's 402 mm ones in two), their joint ends square
 BOARD_WINDOW = (285.0, 390.0, 105.0, 20.0)
 """A window through the base board under the base stop's lowest sweep (design review round
 2, 2026-10-14): from and to (x behind the mouth), its half-width across the bay's middle and
@@ -4046,7 +4046,7 @@ CARVERA_TEXT = (
     "rail finds its slot blind on the way back; either edge can go to the rail), before the "
     "parts are cut free.",
     "Cut the tabs and sand them flush, each cleat's long faces before all (a nub there takes "
-    "up the rail's play). A cleat longer than the bed comes in pieces (B's 452 mm ones in "
+    "up the rail's play). A cleat longer than the bed comes in pieces (B's 402 mm ones in "
     f"two): they go onto the board end to end on its pencil line, {CLEAT_JOINT:g} mm apart, "
     "each glued along its length.",
 )

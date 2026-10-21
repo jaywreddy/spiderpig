@@ -3198,3 +3198,76 @@ maybe." Products only: the walkers' identity gate is identical.
   `config.py`, `cradle_report.py`, `layout.py`, `materials.py`, `hardware/` (`bom.py`,
   `order.py`, `sheet_catalog.py`, `cradle_catalog.py`, `parts.py`), `tests/test_cradle.py`,
   `docs/agentlib/DECANTER.md`.
+
+### 2026-10-21: simplification round 2 (the cutting fit refitted; the round's survivors built and checked; the user's "keep B")
+
+The user, 2026-10-21, on the architecture brainstorm's option of A instead of B: keep B as the
+main design, so no linkage change this round. The round's review
+(`/root/scratch/decant/simplify/r2/review.md`, its 26 live SendCutSend quotes) ranked the
+brainstorms' ideas; its checker built the survivors as model changes, checked each, and kept
+what passed (`/root/scratch/decant/simplify/r2/check.md`). Products only: the walkers'
+identity gate against `planner-f667d6b` is identical.
+
+**Kept.**
+- **The cutting fit** (`bom.CRADLE_CUT_FITS`, `CRADLE_LIVE_QUOTES`): refitted on 2026-10-21's
+  quotes with the 2026-10-14 set. Two terms the old law lacked: SendCutSend's default deburring,
+  USD 1.47 a part it deburrs (`CutFit.deburr`; the same 2.94 a pair on every file quoted with
+  and without it), and the blank capped at 2,503 cm² (`CutFit.blank_cap`: the outer plates'
+  price stops following their blank). The old law had A's outer plate 19 % over its quote and
+  B's b5 20 % under; now every quote at its quantity is within -6.7 to +5.7 %. A 6061-T6 0.187
+  in fit. On the new fit B's order at 0d9449b is USD 1,002.06 (1,007.55 on the old), A's 812.04
+  (847.47).
+- **C1, the cut files turned to their least-area box** (`Body.turn`, `layout.least_box_degrees`,
+  a cradle's only): B's b6 -18.7 % of its box, the inner plate -6.6 %, the outer -4.4 %, b2
+  -2.3 %; A's b2, inner and outer plates. Each cradle DXF within 0.5° of its least box (a test).
+- **C3, B's b3 in 6061-T6 0.187 in at a 25 mm chord** (`materials.LINK_SHEETS`,
+  `config.PRODUCT_CHORD_R`): 15 layers, 80.95 mm, proven optimal; b3 at the cap 1.37 (a
+  cap-governed part: 0.07 over the bar, it doesn't survive the cap rising), walking 12.57. 7075
+  leaves the order. J and J2 join K and P among the pins whose links may outgrow their play
+  (-0.033 mm worst case): the guide's arrival step names them (`assembly.thick_pins_words`).
+- **P1, the riser's sleeves faced to the gearbox's calipered height** (`RISER_SLEEVE_RANGE`
+  21-23 mm, `RISER_AIM`: long rather than short): the 20 x 0.5 mm 304 shims and 4 DIN 125
+  coarse ones out, the riser's last steel but its studs; rated at 21 and 23 mm (cap least
+  1.40-1.44 B, 1.32-1.36 A). The sleeves are faced once the gearbox has come.
+- **C4 + C5, B's stand** (`STANDS["decanter_rcm"]`): the front foot 50 mm back (x -60) with the
+  board's front (636 x 584, the width kept: the review's change), E1/E2 60 mm forward
+  (160/220). 0 clashes at 6 crank angles and both tilt ends; tipping front 39.4, rear 26.3,
+  drive 30.0, passive 32.1° (bar 25°); sway 3.89 mm; buckling 2.05; outer and inner plates
+  1.64 at the cap.
+- **C2, the crank block's 7 bored plates one file**, filed together on the key; the keyway
+  still rated on the 3 lowest.
+- **P4, A's M3 x 12 from Bolt Depot** (7221).
+- **P6 with changes, the posts' DIN 125 washers out but at the pillars' feet**
+  (`cradle.HEAD_WASHED`, `StandoffAxle.washer_ends`): a bare head's least preload at the bare
+  5052's under-head friction up to 0.3 (`cradle_report.bare_head_factor`, VDI 2230's torque
+  split: 0.79 of the washered) opened the pillars' feet walking (1.07 B, 1.05 A x their
+  decompression); elsewhere every walking face shuts (B 0.90 at D2's foot) and the head bears
+  on the deburred plate at S_P 2.38 (a new row, `head_sf`). B 20 -> 4 washers, A 28 -> 2.
+- **P11, two SKU merges**: the M3 set screws at 5 mm, the M3 socket heads at 10 (36 -> 33
+  fastener SKUs with P1 and P6).
+- **P5, McMaster's sticks for Speedy's pieces** (`cradle_catalog.ROD_STICK`, 8974K28 3 ft;
+  the rear post 8974K48): one cart fewer (six and the upload), +USD 3.90 on B's listed prices
+  (-1.63 against Speedy's USD 20 minimum), +8.00 on A's.
+
+**Not kept.**
+- A's front analogue of C4: at 50 mm no plan (the crank block reaches the inner plate's leg,
+  its columns D1-D3 following the front leg), at 40 mm tie rod Tf1 within 1.9 mm of the inner
+  plate's G-D1 (it needs 7.3). About USD -11 by the fit; A's inner leg would have to stop
+  following its front leg first.
+- P11's other two merges: the light clip's M5 x 16 (its tips reach tie rod Tf2's bore) and the
+  rear post's M6 x 16 (12.6 mm into a 12 mm tap).
+
+**Left for later.** The brace-dependent items (P8, C7, A2's go/no-go) after `r2-brace`; P3 (the
+pack spacers in PETG) for the packing turn, with B's spacers grown to 17 (1,489 cm³ at 100 %,
+1,337 before) by this round's geometry (`PACK_OPEN`).
+
+**The BOM** (`spiderpig build`, the new fit): B USD 1,002.06 -> 940.34 (-61.72: cutting
+722.36 -> 666.46, purchases 279.70 -> 273.88); A 812.04 -> 797.67 (-14.37: 557.54 -> 545.42,
+254.50 -> 252.25). On the old fit B was 1,007.55, A 847.47. The review's live estimate for B is
+about -63.
+
+- **Where:** `spiderpig/hardware/bom.py`, `sheet_catalog.py`, `sources.py`,
+  `cradle_catalog.py`; `spiderpig/layout.py`, `mechanism.py`, `store.py`; `spiderpig/config.py`,
+  `materials.py`; `spiderpig/construction/cradle.py`, `handcrank.py`, `assembly.py`,
+  `pivots/standoff.py`, `pivots/rod_pin.py`; `spiderpig/cradle_report.py`, `cradle_drive.py`;
+  `tests/test_cradle.py`, `tests/test_order.py`; `docs/agentlib/DECANTER.md`.

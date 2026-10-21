@@ -308,7 +308,7 @@ def thick_pins_words(mech) -> str:
             short[name[4:]] = margin
     if not short:
         return ""
-    pins = sorted(short, key=lambda p: (len(p), p))
+    pins = sorted(short)
     words = pins[0] if len(pins) == 1 else ", ".join(pins[:-1]) + " and " + pins[-1]
     lo, hi = min(short.values()), max(short.values())
     span = f"{-hi:.2f} mm" if abs(hi - lo) < 0.005 else f"{-hi:.2f} to {-lo:.2f} mm"

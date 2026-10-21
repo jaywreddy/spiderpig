@@ -2525,6 +2525,55 @@ pins' 0.34): the mouth sags a few tenths of a millimetre more at worst, against 
   215 mm).
 
 
+## Simplification round 2 (2026-10-21)
+
+The user kept B as the main design ("keep B", 2026-10-21): no linkage change. The round's
+review quoted 26 files live at SendCutSend; its checker built the survivors and kept what
+passed (`/root/scratch/decant/simplify/r2/check.md`; DECISIONS.md, "simplification round 2").
+
+**What changed:**
+- **The cutting fit** refitted on those quotes (`bom.CRADLE_CUT_FITS`: the deburring a part
+  and the blank's cap; "Things to know before cutting", below).
+- **The cut files** turned to their least-area box (`Body.turn`, a cradle's only): B's b6
+  511 x 168 mm (475 x 222), its inner plate 497 x 239, its outer plate 516 x 464.
+- **B's b3** in 6061-T6 0.187 in at a 25 mm chord: 7075 leaves the order.
+- **The riser's sleeves** faced to the gearbox's calipered height, 21-23 mm (`RISER_AIM`
+  over the go/no-go window's low end, long rather than short): no shims.
+- **B's stand:** the front foot and the board's front 50 mm back (the board 636 x 584 mm),
+  the rail columns E1 and E2 60 mm forward.
+- **The crank block's seven bored plates** one file, filed together on the key.
+- **The posts' DIN 125 washers** only at the pillars' feet (`cradle.HEAD_WASHED`).
+- **The M3 set screws** one length (5 mm), **the M3 socket heads** one (10 mm).
+- **A's M3 x 12** from Bolt Depot.
+- **The rods** sawn from McMaster's sticks (`cradle_catalog.ROD_STICK`): Speedy's cart goes.
+
+**The numbers** (the report on the round's head; 0d9449b's in brackets):
+
+| | B (`decanter_rcm`) | A (`decanter_hinge`) |
+|---|---|---|
+| every cap row but the box's | 1.37 or more (b3; 1.53, b6) | 1.40 or more (b2) |
+| b3 at the cap / walking | 1.37 / 12.57 (2.55 / 23.2 in 7075) | |
+| the frame plates at the cap, outer / inner | 1.64 / 1.64 (1.66 / 1.72) | 1.44 / 1.60 |
+| the side's buckling; column E2 | 2.05; 2.13 (2.13; 2.27) | 2.32 |
+| the post joints walking: `open_x`, `slip_x` (bar 1.0); the bare heads' `head_sf` | 0.90, 0.63 (0.86, 0.51); 2.38 | 0.83, 0.63 (0.83, 0.50); 2.38 |
+| the riser walking, least / slip; at the cap | 1.97 / 2.73; 1.44 | 1.95 / 2.55; 1.37 |
+| tipping front / rear / drive / passive (bar 25°) | 39.4 / 26.3 / 30.0 / 32.1° (42.9 / 27.1 / 30.3 / 32.4) | 39.9 / 28.1 / 26.0 / 34.4° |
+| sway at the bottle, 20 N (bar 5 mm) | 3.89 mm (3.91) | 4.42 mm |
+| clashes, 6 crank angles and both tilt ends | 0 | 0 |
+| the device | 15.80 kg (16.23) | 15.55 kg (15.58) |
+| the stack | 80.95 mm in 15 layers, proven (81.03) | as before |
+
+**The BOM** (`spiderpig build`, the refitted fit): B USD 1,002.06 -> 940.34 (purchases 279.70
+-> 273.88, cutting 722.36 -> 666.46), A 812.04 -> 797.67 (254.50 -> 252.25, 557.54 -> 545.42);
+on the old fit 0d9449b was B 1,007.55 and A 847.47. Six carts and the upload (Speedy's
+gone); 33 fastener SKUs (36); B buys 192 pieces (244), A 168 (235).
+
+**Not taken:** A's front trim (no plan at 50 mm, its front tie rod 1.9 mm off the inner
+plate at 40); the light clip's M5 x 16 and the rear post's M6 x 16. **For later:** the racking
+brace's items (P8, C7, A2), the pack spacers in PETG (the packing turn; B's spacers grew to 17
+with this round's geometry, `PACK_OPEN`).
+
+
 ## Building one
 
 ```bash
@@ -2620,9 +2669,18 @@ named only inside the steps until then).
 
 Things to know before cutting and on the bench:
 - **Get a live SendCutSend quote** (upload the DXFs). The BOM's cutting figure is a fit
-  (`hardware.bom.CRADLE_CUT_FITS`, design review round 2's parts B1) to 40 live quotes of
-  2026-10-14, every file of both cradles at its quantity.
-  - Aluminium: each file's one-off price is `k x area^0.249 x cut length^0.229 x blank^0.326`,
+  (`hardware.bom.CRADLE_CUT_FITS`), refitted in simplification round 2 on SendCutSend's
+  live quotes of 2026-10-21 (`bom.CRADLE_LIVE_QUOTES`: 26 files of both cradles and their
+  variants, one off and at their quantity, and round 1's four) with the 2026-10-14 set it
+  had been fitted on (design review round 2's parts B1, 40 quotes).
+  - Since round 2, aluminium: `k x area^0.186 x cut^0.253 x long^0.336 x short^0.396`, plus
+    USD 1.47 a part SendCutSend deburrs (its default finish, from 0.995 x 3 in: 2.94 a pair
+    on every file quoted with and without it), the blank capped at 2,503 cm² (past it the
+    price stops following the blank: B's outer plate turned 70° quoted 0.00 less). Every
+    2026-10-21 quote at its quantity within -6.7 to +5.7 %, one off -9.8 to +5.2 %; the
+    2026-10-14 set -6.7 to +10.8 %. A 6061-T6 0.187 in fit (b3's sheet since round 2).
+    The 2026-10-14 law had A's outer plate 19 % over its quote and B's b5 20 % under.
+  - Until round 2, aluminium: `k x area^0.249 x cut length^0.229 x blank^0.326`,
     `k` per sheet. 7075 runs 1.87 x 5052 one-off, 2.16 x at two.
   - The birch is fitted on its blank's two sides.
   - The quantity discount is each sheet's as quoted: 5052 0.187 in x0.67 at two, 7075
