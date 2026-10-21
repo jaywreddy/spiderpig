@@ -4627,7 +4627,7 @@ def _block_xy(key: str) -> tuple[np.ndarray, list[np.ndarray]]:
     return pts[lk.crank[0]][0], at
 
 
-LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 12.9, "drive_box": 10.2},
+LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 12.8, "drive_box": 10.2},
                                       "decanter_hinge": {"cradle": 11.9}}
 """What a person lifts onto and off the lay-flat blocks, or off the board (kg;
 ``cradle_pack.rest_poses``' masses, held to them in ``tests/test_cradle.py``): B's cradle off
@@ -4636,8 +4636,8 @@ board (its first build: the board's finish). Two people, one each side, or one i
 :func:`lay_down` gives (design review round 3's stand and use, M5: lifted by its outer
 plates' 4.75 mm top edges 430 mm apart, 465 mm over a counter, the NIOSH lifting equation's
 recommended limit is 11.7 kg at most). B's 12.7 and 9.9 until simplification round 2 (its
-racking brace, 0.46 kg on the box, and the round's lighter parts: 12.87 and 10.23), A's 12.0
-(11.89)."""
+racking brace, 0.46 kg on the box, the round's lighter parts and b6 cut to its band: 12.80 and
+10.17), A's 12.0 (11.89)."""
 
 
 def lay_down(key: str, what: str = "cradle") -> str:

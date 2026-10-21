@@ -4375,6 +4375,65 @@ def test_a_cradles_links_are_closed_bossed_and_claimed(key):
 
 @pytest.mark.construction
 @pytest.mark.no_fabricate
+def test_bs_cradle_link_is_cut_to_its_band():
+    """Simplification round 2's way back (2026-10-21, ``config.PRODUCT_BAND``): B's cradle link
+    b6 lies within its band across the bottle's axis (the mouth Lc's frame), its corners there
+    rounded (the smoothness: :func:`test_a_cradles_links_are_closed_bossed_and_claimed`), and
+    the band takes something off each side (X's boss above, the rear chords below), Br's pad
+    whole. The rating's sections on what the band leaves (``cradle_structure.Band``,
+    ``strip_section``): a whole strip as before, a cut one on its eccentric net section."""
+    from spiderpig.config import PRODUCT_BAND, PRODUCT_BOSS_R
+    from spiderpig.construction import plates
+    from spiderpig.cradle_structure import Band, strip_section
+    from spiderpig.fabricate import side_problem, template_for
+    from spiderpig.stack import body_class
+
+    key = "decanter_rcm"
+    o, x, lo, hi = PRODUCT_BAND[key]["b6"]
+    cfg = BuildConfig(linkage=key, robot=False)
+    ctx, _, _ = side_problem(template_for(cfg), cfg, hint=False)
+    link, segs = next((n, s) for n, s in ctx.topo.links.items() if body_class(n) == "b6")
+    ol = plates.product_outline(ctx, link, segs)
+    geo = ctx.topo.geometry.points
+    a, b = ol.frame
+
+    def local(p: str) -> np.ndarray:
+        q, d = np.asarray(geo[a][0]), np.asarray(geo[b][0]) - np.asarray(geo[a][0])
+        ex = d / np.hypot(*d)
+        w = np.asarray(geo[p][0]) - q
+        return np.array([w @ ex, w @ np.array([-ex[1], ex[0]])])
+
+    po, px = (local(ctx.topo.point_of[(link, j)]) for j in (o, x))
+    u = (px - po) / np.hypot(*(px - po))
+    v = np.array([-u[1], u[0]])
+    box = ol.face.bounding_box()
+    pts = np.array([[p.X, p.Y] for e in ol.face.edges() for p in e.positions(np.linspace(0, 1,
+                                                                                     65))])
+    y = (pts - po) @ v
+    assert lo - 1e-6 <= y.min(), y.min()
+    assert y.max() <= hi + 1e-6, y.max()
+    assert hi - y.max() < 0.5, y.max()                      # it cuts above (X's boss)
+    assert y.min() - lo < 1.0, y.min()                      # and below, to Br's pad
+    br = local(ctx.topo.point_of[(link, "Br")])                # Br's pad whole, 0.5 mm over
+    assert (br - po) @ v - PRODUCT_BOSS_R[key]["b6"]["Br"] == pytest.approx(lo + 0.5, abs=1e-6)
+    assert box.max.X > box.min.X                               # (a face)
+    # the sections: whole as before; cut, eccentric
+    area, z, ybar = strip_section(-32.0, 32.0, 6.4, 4.75)
+    assert (area, ybar) == (pytest.approx((64.0 - 6.4) * 4.75), 0.0)
+    assert z == pytest.approx(4.75 * (64.0 ** 3 - 6.4 ** 3) / (6 * 64.0))
+    cut = strip_section(-25.0, 32.0, 6.4, 4.75)
+    assert cut[0] < area
+    assert cut[1] < z
+    assert cut[2] > 0.0
+    assert strip_section(-2.0, 32.0, 6.4, 4.75) == (0.0, 0.0, 0.0)   # the hole breaks out
+    band = Band.of((0.0, 0.0), (100.0, 0.0), -10.0, 20.0)
+    assert band.span((0.0, 0.0), (0.0, 1.0), 32.0) == (-10.0, 20.0)
+    assert band.span((0.0, 0.0), (1.0, 0.0), 32.0) == (-32.0, 32.0)
+    assert band.span((0.0, 30.0), (1.0, 0.0), 32.0) == (0.0, 0.0)
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
 def test_the_boards_bay_points_the_locators_ears_and_the_cleats_ends_are_rounded():
     """Design review round 2's laser-cut parts (2026-10-15): the four points the notch's bays
     leave on the base board are cut back to R3 (``cradle.BAY_POINT_R``), the riser

@@ -172,13 +172,64 @@ def _split(names: list[str], xy: Mapping[str, np.ndarray], segs, tol: float = 0.
     return out
 
 
-def _section_sf(N: np.ndarray, M: np.ndarray, w: float, t: float, d: float, yield_mpa: float
-                ) -> tuple[np.ndarray, np.ndarray]:
-    """A strip ``w`` x ``t`` with a hole ``d`` across it: the stress (MPa) of its axial force
-    ``N`` and in-plane moment ``M`` (N·mm) on the net section, and the safety factor."""
-    area = (w - d) * t
-    z = t * (w ** 3 - d ** 3) / (6 * w)
-    sig = np.abs(N) / area + np.abs(M) / z
+@dataclass(frozen=True)
+class Band:
+    """A link's outline cut to a band (``config.PRODUCT_BAND``; simplification round 2's way
+    back, 2026-10-21), in the frame its sections are rated in: from ``lo`` to ``hi`` (mm)
+    along the unit vector ``across`` from ``origin``."""
+
+    origin: tuple[float, float]
+    across: tuple[float, float]
+    lo: float
+    hi: float
+
+    @classmethod
+    def of(cls, o, x, lo: float, hi: float) -> Band:
+        """The band ``lo`` to ``hi`` across the line from point ``o`` toward point ``x``
+        (``config.band``'s frame: ``y`` up from ``o``, ``x`` along)."""
+        o, x = np.asarray(o, float), np.asarray(x, float)
+        u = (x - o) / float(np.hypot(*(x - o)))
+        return cls((float(o[0]), float(o[1])), (float(-u[1]), float(u[0])), float(lo),
+                   float(hi))
+
+    def span(self, at, n, half: float) -> tuple[float, float]:
+        """A section through ``at`` along the unit vector ``n``, ``-half`` to ``half`` along
+        it, cut to the band: its ends (mm along ``n`` from ``at``; equal: nothing left)."""
+        c = np.asarray(self.across, float)
+        p0 = float((np.asarray(at, float) - np.asarray(self.origin, float)) @ c)
+        k = float(np.asarray(n, float) @ c)
+        if abs(k) < 1e-12:
+            return (-half, half) if self.lo - 1e-9 <= p0 <= self.hi + 1e-9 else (0.0, 0.0)
+        a, b = sorted(((self.lo - p0) / k, (self.hi - p0) / k))
+        lo, hi = max(-half, a), min(half, b)
+        return (lo, hi) if hi > lo else (0.0, 0.0)
+
+
+def strip_section(lo: float, hi: float, d: float, t: float) -> tuple[float, float, float]:
+    """A strip from ``lo`` to ``hi`` across (mm; ``-w / 2`` to ``w / 2`` a whole one), ``t``
+    thick, a hole ``d`` across it at 0: its net area, its in-plane section modulus at its far
+    fibre, and its net centroid's offset from 0 (a force along the strip's line at 0 bends it
+    that far off). All nothing where the hole breaks out of it or nothing is left."""
+    if hi - lo <= 1e-9 or (d > 0 and (lo > -d / 2 + 1e-9 or hi < d / 2 - 1e-9)):
+        return 0.0, 0.0, 0.0
+    area = (hi - lo - d) * t
+    ybar = (hi * hi - lo * lo) / 2 * t / area       # (the hole's first moment about 0: none)
+    inertia = t * (hi ** 3 - lo ** 3) / 3 - t * d ** 3 / 12 - area * ybar * ybar
+    return area, inertia / max(hi - ybar, ybar - lo), ybar
+
+
+def _section_sf(N: np.ndarray, M: np.ndarray, w: float, t: float, d: float, yield_mpa: float,
+                span: tuple[float, float] | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """A strip ``w`` x ``t`` with a hole ``d`` across it (``span``: from ``span[0]`` to
+    ``span[1]`` across it instead, cut to its band: :class:`Band`): the stress (MPa) of its
+    axial force ``N`` and in-plane moment ``M`` (N·mm) on the net section, the force off the
+    net section's centroid by its offset, and the safety factor."""
+    lo, hi = span if span is not None else (-w / 2, w / 2)
+    area, z, ybar = strip_section(lo, hi, d, t)
+    if area <= 0.0:
+        sig = np.full(np.shape(N), np.inf)
+        return sig, np.zeros(np.shape(N))
+    sig = np.abs(N) / area + (np.abs(M) + np.abs(N) * abs(ybar)) / z
     return sig, yield_mpa / np.maximum(sig, 1e-9)
 
 
@@ -203,7 +254,9 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
                  width: Callable[[str, str, str], float] | None = None,
                  bosses: Mapping[str, Mapping[str, float]] | None = None,
                  keep_forces: Sequence[str] = (),
-                 couples: Mapping[str, str] | None = None) -> dict[str, dict]:
+                 couples: Mapping[str, str] | None = None,
+                 bands: Mapping[str, tuple[str, str, float, float]] | None = None
+                 ) -> dict[str, dict]:
     """Every link of ``lk`` (``lk.links``) as a plane frame of its chords under one case's
     joint force vectors ``vecs`` (``cradle_report.statics_vectors``: ``joints`` its
     ``(point, body, other)``, ``pts`` the joints' world paths): per link, its worst chord end
@@ -223,7 +276,9 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
     2026-10-21: the cradle box's racking brace): what else holds the link is a couple there
     and forces at its load nodes, the forces with no moment about that joint, the couple
     all of the rest (the brace's torsion tube carries the box's twist into the link round
-    its socket: a couple, not forces at the tie rods)."""
+    its socket: a couple, not forces at the tie rods). ``bands`` (per link, its outline's
+    band, ``config.band``'s ``(o, x, lo, hi)``; the same round's way back): every section
+    rated on what the band leaves of it (:class:`Band`)."""
     load_nodes = load_nodes or {}
     keep = np.ones(len(vecs), bool) if skip is None else ~np.asarray(skip, bool)
     out: dict[str, dict] = {}
@@ -283,6 +338,9 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
         elems = [(idx[p], idx[q], sec.e * wide[(p, q)] * sec.t,
                   sec.e * sec.t * wide[(p, q)] ** 3 / 12) for p, q in segs]
         res = frame2d(xy, elems, loads, fixed=[0, 1, 2])
+        bd = (bands or {}).get(name)
+        band = (Band.of(pts[bd[0]][k0], pts[bd[1]][k0], bd[2], bd[3])
+                if bd is not None and bd[0] in pts and bd[1] in pts else None)
         worst = {"safety": math.inf}
         comp: dict[tuple[str, str], float] = {}
         own = dict((bosses or {}).get(name, {}))
@@ -296,18 +354,27 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
             L_pq = float(np.hypot(*(xy[idx[q]] - xy[idx[p]])))
             for end, M in ((p, res[:, e, 1]), (q, res[:, e, 2])):
                 r_b = float(own.get(end.rsplit(".", 1)[-1], 0.0))
-                cuts = [(M, w, holes.get(end, 0.0), 0.0)]
+                at_e = xy[idx[end]]
+                v = (xy[idx[q if end == p else p]] - at_e) / max(L_pq, 1e-9)
+                nv = np.array([-v[1], v[0]])
+
+                def span(at, half, nv=nv, band=band):
+                    return band.span(at, nv, half) if band is not None else (-half, half)
+
+                cuts = [(M, w, holes.get(end, 0.0), 0.0, span(at_e, w / 2))]
                 if 2 * r_b > w:         # through its hole at the boss, and past the boss
                     s_b = min(math.sqrt(r_b * r_b - w * w / 4), L_pq)
                     x = s_b if end == p else L_pq - s_b
                     m_b = -res[:, e, 1] + (res[:, e, 1] + res[:, e, 2]) * x / L_pq
-                    cuts = [(M, 2 * r_b, holes.get(end, 0.0), 0.0), (m_b, w, 0.0, s_b)]
-                for M_, w_, d_, s_ in cuts:
-                    sig, sf = _section_sf(N, M_, w_, sec.t, d_, sec.yield_mpa)
+                    cuts = [(M, 2 * r_b, holes.get(end, 0.0), 0.0, span(at_e, r_b)),
+                            (m_b, w, 0.0, s_b, span(at_e + s_b * v, w / 2))]
+                for M_, _w, d_, s_, sp in cuts:
+                    sig, sf = _section_sf(N, M_, _w, sec.t, d_, sec.yield_mpa, sp)
                     i = int(np.argmin(sf))
                     if sf[i] < worst["safety"]:
                         worst = {"safety": float(sf[i]), "chord": f"{p}-{q}", "at": end,
-                                 "width_mm": w_, "moment_nm": round(float(abs(M_[i])) / 1000.0, 2),
+                                 "width_mm": round(sp[1] - sp[0], 2),
+                                 "moment_nm": round(float(abs(M_[i])) / 1000.0, 2),
                                  "axial_n": round(float(N[i]), 1),
                                  "stress_mpa": round(float(sig[i]), 1),
                                  "hole_mm": d_, "from_mm": round(s_, 1)}
@@ -317,6 +384,14 @@ def link_bending(lk, pts: Mapping[str, np.ndarray], joints, vecs: np.ndarray,
         for (p, q), f in comp.items():
             L = float(np.hypot(*(at0[q] - at0[p])))
             w = width(name, p, q) if width else sec.w
+            if band is not None:        # (its narrowest end, cut to the band)
+                v = (at0[q] - at0[p]) / max(L, 1e-9)
+                nv = np.array([-v[1], v[0]])
+                w = min(np.diff(band.span(at0[j], nv, w / 2))[0] for j in (p, q))
+            if band is not None:        # (its narrowest end, cut to the band)
+                v = (at0[q] - at0[p]) / max(L, 1e-9)
+                nv = np.array([-v[1], v[0]])
+                w = min(np.diff(band.span(at0[j], nv, w / 2))[0] for j in (p, q))
             pcr = math.pi ** 2 * sec.e * w * sec.t ** 3 / 12 / L ** 2
             if f > 0 and pcr / f < buckle["safety"]:
                 buckle = {"safety": pcr / f, "chord": f"{p}-{q}", "compression_n": round(f, 1),
@@ -896,19 +971,25 @@ _ROOTS: dict = {}       # strip_root by its inputs (the plate's shape: the same 
 
 
 def combined_sf(N: np.ndarray, M_in: np.ndarray, M_out: np.ndarray, T: np.ndarray,
-                w: float, t: float, hole: float, yield_mpa: float
-                ) -> tuple[np.ndarray, np.ndarray]:
+                w: float, t: float, hole: float, yield_mpa: float,
+                span: tuple[float, float] | None = None) -> tuple[np.ndarray, np.ndarray]:
     """A plate strip ``w`` x ``t`` with a hole ``hole`` across it under its in-plane axial
     force ``N`` and moment ``M_in`` and its moment ``M_out`` across its weak axis and twist
     ``T`` out of the plane (N, N·mm, per case), on the net section (design review round 3's
     minor 1: they had been rated apart): at its edge, where the twist's shear is nothing,
     ``|N| / A + |M_in| / Z_in + |M_out| / Z_out``; at its face's middle, where the in-plane
     moment is nothing, the von Mises of ``|N| / A + |M_out| / Z_out`` and the twist's
-    ``3 T / (w_n t^2)``; the larger, and the safety factor."""
-    wn = max(w - hole, 1e-9)
+    ``3 T / (w_n t^2)``; the larger, and the safety factor. ``span``: the strip from
+    ``span[0]`` to ``span[1]`` across, cut to its band (:class:`Band`, :func:`strip_section`:
+    the in-plane force off its net centroid by its offset)."""
+    lo, hi = span if span is not None else (-w / 2, w / 2)
+    area, z_in, ybar = strip_section(lo, hi, hole, t)
+    if area <= 0.0:
+        return np.full(np.shape(N), np.inf), np.zeros(np.shape(N))
+    wn = max(hi - lo - hole, 1e-9)
     s_n = np.abs(N) / (wn * t)
     s_out = np.abs(M_out) / (wn * t * t / 6.0)
-    s_in = np.abs(M_in) / (t * (w ** 3 - hole ** 3) / (6.0 * w))
+    s_in = (np.abs(M_in) + np.abs(N) * abs(ybar)) / z_in
     tau = 3.0 * np.abs(T) / (wn * t * t)
     vm = np.maximum(s_n + s_in + s_out, np.sqrt((s_n + s_out) ** 2 + 3.0 * tau ** 2))
     return vm, yield_mpa / np.maximum(vm, 1e-9)
@@ -1243,6 +1324,7 @@ class BoxLinks:
     length: float
     holes: Mapping[str, float] = field(default_factory=dict)
     bosses: Mapping[str, float] = field(default_factory=dict)
+    band: Band | None = None    # the links' outline's band (config.band), in ``xy``'s frame
 
 
 BOX_HOLDS = ("held", "pinned", "free")

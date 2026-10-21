@@ -87,16 +87,21 @@ stops there:
     `spiderpig/linkages/decanters.py`.
 - **The cradle box.**
   - Four tie rods run between the two cradle links, at `decanters.TIES`. Each is a 1/2 in
-    6061-T6511 rod cut to length by Speedy Metals, faced square and tapped M6 at home
+    6061-T6511 rod sawn from McMaster's 3 ft stick (Speedy Metals' cut piece until
+    simplification round 2's P5), faced square and tapped M6 at home
     (`cradle_catalog.al_rod`, since simplification round 1, 2026-10-21, the user's
     materials rule; a 12 mm steel standoff, MISUMI NETRF12, from design review round 2's M1),
-    with an M6 x 16 button head through the link into each end (class 10.9 steel since
-    2026-10-20: A2-70 at ISO 7380's 4 N·m left the joints at their gap). Two carry the front saddle under the neck, two the
-    rear saddle 275 and 360 mm behind the mouth.
+    with an M6 x 16 button head through the link into each end (`cradle.tie_screw`): on A
+    class 10.9 steel at 6 N·m (since 2026-10-20: A2-70 at ISO 7380's 4 N·m left the joints at
+    their gap), on B A2-70 at 4 N·m again since simplification round 2's P8 (its racking
+    brace takes the jam's twist). Two carry the front saddle under the neck, two the rear
+    saddle 275 and 360 mm behind the mouth.
   - On B a racking brace (since simplification round 2, 2026-10-21: `decanters.BRACE`): a
     2 in 6061 tube across the bay behind the rear saddle, under the base stop's rails, its
     ends keyed into toothed sockets in both cradle links; it carries the box's twist at a
-    jam ("The cradle box across the bay").
+    jam ("The cradle box across the bay"). B's cradle link b6 is cut to a band along the
+    bottle's axis (`config.PRODUCT_BAND`, the round's way back), so its boss at X and its
+    wide rear chords don't stand the cradle box taller in the pack.
   - Two printed saddles ride on the tie rods (`cradle.SADDLES`; since 2026-10-14, under
     "The saddles, adjustable"). Each is a carrier locked on its rods by M3 set screws up
     from its underside, and a V block that rides up and down in it on a thumbscrew.
@@ -2871,14 +2876,15 @@ Things to know before cutting and on the bench:
     E 0.52 mm. Where a ring or clip won't seat, sand that pin's printed spacer by the excess.
   - The base board goes on the flat table first (SendCutSend's sheet is flat to ±0.030 in a
     foot before cutting, 1.7 mm over the board), its concave face down.
-- **The posts' screws are A2-70, the tie rods' class 10.9** (design review round 2's m2 and
-  M1; round 3's M5 and its finish, 2026-10-20).
+- **The posts' screws are A2-70, A's tie rods' class 10.9** (design review round 2's m2 and
+  M1; round 3's M5 and its finish, 2026-10-20; B's tie rods' A2-70 since simplification
+  round 2's P8).
   - Each is an M6 x 16 button head of a stated class (ISO 3506-1: Fastenal's, 9.0 kN proof;
-    ISO 898-1: Accu's 10.9, unplated), on a DIN 125 washer at the pillars' and columns' ends,
-    in 6.4 mm holes.
+    ISO 898-1: Fastenal's 10.9, black oxide), in 6.4 mm holes (a DIN 125 washer only at the
+    pillars' feet since simplification round 2's P6).
   - Tighten the stainless ones to 4 N·m on the 4 mm key (ISO 7380's most in A2-70: 2.5-4.6
-    kN), the steel ones (the tie rods', and A's pillar G's foot) to 6 (3.8-7.0 kN): each end
-    joint stays closed walking. Keep the two in their own bags.
+    kN), A's tie rods' steel ones to 6 (3.8-7.0 kN): each end joint stays closed walking.
+    Keep the two in their own bags.
   - Jammed, the joints gap. The tie rods' screws then pry at 3.4-4 kN; pillar O2's foot
     screw pries at about 8 kN at its 48 N·m (open with the pillar).
   - Bolt Depot's 18-8 names no class, and A2-50's 210 MPa would yield there.

@@ -320,7 +320,7 @@ The planner claims each at its width (:class:`construction.plates.LinkPlates`)."
 
 PRODUCT_BOSS_R: dict[str, dict[str, dict[str, float]]] = {
     "decanter_rcm": {"b1": {"M": 16.2}, "b2": {"O2": 17.0},
-                     "b3": {"O1": 17.0, "J": 14.0, "J2": 14.0}, "b6": {"X": 50.0}},
+                     "b3": {"O1": 17.0, "J": 14.0, "J2": 14.0}, "b6": {"X": 50.0, "Br": 38.0}},
     "decanter_hinge": {"b1": {"M": 16.2}, "b2": {"G": 17.0}},
 }
 """Per product linkage, per link: a boss (a disc, its radius in mm) round the hole at a
@@ -344,10 +344,35 @@ material from a hole to an edge, in 7075 "to prevent microcracks"):
   chord Tf2-X, the one that passes pillar O1 by the planner's margin and can't grow
   (:func:`cradle_structure.link_bending` and the box's rows rate its end past the boss; the
   arm's 48 mm end had been the boss there: 1.22 at the clutch's cap with the brace).
-- B's racking brace's socket at Br (the same round) needs none: its chord Tr2-Br is 76 mm
-  wide, its end the boss (r 38, 11.4 mm of web round the 53.2 mm toothed socket).
+- B's racking brace's socket at Br (the same round), r 38: 11.4 mm of web round the 53.2 mm
+  toothed socket (the chord Tr2-Br's own end, 76 mm wide, until the way back cut b6 to its
+  band, :data:`PRODUCT_BAND`, which keeps this disc whole).
 Each outline is closed round its boss and the planner claims the boss as a disc
 (:func:`construction.plates.product_bosses`)."""
+
+
+PRODUCT_BAND: dict[str, dict[str, tuple[str, str, float, float]]] = {
+    "decanter_rcm": {"b6": ("Lc", "Ax", -162.5, 49.0)},
+}
+"""Per product linkage, per link: the band its outline is cut to, ``(o, x, lo, hi)``: between
+the lines ``y = lo`` and ``y = hi`` (mm) in the frame with its origin at joint ``o`` and its x
+toward joint ``x``. B's cradle link b6 in the cradle's frame (the mouth Lc at the origin, x
+along the bottle's axis: ``decanters.TIES``'), simplification round 2's way back (2026-10-21):
+the racking brace's boss at X (r 50) and its wider rear chords (X-Tr1 and Tr1-Tr2 64 mm,
+Tr2-Br 76) had stood the cradle box 249 mm tall in the pack (178 before them). Cut to the
+band, b6 keeps all it needs inward: the band's bottom 0.5 mm under Br's pad (r 38 round the
+socket, :data:`PRODUCT_BOSS_R`: the socket's web whole), its top 1 mm under the front saddle's
+lip gauge's top, the box's highest part but b6; the cut takes X's boss's top, the rear arm's
+round ends and Tr1-Tr2's and Tr2-Br's lower edges near Tr2. ``cradle_structure`` rates every
+section on what the cut leaves (:class:`cradle_structure.Band`)."""
+
+
+def band(config, link: str) -> tuple[str, str, float, float] | None:
+    """The band ``config`` cuts link ``link``'s outline to (:data:`PRODUCT_BAND`; none for a
+    walker)."""
+    from spiderpig.stack import body_class
+
+    return PRODUCT_BAND.get(config.linkage, {}).get(body_class(link))
 
 
 def boss_r(config, link: str) -> dict[str, float]:
@@ -377,14 +402,14 @@ PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 material) when the config names the default (:data:`SHEET`): a decanting cradle is all
 aluminium, its links' 0.125 in 5052 (:data:`materials.CRADLE_LINK_SHEET`)."""
 
-PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 64.9, "decanter_rcm": 63.9}
+PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 64.9, "decanter_rcm": 63.7}
 """Per product linkage: the crank torque its joints are rated at in a jam, in place of a
 servo's firmware limit (:func:`torque_limit_nm`): a decanting cradle's, the most its hand
 crank's slip clutch lets through, however hard the push (:data:`PRODUCT_CLUTCH_NM`, since
 design review round 1; a firm 40 N push at the grip had been the case:
 :func:`spiderpig.cradle_report.jam_nm`, which a test holds these to)."""
 
-PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 64.9, "decanter_rcm": 63.9}
+PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 64.9, "decanter_rcm": 63.7}
 """Per product linkage: the most its hand crank's slip clutch lets onto the crank, however
 hard the push (design review round 2's B-1, 2026-10-14): set to slip at
 ``construction.handcrank.CLUTCH_SET`` x the start the user measures (a full 6 L's, drawn:
@@ -401,7 +426,8 @@ toggles included), while the check is kept (unchecked, the friction can carry it
 gearbox's maximum: ``handcrank.clutch_drift``). 67.2 and 63.9 until simplification round 1:
 the lighter cradle, its aluminium posts, tie rods, rear post and pins
 (``handcrank.DESIGN_START_NM``); B's 61.8 until round 2's racking brace (its tube and its
-cradle links' wider rear, 0.46 kg on the box)."""
+cradle links' wider rear, 0.46 kg on the box: 63.9), then its way back (b6 cut to its band:
+63.7)."""
 
 
 def product_defaults(product: str) -> dict:

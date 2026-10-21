@@ -1960,9 +1960,12 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
     # the bay: it comes into the cradle link at its socket, a couple, not at the tie rods
     braced = next(iter(box_brace(config)), None)
     couple = {"jam": {link: braced}} if braced is not None and block is None else {}
+    from spiderpig.config import band
+
+    bands = {n: b for n in lk.links if (b := band(config, n)) is not None}
     frames = {tag: cs.link_bending(lk, pts, joints, v, sections, holes, {link: on[tag]}, sk,
                                    width, bosses, keep_forces=(link,),
-                                   couples=couple.get(tag))
+                                   couples=couple.get(tag), bands=bands)
               for tag, (v, sk, _) in cases.items()}
     inplane = {tag: fr.pop(link + ":forces", {}).get("forces", {})
                for tag, fr in frames.items()}
@@ -2419,11 +2422,16 @@ def box_links(config: BuildConfig, joints, pts, tie_mm: float,
     for (p, q), w in segs:          # a wider chord's end disc round a joint is a boss there too
         for j in (p, q):            # (as link_bending counts them)
             bosses[j] = max(bosses.get(j, 0.0), w / 2)
+    from spiderpig.config import band
+
+    bd = band(config, link)
     return cs.BoxLinks(xy={n: xy[n] for n in used}, segs=segs, t=thickness(config, key),
                        yield_mpa=allowable_mpa(config, key),
                        pins=(pins, tuple(p for p in pins if p not in rod_joints)),
                        ties=tuple(TIES), length=float(tie_mm), holes=hole,
-                       bosses={j: r for j, r in bosses.items() if j in used})
+                       bosses={j: r for j, r in bosses.items() if j in used},
+                       band=(cs.Band.of(xy[bd[0]], xy[bd[1]], bd[2], bd[3])
+                             if bd is not None else None))
 
 
 def _carriers(res, links, theta_ok: bool = True) -> dict:
@@ -2655,23 +2663,36 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
                                         - np.asarray(links.xy[a], float))))
                 for end, mo, tw, m_in in ((a, f[:, 2], f[:, 1], m_a), (b, f[:, 5], f[:, 4], m_b)):
                     # at a boss (link_bending's sections): through its hole at the boss's
-                    # width, and past it on the chord, the moments there, no hole
+                    # width, and past it on the chord, the moments there, no hole; each
+                    # section on what the links' band leaves of it
                     r_b = float(links.bosses.get(end, 0.0))
-                    cuts = [(mo, m_in, w, links.holes.get(end, 0.0), 0.0)]
+                    at_e = np.asarray(links.xy[end], float)
+                    v = (np.asarray(links.xy[b if end == a else a], float) - at_e) / max(L_ab,
+                                                                                        1e-9)
+                    nv = np.array([-v[1], v[0]])
+
+                    def span(at, half, nv=nv):
+                        return (links.band.span(at, nv, half) if links.band is not None
+                                else (-half, half))
+
+                    cuts = [(mo, m_in, w, links.holes.get(end, 0.0), 0.0, span(at_e, w / 2))]
                     if 2 * r_b > w:
                         s_b = min(math.sqrt(r_b * r_b - w * w / 4), L_ab)
                         x = s_b if end == a else L_ab - s_b
-                        cuts = [(mo, m_in, 2 * r_b, links.holes.get(end, 0.0), 0.0),
+                        cuts = [(mo, m_in, 2 * r_b, links.holes.get(end, 0.0), 0.0,
+                                 span(at_e, r_b)),
                                 (-f[:, 2] + (f[:, 2] + f[:, 5]) * x / L_ab,
-                                 -m_a + (m_a + m_b) * x / L_ab, w, 0.0, s_b)]
-                    for mo_, mi_, w_, d_, s_ in cuts:
+                                 -m_a + (m_a + m_b) * x / L_ab, w, 0.0, s_b,
+                                 span(at_e + s_b * v, w / 2))]
+                    for mo_, mi_, w_, d_, s_, sp in cuts:
                         vm, sf = cs.combined_sf(n_, mi_, np.abs(mo_), np.abs(tw), w_, links.t,
-                                                d_, links.yield_mpa)
+                                                d_, links.yield_mpa, sp)
                         i = int(np.argmin(sf))
                         if worst is None or sf[i] < worst["safety"]:
                             worst = {"chord": f"{a}-{b}", "at": end,
                                      "link": "drive" if li == 0 else "passive",
-                                     "width_mm": w_, "hole_mm": d_, "from_mm": round(s_, 1),
+                                     "width_mm": round(sp[1] - sp[0], 2), "hole_mm": d_,
+                                     "from_mm": round(s_, 1),
                                      "out_nm": round(float(abs(mo_[i])) / 1000, 2),
                                      "twist_nm": round(float(abs(tw[i])) / 1000, 2),
                                      "inplane_nm": round(float(abs(mi_[i])) / 1000, 2),
@@ -3303,7 +3324,10 @@ def _ties_of() -> dict[str, tuple[float, float]]:
 
 
 ROOM_BAND = 5.0         # the room's height steps (mm)
-_MOVING = ("tie_", "front_saddle", "rear_saddle", "led", "base_stop", "bottle")
+_MOVING = ("tie_", "brace_", "front_saddle", "rear_saddle", "led", "base_stop", "bottle")
+"""The bay's parts that ride the cradle box (by name), for :func:`room`: everything else in the
+bay is fixed. B's racking brace's tube (``brace_``, simplification round 2) rides the box: it
+had been taken as fixed at its crank-0 pose until the round's integration."""
 
 
 def _surface_points(part, step: float = 5.0) -> np.ndarray:
