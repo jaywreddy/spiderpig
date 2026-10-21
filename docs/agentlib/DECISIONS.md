@@ -3540,6 +3540,11 @@ On the old fit 0d9449b was B 1,007.55 and A 847.47.
   `test_a_spacer_prints_on_the_bed_numbered_and_laid_flat`,
   `test_the_carton_fits_the_pack_and_is_rated_for_it`, and the box steps', the trip's and
   the viewer's pack list (fillers counted apart) updated.
+- **Time:** the spacers made the pack slower (`cradle_pack.pack_input` warm: A 35 s before,
+  63 s; B 20, 46), the restraints' gap search most of it, a gap field made afresh for each
+  probe; one a piece and way (`voxpack._gap_field`) gives both payloads to the byte, A in
+  32 s and B in 27. A's pack test is 121 s, A's `build` (which packs too) over 3 min: the
+  slow tests' fifth chunk is split in three ([TESTING.md](TESTING.md), "Chunks").
 - **Where:** `spiderpig/voxpack.py`, `spiderpig/cradle_pack.py`,
   `spiderpig/construction/cradle.py` (`TRIP_MERGES`, `_merged`), `spiderpig/guide/make.py`,
   `spiderpig/guide/scenes.py`, `spiderpig/guide/render.py`, `spiderpig/hardware/shipping.py`,

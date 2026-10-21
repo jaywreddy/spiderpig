@@ -34,7 +34,8 @@ An agent's step (a foreground command, or the wait for a background one) should 
 whole context uncached. A job longer than that runs in the background and in chunks, each
 one's end a notification. `tests/test_cradle.py`'s slow tests (each a fabrication of a
 whole cradle or more: 25-35 s fresh, 4-6 s at another crank angle in the same worker, from
-`cached_product` when it holds this code's) in five chunks at `-n 4`. Measured 2026-10-20
+`cached_product` when it holds this code's) in seven chunks, at `-n 4` but the last two,
+one test each. Measured 2026-10-20
 at load 1.5-4, the cache cold for the code but both cradles' t = 1.0 entries: 96, 87, 60,
 86 and 84 s (they were 165-260 s before the inner plate's keep-out was fused in 2D and the
 cradle box's parts memoized); every test under 65 s. What still fabricates afresh: every
@@ -46,8 +47,14 @@ pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "clash_free and dec
 pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "verify_rates or stands_turns"
 R="not clash_free and not verify_rates and not stands_turns"
 pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "$R and decanter_rcm"
-pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "$R and not decanter_rcm"
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "$R and not decanter_rcm and not packs_in_one_box and not builds_an_order"
+pytest tests/test_cradle.py -m slow -k "packs_in_one_box and decanter_hinge"
+pytest tests/test_cradle.py -m slow -k "builds_an_order"
 ```
+
+(Pack turn 3, 2026-10-21: the fifth had grown past 4 minutes, A's pack test 2 minutes and
+A's `build` test, which packs A too (its pack pose fabricated afresh), over 3: each is a
+chunk of its own.)
 
 The clash test is one test per crank angle and the verify test one per cradle (each under
 5 min, the checks as before). The identity gate likewise: `compare DIR --designs
@@ -370,9 +377,10 @@ pads, the pads' blocks, the spacers in their place, the guide's box steps, the f
 travel, the score, the search and its seeds, a split, a plan that stops, the sheet: no
 fabrication) and the slow `test_the_cradle_packs_in_one_box`, which judges each cradle's
 flat pack on its real shapes with its spacers (every piece placed, every pad a block that
-fits and a spacer's, nothing past `PACK_SLIDE`, up too). A pack is about 45 s (B) and
-150 s (A) with its spacers, warm (20 and 35 s before pack turn 3's keep-clear, caps,
-bridges and taping).
+fits and a spacer's, nothing past `PACK_SLIDE`, up too). Its packing (`pack_input`, warm)
+is about 27 s (B) and 32 s (A) with its spacers (20 and 35 s before pack turn 3's
+keep-clear, caps, bridges and taping; 46 and 63 s with them before `voxpack._gap_field`);
+A's test about 2 minutes in all.
 
 ## The identity gate (`tests/gate/identity_gate.py`)
 

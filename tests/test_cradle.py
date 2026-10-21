@@ -4219,9 +4219,10 @@ panel round its gearbox, pack turn 3)."""
 MODULE_BOX = (30.0, 370.0, 600.0, 725.0, 166.0)
 """A cradle packed as modules (B): its box, outside, along the board no more than 30 mm (its
 walls and clearances take 16) over the larger of the board's length and the cradle box's
-(725 mm: levelled, from its cradle links' front pins to its rails' end), at most 340 mm tall
-(the board, the cradle box standing on it, 178 mm, the two side panels nested over it),
-across no more than 30 mm over the larger of the board's width and 600 mm, and at most 150 L.
+(725 mm: levelled, from its cradle links' front pins to its rails' end), at most 370 mm tall
+(the board, the drive panel bay down on it, the passive panel over it, the cradle box, 212.5
+mm, standing on top), across no more than 30 mm over the larger of the board's width and
+600 mm, and at most 166 L.
 B, 2026-10-13: 643 x 478 x 611 mm on its 626 x 530 board, about 188 L (its flat pack had
 been 112); 2026-10-14 (round 1: the knobs and cleats on the board, the pack pose at the rear
 leg): 702 x 485 x 606 on its 684 x 584 board, 206 L; the real-shape packer's plan: 700 x 478

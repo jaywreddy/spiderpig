@@ -2782,42 +2782,46 @@ def _next_full(full: np.ndarray, a: int, sgn: int) -> np.ndarray:
     return np.concatenate([np.full(edge, -1), np.take(pm, np.arange(n - 1), axis=a)], axis=a)
 
 
-def _least_gap(mine: np.ndarray, others: np.ndarray, a: int, sgn: int
-               ) -> tuple[int, np.ndarray, int] | None:
-    """Where cells ``mine`` come nearest a full cell of ``others`` (or the grid's edge) going
-    ``sgn`` along axis ``a``, not across one of its own: (the gap in cells, its cell, the
-    index along ``a`` where it meets: the grid's size, or -1, past its edge); None when it
-    meets itself first everywhere."""
+_NO_GAP = np.iinfo(np.int64).max
+
+
+def _gap_field(mine: np.ndarray, others: np.ndarray, a: int, sgn: int
+               ) -> tuple[np.ndarray, np.ndarray]:
+    """How near each cell of ``mine`` comes a full cell of ``others`` (or the grid's edge)
+    going ``sgn`` along axis ``a``, not across one of its own: (the index along ``a`` where
+    it meets, the grid's size or -1 past its edge; the gap in cells, :data:`_NO_GAP` where
+    there is none, it meets itself first, or the cell isn't one of ``mine``). Each column
+    along ``a`` on its own: a part of ``mine`` made of whole columns of it (``a`` horizontal:
+    its lowest layers, or it less slabs across) has the same field on its cells, so one
+    field serves every probe of a piece one way (:func:`_bar`: it had been made afresh for
+    each, 342 times in A's pack, 60 % of its seconds)."""
     n = mine.shape[a]
     nxt = _next_full(others | mine, a, sgn)
     at = np.arange(n).reshape([n if k == a else 1 for k in range(3)])
     gap = np.abs(nxt - at) - 1
     inside = (nxt >= 0) & (nxt < n)
     own = np.take_along_axis(mine, np.clip(nxt, 0, n - 1), axis=a) & inside
-    sel = mine & ~own & (gap > 0)
-    if not sel.any():
-        return None
-    g = np.where(sel, gap, np.iinfo(np.int64).max)
-    c = np.unravel_index(int(np.argmin(g)), g.shape)
-    return int(g[c]), np.array(c), int(nxt[c])
+    return nxt, np.where(mine & ~own & (gap > 0), gap, _NO_GAP)
 
 
-def _least_gaps(mine: np.ndarray, others: np.ndarray, a: int, sgn: int, k: int = 4
+def _least_gaps(cells: np.ndarray, field: tuple[np.ndarray, np.ndarray], a: int, k: int = 4
                 ) -> list[tuple[int, np.ndarray, int]]:
-    """:func:`_least_gap`'s ``k`` least, each at least two footprints (:data:`SPACER_GROW`)
-    across from those before it."""
-    out = []
-    left = mine.copy()
+    """The ``k`` least gaps of ``cells`` (whole columns along ``a`` of the piece whose
+    :func:`_gap_field` ``field`` is), each at least two footprints (:data:`SPACER_GROW`)
+    across from those before it: (the gap in cells, its cell, the index along ``a`` where
+    it meets)."""
+    nxt, gap = field
+    g = np.where(cells, gap, _NO_GAP)
     other = 2 if a == 0 else 0
+    out = []
     for _ in range(k):
-        got = _least_gap(left, others, a, sgn)
-        if got is None:
+        c = np.unravel_index(int(np.argmin(g)), g.shape)
+        if g[c] == _NO_GAP:
             break
-        out.append(got)
-        c = got[1]
+        out.append((int(g[c]), np.array(c), int(nxt[c])))
         sl = [slice(None)] * 3
         sl[other] = slice(max(int(c[other]) - 4 * SPACER_GROW, 0), int(c[other]) + 4 * SPACER_GROW)
-        left[tuple(sl)] = False
+        g[tuple(sl)] = _NO_GAP
     return out
 
 
@@ -2833,8 +2837,9 @@ def _bar(st: _Spacers, p: int, mine: np.ndarray, way: str) -> list[_Spec]:
     n_a = st.shape[a]
     other = 2 if a == 0 else 0
     out = []
+    field = _gap_field(mine, st.occ & ~mine, a, sgn)
     for cells in (foot, mine):
-        for _, c, end in _least_gaps(cells, st.occ & ~mine, a, sgn):
+        for _, c, end in _least_gaps(cells, field, a):
             last = (end - sgn if 0 <= end < n_a else st.end[a] - 1 if sgn > 0 else 1)
             lo_a, hi_a = sorted((int(c[a]) - sgn * SPACER_LIP, last))
             if hi_a - lo_a + 1 > SPACER_SPAN:
