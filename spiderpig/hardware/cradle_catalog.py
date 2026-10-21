@@ -518,7 +518,7 @@ register(
                     if n in M6_BHCS_A270 else {})})
       for n, (pn, each, per100) in M6_BHCS_BD.items()),
     *(Item(f"m6_bhcs109_{n}", f"M6 x {n} button head socket screw (ISO 7380), class 10.9 "
-           "steel, unplated", "fastener",
+           "steel, black oxide (not electroplated)", "fastener",
            (Offer("Fastenal", FASTENAL + "1139912", "1139912", pack_qty=50, price_usd=9.93,
                   verified=True,
                   note="M6-1.0 x 16mm L 4mm Hex Drive Class 10.9 Black Oxide Alloy Steel Button "

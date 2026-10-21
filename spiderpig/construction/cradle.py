@@ -476,8 +476,8 @@ class Stand:
     """A cradle's frame plates as a truss (mm, relative to the bottle's mouth at rest).
 
     ``nodes``: the free points; a member may also name O or a pillar. ``outer``/``inner``:
-    each plate's members (pills of ``member_r``). ``columns``: a 10 mm steel standoff between
-    a side's two plates there. ``feet``: where the outer plates stand on the table (a TPU
+    each plate's members (pills of ``member_r``). ``columns``: a post between a side's two
+    plates there (``column_d``: 1/2 in 6061 rod since simplification round 1). ``feet``: where the outer plates stand on the table (a TPU
     boot each). ``base_ties``: a tie rod across the whole cradle, outer plate to outer plate
     through both stacks (clear of the decanter: never in front). ``bay_ties``: a tie rod
     across the bay between the two inner plates (where nothing of the cradle passes)."""
