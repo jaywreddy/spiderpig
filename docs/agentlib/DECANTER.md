@@ -1300,7 +1300,7 @@ side carrying the cradle box had packed in 699 x 498 x 608, 212 L (its flat pack
     plate and links on five spacers on the board (in turn 2's order it had carried 78 % on
     its gearbox), the passive panel on its outer plate on five over the drive panel's (56 %
     had been on a button head), the cradle box on its links and brace on three (its only +x
-    stop had been the lip gauge, rated to 1.4 g). SETTLE
+    stop had been the lip gauge, rated to 1.4 g). Settled on the real meshes (packing review 2's `settle.py`, rigid, the others fixed): the drive panel 40.0 N on spacer 4 under its outer plate's edge and 27.4 N on spacer 6 under its link b4, none on the gearbox; the passive panel 9.5, 9.3 and 7.1 N on spacers 10, 12 and 13 under its outer plate; the cradle box 12.6 N on the brace tube and 8.5 N on tie rod Tr1, both on spacer 16, and 11.2 N on link b6 on spacer 14.
   - **M4, lifting:** the judge counts up (`voxpack.metrics`); every piece and spacer is held
     each way, up too, to a cell (3 mm): the riser under a cap, the hand crank and two
     spacers taped (`taped`) where nothing else held them.
@@ -1311,8 +1311,9 @@ side carrying the cradle box had packed in 699 x 498 x 608, 212 L (its flat pack
     walls, Bambu PETG Basic: 717 g, 31.4 h for the 17; turn 2's 14 in TPU 95A were 651 g,
     43.1 h), each its number and an arrow engraved, none over the bed.
   - **M2, the guide:** a picture of the pack for each box step, the spacers in it numbered;
-    the spacers in the print list; 3 box steps each way where there were 6, and the trip's
-    18 steps where there were 31 (`cradle.TRIP_MERGES`).
+    the spacers in the print list; 4 box steps each way where there were 6 (a side panel
+    starts one, no more than 9 placings in one: `cradle_pack.box_layers`), and the trip's
+    20 steps where there were 31 (`cradle.TRIP_MERGES`).
   - **M5, the carton:** "The carton and shipping" below.
 - **Pack turn 2** (2026-10-20, the packing review's L1, M1, M2 and minors): 740 x 337 x 600,
   149.4 L before.
@@ -1773,6 +1774,17 @@ of 60 s x 3 seeds):
 | before turn 2 | 700 x 213 x 601 | 89.6 | 282 mm (7 foam pads) | |
 | **the printed spacers (made)** | 700 x 213 x 601 | 89.6 | 6 mm (one spacer; every piece 3) | 25 TPU prints, about 500 g |
 | and its gearbox off its panel | 698 x 205 x 601 | 86.0 (86.0-93.4) | | a loose 2.1 kg piece, its riser's 4 M6 nuts, the worm's alignment checked again: not made (-4 %) |
+
+Pack turn 3 (2026-10-21, packing review 2; `pack-inspect`, its plan; nothing bears on a part
+`cradle_pack.KEEP_CLEAR` names; "moves" counts up too):
+
+| | box, outside | litres | moves (most) | spacers (sliced, PETG Basic) | USPS zone 5 |
+|---|---|---|---|---|---|
+| B before turn 3 (round 2's brace) | 745 x 394 x 600 | 175.9 | 153 mm (a spacer), the riser 179 up | 14 TPU, 651 g, 43.1 h | $211.30 Oversized in any box |
+| B, turn 2's order under turn 3's rules | 745 x 394 x 600 | 175.9 | 3 mm | 11, 512 g, 18.8 h, 2 fillers | $211.30 Oversized in any box |
+| **B, turn 3's order (made)** | 744 x 366 x 601 | 164.0 | 3 mm | 17, 717 g, 31.4 h | $211.30 in S-4509 at 14 in; $160.20 in a box made to it |
+| A before turn 3 | 700 x 252 x 607 | 106.9 | 66 mm, four tie rods 153-204 up | 22 TPU | $165.70 |
+| **A, turn 3 (made)** | 700 x 252 x 607 | 106.9 | 3 mm | 26, 1,034 g, 46.6 h | $165.70 in S-12613; $134.10 in a box made to it |
 
 **The carton and shipping** (pack turn 3, packing review 2's M5; `hardware.shipping`, the
 build's ORDER.md "Ship it" section: `carton_for`, `ship_lines`). Every carton and price below

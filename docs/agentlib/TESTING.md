@@ -370,8 +370,9 @@ pads, the pads' blocks, the spacers in their place, the guide's box steps, the f
 travel, the score, the search and its seeds, a split, a plan that stops, the sheet: no
 fabrication) and the slow `test_the_cradle_packs_in_one_box`, which judges each cradle's
 flat pack on its real shapes with its spacers (every piece placed, every pad a block that
-fits and a spacer's, nothing past `PACK_SLIDE`). A pack is about 20 s (B) and 35 s (A)
-with its spacers, warm.
+fits and a spacer's, nothing past `PACK_SLIDE`, up too). A pack is about 45 s (B) and
+150 s (A) with its spacers, warm (20 and 35 s before pack turn 3's keep-clear, caps,
+bridges and taping).
 
 ## The identity gate (`tests/gate/identity_gate.py`)
 

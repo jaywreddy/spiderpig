@@ -168,6 +168,8 @@ model's 3 mm all round cost an inch)."""
 def _made_to_size(pack: dict, kg: float, stock: dict) -> list[str]:
     """A line for a carton made to the pack's own box (its outside, ``pack["box"]``), where
     USPS bills it less than the stock one (``stock``: its :func:`usps`)."""
+    if "outside_mm" not in pack["box"]:
+        return []
     out = tuple(float(v) / IN for v in pack["box"]["outside_mm"])
     post = usps(out, kg / 0.45359237 + CARTON_LB)       # type: ignore[arg-type]
     if post["usd"][5] >= stock["usd"][5] - 0.005:

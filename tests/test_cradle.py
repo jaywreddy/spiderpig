@@ -3876,6 +3876,14 @@ def test_the_carton_fits_the_pack_and_is_rated_for_it():
     assert got["carton"].item == "S-13330"
     assert sh.carton_for((800.0, 300.0, 590.0), 17.3) is None       # (longer than 30 in)
     lines = sh.ship_lines("B", {"box": {"inside_mm": [735.0, 300.0, 590.0]}}, 17.3)
+    # (a 366 mm pack: S-4509 cut at 14 in, Oversized for its 31 in; one made to the pack's
+    # box, 108 in of length and girth, $51.10 less at zone 5: pack turn 3)
+    tall = sh.ship_lines("B", {"box": {"inside_mm": [734.4, 356.5, 591.0],
+                                       "outside_mm": [744.4, 366.5, 601.0]},
+                               "packed_mm": [728.4, 350.5, 585.0]}, 17.6)
+    assert any("S-4509" in ln and "14 in score" in ln for ln in tall)
+    assert any("zone 5 $211.30" in ln for ln in tall)
+    assert any("$51.10 less" in ln for ln in tall)
     assert any("S-12613" in ln for ln in lines)
     assert any("zone 5 $165.70" in ln for ln in lines)
 
