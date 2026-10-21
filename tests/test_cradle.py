@@ -4195,7 +4195,7 @@ loose parts in their open triangles, since the real-shape packer of 2026-10-14: 
 about 78 L, where the boxes' packer had 124; 212 mm and 89 L since round 2's drive, the
 NRV050's housing and riser standing 27 mm taller off the drive panel's outer plate; 213 mm
 and 90 L since the side frames' redesign of 2026-10-20, the drive panel turned a quarter)."""
-MODULE_BOX = (30.0, 325.0, 600.0, 725.0, 143.0)
+MODULE_BOX = (30.0, 397.0, 600.0, 725.0, 177.0)
 """A cradle packed as modules (B): its box, outside, along the board no more than 30 mm (its
 walls and clearances take 16) over the larger of the board's length and the cradle box's
 (725 mm: levelled, from its cradle links' front pins to its rails' end), at most 340 mm tall
@@ -4210,8 +4210,10 @@ bay; pack turn 1 (the cradle box on its own): 740 x 316 x 600, 141 L; round 2's 
 740 x 334 x 600, 148 L; the side frames' redesign of 2026-10-20 (the inner plates' bottom
 chords, the passive panel turned end for end over the drive panel): 740 x 337 x 600, 149 L;
 pack turn 2 (its brackets on the board, the hand crank in the cradle box's bay, printed
-spacers): 739 x 318 x 600, 141 L. Read off the board, so a larger board moves the bound with
-it."""
+spacers): 739 x 318 x 600, 141 L; simplification round 2's racking brace (the box 212 mm
+tall): 745 x 394 x 600, 176 L; pack turn 3 (nothing bearing on a gauge, a clip, the gearbox or
+a screw head; caps, fillers): 745 x 394 x 600, 175.9 L. Read off the board, so a larger board
+moves the bound with it."""
 SPACER_SLIVER = 10.0
 """mm^3: the most a printed spacer may share with a part the pack test tessellates afresh
 (:func:`test_the_cradle_packs_in_one_box`): the chords of a curved part's mesh lie a
@@ -4231,12 +4233,6 @@ flat."""
 
 
 PACK_OPEN = {
-    "decanter_rcm": "design review round 3's frames (the rail 60 mm, the rear leg 80, O2-O 88) "
-                    "landed the drive panel on the cradle box (742 x 354 x 600 mm, 157.5 L); "
-                    "since simplification round 2 (the racking brace, b6 cut to its band: "
-                    "the box stands 212 mm tall, 249 uncut, 178 before the brace): 745 x 394 x "
-                    "600 mm, 175.9 L, over MODULE_BOX's 325 mm and 143 L, a spacer free to "
-                    "slide 153 mm: the packing round re-plans it",
     "decanter_hinge": "design review round 3's frames (the strut G-O 140 mm, the rail 60, a "
                       "column E2) stand the panels 255 mm tall over PACK_BOX's 215, a piece "
                       "out of order: the packing round re-plans it",
@@ -4280,35 +4276,55 @@ def test_the_cradle_packs_in_one_box(key):
     mech = fabricate(template_for(cfg), cfg, t)
     p = flat_pack(mech, cfg.lk, t)
     assert p["plan"] == PACK_PLANS[key].name
+    from spiderpig.cradle_pack import STUB, keep_clear_cells, part_infos, stub_shape
+
     shipped = {b.name: b for b in mech.bodies if b.part is not None and b.fab != "display"}
     names = [n for m in p["modules"] for n in m["parts"]]
-    assert sorted(names) == sorted(shipped)                 # each in exactly one piece
+    # each in exactly one piece, and the clutch's check stub (a printed tool: pack turn 3)
+    assert sorted(names) == sorted([*shipped, STUB])
+    stub = stub_shape(part_infos(mech))
     assert len({m["key"] for m in p["modules"]}) == len(p["modules"])
     lo = np.asarray(p["box"]["floor"], float)
     hi = lo + np.asarray(p["box"]["inside_mm"], float)
     pieces = []
+    host: dict[str, vp.Packed] = {}
     for kind, m in in_order(p):         # (the printed spacers at their places in the order)
         if kind == "spacer":
-            pieces.append(spacer_packed(m))
+            sp = spacer_packed(m)
+            if m.get("taped") in host:  # (taped to what it stands on: moves with it)
+                host[m["taped"]].meshes += sp.meshes
+                host[m["taped"]].parts += sp.parts
+            else:
+                pieces.append(sp)
             continue
-        shapes = []
+        shapes, kept = [], []
         for n in m["parts"]:
             mat = np.array(m.get("part_matrix", {}).get(n, m["matrix"]), float)
             assert np.allclose(mat[:3, :3] @ mat[:3, :3].T, np.eye(3), atol=1e-5)
-            sh = moved(shipped[n].placed_part(), Pose(mat).to_location())
+            sh = moved(stub if n == STUB else shipped[n].placed_part(),
+                       Pose(mat).to_location())
             bb = sh.bounding_box()
             assert (np.array([bb.min.X, bb.min.Y, bb.min.Z]) >= lo - 0.05).all(), (n, lo)
             assert (np.array([bb.max.X, bb.max.Y, bb.max.Z]) <= hi + 0.05).all(), (n, hi)
             shapes.append(sh)
-        meshes = [(np.asarray(q, float), np.asarray(i).reshape(-1, 3))
-                  for q, i, _ in tessellate_many(shapes, 0.5, 0.5) if len(i)]
-        pieces.append(vp.Packed(m["key"], m["label"], meshes, 1.0,
-                                np.concatenate([q for q, _ in meshes]).mean(axis=0), 0.0))
+            kept.append(n)
+        got = [(n, (np.asarray(q, float), np.asarray(i).reshape(-1, 3)))
+               for n, (q, i, _) in zip(kept, tessellate_many(shapes, 0.5, 0.5), strict=True)
+               if len(i)]
+        meshes = [ms for _, ms in got]
+        pc = vp.Packed(m["key"], m["label"], meshes, 1.0,
+                       np.concatenate([q for q, _ in meshes]).mean(axis=0), 0.0,
+                       [n for n, _ in got])
+        host[m["key"]] = pc
+        pieces.append(pc)
     # judged on the grid the spacers were shaped on (its corner within a rounding of the
     # floor's: a spacer's faces on its cells' faces, on a grid off by a hair they would claim
     # a cell more each way)
     org = np.asarray(p["spacers"][0]["org"], float) if p["spacers"] else lo
-    judged = vp.metrics(pieces, (org, hi))
+    grid = vp.occupancy(pieces, (org, hi))
+    # (nothing rests on a gauge, a clip, the gearbox or a screw head: pack turn 3, B1)
+    judged = vp.metrics(pieces, (org, hi), grid=grid,
+                        bearless=keep_clear_cells(pieces, grid, key))
     # (a spacer is shaped to the pack's meshes; the parts tessellated again here, a curve's
     # chords lie a little otherwise: a sliver of its TPU, under SPACER_SLIVER mm^3, gives)
     assert [o for o in judged["overlaps"] if (not o["a"].startswith("spacer_")
@@ -4325,7 +4341,11 @@ def test_the_cradle_packs_in_one_box(key):
     # (and spacer) held to within PACK_SLIDE of where it goes, judged on the real shapes
     kit = p["spacers"]
     assert {q["id"] for q in pads} <= {i for d in kit for i in d["pads"]}, kit
-    assert all(d["volume_cm3"] > 0 and max(d["size_mm"]) <= 220.0 for d in kit), kit
+    # (each printed one fits the bed; the fillers, corrugated, span the carton: turn 3)
+    from spiderpig.cradle_pack import is_filler
+
+    assert all(d["volume_cm3"] > 0 and (is_filler(d) or max(d["size_mm"]) <= vp.SPACER_BED)
+               for d in kit), kit
     assert judged["restraint"]["max_slide_mm"] <= PACK_SLIDE[key], judged["restraint"]
     out = np.asarray(p["box"]["outside_mm"])
     if key in PACK_BOX:

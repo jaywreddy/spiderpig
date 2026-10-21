@@ -417,6 +417,10 @@ def judge(inp: dict, layout: dict, name: str, out: Path, draw: bool = True,
     pieces = placed_pieces(inp, layout)
     # (the box its pieces need; a packer's payload, its own box, its spacers inside it)
     said = inside_of(layout)
+    if said is not None and layout.get("spacers"):
+        # (on the grid its spacers were shaped on: the payload's floor is rounded, and a
+        # spacer's faces a hair off its cells' would claim a cell more each way)
+        said = (np.asarray(layout["spacers"][0]["org"], float), said[1])
     need = vp.box_of(pieces)
     fits = said is not None and bool((need[0] >= said[0] - vp.CELL).all()
                                      and (need[1] <= said[1] + vp.CELL).all())

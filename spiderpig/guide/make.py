@@ -231,11 +231,10 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
             continue
         if st.scene is not None and st.scene.pose == "box" and kit:     # (the pack's)
             from spiderpig.guide import scenes
-            from spiderpig.guide.render import HIGHLIGHT
 
             got, extra = scenes.box_rows(st.scene, mech, config, kit,
                                          lambda n: _fill(fab_of.get(n)), CONTEXT_FILL,
-                                         HIGHLIGHT)
+                                         SPACER_FILL)
             arrays = {f"{n}|{k}": a for n, (q, i) in extra.items()
                       for k, a in (("p", np.asarray(q, np.float64)),
                                    ("i", np.asarray(i, np.int64)))}
@@ -307,10 +306,14 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
             meta = json.loads((img / f"{h}.json").read_text())
             best: dict[str, Mark] = {}
             mine = set(st.adds)         # (a scene's highlights are no new parts: no tags)
+            boxed = st.scene is not None and st.scene.pose == "box"
             for pid, (x, y, n) in meta["marks"].items():
-                if st.scene is not None and pid not in mine:
+                if boxed and pid.startswith("spacer_"):     # (a pack's spacer: its number)
+                    lab = spacer_tag(pid, kit)
+                elif st.scene is not None and pid not in mine:
                     continue
-                lab = tags.get(body_of(pid))
+                else:
+                    lab = tags.get(body_of(pid))
                 if lab is not None and (lab not in best or n > best[lab].n):
                     best[lab] = Mark(x, y, n)
             # a part nothing shows of (under another): its tag says so
@@ -381,6 +384,18 @@ def box_kit(config, mech, store) -> dict | None:
     from spiderpig.cradle_pack import pack_kit
 
     return pack_kit(config, store)
+
+
+SPACER_FILL = (40, 150, 140)
+"""A pack step's own spacers in its picture (teal: apart from the pieces' highlight)."""
+
+
+def spacer_tag(key: str, kit: dict | None) -> str:
+    """A pack spacer's bubble in a box step's picture: ``S7`` (printed), ``F1`` (a filler)."""
+    from spiderpig.cradle_pack import is_filler
+
+    d = next((d for d in (kit or {}).get("spacers") or [] if d["key"] == key), {})
+    return ("F" if is_filler(d) else "S") + key.removeprefix("spacer_").lstrip("0")
 
 
 def spacer_prints(kit: dict | None) -> list:

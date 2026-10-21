@@ -825,6 +825,10 @@ def over_hull(cols: np.ndarray, point) -> bool:
 
 PAD_MAX = 60.0
 """mm: the deepest gap under a piece a pad fills (a block cut or printed to fit)."""
+PAD_TALL = 120.0
+"""mm: the deepest a pad fills where none under :data:`PAD_MAX` would hold the piece (pack
+turn 3: A's drive panel, nothing bearing on its gearbox, stands 64 mm over the passive
+panel on its outer plate)."""
 PAD_SIDE = 15.0
 """mm: a pad's footprint, square, before it is cut to the piece over it (:func:`measure_pads`)."""
 PAD_MERGE = 8
@@ -879,7 +883,6 @@ def support(xz: np.ndarray, gap: np.ndarray, owner: np.ndarray, names: Sequence[
     :data:`PAD_SIDE` square centred on them, as tall as the least gap of the padded columns
     under it (a block fits under the lowest), standing on what is under the tightest."""
     settle = round(SETTLE / cell)
-    padmax = PAD_MAX / cell
 
     def on(sel: np.ndarray) -> tuple[str, ...]:
         return tuple(sorted({"floor" if o < 0 else names[int(o)]
@@ -888,9 +891,12 @@ def support(xz: np.ndarray, gap: np.ndarray, owner: np.ndarray, names: Sequence[
     direct = gap <= settle
     if over_hull(xz[direct], com):
         return Support("direct", on(direct))
-    padable = (gap > settle) & (gap <= padmax)
-    both = direct | padable
-    if not over_hull(xz[both], com):
+    for most in (PAD_MAX, PAD_TALL):     # (taller pads only where the short ones won't do)
+        padable = (gap > settle) & (gap <= most / cell)
+        both = direct | padable
+        if over_hull(xz[both], com):
+            break
+    else:
         return Support("none", on(direct))
     from scipy.spatial import ConvexHull, QhullError
 
@@ -2210,16 +2216,18 @@ class _Spacers:
         return pref if (np.asarray(over) > pref).all() else base
 
     def runs_rank(self, sp: _Spec, cols: np.ndarray) -> float:
-        """:meth:`restraint_rank` of a restraint's runs ``cols``."""
-        ny = self.shape[1]
-        under, over = [], []
-        for i, k, j0, j1 in cols.tolist():
-            if j0 >= 1 and self.occ[i, j0 - 1, k]:
-                under.append(self.rank(int(self.owner[i, j0 - 1, k])))
-            up = np.flatnonzero(self.occ[i, j1:, k])
-            over.append(self.rank(int(self.owner[i, j1 + int(up[0]), k])) if len(up) and
-                        j1 < ny else np.inf)
-        return self.restraint_rank(sp, np.asarray(under, float), np.asarray(over, float))
+        """:meth:`restraint_rank` of a restraint's runs ``cols``, as :meth:`columns` reads
+        them: each column's latest of what is under the run, and its earliest of what is
+        over it."""
+        if not len(cols):
+            return self.restraint_rank(sp, np.zeros(0), np.zeros(0))
+        ii, kk, j0, j1 = (cols[:, n] for n in range(4))
+        prof = self.occ[ii, :, kk]
+        rk = self.ranks_of(self.owner[ii, :, kk])
+        at = np.arange(self.shape[1])[None, :]
+        under = np.where(prof & (at < j0[:, None]), rk, -1.0).max(axis=1)
+        over = np.where(prof & (at >= j1[:, None]), rk, np.inf).min(axis=1)
+        return self.restraint_rank(sp, under, over)
 
     def walls_at(self) -> tuple[tuple[int, ...], tuple[int, ...]]:
         """The first and one past the last cell each way that the pieces' bounds reach into
@@ -2850,7 +2858,8 @@ def _filler(st: _Spacers, p: int, mine: np.ndarray, way: str) -> list[_Spec]:
     sl[other] = slice(w0, w1)
     sl[1] = slice(ftop, None)
     over = (st.occ | st.avoid)[tuple(sl)].any(axis=(0, 2))
-    top = ftop + int(np.argmax(over)) if over.any() else st.end[1]
+    # (a cell under what is over it: it holds the filler down, the filler doesn't carry it)
+    top = max(ftop, ftop + int(np.argmax(over)) - 1) if over.any() else st.end[1]
     seed[...] = (0, 0, min(top, st.end[1]))
     return [_Spec([rect], seed, None, st.name(p), (), (st.name(p),), "", why=f"filler {way}",
                   walls=True)]
@@ -3082,7 +3091,7 @@ def metrics(pieces: Sequence[Packed], inside: tuple[np.ndarray, np.ndarray] | No
     # each piece: its columns' bottoms and tops, what is under its bottoms (another
     # piece's nearest cell, or the floor: one cell of foam taken off the gap)
     ranges = [column_ranges(o) for o in g.occ]
-    depth = math.ceil((PAD_MAX + 2 * CLEAR) / g.cell) + 2
+    depth = math.ceil((PAD_TALL + 2 * CLEAR) / g.cell) + 2
     names = [p.key for p in pieces]
     rows = []
     rays: Rays | None = None

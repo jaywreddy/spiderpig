@@ -61,13 +61,15 @@ describe('what goes in the box', () => {
       ...data(), modules: [m('board'), m('box'), m('drive')],
       spacers: [{ key: 'spacer_02a', label: 'Spacer 2a', rank: 1, words: 'under the drive' },
                 { key: 'spacer_01a', label: 'Spacer 1a', rank: 0 },
-                { key: 'spacer_02b', label: 'Spacer 2b', rank: 1 }],
+                { key: 'spacer_02b', label: 'Spacer 2b', rank: 1 },
+                { key: 'spacer_00', label: 'Filler 0', rank: 0, why: 'filler -x' }],
     };
     const order = packOrder(d);
     expect(order.map((o) => o.label)).toEqual(
-      ['board', 'Spacer 1a', 'box', 'Spacer 2a', 'Spacer 2b', 'drive']);
-    expect(order.filter((o) => o.spacer)).toHaveLength(3);
-    expect(order[3]!.how).toBe('under the drive');
+      ['board', 'Spacer 1a', 'Filler 0', 'box', 'Spacer 2a', 'Spacer 2b', 'drive']);
+    expect(order.filter((o) => o.spacer)).toHaveLength(4);
+    expect(order.filter((o) => o.filler).map((o) => o.label)).toEqual(['Filler 0']);
+    expect(order[4]!.how).toBe('under the drive');
     expect(packOrder(data())).toEqual([]);                    // (no spacers: the pieces alone)
   });
 });

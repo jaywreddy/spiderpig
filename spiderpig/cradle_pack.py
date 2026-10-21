@@ -50,7 +50,8 @@ E-ring's pliers, not a breakdown for every trip):
    each side panel then lifts off, leaving the cradle box whole;
 5. the cradle box apart: the base stop and the light off their saddles, one cradle link
    off the tie rods (their screws), the saddles slid off the rods (their set screws), the
-   other link off. Each tie rod travels with its two screws back in its ends, each cradle
+   other link off. Each tie rod travels with its two screws back in its ends, the rods taped
+   into one bundle (pack turn 3), each cradle
    link with the loose spacers that sat over it.
 
 A side's link left hanging on one joint once its cradle link is off (B's b5 on J2) swings
@@ -338,6 +339,17 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
                               "and slide it off the tie rods with its liner.", have))
     else:
         steps.append(("Cradle links: what's left.", [f"link_{s}" for s in SIDES]))
+    if len(ties) > 1:       # taped into one bundle (packing review 2's lead A-2: pack turn 3)
+        bundle = Piece("ties", f"Tie rods ({len(ties)}), taped in a bundle", "fill")
+        for k in ties:
+            bundle.parts += out.pop(k).parts
+        bundle.moved = _bundle(ties, parts)
+        out["ties"] = bundle
+        tape = (f" Tape the {len(ties)} tie rods into one bundle, side by side two by two, a "
+                "strip of tape round it near each end.")
+        steps = [(text + (tape if any(k in ties for k in keys) else ""),
+                  list(dict.fromkeys("ties" if k in ties else k for k in keys)))
+                 for text, keys in steps]
     done = {k for _, keys in steps for k in keys}
     rest = [k for k in out if k not in done]
     if rest:
@@ -348,6 +360,34 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
             if k in out and not out[k].how:
                 out[k].how = text
     return list(out.values()), steps
+
+
+TIE_TAPE = 0.5
+"""mm between two tie rods in their taped bundle (:func:`_bundle`): the tape's."""
+
+
+def _bundle(ties: Sequence[str], parts: dict[str, PartInfo]) -> dict[str, np.ndarray]:
+    """The tie rods ``ties`` (each rod's key, its parts the rod and ``<key>_screw*``) moved
+    side by side into a bundle, two by two across their axis, centred on the first rod: each
+    part's 4 x 4 (a translation, the assembled pose's frame)."""
+    out: dict[str, np.ndarray] = {}
+    first = parts[ties[0]]
+    ax = int(np.argmax(first.hi - first.lo))                   # (the rods' axis)
+    a, b = (k for k in range(3) if k != ax)
+    d = float(max((parts[k].hi - parts[k].lo)[[a, b]].max() for k in ties)) + TIE_TAPE
+    base = (first.lo + first.hi) / 2
+    for n, k in enumerate(ties):
+        rod = parts[k]
+        c = (rod.lo + rod.hi) / 2
+        to = base.copy()
+        to[a] += (n % 2) * d
+        to[b] += (n // 2) * d
+        m = np.eye(4)
+        m[:3, 3] = to - c
+        for name in parts:
+            if name == k or name.startswith(f"{k}_screw"):
+                out[name] = m
+    return out
 
 
 def pack_t(config) -> float:
@@ -595,7 +635,7 @@ PACK_PLANS: dict[str, vp.Plan] = {
         "panel over it, the passive panel on top",
         steps=(
             vp.Step("box", down="bottom", spin=0, corner="-x-z",
-                    why="in first, standing as in use (its axis level, its saddles' open "
+                    why="standing as in use (its axis level, its saddles' open "
                         "tops up), on the board along its length, toward its -z side: 723 "
                         "mm from its cradle links' front pins to its rails' end, the box's "
                         "length"),
@@ -766,6 +806,25 @@ MESH_TOLERANCE = (0.5, 0.5)
 """The parts' tessellation for the packing (``mesh.tessellate_many``: relative, angular)."""
 
 
+def stub_shape(infos: dict[str, PartInfo]):
+    """The clutch's check stub (:data:`STUB`) where it packs, in the riser locator's pocket
+    (of the cradle's parts ``infos``, :func:`part_infos`): its bar on the floor the board's
+    feet stand on, along x, at the pocket's middle, its post up."""
+    from build123d import Location
+
+    from spiderpig.construction.handcrank import check_stub
+    from spiderpig.shapes import moved
+
+    locs = [infos[n] for n in infos if n.startswith("riser_locator_")]
+    at = (0.0, 0.0, 0.0)
+    if locs:
+        lo = np.min([i.lo for i in locs], axis=0)
+        hi = np.max([i.hi for i in locs], axis=0)
+        floor = min(infos[n].lo[1] for n in infos if _board_part(n))
+        at = ((lo[0] + hi[0]) / 2, floor, (lo[2] + hi[2]) / 2)
+    return moved(check_stub(), Location(at, (-90.0, 0.0, 0.0)))
+
+
 def gather(mech, lk, t: float = 0.0, config=None) -> dict:
     """What the packing needs of the fabricated cradle ``mech`` at crank angle ``t`` (its
     pack pose, :func:`pack_t`), with no OCCT after it (:func:`cached_input` keeps it): the
@@ -803,23 +862,9 @@ def gather(mech, lk, t: float = 0.0, config=None) -> dict:
         mesh_of[b.name] = (np.asarray(pos, np.float32).reshape(-1, 3),
                            np.asarray(idx, np.uint32).reshape(-1, 3))
     if mech.meta.get("cradle"):         # (the clutch's check stub, a printed tool: packed too)
-        from build123d import Location
-
-        from spiderpig.construction.handcrank import check_stub
         from spiderpig.hardware.mass import filament_density
-        from spiderpig.shapes import moved
 
-        # in the riser locator's pocket: its bar on the floor the board's feet stand on, along
-        # x, at the pocket's middle
-        locs = [infos[n] for n in infos if n.startswith("riser_locator_")]
-        if locs:
-            lo = np.min([i.lo for i in locs], axis=0)
-            hi = np.max([i.hi for i in locs], axis=0)
-            floor = min(infos[n].lo[1] for n in infos if _board_part(n))
-            at = ((lo[0] + hi[0]) / 2, floor, (lo[2] + hi[2]) / 2)
-        else:
-            at = (0.0, 0.0, 0.0)
-        stub = moved(check_stub(), Location(at, (-90.0, 0.0, 0.0)))
+        stub = stub_shape(infos)
         props = mass_mod.part_props(stub)
         (pos, idx, _), = tessellate_many([stub], *MESH_TOLERANCE)
         bb = stub.bounding_box()
@@ -921,6 +966,11 @@ def _items(inp: dict, pcs: list[Piece], pres: dict[str, np.ndarray] | None = Non
     com = {n: np.asarray(p["com"], float) for n, p in inp["parts"].items()}
     rigid = {n: p["rigid_with"] for n, p in inp["parts"].items()}
     moved: dict[str, np.ndarray] = {}
+    for pc in pcs:              # what a piece moves within it already (A's tie rods' bundle)
+        for n, m in pc.moved.items():
+            mesh[n] = (mesh[n][0] @ m[:3, :3].T + m[:3, 3], mesh[n][1])
+            com[n] = m[:3, :3] @ com[n] + m[:3, 3]
+            moved[n] = m
     for pc in pcs:              # each hanging link swung into its panel (:func:`tuck`)
         for body, joint in pc.hanging:
             group = [n for n in pc.parts if n == body or rigid[n] == body]
@@ -1331,10 +1381,12 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str
 
     layers = box_layers(layout)
     done: set[str] = set()
+    placed = False
     into: list[tuple[str, list[str]]] = []
     printed = [d for d in layout.get("spacers") or [] if not is_filler(d)]
     for n, layer in enumerate(layers):
         items: list[str] = []
+        placed = False
         if n == 0 and printed:
             items.append(f"Each printed spacer goes in its engraved number up, its arrow toward "
                          f"{end}, as the picture shows.")
@@ -1353,10 +1405,12 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str
                                  f"against {held}'s end.")
                 elif d.get("taped"):
                     bears = _join([part_words(n) for n in d.get("bears", ())])
+                    tape = (f", a strip of tape over it onto "
+                            f"{labels.get(d['taped'], part_words(d['taped']))}: nothing else "
+                            "holds it along there.")
                     items.append(f"{tag} on {on(d['on'])}, under where {held} comes down "
-                                 f"({bears}), a strip of tape over it onto "
-                                 f"{labels.get(d['taped'], part_words(d['taped']))}: nothing "
-                                 "else holds it along there.")
+                                 f"({bears}){tape}" if way == "support" else
+                                 f"{tag} on {on(d['on'])}, against {held}'s side{tape}")
                 elif way == "restraint +y":
                     items.append(f"{tag} on {held}, holding it down: what goes in over it "
                                  "(or the lid) comes down on it.")
@@ -1380,7 +1434,8 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str
             text = (labels[d["key"]] + (f", {where}" if where else f", {face}" if face else "")
                     + (f", on {on(d.get('on', []))}" if d.get("on") and not where else "")
                     + ".")
-            items.append("Then " + text if items else text[0].upper() + text[1:])
+            items.append("Then " + text if placed else text[0].upper() + text[1:])
+            placed = True
             if d["key"] == "base" and STUB in d.get("parts", ()):
                 items.append("Its clutch check stub in the riser locator's pocket, its post "
                              "up, a strip of tape across the pocket over it.")
