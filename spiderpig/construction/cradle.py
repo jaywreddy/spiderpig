@@ -700,16 +700,19 @@ STANDS: dict[str, Stand] = {
     # the bar at 90.5°, the triangle and the leg in front of it) and the front ones above
     # it. Nothing crosses the bay: the decanter stands under the mouth, between the bars.
     "decanter_rcm": Stand(
-        nodes={"Ff": (-110.0, rail_y(_RAIL_B)), "Fr": (386.0, rail_y(_RAIL_B)),
+        # (simplification round 2, 2026-10-21: the front foot Ff 50 mm back, from x -110, and
+        # the board's front with it, its width kept; E1 and E2 60 mm forward, from 220 and
+        # 280: the outer plate's blank 13 % smaller, the inner plate's chord 60 mm shorter)
+        nodes={"Ff": (-60.0, rail_y(_RAIL_B)), "Fr": (386.0, rail_y(_RAIL_B)),
                # on the front leg O2-Ff, a quarter and 0.6 of the way down it from O2 (O2 is
                # (-2.7, -307))
-               **{n: (-2.7 + (-110.0 + 2.7) * f, -307.0 + (rail_y(_RAIL_B) + 307.0) * f)
+               **{n: (-2.7 + (-60.0 + 2.7) * f, -307.0 + (rail_y(_RAIL_B) + 307.0) * f)
                   for n, f in (("D1", 0.25), ("D2", 0.6))},
                # (the side frames' redesign, 2026-10-20) two columns on the rail toward the
                # rear, the inner plate's bottom chord from D2 to them: a box toward the rear,
                # so the posts no longer stand on one line and the inner plate holds their ends
                # across it (DECANTER.md, "The side frames")
-               "E1": (220.0, rail_y(_RAIL_B)), "E2": (280.0, rail_y(_RAIL_B))},
+               "E1": (160.0, rail_y(_RAIL_B)), "E2": (220.0, rail_y(_RAIL_B))},
         outer=(("O1", "O2"), ("O2", "Ff"), ("O2", "O"), ("O1", "O"), ("O", "Fr"),
                ("Ff", "Fr"), ("O2", "Fr")),
         inner=(("O1", "O2"), ("O2", "D1"), ("O1", "D1"), ("D1", "D2"), ("D2", "E1"),
@@ -738,8 +741,10 @@ STANDS: dict[str, Stand] = {
         # hand crank) took 682's to 24.9°: 684; with round 2's window under the base stop as
         # well, 684's rear stood at 25.0° to the tenth: 686, 2 mm more at the rear. That bound
         # counts a full 6 L at every tilt; with the wine leaving as it pours the rear holds
-        # 28°: cradle_report.stability's "pouring")
-        base=(-160.0, 526.0),
+        # 28°: cradle_report.stability's "pouring"). Simplification round 2: its front 50 mm
+        # back with the front foot (-160 before), so the front pad keeps its carriage bolt's
+        # spacing; the rear stays (a 10 mm trim took the rear to 25.2°)
+        base=(-110.0, 526.0),
     ),
 }
 
