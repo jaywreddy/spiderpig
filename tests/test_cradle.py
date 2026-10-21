@@ -450,17 +450,17 @@ def test_a_clevis_pin_takes_up_its_stack_and_its_clip_a_gap():
     from spiderpig.config import PRODUCT_PIN_JOINTS
     from spiderpig.construction import ConstructionError
     from spiderpig.construction.pivots.clevis import CLEVIS8
+    from spiderpig.construction.pivots.rod_pin import CLIP_STEP, RODCLIP516
     from spiderpig.hardware.catalog import get
     from spiderpig.stack import GAP_MAX
-
-    from spiderpig.construction.pivots.rod_pin import CLIP_STEP, RODCLIP516
 
     assert {PRODUCT_PIN_JOINTS["decanter_rcm"][j] for j in "XY"} == {"rodclip516"}
     # the 6061 clip pin (simplification round 1): its usable length to the 0.5 mm, its
     # spacer the rest; its head the washer and the button head on its tapped end
     rod = RODCLIP516.shaft
     f = rod.take_up(13.1)
-    assert f.length == 13.5 and f.length % CLIP_STEP == 0.0
+    assert f.length == 13.5
+    assert f.length % CLIP_STEP == 0.0
     assert f.shims_lo + 13.1 + f.play == pytest.approx(13.5)
     assert rod.outer(13.1) == pytest.approx(13.5 - 13.1 + rod.item()["head_h"])
     assert rod.section().yield_mpa == 241.3

@@ -39,19 +39,18 @@ self-locking worm gear reducer instead of a servo:
   wide washer on its end over the rod. The rod rides just over the block, so the crankpin
   carries the rod's force a few millimetres off its socket (the 2026-10-10 review round 2:
   the arm had been on the key, the rod 21 mm over it, the crankpin a cantilever that long).
-* **The hand crank**: printed in PETG in two parts joined by a slip clutch (:func:`clutch`):
-  its hub is keyed on the input shaft (an M3 socket head in a printed knob through a captured
-  nut, down onto the key: it comes off by hand, :data:`HANDLE_THUMB`) and runs on as a tube out along the
-  shaft to a flange and a journal; a laser-cut 6061 seat ring (:data:`SEAT_RING`) sits keyed
+* **The hand crank**: printed in PETG in two parts joined by a slip clutch (:func:`clutch`): its
+  hub is keyed on the input shaft (an M3 socket head in a printed knob through a captured nut,
+  down onto the key: it comes off by hand, :data:`HANDLE_THUMB`) and runs on as a tube out along
+  the shaft to a flange and a journal; a laser-cut 6061 seat ring (:data:`SEAT_RING`) sits keyed
   on the flange's hex; the arm turns on the journal, three steel ball-nose spring plungers
-  (:data:`PLUNGER`) in its boss pressed onto the ring's seats (holes, each ball on a hole's
-  edge: a 30° seat), so the arm slips round the tube past the slip it is set to: 1.3 x the
-  start the user measures with the heaviest bottle in the built cradle, under a ceiling
-  (:data:`CLUTCH_SET`, :func:`clutch_ceiling`), checked on a printed stub
-  (:func:`check_stub`); the plungers start from a felt stop (:data:`SET_BACK`). The arm's
-  throw, grip and reach are the linkage's (:func:`handle_spec`): B a light-load crank, A a
-  heavy-load one (MIL-STD-1472H Figure 13), its grip a printed sleeve spinning on an M8 bolt
-  through the arm (a nyloc nut).
+  (:data:`PLUNGER`) in its boss pressed onto the ring's seats (holes, each ball on a hole's edge:
+  a 30° seat), so the arm slips round the tube past the slip it is set to: 1.3 x the start the
+  user measures with the heaviest bottle in the built cradle, under a ceiling (:data:`CLUTCH_SET`,
+  :func:`clutch_ceiling`), checked on a printed stub (:func:`check_stub`); the plungers start from
+  a felt stop (:data:`SET_BACK`). The arm's throw, grip and reach are the linkage's
+  (:func:`handle_spec`): B a light-load crank, A a heavy-load one (MIL-STD-1472H Figure 13), its
+  grip a printed sleeve spinning on an M8 bolt through the arm (a nyloc nut).
 
 The rod sweeps across the axis O once a turn (the crank-rocker's folded toggle), so nothing
 of the drive may stand at O in the rod's layer: the planner puts the rod over the block and

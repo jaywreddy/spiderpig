@@ -746,7 +746,7 @@ def _pin_most() -> float:
     """The quick-release pin's most diameter (mm): the 5/16 in cold-finished rod's nominal and
     its tolerance (:mod:`construction.pivots.rod_pin`; McMaster's 8 mm clevis pin's 7.99
     before simplification round 1)."""
-    from spiderpig.construction.pivots.rod_pin import RODCLIP516, ROD_TOL
+    from spiderpig.construction.pivots.rod_pin import ROD_TOL, RODCLIP516
 
     return RODCLIP516.shaft.d + ROD_TOL
 
