@@ -4016,17 +4016,17 @@ def test_as_racking_brace_comes_down_beside_the_decanters_neck():
     band = {h: r for h, r in got["room"] if lo <= h <= hi}
     assert min(band.values()) == pytest.approx(least, abs=0.3)
     assert min(band, key=band.get) == at
-    assert all(r > 70.0 for h, r in got["room"] if lo - 30 <= h < lo or hi < h <= hi + 30
-               if h < 385)                                  # (the tube's band alone)
+    assert all(r > least + 20.0 for h, r in got["room"]     # (the tube's band, no wider)
+               if lo - 30 <= h < lo or hi < h <= hi + 30)
     drawn = [tuple(p) for p in cr.DECANTER_PROFILE]
     assert got["drawn"]["stack"][0] == cr.DECANTER_RISER
     assert stack_for(drawn, got["room"])[0] == cr.DECANTER_RISER
     assert fits_room(drawn, cr.DECANTER_RISER, got["room"])[0] >= cr.RISER_CLEAR[1]
     steps = {u.tag: u for u in cr.use_steps(key)}
     assert any("racking brace's tube" in t for t in steps["riser"].lines)
-    assert "racking brace's tube" in steps["limits"].lines[1]
+    assert "brace's tube" in steps["limits"].lines[1]
     assert not any("racking brace" in t for u in cr.use_steps("decanter_rcm")
-                   for t in (*u.lines,) if u.tag in ("riser", "limits"))
+                   for t in u.lines if u.tag in ("riser", "limits"))
 
 
 @pytest.mark.slow

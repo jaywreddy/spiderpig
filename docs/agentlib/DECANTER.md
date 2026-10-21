@@ -2800,7 +2800,8 @@ comes down behind the decanter's neck, its lowest point 289.5 mm over the table.
 - **Lower is no longer always safer** on A: a neck that widens upward comes nearer the tube
   when it stands lower. The riser's stack had been the highest one under the highest riser
   the rule allows (`riser_stack` of `riser_for`), which on A's room named stacks that break
-  the rule (the Ultra Magnum's: an 11 mm stack, 1.8 mm too wide for the room 15 mm over the table). It is
+  the rule (the Ultra Magnum's: an 11 mm stack, 1.8 mm too wide for the room 15 mm over the
+  table; the drawn decanter's whole set, 9.2 mm off the tube at the study's point). It is
   now the highest stack the rule holds on, each checked itself (`cradle_report.stack_for`,
   the page's `liquid.ts` `bestStack`). On B's room the two agree, every vessel.
 - **The use steps say so:** the riser step names the tube and that lower isn't always
