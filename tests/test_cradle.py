@@ -1957,7 +1957,15 @@ def test_the_cradle_has_an_assembly_order(key):
     own picture; B's trip apart and back after them, a step each. B's passive side panel is
     built whole on the bench and lowered onto its cradle link, the cradle lying on its drive
     side on the riser's blocks (its M1)."""
-    from spiderpig.construction.assembly import FINISH, JOIN, STACK, UNIT, USE, assembly_steps
+    from spiderpig.construction.assembly import (
+        FINISH,
+        JOIN,
+        SHOP,
+        STACK,
+        UNIT,
+        USE,
+        assembly_steps,
+    )
     from spiderpig.fabricate import design_side, template_for
 
     cfg = BuildConfig(linkage=key, robot=False)
@@ -1966,7 +1974,21 @@ def test_the_cradle_has_an_assembly_order(key):
     steps = assembly_steps(cache.cached_product(cfg, 1.0), design)   # (fabricate's product)
     link = cr.cradle_link(cfg.lk)
     modules = key in cr.PACK_POSES
-    first = steps[0]
+    # the shop work first (simplification round 1): the arrival checks, the rods, the pins,
+    # the taps, the Carvera's birch; no part goes on in them
+    shop = [s for s in steps if s.stage == SHOP]
+    assert [s.title for s in shop] == ["Arrival checks", "Rods to length, faced",
+                                       "Pins cut to their stacks", "Drilled and tapped",
+                                       "The cleats and the riser locator, on the Carvera"]
+    assert steps[:len(shop)] == shop
+    assert not any(s.adds for s in shop)
+    words = " ".join(t for s in shop for t in s.text)
+    for w in ("0.1°", "M6", "M3", "threadlocker 222", "12.85 mm", "13.10 mm", "+ 0.3 mm",
+              "chamfer", "double-sided tape", "Tap Magic", "hard-anodized"):
+        assert w in words, w
+    assert ("at least 5.79 mm" in words) is (key == "decanter_rcm")     # B's b1 on arrival
+    assert "steel standoff" not in " ".join(t for s in steps for t in s.text)
+    first = steps[len(shop)]
     assert first.sub
     assert {"L.gearbox", "L.crank_shaft"} <= set(first.adds)
     (ties,) = [s for s in steps if f"L.{link}" in s.adds]
