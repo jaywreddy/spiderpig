@@ -639,7 +639,8 @@ PACK_PLANS: dict[str, vp.Plan] = {
             vp.Step("drive", rot=((1, 0, 0), (0, 0, -1), (0, 1, 0)), corner="+x+z",
                     why="first, its bay face down on printed spacers on the board, its outer "
                         "plate up, the gearbox up at the board's far end: the heaviest piece "
-                        "lowest, resting on its inner plate and links, never on its gearbox"),
+                        "lowest, resting on its outer plate's edge and its link b4 (packing "
+                        "review 3's settle: 59 and 41 %), never on its gearbox"),
             vp.Step("passive", rot=((0, -1, 0), (0, 0, -1), (1, 0, 0)), corner="-x-z",
                     after=("drive",),
                     why="its outer plate down over the drive panel, turned a quarter, beside "
@@ -668,7 +669,10 @@ PACK_PLANS: dict[str, vp.Plan] = {
              "down on the board under the passive, the box on top, 186 L; turn 2: the riser "
              "in the box's bay too, 158.5 L, the drive panel then over it; turn 3: the "
              "passive panel beside the box under the drive panel, 162.1 L, which rests the "
-             "drive panel on its gearbox.)"),
+             "drive panel on its gearbox.) Pack turn 4 (2026-10-21, packing review 3): the "
+             "same order, kept in the stock carton for its load path (the user's choice); "
+             "the light's clip kept clear, the hand crank under a corrugated column to the "
+             "lid, no spacer in two bodies, the redundant restraints gone."),
     "decanter_hinge": vp.Plan(
         "A: the passive panel face down on the board, the drive panel face down across it on "
         "printed spacers, the tie rods' bundle, the light, the hand crank and the front saddle "
@@ -721,7 +725,8 @@ KEEP_CLEAR: tuple[tuple[str, str], ...] = (
                        "keeper and its end screws"),
     (r"[\w.]*_(screw|bolt|washer|nut|knob|jam|jack|plunger)\w*|[\w.]*_(end|foot)washer",
      "a fastener's head, nut or washer, a knob, a thumbscrew or a plunger"),
-    (r"led", "the light"),
+    (r"led\w*", "the light and its printed clip (packing review 3's M3: ``led`` alone missed "
+                 "the clip, and the cradle box's only +z stop ran through it)"),
 )
 """The parts nothing in a pack bears on (packing review 2's B1 and M1), each a pattern of
 part names (``re.fullmatch``) and why: no piece rests on one and no printed spacer comes
@@ -1123,6 +1128,7 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
     grid = vp.occupancy(packed, (lo, hi), cell)       # (the judge's grid: its cells)
     # nothing bears on a gauge, a clip, the gearbox or a screw head (packing review 2's B1)
     bearless = keep_clear_cells(packed, grid, inp["linkage"])
+    arrow = arrow_end(packed, lo, hi)       # (where the spacers' arrows point: review 3's M1)
     judged = {r["key"]: r for r in vp.metrics(packed, (lo, hi), cell, grid=grid,
                                               bearless=bearless)["pieces"]}
     taped: dict[str, str] = {}
@@ -1154,6 +1160,8 @@ def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
                 "floor": [round(float(v), 2) for v in lo],
                 "volume_l": round(math.prod(v + 2 * WALL for v in inside) / 1e6, 1)},
         "steps": [text for text, _ in steps],
+        "arrow": arrow,
+        "top": top_parts(packed, inp["linkage"]),
         "packed_mm": [round(v - 2 * CLEAR, 1) for v in inside],    # (what's in it)
         "plan": plan.name,
         "seq": [[c.key, c.ri, c.corner] for c in layout.seq],
@@ -1278,31 +1286,38 @@ def spacer_print(d: dict) -> tuple[vp.Mesh, dict]:
     """A payload's spacer as it prints (packing review 2's M2 and M3): its cells at
     ``voxpack.LABEL_SCALE`` to the pack cell, its number and an arrow toward the carton's +x
     end engraved in the face that goes up in the box (``voxpack.engrave``), laid on the bed
-    with the least overhang (``voxpack.print_pose``); the mesh (mm, its lowest at z 0, its
-    corner at the origin) and ``{"size_mm", "down", "label"}`` (the face on the bed: ``-y``
-    its bottom; where its label is)."""
+    no tower where it can lie, with the least ceiling no bridge reaches, then the least
+    overhang (``voxpack.print_pose``); the mesh (mm, its lowest at z 0, its corner at the
+    origin) and ``{"size_mm", "down", "label", "supports", "bodies"}`` (the face on the bed:
+    ``-y`` its bottom; where its label is; whether it prints with supports on: more than
+    ``voxpack.SUPPORT_MM2`` of ceiling past a bridge's reach, packing review 3's m1; its
+    face-connected bodies, one: a slicer refuses an STL of two, review 3's M2)."""
     sp = vp.Spacer.from_json(d)
     v = sp.vox()
     k = vp.LABEL_SCALE
     fine = np.repeat(np.repeat(np.repeat(v.occ, k, 0), k, 1), k, 2)
     number = sp.key.removeprefix("spacer_").split("_")[0].lstrip("0") or "0"
     fine, where = vp.engrave(fine, number)
-    rot, down = vp.print_pose(fine)
+    rot, down = vp.print_pose(fine, v.cell / k)
     turned = vp.Vox(fine, np.zeros(3), v.cell / k).turned(rot)
+    _, far = vp.ceiling(turned.occ, v.cell / k)
     pos, tri = vp.vox_mesh(turned)
     pos = pos - pos.min(axis=0)
     return (pos, tri), {"size_mm": [round(float(x), 1) for x in pos.max(axis=0)],
-                        "down": down, "label": where}
+                        "down": down, "label": where,
+                        "supports": far * (v.cell / k) ** 2 > vp.SUPPORT_MM2,
+                        "bodies": vp._label(turned.occ)[1]}
 
 
-def spacer_stl(d: dict, path: Path) -> list[float]:
+def spacer_stl(d: dict, path: Path) -> dict:
     """A payload's spacer as a binary STL at ``path`` as it prints (:func:`spacer_print`: its
-    number engraved, laid with the least overhang); its size (x, y, z mm)."""
+    number engraved, laid as it prints best); its :func:`spacer_print` info (``size_mm``: x,
+    y, z; ``supports``)."""
     from spiderpig.mesh import write_stl
 
     (pos, tri), info = spacer_print(d)
     write_stl(path, pos, tri)
-    return info["size_mm"]
+    return info
 
 
 PART_WORDS = {"base_plate": "the board", "gearbox": "the gearbox", "frame_outer": "outer plate",
@@ -1334,10 +1349,11 @@ def part_words(name: str) -> str:
 SET_LINKS: dict[str, dict[str, str]] = {
     "decanter_rcm": {
         "drive": "Before it goes in, set what moves on it (packing review 2's M1): tape b5 to "
-                 "b3 across their paint line at J2 (b5 hangs on its one pin), and turn pins X "
-                 "and Y so each R-clip lies along its link as the picture shows: no spacer "
-                 "touches a clip (they keep a cell clear of them), but a clip standing out "
-                 "would meet a spacer.",
+                 "b3 across their paint line at J2 (b5 hangs on its one pin), and, the panel "
+                 "still outer plate down, turn pins X and Y so each R-clip lies flat along "
+                 "its link's length, not standing out from it (the picture shows the panel "
+                 "bay down, the clips under it): no spacer touches a clip (they keep a cell "
+                 "clear of them), but a clip standing out would meet a spacer.",
         "passive": "Before it goes in, set its links as on the way back: a strip of masking "
                    "tape across b3 and the inner bar at their paint line, and one across b5 "
                    "and b3 at J2 (no worm holds this side), each R-clip along its link.",
@@ -1346,9 +1362,102 @@ SET_LINKS: dict[str, dict[str, str]] = {
 """Per cradle, what is set on a panel before it goes in the box (``box_steps``): its links
 that move once the cradle link is off are taped at their paint lines, so the spacers under
 them meet them where the pack has them."""
-ARROW_END: dict[str, str] = {"decanter_rcm": "the cradle box's base stop end",
-                             "decanter_hinge": "the carton's end the picture's arrow points to"}
-"""Per cradle, the carton's +x end in words: every spacer's engraved arrow points there."""
+ARROW_MARKS: tuple[tuple[str, str], ...] = (
+    (r"riser_locator_\w+", "its riser locator"),
+    (r"base_cleat_\w+", "its cleats"),
+    (r"[LR]\.gearbox", "the drive side's gearbox"),
+    (r"base_stop_knob", "the cradle box's base stop"),
+)
+"""What the carton's +x end (every spacer's engraved arrow points there, ``voxpack.engrave``)
+is named by in the box steps (:func:`arrow_end`): each a pattern of part names
+(``re.fullmatch``) and its words. Packing review 3's M1: it had been a word per cradle, B's
+"the cradle box's base stop end", which pack turn 3's plan had turned to the other end."""
+CARTON_WHY: dict[str, str] = {
+    "decanter_rcm": ": the user's choice of 2026-10-21 (packing review 3's M6). In a stock "
+                    "carton this order and pack turn 2's (the cradle box on the board, the "
+                    "drive panel over it) bill alike, Oversized, so this one is kept for its "
+                    "load path: the heaviest piece, the drive panel, lies lowest, bay down on "
+                    "the board, where turn 2's rested it on the cradle box and the hand crank",
+}
+"""Per cradle, why ORDER.md's stock carton is the one (``hardware.shipping.ship_lines``)."""
+
+
+def kept_words(layout: dict) -> str:
+    """What the top sheet's hole is cut round (a pack payload's ``top``: :func:`top_parts`'
+    ``kept``), in words: ``the lip gauge``."""
+    return _join(list(dict.fromkeys(part_words(n) for n in
+                                    (layout.get("top") or {}).get("kept", ()))))
+
+
+TOP_REACH = CLEAR
+"""mm under the pack's highest part that the top sheet (:func:`box_steps`' last step: a
+flat sheet of a spare carton over the whole top, under the lid) may come down to."""
+
+
+def top_parts(packed: Sequence[vp.Packed], linkage: str = "") -> dict:
+    """The parts the top sheet lies on (``packed``: the pieces where they go): those whose
+    tops lie within :data:`TOP_REACH` of the highest. ``kept``: those nothing may bear on
+    (:func:`keep_clear`), a hole cut round each (packing review 3's m2: B's lip gauge stands
+    1 mm over link b6's edge, the cradle box's highest point, and had been its only stop
+    against the lid); ``bears``: the rest, what the lid presses down through the sheet;
+    ``mm``: how far each part's top lies under the highest (a part's, its name -> mm)."""
+    tops = [(float(np.asarray(q, float)[:, 1].max()), n)
+            for pc in packed for n, (q, _) in zip(pc.parts, pc.meshes, strict=False)]
+    if not tops:
+        return {"kept": [], "bears": [], "mm": {}}
+    best = max(t for t, _ in tops)
+    near = sorted((n for t, n in tops if t >= best - TOP_REACH),
+                  key=lambda n: -max(t for t, m in tops if m == n))
+    mm = {n: round(best - max(t for t, m in tops if m == n), 1) for n in near}
+    return {"kept": [n for n in near if keep_clear(n, linkage)],
+            "bears": [n for n in near if not keep_clear(n, linkage)], "mm": mm}
+
+
+ARROW_SIDE = 1.0 / 3.0
+"""How far off the box's middle along x (a fraction of its half-length) a landmark's middle
+lies to name an end (:func:`arrow_end`)."""
+
+
+def arrow_end(packed: Sequence[vp.Packed], lo, hi) -> dict:
+    """The carton's +x end in words from where the pieces lie (``packed``, in the order they
+    go in: :func:`module_packed`; the box's inside ``lo`` .. ``hi``), by what is in the
+    carton when the first spacer goes in: the first piece's landmark (:data:`ARROW_MARKS`:
+    the board's riser locator) farthest off the middle, at least :data:`ARROW_SIDE` of the
+    half-length ("the board's end away from its riser locator", or "with" it); then the first
+    later piece's landmark at the +x end, what goes there ("where the drive side's gearbox
+    goes"). ``{"words", "toward": its parts at +x, "away": at -x}`` (the pack test checks
+    they lie so); "the carton's +x end" where no landmark names it."""
+    mid = (float(lo[0]) + float(hi[0])) / 2.0
+    half = max((float(hi[0]) - float(lo[0])) / 2.0, 1e-9)
+
+    def marks(pc: vp.Packed) -> list[tuple[float, str, list[str]]]:
+        out = []
+        for pat, words in ARROW_MARKS:
+            got = [(n, q) for n, (q, _) in zip(pc.parts, pc.meshes, strict=False)
+                   if re.fullmatch(pat, n)]
+            if got:
+                x = np.concatenate([np.asarray(q, float)[:, 0] for _, q in got])
+                out.append(((float(x.min() + x.max()) / 2.0 - mid) / half, words,
+                            [n for n, _ in got]))
+        return out
+
+    toward: list[str] = []
+    away: list[str] = []
+    words = ""
+    if packed:
+        first = [m for m in marks(packed[0]) if abs(m[0]) >= ARROW_SIDE]
+        if first:
+            side, what, names = max(first, key=lambda m: abs(m[0]))
+            words = f"the board's end {'with' if side > 0 else 'away from'} {what}"
+            (toward if side > 0 else away).extend(names)
+        for pc in packed[1:]:
+            later = [m for m in marks(pc) if m[0] >= ARROW_SIDE]
+            if later:
+                _, what, names = max(later, key=lambda m: m[0])
+                words += (", where " if words else "the carton's end where ") + f"{what} goes"
+                toward.extend(names)
+                break
+    return {"words": words or "the carton's +x end", "toward": toward, "away": away}
 
 
 LAYER_PIECES = ("drive", "passive")
@@ -1411,13 +1520,13 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str
     their order (:func:`in_order`), each one's spacers first, an item each (a support on what
     it stands on, under the piece it carries, its lips round what it bears on; a restraint
     against the side of the piece it holds; a cap on the piece it holds down), its number
-    up and its arrow toward :data:`ARROW_END`; a panel's links set first
+    up and its arrow toward the payload's ``arrow`` (:func:`arrow_end`); a panel's links set first
     (:data:`SET_LINKS`); then the piece, its face down and where its plan puts it (the
     step's ``why`` to its first colon). Out, the layers the other way round, each piece and
     then the spacers that went in before it."""
     plan = PACK_PLANS.get(layout.get("linkage", ""))
     sets = SET_LINKS.get(layout.get("linkage", ""), {})
-    end = ARROW_END.get(layout.get("linkage", ""), "the carton's +x end")
+    end = (layout.get("arrow") or {}).get("words") or "the carton's +x end"
     labels = {m["key"]: _the(m.get("label", m["key"])) for m in layout["modules"]}
     labels.update({d["key"]: d.get("label", d["key"]) for d in layout.get("spacers") or []})
 
@@ -1425,14 +1534,26 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str
         return _join([labels.get(o, part_words(o)) if o != "floor" else "the carton's floor"
                       for o in names])
 
+    from spiderpig.hardware.shipping import carton_of, fill_words
+
     layers = box_layers(layout)
     done: set[str] = set()
     placed = False
     into: list[tuple[str, list[str]]] = []
     printed = [d for d in layout.get("spacers") or [] if not is_filler(d)]
+    # the stock carton ORDER.md names (packing review 3's M5): its spare filled before the
+    # board goes in, a top sheet, closed and marked at the end
+    got = carton_of(layout, float(layout["mass_kg"])) if layout.get("mass_kg") else None
+    fill = fill_words(got, kept_words(layout)) if got is not None else {}
     for n, layer in enumerate(layers):
         items: list[str] = []
         placed = False
+        if n == 0 and got is not None:
+            c = got["carton"]
+            cut = (f", cut down at its {got['cut_to_in']:g} in score" if got["cut_to_in"]
+                   else "")
+            items.append(f"The carton: Uline {c.item} ({c.inside[0]:g} x {c.inside[1]:g} x "
+                         f"{c.inside[2]:g} in inside{cut}; ORDER.md). " + fill["sides"])
         if n == 0 and printed:
             items.append(f"Each printed spacer goes in its engraved number up, its arrow toward "
                          f"{end}, as the picture shows.")
@@ -1442,6 +1563,14 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str
                 held = labels.get(d["under"], part_words(d["under"]))
                 way = d.get("why", "support")
                 tag = d["label"]
+                if way == "filler +y":
+                    w = d["size_mm"]
+                    items.append(f"{tag}: a spare carton folded into a tube {w[0]:.0f} x "
+                                 f"{w[2]:.0f} mm, cut to stand from {held}'s top to the "
+                                 f"carton's top edge (about {w[1]:.0f} mm), stood on {held}, "
+                                 "its foot taped to it: the lid holds it down, and it holds "
+                                 f"{held} down (tape alone doesn't).")
+                    continue
                 if way.startswith("filler"):
                     w = d["size_mm"]
                     thick, wide = (w[0], w[2]) if way[-1] == "x" else (w[2], w[0])
@@ -1449,6 +1578,7 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str
                                  f"{wide:.0f} mm long, {w[1]:.0f} mm tall and {thick:.0f} mm "
                                  f"thick, taped, stood on its edge on the carton's floor "
                                  f"against {held}'s end.")
+                    continue
                 bears = _join([part_words(n) for n in d.get("bears", ())]) or "its plates"
                 tape = (f", a strip of tape over it onto "
                         f"{labels.get(d['taped'], part_words(d['taped']))}: nothing else "
@@ -1484,27 +1614,54 @@ def box_steps(layout: dict) -> tuple[list[tuple[str, list[str]]], list[tuple[str
                 items.append("Its clutch check stub in the riser locator's pocket, its post "
                              "up, a strip of tape across the pocket over it.")
             done.add(d["key"])
+        if n == len(layers) - 1 and got is not None:
+            items += [t for t in (fill["top"],) if t]
+            items.append("Close the flaps and tape them shut. On two opposite sides write THIS "
+                         "SIDE UP, with arrows pointing up, and CAR OR HAND-CARRY ONLY: NOT "
+                         "FOR A CARRIER (the spacers locate, they don't cushion: ORDER.md).")
         pieces = [labels[d["key"]] for k, d in layer if k == "piece"]
         title = _join([pieces[0][0].upper() + pieces[0][1:], *pieces[1:]]) if pieces else (
             "The last spacers")
         into.append((title, items))
     out: list[tuple[str, list[str]]] = []
-    for (title, _), layer in zip(reversed(into), reversed(layers), strict=True):
+    for m, ((title, _), layer) in enumerate(zip(reversed(into), reversed(layers),
+                                               strict=True)):
         items = []
+        if m == 0 and got is not None:
+            items.append("Cut the tape on the flaps, open them and lift the top sheet off.")
         run: list[str] = []
-        for kind, d in reversed(layer):     # (what went in last comes out first)
+        # (what went in last comes out first; the tape on the way in comes off first:
+        # packing review 3's M4)
+        for kind, d in reversed(layer):
             if kind == "spacer":
-                run.append(d["label"])
+                if d.get("taped"):
+                    _flush(items, run)
+                    items.append(f"{'Then peel' if items else 'Peel'} the tape off "
+                                 f"{d['label']} and lift it out.")
+                else:
+                    run.append(d["label"])
                 continue
-            if run:
-                items.append(f"{'Then ' if items else ''}{_join(run)} out.")
-            run = []
+            _flush(items, run)
+            if d.get("taped"):
+                items.append(f"{'Then peel' if items else 'Peel'} the tape off "
+                             f"{labels[d['key']]}.")
+            if d["key"] == "base" and STUB in d.get("parts", ()):
+                items.append(f"{'Then peel' if items else 'Peel'} the strip off the riser "
+                             "locator's pocket and take the clutch check stub out.")
             items.append(f"{'Then lift' if items else 'Lift'} {labels[d['key']]} straight up "
                          "and out.")
-        if run:
-            items.append(f"Then {_join(run)}.")
+        _flush(items, run)
+        if m == len(layers) - 1 and got is not None:
+            items.append("The carton's filler stays in it for the trip back.")
         out.append((title, items))
     return into, out
+
+
+def _flush(items: list[str], run: list[str]) -> None:
+    """:func:`box_steps`' way out: the spacers ``run`` (their labels) out, one item."""
+    if run:
+        items.append(f"{'Then ' if items else ''}{_join(run)} out.")
+    run.clear()
 
 
 def _the(label: str) -> str:
@@ -1534,6 +1691,13 @@ def taped_of(layout: dict) -> dict[str, str]:
     key -> that one's: ``voxpack.metrics``' ``taped``."""
     return {d["key"]: d["taped"] for d in [*layout["modules"], *(layout.get("spacers") or [])]
             if d.get("taped")}
+
+
+def riders_of(layout: dict) -> dict[str, str]:
+    """A payload's spacers that stand on one piece (or spacer) alone, each key -> that one's
+    (a cap, a corrugated column: they ride with it): ``voxpack.metrics``' ``riders``."""
+    return {d["key"]: d["on"][0] for d in layout.get("spacers") or []
+            if len(d.get("on", ())) == 1 and d["on"][0] != "floor"}
 
 
 def in_order(layout: dict) -> list[tuple[str, dict]]:

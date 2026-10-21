@@ -3571,3 +3571,109 @@ On the old fit 0d9449b was B 1,007.55 and A 847.47.
   `spiderpig/hardware/order.py`, `spiderpig/hardware/bom.py`, `spiderpig/build.py`,
   `spiderpig/tools/pack_inspect.py`, `viewer/src/decant/`, `tests/test_cradle.py`,
   `docs/agentlib/DECANTER.md`, `docs/agentlib/TESTING.md`.
+
+### 2026-10-21: the cradles' pack, turn 4: the fix-up of packing review 3 (arrows, one body a spacer, the light's clip, the tape, the stock carton; B first)
+
+- **The user's decision (2026-10-21, asked after review 3): "Stock carton, today's order".**
+  B keeps turn 3's order (the drive panel bay down on the board, the passive panel over it,
+  the cradle box standing on top: the heaviest piece lowest) and ships in the stock carton
+  ORDER.md names, Uline S-4509 cut down at its 14 in score; A in S-12613. In a stock carton
+  this order and turn 2's bill alike (Oversized, USD 211.30 at zone 5), so the order is
+  kept for its load path. The made-to-size carton (USD 51.10 less a shipment for B, 31.60
+  for A) is an option in ORDER.md, not the plan (`cradle_pack.CARTON_WHY`,
+  `hardware.shipping.ship_lines`).
+- **What changed, by review 3's finding:**
+  - **M1, the arrows:** every spacer's engraved arrow points to the carton's +x end
+    (`voxpack.engrave`); the box steps named that end "the cradle box's base stop end",
+    which turn 3's plan had turned to the other end. Now the payload names it from where the
+    pieces lie (`cradle_pack.arrow_end`, the payload's `arrow`): by the board's riser
+    locator, in the carton when the first spacer goes in, and the first later landmark at
+    +x. B: "the board's end away from its riser locator, where the drive side's gearbox
+    goes". The pack test checks the named parts lie at that end.
+  - **M2, spacer 12 in two bodies:** a spacer's restraint, trimmed of its overhang
+    (`voxpack._trimmed`), could lose the cells that touched the spacer it was merged into, so
+    one print had two bodies, the slicer refused the STL and turn 3's totals had silently
+    left it out (717 g, 31.4 h, where the 18 bodies sliced 839.5 g, 35.5 h). Now the merge
+    needs the restraint to touch the spacer (`voxpack._meet`), `_fit_bed` makes a spacer a
+    body, the build refuses an STL of more than one body (`cradle_pack.spacer_print`'s
+    `bodies`), and the pack test checks each one. The grams and hours come from a slice that
+    fails when any spacer doesn't slice (the turn's script: every printed spacer sliced by
+    BambuStudio 2.08, X1C, 0.20 mm standard, 15 % gyroid, two walls, Bambu PETG Basic, and
+    no totals unless all slice).
+  - **M3, the light's clip:** the keep-clear pattern `led` (`re.fullmatch`) missed
+    `led_clip`; now the light and its printed clip are kept clear
+    (`cradle_pack.KEEP_CLEAR`). B re-packed: no spacer within 8 mm of either; every
+    keep-clear part at least 3.00 mm from anything (the reviewer's real-mesh probe). The
+    cradle box is stopped along the floor on spacer 14 at 0.00 mm by its brace Br (+x), tie
+    rod Tr1 (-x) and its rear saddle (+z, -z, solid PETG), none through the light. A piece of
+    nothing but keep-clear parts (A's light in its clip) rests on its own
+    (`voxpack.metrics`, `Shape.of`, `_Spacers.rests`).
+  - **M4, the tape:** out of the box, "peel the tape off" comes before each taped piece or
+    spacer comes out, and the check stub's strip before the board (`cradle_pack.box_steps`);
+    back together, the drive side's b5 tape comes off on its blocks and the passive side's
+    b5 tape before it turns over, its b3 strip kept (`construction.cradle.module_steps`).
+  - **M5, the carton in the guide:** the first box step names the carton and fills its
+    spare first (B: 32 mm across one end, 23 mm along one side, the bundle's spare cartons
+    folded flat, layer on layer); the last lays a top sheet with a hole cut round the lip
+    gauge, closes and tapes the flaps and marks two sides THIS SIDE UP, with arrows, and CAR
+    OR HAND-CARRY ONLY: NOT FOR A CARRIER; out, the carton is opened first and its filler
+    kept (`hardware.shipping.carton_of`, `fill_words`, `cradle_pack.top_parts`). A: ORDER.md
+    fills S-12613's 67 mm over its parts with seven flat sheets (the board about 10 mm by its
+    page's inside and outside) under the lid, so its caps can't rise; no stock carton nearer
+    A's height is rated for its 43 lb (Uline's 30 x 24 x 10 in boxes are 200#, 40 lb).
+  - **M6:** ORDER.md's "Ship it" says the stock carton is the one, and why; the "cut and
+    taped down from a larger carton" wording is gone.
+  - **m1, towers:** `voxpack.print_pose` lays no spacer as a tower (taller than 150 mm, or
+    three times its footprint's least width) where it can lie, then takes the least ceiling
+    no 30 mm bridge reaches (`voxpack.ceiling`), then the least overhang; a print with more
+    than 50 mm^2 of such ceiling prints with supports on (`spacer_print`'s `supports`, the
+    build's print list). B's old spacer 6 (249 mm tall on 531 mm^2, 4 h 27 min) lies down,
+    1 h 52 min with supports. The test's tower is now a 6 mm bar on a foot.
+  - **m2, the gauge against the lid:** the top sheet's hole (M5): the lid presses the sheet
+    onto b6 and the riser's cap, never the gauge. A printed cap on b6 would sit in the box's
+    last part cell, past the model's lid: not made.
+  - **m3, the hand crank's tape:** the judge counts tape as no restraint up (`metrics`'
+    `taped`: a taped piece lifts on its own), and a piece more than `CAP_REACH` under the
+    lid gets a corrugated column to it (`voxpack._cap`'s `filler`, "filler +y": B's crank,
+    225 mm, a spare carton folded into a tube cut to the carton's top edge, its foot taped).
+    A cap that stands on a piece alone rides with it, so it holds nothing of it along the
+    floor (`metrics`' `riders`, `cradle_pack.riders_of`, `_Spacers.free`: the column had
+    first stood in for the crank's own restraints); restraints go in before caps.
+  - **m4, the riser:** not fixed. It still stands on its two lifts and leans on spacer 8;
+    with its cap it moves 5.4 mm (-x) and 5.6 mm (-z, onto the drive panel's FrL stud knob,
+    a part kept clear) on the real meshes.
+  - **m5, locating:** spacers 3 and 5 still stand on the bare board, placed by the
+    picture. Holes for pegs in the routed board cost USD 0.00 by the repo's birch fit (its
+    blank's sides only; not quoted live): not made. Step 51's R-clips are now set with the
+    panel outer plate down, "flat along its link's length" (the picture shows it bay down).
+  - **m6, A:** the unprinted pad is gone (the restraint that stood on another with it
+    joined it), the 3.9 g sticks are gone, and the inner plate's five restraints are three:
+    a printed restraint that holds nothing the others don't goes (`voxpack._prune`), and two
+    of one piece that share a face become one print (`voxpack._join_touching`). A 26 prints
+    to 21.
+  - **m7, a carrier:** S-4509 at 14 in inside 2 in of foam is 131.5 in of length and girth,
+    past USPS Ground Advantage Retail's 130 in (DMM 101 3.2.1, fetched 2026-10-21); ORDER.md
+    names 1.5 in, 128 in (`hardware.shipping.carrier_option`).
+  - **m8, the words:** the drive panel rests on its outer plate's edge and link b4, not on
+    its inner plate; ASSEMBLY.md's Parts table lists the pack spacers (`guide.make.markdown`);
+    the passive panel's 25.8 N is quoted as a range (four supports: the share isn't fixed).
+- **The packs** (`pack-inspect --plan default`; judged on the real meshes by the reviewer's
+  probes):
+
+  | | box, outside | litres | prints (sliced) | other | moves (most, up too) |
+  |---|---|---|---|---|---|
+  | B, turn 3 | 744 x 366 x 601 | 164.0 | 18 bodies in 17 files, 839.5 g, 35.5 h (docs: 717 g, 31.4 h) | the crank on 2 strips of tape, 226 mm to lift | 3 mm, the crank's tape counted up |
+  | **B, turn 4** | 744 x 366 x 601 | 164.0 | **15, 698.8 g, 25.4 h** | 1 corrugated column | 3 mm, tape not counted up |
+  | A, turn 3 | 700 x 252 x 607 | 106.9 | 26, 1,034 g, 46.6 h; 1 unprinted pad | | 3 mm |
+  | **A, turn 4** | 700 x 252 x 607 | 106.9 | **21, 886.6 g, 32.0 h**, no pad | 1 corrugated strip | 3 mm |
+
+- **Costs:** BOMs unchanged (the spacers print in PETG on hand; the column, the filler and
+  the top sheet are cut from the bundle's spare cartons). Cartons and postage unchanged,
+  each page fetched 2026-10-21: S-4509 USD 11.64 a box at 10, S-12613 USD 11.71; USPS
+  Ground Advantage Retail zone 5 (Notice 123, 2026-10-04): B USD 211.30 (Oversized), A
+  165.70. Options only: a made-to-size carton, B 160.20, A 134.10; a carrier's outer box
+  with 1.5 in of foam, Oversized, 211.30 plus the box (unpriced).
+- **Where:** `spiderpig/voxpack.py`, `spiderpig/cradle_pack.py`,
+  `spiderpig/construction/cradle.py`, `spiderpig/hardware/shipping.py`, `spiderpig/build.py`,
+  `spiderpig/guide/make.py`, `spiderpig/tools/pack_inspect.py`, `tests/test_cradle.py`,
+  `docs/agentlib/DECANTER.md`.

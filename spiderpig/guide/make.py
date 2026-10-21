@@ -360,7 +360,8 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
               supplies=[_supply(k) for k in sorted(consumables(mech))], tools=_tools(mech))
     pages = pdf.write(work / "ASSEMBLY.pdf", doc)
     (work / "ASSEMBLY.md").write_text(markdown(title, all_steps[:len(chosen)], types,
-                                               counts_of, mech, doc.tools))
+                                               counts_of, mech, doc.tools,
+                                               spacer_prints(kit)))
     (work / "guide.json").write_text(json.dumps({"pages": pages, "steps": len(chosen)}))
     t = lap("pdf", t)
     for name in ("ASSEMBLY.pdf", "ASSEMBLY.md"):
@@ -518,9 +519,11 @@ def _tools(mech) -> list[str]:
     return list(TOOLS)
 
 
-def markdown(title: str, steps, types, counts_of, mech, tools=()) -> str:
+def markdown(title: str, steps, types, counts_of, mech, tools=(), spacers=()) -> str:
     """The steps as text (``ASSEMBLY.md``): each step's title, sentences and parts (and the
-    tools, when the design lists them)."""
+    tools, when the design lists them), and the parts' table, the pack's printed spacers in
+    it too (``spacers``: :func:`spacer_prints`'; packing review 3's m8: the PDF listed them,
+    the table didn't)."""
     from spiderpig.labels import shim_sentences
 
     lines = [f"# Assembly: {title}", "",
@@ -543,6 +546,8 @@ def markdown(title: str, steps, types, counts_of, mech, tools=()) -> str:
         lines.append("")
     lines += ["## Parts", "", "| label | qty | part | print file |", "|---|---|---|---|"]
     lines += [f"| {t.label} | {t.qty} | {t.name} | {t.file or ''} |" for t in types]
+    lines += [f"| {s.label} | {s.qty} | pack spacer, {s.filament} ({s.grams_each:g} g) | "
+              f"{s.file} |" for s in spacers]
     return "\n".join(lines) + "\n"
 
 
