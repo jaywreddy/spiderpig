@@ -1471,7 +1471,8 @@ def test_b_stands_turns_easily_and_holds():
     for name in ("rear saddle", "bottle's base"):
         th = r["blocked_capped"]["cases"][name]["threshold"]
         assert th["within_grip_n"] > 30.0, th
-        assert th["sf_1p3"] is not None and th["sf_1p3"]["grip_n"] < th["within_grip_n"], th
+        assert th["sf_1p3"] is not None, th
+        assert th["sf_1p3"]["grip_n"] < th["within_grip_n"], th
     _holds_the_clutchs_cap(r, "decanter_rcm")
     assert not _the_drive_keeps_its_bars(r)
 
