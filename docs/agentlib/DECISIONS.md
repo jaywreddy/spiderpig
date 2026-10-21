@@ -2639,3 +2639,211 @@ plate at O. Both are fixed; `OPEN_AT_CAP` is empty and the tests assert again (A
   `spiderpig/construction/assembly.py`, `spiderpig/build.py`,
   `spiderpig/hardware/cradle_catalog.py`, `spiderpig/hardware/order.py`,
   `viewer/src/decant/`, `viewer/decant.html`, `tests/test_cradle.py`.
+
+### 2026-10-20: design review round 3's use, bottle mounting and laser-cut parts' details (both cradles, B first)
+
+The reviews: `/root/scratch/decant/review5/r3/stand_use.md` (M1, M3, M5 and its minors but
+m12; M2, M4 and m12 are the drive stream's), `mounting.md` (all of it) and `lc_parts.md` beside it
+(minors 1-8 and 10; B1, M1-M3 and minor 9 are the structure stream's). Every fix is a text,
+a printed part's shape or a swapped part at the same price, but the food-grade grease.
+
+**The stand and its use.**
+- **M1: the way back backs each stud knob off two full turns before the cradle goes down**
+  (`cradle.KNOB_BACK_TURNS`, `M5_PITCH`). Turned down onto its 4.0 mm jam nut for the trip a
+  knob leaves less than the bracket's 5.0 mm upright, and "back it off a turn" came after
+  lowering: the 12.9 kg cradle hung on four knob rims, 29 mm up and out of its cleats, every
+  trip. Two turns stand it 1.6 mm off the nut (the upright 0.6 mm clear, the knob's nut still
+  all on its 16 mm stud; three would run it off). The slots' mouths are chamfered 2 mm at 45°
+  (`cradle.SLOT_LEAD`, m11: square, they left 1.4 mm to aim four studs by eye).
+  `test_a_board_bracket_takes_a_stud_and_a_knob` holds the trip state and the chamfer.
+- **M3: B's drive side gets its studs on the bench and drops into its brackets**
+  (`cradle.studs_first`, `DROP_DRIVE`, `board_text`; the guide's own step, tag `studs_L`, before
+  the base board's). Lying on the riser's blocks as the trip lays it, the jam nuts are reached
+  under the plate; the brackets go on the board, their nuts run down to the washer; the side is
+  lowered, each jam nut into its open slot, and the knobs hold it standing. Put on standing it
+  had needed three hands (8.06 kg on a 4.75 mm edge, a hex key inside, a wrench outside) and a
+  wrench inside the 12 mm slot.
+- **M5: two people for the lifts, or one in an order that can be done**
+  (`cradle.lay_down`, `LIFTS`: 12.9 kg the cradle, 10.3 the first build's drive side and box,
+  held to `rest_poses`' masses): the gearbox's end down first, the front end held up while the
+  blocks slide in, E1's (nearer the gearbox) then O1's, their middles about 460 mm apart. The
+  NIOSH lifting equation's limit for that lift is 11.7 kg at most (the reviewer's index 1.10).
+  The blocks self-centre: a 13.5 mm bore through each block's top under a 30° cone 26 mm across
+  (`cradle.RISER_RELIEF`; m2: the 12 x 3.6 mm relief took neither the head's 12 mm washer nor
+  its 4.9 mm, so the plate stood 1.3-1.6 mm off the boss). The rest poses are rated on the
+  blocks' hulls, unchanged.
+- **m1: pin X told by where it is** (`cradle.pin_words`: "pin X, in the long link b4, nearer the
+  gearbox", from the linkage), painted beside its hole on each cradle link at the first build's
+  lay, called out in the pictures (`Scene.marks` on pin X alone); the code name
+  (`second_tip_n`) is gone from the user's words.
+- **m3:** B's "Before you use it" wiggles its brackets (it has no thumb knobs) and its carriage
+  bolts keep their brackets for good (`board_text`); DECANTER's rest-pose numbers re-measured.
+- **m4: B's foot nuts are 18-8 M6 nylon-insert nuts** (`cradle.FOOT_NUT`: Bolt Depot 4795, USD
+  0.11 as the plain 4776; a new SKU for four nuts, at the same price), snugged once to 1.5 N·m
+  with the luggage scale on the 10 mm wrench (1.25 kN, 6.3 MPa on the PLA foot, half its
+  sustained rating; a wrench's 2-5 N·m had been 8-21 MPa and nothing held the nut), and B's
+  brackets print in PETG (on hand: they ride in the car).
+- **m5:** 150 mm free behind the board and beside its drive side (`cradle.ROOM_FREE`): B's grip
+  bolt stands 103 mm past the rear edge, A's grip 102 mm past the drive-side edge, a hand on it
+  118 and 130 mm.
+- **m6:** the card's rule 4 says the pad over the rim. **m7:** the way back restores the riser
+  as stacked for the user's decanter (written on the locator's underside). **m8:** the passive
+  panel's clips come out before it turns over. **m9:** it is set down on the towel.
+- **m10: the grease is bought, food grade** (`cradle.GREASE`, the catalog's `grease_h1`: Super
+  Lube 21030, NSF H1, 3 oz, USD 11.99 at Altex): the front saddle's box guide, its thumbscrew and
+  the rear lead screw sit in the wine's path, and "any lithium or PTFE grease" had been an
+  unbought shop supply (the user's on hand is filament and threadlocker). The same tube does the
+  clutch and, wiped thin, the steel standoffs in place of light oil. Drop the line if a
+  food-grade grease is on hand.
+- **m13:** the cradle page lists the printed spacers among the pieces in the order they go in
+  (`viewer/src/decant/pack.ts`'s `packOrder`, as `cradle_pack.in_order`), and the guide's
+  decant step counts the turns the page does (`cradle.full_turns`: 14.6, it had said 15).
+- **Laser-cut parts' minor 7: the router's tabs** are sanded flush before anything is glued,
+  the cleats' faces first (SendCutSend's birch can't be detabbed; a 4.8 mm nub eats the rail's
+  0.15 mm of play): `cradle.BOARD_TEXT`. **Minor 10:** DECANTER's costs are the build's.
+- **Not mine here:** M2 (the clutch set before the box), M4 (the toggle cue) and m12 (the
+  check stub) are the drive stream's. The page's toggle bands (m13's third) go with M4.
+
+**Bottle mounting** (`/root/scratch/decant/review5/r3/mounting.md`; the reviewer traced ten real bottles from their makers' drawings and laid them in as the guide says).
+- **M1: the front V bears on the neck only to 64.5 mm behind the mouth** (`cradle.FRONT_BEAR`;
+  it bore to 79, and Saverglass's 4427 flares from 71). Behind it the block's V is relieved
+  6 mm (`cradle.FRONT_RELIEF`, a 1 mm floor kept), its liner ends there (its pegs moved to
+  mid-bearing), and the carrier's back wall is notched 6 mm deeper (`cradle.FRONT_WALL_RELIEF`).
+  The guide measures the neck 62 mm from the lip (`cradle.NECK_AT`, the bearing's end less
+  `cradle.STOP_GAP`; it said 80, where a steep Bordeaux is 2.4-2.9 mm wider in radius: set 3.9-5.1
+  mm low, its shoulder on the bare back wall and the pad short of its rim). Chosen over the
+  reviewer's text-only fix (measure at 76.5) because a shoulder inside the bearing makes the
+  setting hang on where the caliper sits (6 mm of V per 2 mm of caliper on a 4427) and a slide
+  onto the pad lifts the mouth 6 mm. The 750 ml and the impériale are now drawn from their
+  makers' drawings, traced (`cradle.SAVERGLASS_4427`, `cradle.UNIVERRE_NGBD06QFR`,
+  `BottleSize.outline`), so the clash test lays the real shoulders in at every crank angle;
+  `cradle.bottle_room` checks each listed bottle's outline fast (a 4427 slid onto the pad: 1.4 mm
+  to the relief, 3.0 to the back wall).
+- **M2: the penlight moved forward from 118 to 100 mm** (`cradle.LED_X`): univerre's 6 L impériale
+  (its shoulder r 41 at 115 mm, the model's 24.8) lay 7-10 mm into its head on the drawing; now
+  10.7 mm clear, a 4427 7.4 (6.7 before), the methuselah's neck 21. The clip, still the lowest part
+  over the decanter, rose 14 mm (394 mm over the table, 4° from rest; 380 at rest): the room grew,
+  so `tests/fixtures/cradle/riser_reference.json` is re-recorded and several vessels stand higher
+  (RIEDEL Cabernet Magnum 87 -> 96 mm, Ultra Magnum 114.2 -> 119.2; the RIEDEL Ultra keeps the
+  whole set, now 45 mm under the clip). Not 45 mm aside: that keeps the clip's height but wants a
+  clip offset over the decanter.
+- **M3: the gate's top bar, ears and pointer stand 9 mm over the rails** (`cradle.GATE_TOP`; 6),
+  the ears' roots filleted 4 mm (`cradle.EAR_FILLET`), and the gate prints on its top
+  (`cradle.print_poses`; on its face the clamped ear's root bent across its layers):
+  `cradle_report.saddles` rates the ear's root (6.1 MPa in its layers, SF 7.7, bar 4) and the
+  plate hanging from its top bar (across them, SF 19). Not the reviewer's 12 mm: the M5 x 25 lock
+  bolt runs 1.1 mm past its nut at 9 and would need an M5 x 30 at 12 (not stocked, unpriced).
+- **m1: a wet bottle's slide onto the pad is rated** (`cradle_report.gauge_slide`). A 90° V's
+  two faces press a bottle with √2 its weight, so dry TPU (over 1) never slides in ±30°; wet it
+  can only under tan 30°/√2 = 0.41, and its friction falls to TPU's wet kinetic 0.30
+  (`cradle_report.TPU_WET`: Yu et al., Polymers 17(1):30, 2024): 14 N drives it the guide's 4 mm
+  into the gauge (a 25 N/mm spring, its bar), peaking at 70 N against the 54 N static pull. The
+  gauge's rows are rated at the peak; its post is widened outboard from 13.7 to 21.7 mm
+  (`cradle.GAUGE_POST_OUT`: SF 2.88 at the static pull before, 4.26 at the peak now, bar 2.5);
+  the setting step wipes the bottle and the liners dry. Not the reviewer's TPU face with the gate
+  1 mm behind (a solid 95A face is stiffer than the gauge and would press a bottle read 1 mm long
+  with hundreds of N), nor a TPU leaf on the gate (it adds to the slide's drive).
+- **m2, m4: the pointer 4 mm wide** (2), its inner edge where it was, its outer over the rail's
+  outer face, printed in its layers with the gate on its top (a 2 x 6 mm column before: 3 N to
+  snap); the vernier notched through its inner edge to the rail's top (lines in its top read
+  across a 6 mm step: ±1 mm at 10° off square).
+- **m3: the rear knob's hub's set screw bears on a flat filed on the lead screw's top**
+  (`cradle.LEAD_FLAT`, 1 x 12 mm, a flat file: by friction on a thread crest, at the least cited
+  PETG-on-steel friction at both faces, it rated 3.3 against the bar of 4); both M3 set screws
+  threadlocked (on hand) and rated in `saddles` (the hub's 14.5 in bearing, the barrel nut's 9.8
+  by friction across its printed thread's layers); the guide checks them, the knob down.
+- **m5: "out of the sun, under 50 °C"** in the use limits, the print note and
+  `cradle.PETG_PARTS`: the bottle's PETG parts bear up to 11 MPa as long as a bottle rests, and
+  Eastman's Eastar 6763 deflects at 64 °C under 1.8 MPa ("holds its shape to 68 °C" was an
+  unloaded part's). The 24 h sag test of a rail at 23 and 50 °C stays open.
+- **m6:** the setting step tugs the gate again before the first turn when a bottle has rested;
+  creep stays unrated (`cradle_report.SUSTAINED_SF` stands for it).
+- **m7: the body measured 255 mm from the lip, where it lies on the rear V's front edge.** The
+  reviewer's fix as worded changes nothing on a body that narrows from its shoulder (its widest
+  from 255 on is at 255): univerre's 6 L (82.2 -> 79.3 mm) and 3 L lie tipped back on it, the neck
+  3.2-3.9 mm over its V, the mouth 4.2-4.4 mm high (harmless: the pad covers the rim by 15 mm, the
+  stream moves 2-3 mm). The guide's paper check under the neck finds it, and the rear V set for a
+  body 5 mm wider brings the neck down (the mouth then 1.0 and 0.8 mm high).
+- **m8: the methuselah's neck stays an estimate** (no maker's drawing found): `bottle_room` shows
+  a shoulder as full as the impériale's clears the light by 10.7 mm. Open: measure one.
+- **m9: the front V block's cheek 10 mm taller over the lip gauge's post** (`cradle.FRONT_CHEEK`,
+  between the gauge's cheeks, 8.5 mm under its bridge at full travel), against the post's face:
+  55 mm engaged, jam friction 0.69, 2.29 x the most cited for PETG on steel dry; `drawers` rates
+  both guides dry (the front held only greased: 1.87 dry). Not the reviewer's taller -z wall: it
+  meets the gauge's front cheek (from 20 mm up) at a 750's setting.
+- **m10:** the print note: the 249 mm rails want a 250 mm bed (a Prusa MK4, not a 220 mm
+  Ender-3).
+
+**The laser-cut and routed parts** (`/root/scratch/decant/review5/r3/lc_parts.md`).
+- **Minor 1: the crank block's plates are closed R10 at the neck** (`plates.CRANK_FILLET_R`,
+  `plates.arm_plate`): two 55.6° cusps had sat at the arm's most bent section on all eight
+  plates. What the closing adds is claimed inside the crank's sweep (`plates.arm_fills`, on its
+  `fixed` claim). The keyway's web stays 1.52 t, a 6061 warning at 2.5 x SendCutSend's hard
+  minimum: a hub 1.5 mm bigger (2 t) cost USD 1.20 on B. Merging files a and b (-USD 2.24) is
+  not worth the filing.
+- **Same minor: a cradle's cut-outs are read corner by corner** (`manufacture.inside_corners`)
+  against SendCutSend's published laser radius (`sheet_catalog.SCS_LASER_CORNER_R`, 0.3 mm:
+  "approximately the kerf width", its sheet-cutting guidelines fetched 2026-10-20; it had been
+  0.8). The keyways' square ends had passed on the bore's arc (`min(arcs)`); they and the seat
+  ring's hex are warnings now, harmless (a key's chamfers, a printed hex). Only a cradle
+  (`mech.meta["cradle_linkage"]`): the walkers keep 0.8 mm and the arcs-only reading, so the gate
+  is unmoved.
+- **Minor 2: the clutch's seat ring** gets its clean (entry) face marked at arrival and its six
+  seats broken alike, two turns of the deburring tool's countersink; it goes on that face out,
+  to the balls (`assembly.CRADLE_ARRIVAL`; one phrase in the hand crank's clutch step).
+- **Minor 3: SendCutSend's deburring minimum is its quoting app's 0.995 x 3 in**
+  (`sheet_catalog.SCS_DEBURR_MM`, the spec API's "min_length"). b5 stays 24 mm and is deburred
+  by hand (USD 0, no plan or pack change); the arrival step names the as-cut parts from the
+  fabrication (`assembly.as_cut_words`: b4 and b5 today; b4 drops out once the structure
+  stream's r 14 bosses land).
+- **Minor 4: pin P in the 0.250 in rod:** each 8 mm pin is tried through its holes at arrival;
+  a tight one (the rod's 8.2 mm hole can come out 7.95 at its exit face against a g6 pin's
+  7.99) is opened from that face, sandpaper on a 7 mm drill bit's shank or an 8 mm H8 reamer.
+  The hole stays 8.2 mm (8.3 would change every pin's play).
+- **Minor 5: B's frame plates' members run station to station as the hull of their discs**
+  (`cradle.TAPERED`) where a boss or a member running straight on stands at most 4.5 mm proud
+  (`cradle.STEP_MAX`, `STEP_TURN` 30°), with a 1:10 taper into a plain strip (`TAPER_RUN`): the
+  closing's S-shaped steps on its inner plate's D1-O2 leg are gone. A taper that would reach a
+  keep-out keeps its step. It follows any member widths. A's plates keep their steps
+  (cosmetic) until the pack's turn 3: tapered, they took the room A's flat pack's printed
+  spacers stood in (one grew to a 327 mm print, another was left loose 66 mm:
+  `test_the_cradle_packs_in_one_box`), and no pack plan changes in this round. Every convex
+  corner on both is rounded 3 mm (`cradle.EDGE_R`: the board cut had left a sharp point at
+  B's rear foot, on an R28 member's end).
+- **Minor 6: labels.** The guide's parts table names the crank block's plates, the seat ring,
+  the board, the locator and the cleats, and calls the birch CNC-routed (by the sheet's
+  `process`); the arrival step and ORDER.md ask for a paint-pen label on every part (the keyed
+  and clear crank plates differ by a 0.65 mm slot: the gearbox's key drops through a clear one).
+- **Minor 8 (reported only):** the fit's worst files are b1 at 0.250 in (-12.5 % on B, -11.5 % on
+  A), B's inner plate (-10.4 %) and A's outer plate (+11.5 %); the totals are within 0.3 %. The
+  reviewer's 30 quotes could refit it.
+
+**The clutch's cap, a tenth up.** The saddles' changes start a full 6 L 0.002 N·m harder at the
+input (`handcrank.DESIGN_START_NM` 2.714 on B, 2.858 on A, the report's worst start), which
+rounds the clutch's cap to 63.8 and 67.2 N·m (`config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`;
+63.7 and 67.1 before). Every part still holds it at SF 1.3 or more.
+
+
+**Costs** (the builds' BOMs): B USD 1,374.22 to 1,384.80 (+10.58: the grease +11.99; cutting
+-1.41, the crank plates' necks -1.55 and B's inner plate's tapers +0.14; the nylon-insert foot
+nuts at the plain ones' USD 0.11, a SKU more for four nuts); A USD 1,056.74 to 1,067.28 (+10.54:
+the grease +11.99, the crank plates -1.45). Without the grease line, B -1.41 and A -1.45.
+Purchases B 525.72, A 425.80; cutting B 859.08, A 641.48. Filament, threadlocker and the flat
+file are on hand.
+
+**Tests:** `test_a_board_bracket_takes_a_stud_and_a_knob` (the trip state, the chamfered
+mouth, the nylon-insert nut), `test_the_trip_and_the_first_build_read_as_a_user_does_them`,
+`test_the_base_board_is_rounded_offset_and_locates_its_riser` (the blocks' bore and cone),
+`test_every_pose_the_guide_rests_a_piece_in_is_rated` (the lifts' masses), the mounting's
+`bottle_room` and print-pose tests, the cut parts' outline, crank-plate and label tests, and the
+viewer's `packOrder`.
+
+**Where:** `spiderpig/construction/cradle.py` (the stand's, the saddles' and the frame plates'
+code and texts), `spiderpig/construction/assembly.py` (the drive side's studs stage, the
+arrival step), `spiderpig/construction/plates.py`, `spiderpig/construction/handcrank.py` (the
+crank plates' closing, one clutch phrase, `DESIGN_START_NM`), `spiderpig/config.py`,
+`spiderpig/cradle_report.py` (`saddles`, `gauge_slide`, `drawers`), `spiderpig/manufacture.py`,
+`spiderpig/hardware/sheet_catalog.py`, `spiderpig/hardware/cradle_catalog.py`
+(`m6_nylon_nut`, `grease_h1`), `spiderpig/hardware/bom.py`, `spiderpig/hardware/order.py`,
+`spiderpig/labels.py`, `viewer/src/decant/pack.ts`, `viewer/src/decant/main.ts`,
+`tests/test_cradle.py`, `docs/agentlib/DECANTER.md`.

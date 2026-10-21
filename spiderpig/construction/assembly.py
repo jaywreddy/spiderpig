@@ -221,17 +221,62 @@ def _inch(mm: float) -> str:
     return f"{mm / 25.4:g}"
 
 
+AS_CUT = "<the parts that arrive as cut>"
+"""Where :data:`CRADLE_ARRIVAL` names the parts that arrive as cut: :func:`as_cut_words`, from
+the fabrication (:func:`assembly_steps`)."""
+
 CRADLE_ARRIVAL = (
-    "First the cut parts, as they arrive. SendCutSend deburrs only parts of at least "
-    f"{_inch(SCS_DEBURR_MM[0])} x {_inch(SCS_DEBURR_MM[1])} in: narrower links come as cut "
-    "(ORDER.md's upload list marks them \"as cut\"). Deburr each by hand before it is "
-    "stacked, both faces and each pin hole's edges (a deburring tool, then fine sandpaper "
-    "on a flat block). Caliper every link at its pin holes and note it: a sheet may run "
-    "thick (SendCutSend's tables: up to +0.69 mm at 0.250 in, +0.23 mm at 0.187 in), and "
-    "the pivot pins are ordered from these figures (ORDER.md: each pin's stack + 0.3 mm).")
+    "First the cut parts, as they arrive. Write each one's label on it with the paint pen "
+    "(the first word of its file's name in ORDER.md's upload list): some differ only by a "
+    "hole or a slot, the crank block's plates among them (the gearbox's key drops through "
+    "a clear plate's slot, not through a keyed one's: those are filed to it later). "
+    f"SendCutSend deburrs only parts of at least {_inch(SCS_DEBURR_MM[0])} x "
+    f"{_inch(SCS_DEBURR_MM[1])} in: {AS_CUT} come as cut (ORDER.md's upload list marks them "
+    "\"as cut: by hand\"). Deburr each by hand before it is stacked, both faces and each "
+    "pin hole's edges (a deburring tool, then fine sandpaper on a flat block); the dross is "
+    "on the laser's exit face. The clutch's seat ring: mark its entry face (the clean one) "
+    "with the paint pen and break each of its six holes' edges on that face alike, two "
+    "turns of a countersink by hand (the deburring tool's countersink blade): those edges "
+    "are the clutch's ball seats, and it goes on that face out, to the balls. Caliper every "
+    "link at its pin holes and note it: a sheet may run thick (SendCutSend's tables: up to "
+    "+0.69 mm at 0.250 in, +0.23 mm at 0.187 in), and the pivot pins are ordered from these "
+    "figures (ORDER.md: each pin's stack + 0.3 mm). Each 8 mm pin, when it comes, must "
+    "slide through its links' holes by hand before it goes on: the 0.250 in rod's can come "
+    "out up to 0.05 mm under the pin (SendCutSend's +/-0.005 in and its taper on thick "
+    "sheet, the hole narrowest at the exit face); open a tight one from that face, fine "
+    "sandpaper rolled round a 7 mm drill bit's shank, a few twists at a time (or an 8 mm "
+    "H8 reamer by hand), until the pin slides.")
 """What a cradle's guide says of the cut parts before the first one goes on (design review
 round 2's M3 and M5: the links SendCutSend can't deburr, the sheets' thickness against the
-pins' take-up; the parts themselves are named in ORDER.md, :func:`hardware.bom.hand_deburred`)."""
+pins' take-up; round 3's laser-cut parts minors 2, 3, 4 and 6: the clutch's seats broken
+alike on the clean face, the as-cut parts named, the 0.250 in rod's 8.2 mm holes against a
+g6 pin, a label on every part). The parts that arrive as cut: :func:`as_cut_words` (and
+ORDER.md, :func:`hardware.bom.hand_deburred`)."""
+
+
+def as_cut_words(mech) -> str:
+    """The laser-cut parts of ``mech`` whose blank is under their service's deburring
+    minimum (:func:`hardware.bom.deburr_least`, the rule of
+    :func:`manufacture.deburr_issue`), by name and once each, for :data:`AS_CUT`: ``"b4
+    and b5"``; ``"the narrower links"`` when none or not known."""
+    from spiderpig.hardware.bom import deburr_least
+    from spiderpig.layout import laser_bodies, sheet_key
+    from spiderpig.manufacture import blank_of
+
+    default = str(mech.meta.get("sheet") or "")
+    names: list[str] = []
+    for b in laser_bodies(mech):
+        name = bare(b.name)
+        least = deburr_least(sheet_key(b, default)) if default or b.sheet else None
+        if name in names or least is None:
+            continue
+        w, h = blank_of(b)
+        if w < least[0] - 1e-3 or h < least[1] - 1e-3:
+            names.append(name)
+    if not names:
+        return "the narrower links"
+    names.sort()
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 CRADLE_FLAT = (
     "Lay the base board on the flat table first: SendCutSend's sheet is flat to +/- 0.030 in "
     "a foot before cutting (about 1.7 mm over the board). If it bows, its concave face goes "
@@ -259,7 +304,8 @@ CRADLE_ORDER: tuple[Stage, ...] = (
                 "in the plan's layer order, the gearbox under the plate first: it stands "
                 "the plate up off the bench while the stack goes on. The steel standoffs "
                 "(tie rods, columns, pillars, the crank's) are bare 1018 steel: wipe each "
-                "with light oil before it goes in, and keep the cradle dry. Break the "
+                "with a thin film of the food-grade grease (a rag) before it goes in, and "
+                "keep the cradle dry. Break the "
                 "laser-cut edges where hands go (a file or fine sandpaper): the bay side and "
                 "the frame plates' tops."),
     Stage(UNIT, "L", "Drive side: inner plate",
@@ -275,7 +321,8 @@ CRADLE_ORDER: tuple[Stage, ...] = (
                 "turned from the link) and feel for a bind; if it binds, sand the spacer "
                 "under the inner plate."),
     Stage(FINISH, None, "Drive side onto the base board", where="robot",
-          tags=(("base",),), strict=True,
+          tags=(("studs_L",), ("base",)), strict=True,       # (B's studs on the bench first:
+          #                                                   it drops into its brackets)
           intro=CRADLE_FLAT + " The drive side stands on the base board from here on, the "
                 "board bare: its cleats and its finish go on once both sides stand on it."),
     Stage(FINISH, None, "Hand crank", where="robot", tags=(("handle",),), strict=True,
@@ -546,6 +593,10 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
     _check(ops, {r["name"] for r in rows})
     order = ((CRADLE_MODULE_ORDER if mech.meta.get("cradle_modules") else CRADLE_ORDER)
              if cradle else ROBOT_ORDER if robot else SIDE_ORDER)
+    if cradle:
+        words = as_cut_words(mech)
+        order = tuple(replace(st, intro=st.intro.replace(AS_CUT, words)) if AS_CUT in st.intro
+                      else st for st in order)
     return _order(ops, order)
 
 

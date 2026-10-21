@@ -15,7 +15,8 @@ import type { View } from '../types';
 import { COLORS, createDiagram, type Diagram } from './diagram';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import {
-  createPack, movedModule, packFraction, snappedDelta, type Pack, type PackData, type PackModule,
+  createPack, movedModule, packFraction, packOrder, snappedDelta, type Pack, type PackData,
+  type PackModule,
 } from './pack';
 import { createPour, type RoomData } from './pour';
 import {
@@ -318,13 +319,18 @@ function renderPackInfo(d: PackData): void {
     back.push(p, list(d.reassembly));
   }
   // the pieces as they go in the box: what is under another goes in first
-  const h2 = document.createElement('h3'); h2.textContent = `In the box, from the floor up (${d.modules.length} pieces)`;
+  const order = packOrder(d);
+  const nSpacers = order.filter((m) => m.spacer).length;
+  const h2 = document.createElement('h3');
+  h2.textContent = `In the box, from the floor up (${d.modules.length} pieces`
+    + (nSpacers ? `, ${nSpacers} printed spacers)` : ')');
   const pieces = document.createElement('ol');
   pieces.className = 'pack-pieces';
-  for (const m of d.modules) {
+  for (const m of order) {
     const li = document.createElement('li');
     li.textContent = m.label;
     li.title = m.how;
+    if (m.spacer) li.className = 'pack-spacer';
     pieces.appendChild(li);
   }
   info.append(h, size, how, ol, ...back, h2, pieces, editPanel());

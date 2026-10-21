@@ -704,6 +704,14 @@ least, a jam at the most. (Printed PLA, the same paper: 0.20-0.30 dry, 0.16-0.20
 GREASED = 0.10          # a face the screw's grease has reached (review round 2, N5: under
 #                         the paper's oiled least)
 TPU_FRICTION = 0.5      # the rear lead screw's TPU 95A brake washer on aluminium and PLA, dry
+TPU_WET = 0.30          # TPU sliding wet (design review round 3, mounting m1): pure TPU in
+#                         distilled water on tin bronze, its basalt-fibre composite's 0.088
+#                         being "70.57% lower" (Yu, Jiang, Yu and Guo, "Tribological
+#                         Performance of Short Fibers Reinforced Thermoplastic Polyurethane
+#                         Composite Materials Under Water-Lubricated Condition", Polymers
+#                         17(1):30, 2024): a wet liner's least kinetic friction
+SLIDE_GAP = 4.0         # mm: the most the setting step's check leaves between the rim and
+#                         the lip gauge's pad at rest ("2 to 4 mm in front of it")
 LEAD_FRICTION = 0.08    # its bronze nut on the stainless screw, greased: the least it may be
 KNOCK_N = 50.0          # a knock sideways on the rear knob (a hand, a bottle going in)
 GRIP_BAR = 2.0          # a grip (the base stop's lock) over what it holds, at the least
@@ -950,10 +958,12 @@ def drawers() -> list[dict]:
     (:data:`construction.cradle.REAR_POST`; it had been 213 mm across the block), and the
     front block in its box, pushed at the thumbscrew 40 mm off the box's middle (it cocks
     onto the -z wall's top and the +z wall's foot, its cheek up the taller wall,
-    :data:`construction.cradle.FRONT_GUIDE`). Each against the most friction cited for its
-    faces (:data:`PETG_STEEL`): the rear boss on its plated post dry; the front block, PETG
-    in PETG (unmeasured), greased as the guide says, at the oiled most, and its dry figure
-    beside it (``mu_dry``)."""
+    :data:`construction.cradle.FRONT_GUIDE`, and over the lip gauge's post its taller cheek
+    up the post's face, :data:`construction.cradle.FRONT_CHEEK`). Each against the most
+    friction cited for its faces (:data:`PETG_STEEL`), dry: the rear boss on its plated
+    post; the front block, PETG in PETG (unmeasured; design review round 3, mounting m9:
+    greased as the guide says, until a spill washes it out), its oiled figure beside it
+    (``mu_oiled``)."""
     front = cr.SADDLES[0]
     e_rear = math.hypot(cr.REAR_LEAD[0] - cr.REAR_POST[0], cr.REAR_LEAD[1] - cr.REAR_POST[1])
     flat = cr.POST_FLATS[1]                   # (the boss rides the round between the flats)
@@ -961,18 +971,20 @@ def drawers() -> list[dict]:
     b0, b1 = cr.REAR_BOSS[1], cr.REAR_BOSS[2]
     e_front = cr.FRONT_JACK[1]
     wall, cheek, _ = cr.FRONT_GUIDE
+    tall, post_top = cr.FRONT_CHEEK, cr.GAUGE_POST[2]
     dry, oiled = PETG_STEEL["dry"][1], PETG_STEEL["oiled"][1]
     out = []
     for size in cr.SIZES:
         at = cr.setting(size)
+        bottom = front.bottom + at.front
         for guide, eng, e, mu in (
                 ("rear", min(b1 + at.rear, post1) - max(b0 + at.rear, post0), e_rear, dry),
-                ("front", min(cheek + at.front, wall) - (front.bottom + at.front), e_front,
-                 oiled)):
+                ("front", max(min(cheek + at.front, wall), min(tall + at.front, post_top))
+                 - bottom, e_front, dry)):
             jam = eng / (2.0 * e)
             out.append({"bottle": size.name, "guide": guide, "engagement_mm": round(eng, 1),
                         "offset_mm": round(e, 1), "mu_jam": round(jam, 3), "mu": mu,
-                        "mu_dry": dry, "sf": round(jam / mu, 2),
+                        "mu_oiled": oiled, "sf": round(jam / mu, 2),
                         "ok": jam / mu >= DRAWER_BAR})
     return out
 
@@ -1114,6 +1126,26 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
     tau = torque / ((r_t + r_i) / 2) / (n_t / 3 * chord * h_t)
     printed("rear lead screw's lock (the knob's teeth)", "a full 6 L hung, the thread "
             "greased (N·mm)", torque, math.sqrt(3) * tau, False, "sustained")
+    # the teeth hold the knob, the knob the hub by its hex, the hub the screw by an M3 set
+    # screw, and the barrel nut is kept from turning in its boss by another (design review
+    # round 3, mounting m3; both threadlocked, so neither backs out): the hub's bears on a
+    # flat filed on the screw (cradle.LEAD_FLAT), so the turn pushes it sideways into its
+    # pilot (in bearing); the nut's grips its round by friction at its point and the bore
+    # opposite (the least cited for printed PETG on steel at both), a seating force its
+    # self-cut PETG thread carries across its layers (its shear on half the thread's
+    # cylinder)
+    flat_d, _ = cr.LEAD_FLAT
+    hub_bite = cr.REAR_HUB[0] / 2 - cr.LEAD_SCREW[0] / 2 - 0.05
+    side = torque / (cr.LEAD_SCREW[0] / 2 - flat_d)
+    printed("rear knob's hub on the lead screw (its M3 set screw on the flat)",
+            "the greased screw's turn back under a full 6 L, hung: the set screw pushed "
+            "sideways into its pilot (N)", side, side / (3.0 * hub_bite), False, "sustained")
+    mu_set = PETG_STEEL["dry"][0]
+    nut_bite = cr.LEAD_BOSS[0] - cr.LEAD_NUT[0] / 2
+    seat = torque / (2.0 * mu_set * cr.LEAD_NUT[0] / 2)
+    printed("rear barrel nut in its boss (its M3 set screw)", "the seating force that holds "
+            "the same turn by friction (N)", seat,
+            math.sqrt(3) * seat / (math.pi * 3.0 * nut_bite * 0.5), True, "sustained")
     grip("rear lead screw's brake, the knob lifted", "any load: the TPU washer's grip per "
          "its pull back (N·mm/N), dry", back, TPU_FRICTION * r_brake, TPU_FRICTION, 3.0)
     grip("rear lead screw's brake, the knob lifted, greased", "the same, the washer's "
@@ -1145,9 +1177,35 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
     # the base stop at rest: down the axis, the gate's plate a beam between its ears
     push = w_max * s_rest + CORKSCREW_N
     span = 2 * (cr.GROOVE[0] + cr.GROOVE[1]) / 2
-    height = cr.REAR_FLANGE[1] + 6.0 - cr.GATE_BOTTOM
+    height = cr.REAR_FLANGE[1] + cr.GATE_TOP - cr.GATE_BOTTOM
     printed("base stop's gate (bending)", "a full 6 L at rest, a corkscrew's push", push,
             push * span / 4 / (height * cr.GATE_T ** 2 / 6), False, "sustained")
+    # the push lies under the rails' tops (the base's ring, or the gate's bottom edge): its
+    # lever pitches the gate about its plate's footprint on the rails, held down by the
+    # lock's bolt through the +z ear (the -z ear's key only slides), whose root carries it
+    # (design review round 3, mounting M3: unrated, and across the layers of the gate as it
+    # printed on its face; it prints on its top, the roots in its layers), and the plate
+    # hangs from its top bar, across them
+    hi = cr.REAR_FLANGE[1]
+    lever_m, lever_z, lever_d = 0.0, cr.DESIGN, 0.0
+    for z in cr.SIZES:
+        at_z = cr.setting(z)
+        under = hi + at_z.rear + min(z.r - BASE_RING, -(cr.GATE_BOTTOM + at_z.rear))
+        f = z.mass_full_kg * g * s_rest + CORKSCREW_N
+        if f * under > lever_m:
+            lever_m, lever_z, lever_d = f * under, z, under
+    held_down = lever_m / (cr.LOCK_X - cr.GATE_T / 2)     # the bolt's pull, the footprint's
+    root = held_down * (cr.LOCK_X - cr.GATE_T)            # middle the pivot
+    ear_w = cr.STOP_MARKS[0] - cr.EAR_Z
+    printed("base stop's gate's ears (their root)", f"a full {lever_z.name} at rest, a "
+            f"corkscrew's push {lever_d:.0f} mm under the rails: the lock's bolt holds the "
+            "+z ear down (N)", held_down, root / (ear_w * cr.GATE_TOP ** 2 / 6), False,
+            "sustained")
+    face = rear.apex + cr.LINER * math.sqrt(2)
+    plate_w = 2.0 * (hi - face - 1.0)                     # its width at the rails' tops
+    printed("base stop's gate (its plate hanging from its top bar)", "the same push's lever "
+            "(N·m)", lever_m / 1000, lever_m / (plate_w * cr.GATE_T ** 2 / 6), True,
+            "sustained")
     least, most = (t * 1000 / (NUT_FACTOR * 5.0) for t in LOCK_TORQUE_NM)
     mu = PETG_STEEL["dry"][0]
     grip("base stop's lock (its grip)", f"the same: its knob tight by hand "
@@ -1209,15 +1267,19 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
                 lasting)
     # the lip gauge at full tilt: the weight down the axis on its pad (on the rim's top); it
     # prints on its side (its layers across z)
-    pull = w_max * math.sin(math.radians(full_deg))
+    static = w_max * math.sin(math.radians(full_deg))
     bottom, half = cr.GAUGE_PAD
     ax0, ax1 = cr.GAUGE_FRONT
     y0, y1, bz0, bz1 = cr.GAUGE_BAR
     by0, by1, rz0, rz1 = cr.GAUGE_BRIDGE
     yp, zp = cr.GAUGE_PIVOT
     rim = (bottom + max(z.r_neck for z in cr.SIZES)) / 2
+    slide = gauge_slide(full_deg)
+    pull = max(static, slide["peak_n"])
+    gcase = ("a full 6 L at full tilt, no friction" if pull == static else
+             f"a full 6 L's slide onto it, wet, from {SLIDE_GAP:g} mm behind it")
     t = ax1 - ax0                                              # their depth along x
-    printed("lip gauge's pad (bending)", "a full 6 L at full tilt, no friction", pull,
+    printed("lip gauge's pad (bending)", gcase, pull,
             pull * (y0 - bottom) / ((2 * half) * t ** 2 / 6), False, "transient")
     printed("lip gauge's arm (bending)", "the same", pull,
             pull * -bz1 / ((y1 - y0) * t ** 2 / 6), True, "transient")
@@ -1230,7 +1292,7 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
             pull * -zp / (rh * rw_ ** 2 / 6) + pull * ((by0 + by1) / 2 - rim)
             / (rw_ * rh ** 2 / 6), False, "transient")
     px0, px1, _ = cr.GAUGE_POST
-    pl, pw = px1 - px0, -cr.FRONT_HALF - cr.CLEAR - cr.FRONT_W[0]   # along x, across
+    pl, pw = px1 - px0, -cr.FRONT_HALF - cr.CLEAR - cr.GAUGE_POST_OUT   # along x, across
     turn = pull * -zp                                          # N·mm, about the post's axis
     sigma = pull * (yp - cr.FRONT_GUIDE[0]) / (pw * pl ** 2 / 6)
     a, b = max(pl, pw), min(pl, pw)
@@ -1254,7 +1316,37 @@ def saddles(rest_deg: float = -50.0, full_deg: float = 30.0, moving_kg: float = 
     worst = min(rated, key=lambda r: r["sf"] / r["bar"])
     return {"rows": rows, "ok": all(r["ok"] for r in rows),
             "worst": {"part": worst["part"], "sf": worst["sf"], "bar": worst["bar"]},
-            "balance": balance(rest_deg, full_deg), "gauge": held}
+            "balance": balance(rest_deg, full_deg), "gauge": held, "slide": slide}
+
+
+def gauge_slide(full_deg: float = 30.0) -> dict:
+    """A wet bottle's slide onto the lip gauge's pad past level (design review round 3,
+    mounting m1), at its worst (a full 6 L methuselah): at rest it lies on the gate, its rim
+    up to :data:`SLIDE_GAP` behind the pad. Dry, its TPU liners hold it past level (over 1,
+    times √2: a 90° V's two faces press it with √2 its weight); wet, it slides once the tilt's
+    tangent passes √2 x its static friction, within the swing only under tan(full) / √2, and
+    the friction falls to its kinetic, at least :data:`TPU_WET`: their difference drives it
+    the gap into the pad, a spring (the gauge's bar bent by the push off its line, both
+    ways: the stiffest it can be, the post's twist and its bolt only soften it), which peaks
+    at the drive plus the root of its square and twice the spring's work over the gap.
+    ``peak_n`` (N) against ``static_n``, the weight down the axis at full tilt with no
+    friction counted."""
+    heavy = max(cr.SIZES, key=lambda z: z.mass_full_kg)
+    w = heavy.mass_full_kg * G
+    wedge = math.sqrt(2.0)
+    full = math.radians(full_deg)
+    mu_s = math.tan(full) / wedge
+    drive = w * math.cos(full) * wedge * max(mu_s - TPU_WET, 0.0)
+    y0, y1, bz0, bz1 = cr.GAUGE_BAR
+    length = cr.GAUGE_KNUCKLES[0][0] - cr.GAUGE_FRONT[0]
+    bw, bh = bz1 - bz0, y1 - y0
+    rim = (cr.GAUGE_PAD[0] + max(z.r_neck for z in cr.SIZES)) / 2
+    off_z, off_y = -(bz0 + bz1) / 2, (y0 + y1) / 2 - rim
+    k = E_PETG / length / (off_z ** 2 * 12 / (bh * bw ** 3) + off_y ** 2 * 12 / (bw * bh ** 3))
+    peak = drive + math.sqrt(drive ** 2 + 2.0 * k * drive * SLIDE_GAP)
+    return {"mu_static_most": round(mu_s, 3), "mu_kinetic": TPU_WET,
+            "drive_n": round(drive, 1), "gauge_n_per_mm": round(k, 1), "gap_mm": SLIDE_GAP,
+            "peak_n": round(peak, 1), "static_n": round(w * math.sin(full), 1)}
 
 
 def wheel_sweep(mech) -> list[dict]:
