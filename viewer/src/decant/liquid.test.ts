@@ -216,7 +216,7 @@ describe('the riser under a vessel', () => {
   });
 
   it('gives each listed vessel the stack Python gives it (cradle_report.riser_for)', async () => {
-    const { bestRiser, riserStack, stackWords } = await import('./liquid');
+    const { bestRiser, bestStack, riserStack, stackWords } = await import('./liquid');
     const ref = JSON.parse(riserRaw) as {
       room: [number, number][]; rule: { rim_under_mm: number; side_mm: number };
       stacks: [number, string[]][];
@@ -233,6 +233,29 @@ describe('the riser under a vessel', () => {
       const s = riserStack(r, ref.stacks);
       expect([v.key, s[0], [...s[1]]]).toEqual([v.key, v.stack![0], v.stack![1]]);
       expect(stackWords(s)).toContain(`${s[0].toFixed(0)} mm`);
+      // (B's room only narrows upward: the stack checked itself is the same one)
+      const b = bestStack(mine.profile, ref.room, ref.stacks, rule);
+      expect([v.key, b?.[0]]).toEqual([v.key, v.stack![0]]);
     }
+  });
+
+  it('checks each stack itself where a lower one is no safer (A\'s brace beside the neck)', async () => {
+    const { bestRiser, bestStack, riserFits, riserStack } = await import('./liquid');
+    // a tube at 150-170 mm over the table that leaves 32 mm round the axis: the vessel's
+    // narrow neck (24 across) may stand beside it, its body (60) above it or nowhere near;
+    // the highest riser stands the body over it, the highest stack under that the body
+    // beside it, and a lower one the neck
+    const neck: [number, number][] = [[0, 30], [40, 30], [60, 12], [80, 12], [100, 20]];
+    const room: [number, number][] = [[0, 60], [145, 60], [150, 32], [170, 32], [175, 60],
+      [300, 60], [305, 0]];
+    const stacks: [number, string[]][] = [[0, []], [30, ['a']], [60, ['b']], [90, ['c']], [150, ['d']]];
+    const r = bestRiser(neck, room, 250);
+    expect(r).not.toBeNull();
+    const old = riserStack(r, stacks);
+    expect(riserFits(neck, old[0], room)).toBe(false);       // the highest under it: too close
+    const s = bestStack(neck, room, stacks);
+    expect(s).not.toBeNull();
+    expect(riserFits(neck, s![0], room)).toBe(true);
+    expect(bestStack([[0, 70], [10, 70]], room, stacks)).toBeNull();   // too wide anywhere
   });
 });

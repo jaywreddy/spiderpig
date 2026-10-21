@@ -3442,3 +3442,78 @@ On the old fit 0d9449b was B 1,007.55 and A 847.47.
 - `spiderpig/cradle_report.py`, `cradle_structure.py`, `cradle_drive.py`, `cradle_pack.py`.
 - `tests/test_cradle.py`, `tests/test_order.py`; `docs/agentlib/DECANTER.md`.
 - The probes: `/root/.cache/spiderpig/tmp/simplify/r2-check/`, `r2-brace/`, `r2-int/`.
+
+### 2026-10-21: cradle A's racking brace (the brace study's option 1; the user's "keep fixing A")
+
+A's cradle box was open at the clutch's cap since simplification round 1
+(`cradle_report.OPEN_AT_CAP`: the rods 0.55, their screws 1.02, the cradle link 0.17). B's
+brace (round 2) can't go where B's does: A's hand crank sweeps the bay behind the rear saddle.
+The brace study (`/root/scratch/decant/simplify/r2/study_a_brace.md`) found the bay's one
+pocket clear of the hand at A's 230 mm reach and recommended option 1, built here on
+`decanting-cradle` (83509e4).
+
+- **The tube** (`construction.cradle.BRACE_TUBE`, `BRACE_SOCKET`, now per cradle;
+  `hardware.cradle_catalog.BRACE_STOCK`, `brace_tube(key, length)`).
+  - 1-3/4 in x 0.125 in 6061-T6, extruded (McMaster 9056K39, its page and family table
+    rendered 2026-10-21: a 1 ft stick USD 24.44, in the rods' cart). Speedy's 4578 (USD 13.08
+    for 12 in) is the second offer, its cart closed since round 2's P5.
+  - The stiffest tube the pocket takes: 6.9 mm to spare in its 29.1 (GJ/L 281 N·m/°). In the
+    study a 1-1/2 in x 0.125 in (171 N·m/°) let the end joints slip at the cap (1.14), and
+    the box's link held 1.17-1.30.
+  - The same 12 teeth 6 mm wide, the socket scaled (its edge 1.2 mm past the tube, the tips
+    0.3 mm inside the bore). The extruded OD's +-0.035 in stays inside the edge's 1.2 mm.
+- **Where** (`linkages.decanters.BRACE`, now per cradle; `BRACE_JOINTS`): (225, -117) in the
+  cradle's frame, mid-bay under the bottle, just under the chord Tf2-Tr1.
+  - 2 mm along the bottle's axis from the study's (223, -117). There the tube came 9.2 mm
+    from the drawn decanter's neck at rest on the whole riser, under the riser rule's 10
+    (`cradle.RISER_CLEAR`); here 10.9, the bottles as far as before (6.8 mm, the study's
+    map), the hand 14.6 mm off the rail (`hand_sweep`, 2°), the crank 17.7 off b2.
+- **A's cradle link b2** (`config.PRODUCT_CHORD_R`, `PRODUCT_BOSS_R`): Br on it with chords
+  Tf2-Br 32 mm, Br-Tr1 32 and E-Br 52, a boss r 38; E-Tr1 36 (32) and G-Tf1 32 (24), the
+  study's v1g. The plan is unchanged (11 layers, 65.88 mm, proven).
+- **The assembly** (`cradle.assembly`, `construction.assembly.CRADLE_ORDER`): A is built
+  standing on its board, where the tube would fall out of the drive link's socket, so it
+  goes in with the passive side's cradle link (the op "brace_tube"); B's stays with the
+  rods on the bench. The shop step is B's, its words per tube.
+- **The pack** (`cradle_pack.pieces`): the tube its own piece, "Racking brace (its tube)",
+  freed with the drive side's cradle link.
+- **At A's cap** (66.0 N·m, 266.4 across): the rods 6.38, their screws 15.87, the link 1.51;
+  the tube 5.10 (232 N·m of it, 87 %), its teeth 2.55; the box racks 1.36°, no joint slips
+  (`slip_x` 0.81), the faces shut (1.41). Every cap row 30° from the toggles 1.36 or more
+  (the gearbox's riser; b2 1.37, the outer plate 1.40): `OPEN_AT_CAP` is empty and the tests'
+  xfails on it are asserts. Walking the box holds at 5.44 (the link), `slip_x` 0.35.
+- **The constants**, from A's report: the start 2.763 -> 2.806 N·m (`handcrank.DESIGN_START_NM`,
+  2.8063: the report's to four places, so the drawn cap rounds as the report's), the cap
+  64.9 -> 66.0 N·m (`config.PRODUCT_CLUTCH_NM`, `PRODUCT_JAM_NM`; spun 70.2), the lift 11.9
+  -> 12.3 kg (`cradle.LIFTS`). The grip 21.6 / 24.5 N, the gearbox 1.29 x the cap, tipping
+  26.0°, the device 15.92 kg.
+- **The room under the mouth** (`cradle_report.room`; `cradle.BRACE_ROOM`). The tube comes
+  down behind the decanter's neck at rest, its lowest point 289.5 mm over the table: from
+  280 to 325 mm it leaves 32.9-54.1 mm round the axis (74-98 before).
+  - The drawn RIEDEL Ultra keeps the whole set (10.9 mm off the tube). Of the cradle page's
+    13 vessels, 3 stand as before, 5 lower (34-38 mm stacks), and 5 on none: the RIEDEL
+    Cabernet Magnum, Ultra Magnum and Veritas, the Le Chateau and the Zalto Bordeaux no
+    longer go under A's mouth.
+  - Lower is no longer always safer: a neck that widens upward comes nearer the tube. The
+    stack had been `riser_stack(riser_for(...))`, which on A's room named stacks that break
+    the rule. It is now `cradle_report.stack_for`, the highest stack the rule holds on, each
+    checked itself (the page's twin `liquid.ts` `bestStack`); on B's room the same stacks.
+  - The use steps' riser step and the limits card's item 2 say so for A (the page shows the
+    same lines); the page's riser note names the tube beside the neck.
+- **Not taken, the user's call:**
+  - a block at the bottle's base still takes the box's link to 0.60 at the cap (SF 1 at
+    +20.5 N on the grip; +4.0 before): the study's option 2 (a 300 mm reach) holds it;
+  - A's tie rods' screws in A2-70 at 4 N·m (a probe with the brace): every row holds (the
+    screws 10.65, the link 1.50) and walking the faces stay shut (2.15), but at the cap the
+    joints slip (1.22) and the faces open (0.93). A keeps class 10.9.
+
+**The BOM** (`spiderpig build`): A USD 797.67 -> 829.15 (purchases 252.25 -> 276.69,
+cutting 545.42 -> 552.46). B unchanged.
+
+**The pack:** 700 x 252 x 607 mm, 106.9 L as before (fill 12.0 %, 12.3 before); 25 spacers, 583 g (22, 709 g); the tube on the board, supported; no piece out of order (one before), but spacer 20, on the passive side's cradle link, is free to slide 393 mm (66 before): the packing turn's.
+
+**Where:** `spiderpig/linkages/decanters.py`; `spiderpig/config.py`;
+`spiderpig/construction/cradle.py`, `handcrank.py`, `assembly.py`;
+`spiderpig/hardware/cradle_catalog.py`, `bom.py`; `spiderpig/cradle_report.py`,
+`cradle_pack.py`; `viewer/src/decant/liquid.ts`, `pour.ts`; `tests/test_cradle.py`,
+`viewer/src/decant/liquid.test.ts`; the probes in `/root/.cache/spiderpig/tmp/r2-a-brace-impl/`.

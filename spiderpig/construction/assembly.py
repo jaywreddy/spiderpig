@@ -385,9 +385,11 @@ CRADLE_ORDER: tuple[Stage, ...] = (
           tags=(("saddles",), ("light",), ("base_stop",)),
           intro="The tie rods stand across the bay from the drive side's cradle link."),
     Stage(UNIT, "R", "Passive side: cradle link, on the cradle", where="robot",
-          tags=(("R.stack.cradle_link", "tie_screws"),), strict=True,
+          tags=(("brace_tube", "R.stack.cradle_link", "tie_screws"),), strict=True,
           text=(("cradle_link", "The passive side's cradle link onto the tie rods' free "
-                                "ends."),),
+                                "ends and the racking brace's tube's: its socket's teeth into "
+                                "the tube's notches as its holes go over the rods' ends (turn "
+                                "the tube a little until they meet)."),),
           intro="On the cradle, not on the bench: the tie rods hold the passive side's "
                 "cradle link."),
     Stage(STACK, "R", "Passive side: stack",

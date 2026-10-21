@@ -340,6 +340,21 @@ export function riserStack(mm: number | null, stacks: readonly Stack[]): Stack {
   return best;
 }
 
+/** The highest of ``stacks`` the vessel stands on by the rule (:func:`riserFits` at the
+ * stack's own height); ``null`` when none does, not even the table
+ * (``cradle_report.stack_for`` is its Python twin). Under a room that only narrows upward
+ * this is ``riserStack(bestRiser(...))``; A's racking brace's tube beside the decanter's neck
+ * at rest makes a lower stack no safer (a neck that widens upward comes nearer the tube), so
+ * each stack is checked itself. */
+export function bestStack(vessel: Profile, room: Room, stacks: readonly Stack[],
+  rule: RiserRule = RISER_RULE): Stack | null {
+  let best: Stack | null = null;
+  for (const s of stacks) {
+    if ((best === null || s[0] > best[0]) && riserFits(vessel, s[0], room, rule)) best = s;
+  }
+  return best;
+}
+
 /** A stack in words: ``the two lifts, the two blocks, the 5 and 4 mm plates (123 mm)``. */
 export function stackWords(s: Stack): string {
   if (!s[1].length) return 'none: on the table, in the locator';

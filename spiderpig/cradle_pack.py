@@ -226,6 +226,8 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
             put("risers", RISER_LABEL, "fill", n)
         elif m := re.fullmatch(r"((?:base_|bay_)?tie_[A-Za-z0-9]+)(?:_screw[LR])?", n):
             put(m.group(1), f"Tie rod {m.group(1).removeprefix('tie_')}", "fill", n)
+        elif re.fullmatch(r"brace_[A-Za-z0-9]+", n):     # (A's racking brace's tube)
+            put(n, "Racking brace (its tube)", "fill", n)
         elif any(n == sd or n.startswith(f"{sd}_") for sd in saddles):
             sd = next(sd for sd in saddles if n.startswith(sd))
             put(sd, f"{sd.replace('_', ' ').capitalize()} and its liner", "fill", n)
@@ -317,19 +319,22 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
                           f"{saddle.replace('_', ' ')}{stays}, the screws back in its "
                           "holes.", [key]))
     ties = [k for k in out if re.fullmatch(r"tie_[A-Za-z0-9]+", k)]
+    braces = [k for k in out if re.fullmatch(r"brace_[A-Za-z0-9]+", k)]
     if ties:
         other = next(s for s in SIDES if s != crank_side)
+        tube = " and the racking brace's tube (keyed, no screw)" if braces else ""
         for s, last in ((other, False), (crank_side, True)):     # the passive link first
             tie_screws = [n for k in ties for n in out[k].parts if n.endswith(f"_screw{s}")]
-            keys = [f"link_{s}"] + (ties if last else [])
+            keys = [f"link_{s}"] + ([*ties, *braces] if last else [])
             spacers = [n for n in out.get(f"link_{s}", Piece("", "", "")).parts
                        if n != f"{s}.{link}"]
             loose = " Its loose spacers travel with it." if spacers else ""
-            tail = " Each tie rod travels with its two screws back in its ends." if last else ""
+            tail = (" Each tie rod travels with its two screws back in its ends"
+                    + (", the brace's tube on its own." if braces else ".") if last else "")
             steps.append((f"{side_name[s].capitalize()}'s cradle link: undo its "
                           f"{len(tie_screws)} {size_of(tie_screws)} tie screws (threadlocker: a "
                           "hex key frees them; a fresh drop when it goes back together) and "
-                          f"lift it off the tie rods.{loose}{tail}", keys))
+                          f"lift it off the tie rods{tube}.{loose}{tail}", keys))
             if not last:
                 have = [sd for sd in saddles if sd in out]
                 sets = [n for sd in have for n in out[sd].parts if "set_screw" in n]
@@ -634,9 +639,10 @@ PACK_PLANS: dict[str, vp.Plan] = {
                         "lands on the passive panel's wider outer plate, 107 L)"),
         ),
         note="A's pieces: the board, the side panels, the inner plates, the cradle links, "
-             "the tie rods, the saddles, the light, the base stop, the hand crank; what the "
-             "plan leaves free (the saddles, the base stop, the links, the ties, the plates, "
-             "the light, the crank) drops into the panels' openings, the largest first."),
+             "the tie rods, the racking brace's tube (since 2026-10-21), the saddles, the "
+             "light, the base stop, the hand crank; what the plan leaves free (the saddles, "
+             "the base stop, the links, the ties, the tube, the plates, the light, the crank) "
+             "drops into the panels' openings, the largest first."),
 }
 """Each cradle's pack plan (:class:`spiderpig.voxpack.Plan`): the human packer's intent, per
 piece (its face down, where it goes, what goes in first); what a plan leaves free the packer

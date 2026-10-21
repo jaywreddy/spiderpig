@@ -24,8 +24,8 @@ import {
   adjustShift, fractionAtTurns, saddleAt, settingOffsets, turnsAt, type CradleMotion, type Setting,
 } from './motion';
 import {
-  bestRiser, bottleInside, fitsRoom, heightFor, keptFromRest, levelFor, nominalVolume, radiusAt,
-  riserFits, riserStack, stackWords, startingFill, surfaceRuns, ML, RISER_RULE, type Profile,
+  bestStack, bottleInside, fitsRoom, heightFor, keptFromRest, levelFor, nominalVolume, radiusAt,
+  riserFits, stackWords, startingFill, surfaceRuns, ML, RISER_RULE, type Profile,
   type RiserRule, type Stack,
 } from './liquid';
 import {
@@ -90,7 +90,6 @@ export interface Pour {
 }
 
 const ULLAGE_MM = 60;
-const RISER_HIGH = 250;          // the highest riser the rule is tried at
 const WINE_INSET = 0.5;          // the wine stays this far inside the glass (no z-fight)
 
 // -- geometry ---------------------------------------------------------------------------------
@@ -382,11 +381,13 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     const r = motion?.room?.rule;
     return r ? { up: r.rim_under_mm, side: r.side_mm } : RISER_RULE;
   }
-  /** The best stack for the vessel by the rule; null until the room is known. */
+  /** The best stack for the vessel by the rule (each stack checked itself: on A a lower one
+   * isn't always safer, its racking brace's tube beside the neck); the table when none fits
+   * (the badge says so); null until the room is known. */
   function defaultStack(): Stack | null {
     const room = motion?.room;
     if (!room?.room.length || !room.stacks?.length) return null;
-    return riserStack(bestRiser(vessel.profile, room.room, RISER_HIGH, ruleOf()), stacks());
+    return bestStack(vessel.profile, room.room, stacks(), ruleOf()) ?? [0, []];
   }
   function setStack(s: Stack): void {
     stack = s;
@@ -480,10 +481,18 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
         : !fit.fits ? `hit (${(-fit.margin).toFixed(0)} mm at ${fit.at.toFixed(0)} mm)`
           : `too high: ${under.toFixed(0)} mm under the clip (${rule.up} at least)`;
       const who = low?.part === 'led_clip' ? 'the light’s printed clip'
-        : (low?.part ?? 'the lowest part').replace(/_/g, ' ');
+        : low?.part?.startsWith('brace_') ? 'the racking brace’s tube'
+          : (low?.part ?? 'the lowest part').replace(/_/g, ' ');
+      // (a part lowest within the rim's reach but under the rim, A's racking brace's tube
+      // beside the neck at rest: its side clearance, not the rim's, is the rule's there)
+      const beside = low !== undefined && under < 0;
       riserNote.textContent = (h0 > 0 ? `Riser: ${stackWords(stack)}. ` : 'No riser: on the table, in the locator. ')
-        + (low ? `Its rim ${under.toFixed(0)} mm under ${who} (the lowest part over it, `
+        + (low && !beside ? `Its rim ${under.toFixed(0)} mm under ${who} (the lowest part over it, `
           + `${low.mm.toFixed(0)} mm over the table at rest; the rule: ${rule.up} mm or more). ` : '')
+        + (beside ? `${who.charAt(0).toUpperCase()}${who.slice(1)} comes down beside it at rest, `
+          + `${low.mm.toFixed(0)} mm over the table: its side ${fit.margin.toFixed(0)} mm clear of `
+          + `the box at ${fit.at.toFixed(0)} mm (the rule: ${rule.side} mm or more; a lower stack `
+          + 'isn’t always safer there). ' : '')
         + 'Set it at rest and leave it the whole pour: never raise the decanter during a pour.';
     } else {
       badge.hidden = true;

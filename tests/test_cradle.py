@@ -1783,11 +1783,13 @@ def _the_drive_keeps_its_bars(r: dict) -> list[str]:
 def _holds_the_jam(r: dict, key: str) -> None:
     """Every row of the report holds the jam at SF 1.3 or more but the parts open at the
     clutch's cap (``cradle_report.OPEN_AT_CAP``: the cradle box since simplification round
-    1, B's closed by round 2's racking brace), and nothing under it is off that list; the
+    1, B's closed by round 2's racking brace, A's by its own the same day: none open), and
+    nothing under it is off that list; the
     side frames' posts and plates among them (their redesign, 2026-10-20); the cradle box's
     tie rods, their end joints and the cradle link out of its plane among the rows (design
-    review round 2's M1, the box a 3D frame since simplification round 1), and B's racking
-    brace (its tube and its sockets' teeth), which takes most of the jam's twist; walking
+    review round 2's M1, the box a 3D frame since simplification round 1), and each cradle's
+    racking brace (its tube and its sockets' teeth), which takes most of the jam's twist;
+    walking
     every end joint closed and none slipping in twist at its least preload, the rear
     carrier's bridge riding the racking box within its bar;
     the rod as a beam-column at its far pin's offset (its minor 1); the side's stiffness
@@ -1803,7 +1805,10 @@ def _holds_the_jam(r: dict, key: str) -> None:
     assert under <= set(open_at_cap), under
     assert {"frame:outer", "frame:inner"} <= {j for j, _ in held}
     box = {x["joint"]: x for x in rows if x["kind"] == "box"}
-    braced = key == "decanter_rcm"                    # (B's racking brace: decanters.BRACE)
+    from spiderpig.linkages.decanters import BRACE
+
+    braced = key in BRACE                       # (each cradle's racking brace: decanters.BRACE)
+    assert braced
     assert set(box) == {"box:tie rods", "box:tie rod ends", "box:cradle link",
                         *(("box:brace", "box:brace teeth") if braced else ())}
     if braced:                                          # the brace takes the jam
@@ -2097,9 +2102,11 @@ def test_the_cradle_has_an_assembly_order(key):
     link = cr.cradle_link(cfg.lk)
     modules = key in cr.PACK_POSES
     # the shop work first (simplification round 1): the arrival checks, the rods, the pins,
-    # the taps, the Carvera's birch; no part goes on in them. B's racking brace's tube
-    # notched after the rods (simplification round 2)
-    braced = key == "decanter_rcm"
+    # the taps, the Carvera's birch; no part goes on in them. The racking brace's tube
+    # notched after the rods (simplification round 2: B's, then A's)
+    from spiderpig.linkages.decanters import BRACE
+
+    braced = key in BRACE
     shop = [s for s in steps if s.stage == SHOP]
     assert [s.title for s in shop] == [
         "Arrival checks", "Rods to length, faced",
@@ -2120,10 +2127,14 @@ def test_the_cradle_has_an_assembly_order(key):
     (ties,) = [s for s in steps if f"L.{link}" in s.adds]
     assert ties.sub
     assert {"tie_Tf1", "tie_Tr2"} <= set(ties.adds)
-    assert ("brace_Br" in ties.adds) is braced          # (the tube with the rods)
+    # the tube with the rods where the cradle is built lying down (B's), with the passive
+    # side's cradle link where it stands on its board (A's: it would fall out of its socket)
+    assert ("brace_Br" in ties.adds) is modules
     (passive,) = [s for s in steps if f"R.{link}" in s.adds]
     assert passive.stage == UNIT
     assert passive.side == "R"
+    assert ("brace_Br" in passive.adds) is not modules
+    assert "racking brace's tube" in " ".join(passive.text)
     (base,) = [s for s in steps if "base_plate" in s.adds]
     assert base.stage == FINISH
     # every carriage bolt goes in from under the base board, the passive side's too
@@ -2722,10 +2733,12 @@ def _box_case(key: str = "decanter_rcm", moment_nm: float = 100.0):
     pins = [j for j in lk.links[link][0] if j not in TIES and j not in ("Lc", "Ax", "Br")]
     joints = [(j, link, "other") for j in pins]
     mouth = pts[cr.mouth_name(lk)][0]
-    q = pts[pins[0]][0] - mouth
+    i = next(k for k, j in enumerate(pins)                  # (A's G is the mouth)
+             if np.linalg.norm(pts[j][0] - mouth) > 1e-6)
+    q = pts[pins[i]][0] - mouth
     f = np.array([-q[1], q[0]]) / float(q @ q) * moment_nm * 1000.0      # r x f = M
     vecs = np.zeros((1, len(joints), 2))
-    vecs[0, 0] = f
+    vecs[0, i] = f
     return joints, pts, vecs
 
 
@@ -2825,34 +2838,37 @@ def test_a_tie_rods_end_joint_slips_past_its_friction():
 
 @pytest.mark.strength
 @pytest.mark.no_fabricate
-def test_the_racking_brace_carries_the_box_in_torsion():
+@pytest.mark.parametrize(("key", "tube", "play_deg", "chords", "jam"), [
+    ("decanter_rcm", (50.8, 1.651), 0.466, (("Tr2", "Br"),), 221.0e3),
+    ("decanter_hinge", (44.45, 3.175), 0.555, (("Tf2", "Br"), ("Br", "Tr1"), ("E", "Br")),
+     266.0e3)])
+def test_the_racking_brace_carries_the_box_in_torsion(key, tube, play_deg, chords, jam):
     """The cradle box's racking brace (simplification round 2, 2026-10-21; ``decanters.BRACE``,
-    ``cradle_report.box_brace``): a 2 in x 0.065 in 6061-T6 tube across the bay, keyed into
+    ``cradle_report.box_brace``): a 6061-T6 tube across the bay (B's 2 in x 0.065 in behind
+    the rear saddle, A's 1-3/4 in x 0.125 in mid-bay since the same day's study), keyed into
     both cradle links by 12 teeth, a 3D beam in ``box_frame`` whose twist is free inside its
-    play (the notches over the teeth, 0.47° both ends) and borne past it, never slipping.
-    Held rigid out of their plane, the links fix it as a rod: its torsion and its sway at its
-    radius add to the rods'. Inside its play it carries no twist; at the jam's whole couple
-    it takes most of it, each rod's end joint holding its twist to its friction (B's A2-70
-    ends at 4 N·m, simplification round 2's P8, reach it and slip; class 10.9 ones at 6 didn't),
-    and its teeth bear under the link's yield over 1.3; the passive link in equilibrium with
-    it. B's only (A's hand crank sweeps where it would go: ``decanters.BRACE``)."""
+    play (the notches over the teeth, B 0.47°, A 0.56° both ends) and borne past it, never
+    slipping. Held rigid out of their plane, the links fix it as a rod: its torsion and its
+    sway at its radius add to the rods'. Inside its play it carries no twist; at the jam's
+    whole couple (B's 221 N·m, A's 266) it takes most of it, each rod's end joint holding its
+    twist to its friction (B's A2-70 ends at 4 N·m, simplification round 2's P8, reach it and
+    slip; A's class 10.9 ones at 6 don't), and its teeth bear under the link's yield over
+    1.3; the passive link in equilibrium with it."""
     from dataclasses import replace
 
     from spiderpig import cradle_structure as cs
     from spiderpig.cradle_report import SLIP_MU, box_brace, box_links, box_rods
 
-    key = "decanter_rcm"
-    assert box_brace(BuildConfig(linkage="decanter_hinge", robot=False)) == {}
     cfg = BuildConfig(linkage=key, robot=False)
     braces = box_brace(cfg)
     assert list(braces) == ["Br"]
     br = braces["Br"]
-    assert (br.od, br.wall, br.teeth) == (50.8, 1.651, 12)
-    assert math.degrees(br.play) == pytest.approx(0.466, abs=0.001)
+    assert (br.od, br.wall, br.teeth) == (*tube, 12)
+    assert math.degrees(br.play) == pytest.approx(play_deg, abs=0.001)
     joints, pts, _ = _box_case(key)
     L = 274.9
     links = box_links(cfg, joints, pts, L)
-    assert ("Tr2", "Br") in dict(links.segs)
+    assert set(chords) <= set(dict(links.segs))
     rods = box_rods(cfg)
     tight = {"Br": replace(br, play=0.0)}
     M = 20.0e3
@@ -2866,7 +2882,6 @@ def test_the_racking_brace_carries_the_box_in_torsion():
     assert abs(float(small.theta[0])) < br.play
     assert not small.engaged["Br"][0]
     assert float(small.twist["Br"][0]) == pytest.approx(0.0, abs=1e-6)
-    jam = 221.0e3
     for h in cs.BOX_HOLDS:
         res = cs.box_frame(links, rods, [jam], hold=h, mu=SLIP_MU, braces=braces)
         assert res.engaged["Br"][0]
@@ -3914,7 +3929,14 @@ def test_the_riser_rule_gives_each_listed_vessel_its_stack():
     import json
     from pathlib import Path
 
-    from spiderpig.cradle_report import fits_room, riser_fits, riser_for, riser_stack, riser_stacks
+    from spiderpig.cradle_report import (
+        fits_room,
+        riser_fits,
+        riser_for,
+        riser_stack,
+        riser_stacks,
+        stack_for,
+    )
 
     ref = json.loads((Path(__file__).resolve().parents[1] / RISER_REF).read_text())
     rows = ref["room"]
@@ -3923,10 +3945,11 @@ def test_the_riser_rule_gives_each_listed_vessel_its_stack():
     for v in ref["vessels"]:
         best = riser_for(v["profile"], rows)
         assert best == v["riser_max_mm"], v["key"]
-        st = riser_stack(best)
+        st = stack_for(v["profile"], rows)
         assert st is not None, v["key"]
         assert [st[0], st[1]] == v["stack"], v["key"]
         assert riser_fits(v["profile"], st[0], rows)
+        assert st == riser_stack(best)          # (B's room only narrows upward: the same)
     # the drawn decanter: the whole set, its rim 20 mm or more under the lowest part
     drawn = [list(p) for p in cr.DECANTER_PROFILE]
     most = riser_for(drawn, rows)
@@ -3939,6 +3962,71 @@ def test_the_riser_rule_gives_each_listed_vessel_its_stack():
     # the page's old rule (3 mm off the side, nothing over the rim) stood it 26 mm higher
     old = max(r for r in range(250) if fits_room(drawn, r, rows)[0] >= 3.0)
     assert old - most > 15
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_stack_is_checked_itself_where_a_lower_one_is_no_safer():
+    """``cradle_report.stack_for`` (2026-10-21, A's racking brace beside the decanter's neck at
+    rest): the highest printed stack the rule holds on, each stack checked itself. A tube at
+    150-170 mm over the table leaving 32 mm round the axis: a vessel's 24 mm neck may stand
+    beside it, its 60 mm body over it; the highest riser stands the body over it, but the
+    highest stack under that puts the body beside it (``riser_stack`` of ``riser_for``, the
+    rule broken), and a lower one the neck. ``liquid.test.ts`` holds the page's twin to a
+    like case."""
+    from spiderpig.cradle_report import riser_fits, riser_for, riser_stack, stack_for
+
+    vessel = [(0.0, 30.0), (40.0, 30.0), (60.0, 12.0), (80.0, 12.0), (100.0, 20.0)]
+    rows = [[float(h), 60.0] for h in range(0, 150, 5)] + [[150.0, 32.0], [155.0, 32.0],
+                                                             [160.0, 32.0], [165.0, 32.0],
+                                                             [170.0, 32.0]]
+    rows += [[float(h), 60.0] for h in range(175, 305, 5)]
+    best = riser_for(vessel, rows)
+    assert best is not None
+    st = stack_for(vessel, rows)
+    assert st is not None
+    assert riser_fits(vessel, st[0], rows)
+    old = riser_stack(best)                 # (the whole set, 123.2: the body beside the tube)
+    assert old is not None
+    assert old[0] > st[0]
+    assert not riser_fits(vessel, old[0], rows)
+    assert stack_for([(0.0, 70.0), (10.0, 70.0)], rows) is None        # too wide anywhere
+
+
+@pytest.mark.slow
+@pytest.mark.construction
+def test_as_racking_brace_comes_down_beside_the_decanters_neck():
+    """``cradle_report.room`` of A as fabricated (its racking brace since 2026-10-21, mid-bay:
+    ``decanters.BRACE``): the tube is the lowest part within the drawn decanter's rim's reach
+    at rest, beside its neck, and narrows the room where ``cradle.BRACE_ROOM`` says (the use
+    steps' and the limits' note); the drawn decanter keeps the whole printed set by the rule
+    (10.9 mm off the tube at its side: at the study's 2 mm nearer point, 9.2)."""
+    from spiderpig.cradle_report import fits_room, room, stack_for
+    from spiderpig.fabricate import fabricate, template_for
+
+    key = "decanter_hinge"
+    cfg = BuildConfig(linkage=key, robot=False)
+    got = room(cfg, fabricate(template_for(cfg), cfg, 0.0))
+    low = got["lowest"]
+    assert low["part"] == "brace_Br"
+    assert low["tilt_deg"] == pytest.approx(REST[key], abs=5.0)
+    rim = cr.DECANTER_RISER + cr.DECANTER_PROFILE[-1][0]
+    assert low["mm"] < rim                                  # (beside the neck, not over it)
+    lo, hi, least, at = cr.BRACE_ROOM[key]
+    band = {h: r for h, r in got["room"] if lo <= h <= hi}
+    assert min(band.values()) == pytest.approx(least, abs=0.3)
+    assert min(band, key=band.get) == at
+    assert all(r > 70.0 for h, r in got["room"] if lo - 30 <= h < lo or hi < h <= hi + 30
+               if h < 385)                                  # (the tube's band alone)
+    drawn = [tuple(p) for p in cr.DECANTER_PROFILE]
+    assert got["drawn"]["stack"][0] == cr.DECANTER_RISER
+    assert stack_for(drawn, got["room"])[0] == cr.DECANTER_RISER
+    assert fits_room(drawn, cr.DECANTER_RISER, got["room"])[0] >= cr.RISER_CLEAR[1]
+    steps = {u.tag: u for u in cr.use_steps(key)}
+    assert any("racking brace's tube" in t for t in steps["riser"].lines)
+    assert "racking brace's tube" in steps["limits"].lines[1]
+    assert not any("racking brace" in t for u in cr.use_steps("decanter_rcm")
+                   for t in (*u.lines,) if u.tag in ("riser", "limits"))
 
 
 @pytest.mark.slow
@@ -3969,12 +4057,12 @@ def test_the_room_under_the_mouth_names_its_lowest_part():
     path = Path(__file__).resolve().parents[1] / RISER_REF
     ref = json.loads(path.read_text())
     if os.environ.get("SPIDERPIG_REGEN") == "1":
-        from spiderpig.cradle_report import riser_for, riser_stack
+        from spiderpig.cradle_report import riser_for, stack_for
 
         ref.update(room=got["room"], rule=got["rule"], stacks=got["stacks"], lowest=low)
         for v in ref["vessels"]:
             v["riser_max_mm"] = riser_for(v["profile"], got["room"])
-            st = riser_stack(v["riser_max_mm"])
+            st = stack_for(v["profile"], got["room"])
             v["stack"] = [st[0], st[1]] if st else None
         path.write_text(json.dumps(ref, indent=1) + "\n")
     assert np.allclose(np.asarray(ref["room"]), np.asarray(got["room"]), atol=0.5), \

@@ -54,26 +54,40 @@ point sweeps an arc about the mouth: :mod:`construction.cradle` keeps the frame 
 them."""
 
 
-BRACE = {"Br": (412, -124)}
-"""Where the cradle box's racking brace rides on the cradle link, in the cradle's frame (as
-:data:`TIES`; simplification round 2, 2026-10-21, the user's choice of a brace for the box's
-jam): the axis of a 2 in 6061 tube across the bay behind the rear saddle and under the base
-stop's rails, keyed into each cradle link (``construction.cradle.BRACE_TUBE``). The tie rods'
-box can't carry the clutch's whole couple across the bay (their single-screw end joints slip
-in twist and the 4.75 mm links bend out of their plane); a closed tube carries it in torsion
-and puts it into each link in the link's own plane. Its front 6.6 mm behind the rear carrier,
-its top 7.6 mm under the rails; B's cradle link reaches it by a chord from ``Tr2``. B's only:
-A's hand crank (130 mm on a 230 mm reach) sweeps the bay's drive end behind the rear saddle,
-where nothing else of the box can go (the tube there came 16-28 mm inside a hand on its grip,
-the decanter stands under the box between the saddles at rest, and A's stand fills the front
-of its mouth)."""
+BRACE: dict[str, dict[str, tuple[float, float]]] = {
+    "decanter_rcm": {"Br": (412, -124)},
+    "decanter_hinge": {"Br": (225, -117)},
+}
+"""Per cradle, where the cradle box's racking brace rides on the cradle link, in the cradle's
+frame (as :data:`TIES`; simplification round 2, 2026-10-21, the user's choice of a brace for
+the box's jam): the axis of a round 6061 tube across the bay, keyed into each cradle link
+(``construction.cradle.BRACE_TUBE``). The tie rods' box can't carry the clutch's whole couple
+across the bay (their single-screw end joints slip in twist and the 4.75 mm links bend out of
+their plane); a closed tube carries it in torsion and puts it into each link in the link's own
+plane.
+- B's, a 2 in tube behind the rear saddle and under the base stop's rails: its front 6.6 mm
+  behind the rear carrier, its top 7.6 mm under the rails; B's cradle link reaches it by a
+  chord from ``Tr2``.
+- A's (2026-10-21, the brace study's option 1: ``docs/agentlib/DECANTER.md``, "A's racking
+  brace"), a 1-3/4 in tube mid-bay, under the bottle between the saddles, just under the
+  chord Tf2-Tr1: A's hand crank (130 mm on a 230 mm reach) sweeps the bay's drive end behind
+  the rear saddle, where B's goes (a tube there came 15-28 mm inside a hand on its grip), and
+  this is the bay's one pocket clear of it at that reach, the hand 140-155 mm away. 2 mm
+  along the bottle's axis from the study's (223, -117): there the tube came 9.2 mm from the
+  drawn decanter's neck at rest on its whole riser, under the riser rule's 10
+  (``construction.cradle.RISER_CLEAR``); here 10.9, the bottles as far as before (6.8 mm
+  past the tube at every size and setting, the study's map). A's cradle link reaches it by
+  chords from Tf2, Tr1 and the rod's pin E."""
+
+BRACE_JOINTS = ("Br",)
+"""The racking brace's joint names on a cradle link (:data:`BRACE`'s keys, every cradle's)."""
 
 
-def _ties(at, brace: bool = False):
-    """The tie points (and, ``brace``, the racking brace's) as steps: ``at(cx, cy)`` places
-    a cradle-frame point."""
+def _ties(at, brace: str | None = None):
+    """The tie points (and, ``brace`` a cradle's key, its racking brace's: :data:`BRACE`) as
+    steps: ``at(cx, cy)`` places a cradle-frame point."""
     return [(name, at(cx, cy))
-            for name, (cx, cy) in (*TIES.items(), *(BRACE.items() if brace else ()))]
+            for name, (cx, cy) in (*TIES.items(), *(BRACE[brace].items() if brace else ()))]
 
 
 def _two(a, b):
@@ -96,7 +110,7 @@ def decanter_hinge(p):
         ("M", crank(p["crank"])),
         ("E", circle_x_circle(P("M"), p["rod"], P("G"), p["rocker"], -1)),
         # the cradle's frame is G -> E (E on the bottle's axis)
-        *_ties(lambda cx, cy: offset(P("G"), P("E"), cx, cy)),
+        *_ties(lambda cx, cy: offset(P("G"), P("E"), cx, cy), brace="decanter_hinge"),
     ]
 
 
@@ -106,8 +120,11 @@ register(Linkage(
     params={"crank": R(8951, 100), "rod": R(26734, 100), "rocker": R(140), "gx": R(-85),
             "gy": R(285)},
     links={"b1": _two("M", "E"),
-           "b2": (("G", "E", *TIES), (("G", "E"), ("G", "Tf1"), ("Tf1", "Tf2"), ("Tf2", "E"),
-                                     ("Tf2", "Tr1"), ("E", "Tr1"), ("Tr1", "Tr2")))},
+           # (the racking brace's socket at Br, mid-bay: its chords from Tf2 and Tr1 either
+           # side, and from the rod's pin E, which carries its couple: 2026-10-21)
+           "b2": (("G", "E", *TIES, *BRACE["decanter_hinge"]),
+                  (("G", "E"), ("G", "Tf1"), ("Tf1", "Tf2"), ("Tf2", "E"), ("Tf2", "Tr1"),
+                   ("E", "Tr1"), ("Tr1", "Tr2"), ("Tf2", "Br"), ("Br", "Tr1"), ("E", "Br")))},
     labels={"b1": "connecting rod", "b2": "cradle (hinged at the mouth G; E on the bottle's axis)"},
     frame=("O", "G"), crank=("O", "M"),
     output=Output("body", "b2", "rotation", ("G", "E"), still=("G", 1e-9)),
@@ -155,7 +172,7 @@ def decanter_rcm(p):
         # axis, ``skew`` from the arm's
         ("Lc", _on_cradle(p, 0, 0)),
         ("Ax", _on_cradle(p, 100, 0)),
-        *_ties(lambda cx, cy: _on_cradle(p, cx, cy), brace=True),
+        *_ties(lambda cx, cy: _on_cradle(p, cx, cy), brace="decanter_rcm"),
     ]
 
 
@@ -210,7 +227,7 @@ register(Linkage(
            # chord X-Tf1 triangulates the front quad X-Y-Tf1-Tf2, which bent at X under the
            # jam as a four-bar frame: design review round 1, 2026-10-14)
            # (the racking brace's socket at Br on a chord from Tr2: simplification round 2)
-           "b6": (("X", "Y", "Lc", "Ax", *TIES, *BRACE),
+           "b6": (("X", "Y", "Lc", "Ax", *TIES, *BRACE["decanter_rcm"]),
                   (("X", "Y"), ("Y", "Tf1"), ("Tf1", "Tf2"), ("Tf2", "X"), ("X", "Tf1"),
                    ("X", "Tr1"), ("Tr1", "Tr2"), ("Tr2", "Br")))},
     labels={"b1": "connecting rod", "b2": "lower arm O2-K (driven at P)",

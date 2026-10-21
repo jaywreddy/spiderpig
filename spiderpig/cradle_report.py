@@ -1683,7 +1683,9 @@ def _holes(config: BuildConfig, notes: dict) -> dict[str, float]:
     from spiderpig.linkages.decanters import BRACE, TIES
 
     out.update(dict.fromkeys(TIES, cr.TIE_ROD_HOLE))
-    out.update(dict.fromkeys(BRACE, 2 * cr.BRACE_SOCKET[0]))   # the racking brace's socket
+    key = config.linkage
+    if key in BRACE:                                            # the racking brace's socket
+        out.update(dict.fromkeys(BRACE[key], 2 * cr.BRACE_SOCKET[key][0]))
     return out
 
 
@@ -2355,24 +2357,27 @@ def box_rods(config: BuildConfig, stock: str | None = None, d: float | None = No
 def box_brace(config: BuildConfig, play: float | None = None) -> dict:
     """The cradle box's racking brace (simplification round 2, 2026-10-21) as
     :class:`cradle_structure.BoxBrace`, by its joint, on a cradle whose link has one
-    (``decanters.BRACE``): the tube as built (``construction.cradle.BRACE_TUBE``,
-    ``hardware.cradle_catalog.BRACE_STOCK``), its sockets' teeth (``BRACE_TEETH``), its play
-    both ends' notches over their teeth at its wall's mid radius (``BRACE_CLEAR``) or
-    ``play`` (rad, a probe's)."""
+    (``decanters.BRACE``; A's since the same day's study): the tube as built
+    (``construction.cradle.BRACE_TUBE``, ``hardware.cradle_catalog.BRACE_STOCK``), its
+    sockets' teeth (``BRACE_TEETH``), its play both ends' notches over their teeth at its
+    wall's mid radius (``BRACE_CLEAR``) or ``play`` (rad, a probe's)."""
     from spiderpig import cradle_structure as cs
     from spiderpig.hardware.cradle_catalog import BRACE_STOCK
     from spiderpig.linkages.decanters import BRACE
 
     lk = config.lk
+    if lk.key not in BRACE:
+        return {}
     joints = lk.links[cr.cradle_link(lk)][0]
-    od, wall = cr.BRACE_TUBE
+    od, wall = cr.BRACE_TUBE[lk.key]
+    stock = BRACE_STOCK[lk.key]
     r_mid = (od - wall) / 2
     teeth, tooth = cr.BRACE_TEETH
     if play is None:
         play = 2 * cr.BRACE_CLEAR / r_mid
-    return {n: cs.BoxBrace(n, od, wall, ROD_E, 26000.0, BRACE_STOCK["yield_mpa"], teeth,
-                           tooth, play, f"{od / 25.4:g} x {wall / 25.4:.3f} in 6061-T6 tube")
-            for n in BRACE if n in joints}
+    return {n: cs.BoxBrace(n, od, wall, ROD_E, 26000.0, stock["yield_mpa"], teeth,
+                           tooth, play, f"{stock['size']} 6061-T6 tube")
+            for n in BRACE[lk.key] if n in joints}
 
 
 def box_links(config: BuildConfig, joints, pts, tie_mm: float,
@@ -2386,7 +2391,7 @@ def box_links(config: BuildConfig, joints, pts, tie_mm: float,
     by default)."""
     from spiderpig import cradle_structure as cs
     from spiderpig.config import chord_r
-    from spiderpig.linkages.decanters import BRACE, TIES
+    from spiderpig.linkages.decanters import BRACE_JOINTS, TIES
     from spiderpig.materials import allowable_mpa, link_sheets, thickness
 
     lk = config.lk
@@ -2411,7 +2416,8 @@ def box_links(config: BuildConfig, joints, pts, tie_mm: float,
     rod_links = {n for n, (js, _) in lk.links.items() if lk.crank[1] in js}
     rod_joints = {j for n in rod_links for j in lk.links[n][0]}
     pins = tuple(dict.fromkeys(j for j, b1, b2 in joints
-                               if link in (b1, b2) and j not in TIES and j not in BRACE
+                               if link in (b1, b2) and j not in TIES
+                               and j not in BRACE_JOINTS
                                and j in used))
     key = link_sheets(config).get(link, config.sheet)
     hole = dict.fromkeys(TIES, cr.TIE_ROD_HOLE)
@@ -3198,31 +3204,20 @@ bars ``tests/test_cradle.py`` holds, not a copied number; :func:`report`'s ``ver
 own numbers (:func:`cradle_drive.verdict`). In the cradle page's order: B, the user's main
 design, first (design review round 2's M5: the page had opened on A, "the one to build")."""
 
-_BOX_OPEN = ("the cradle box as a 3D frame (simplification round 1, 2026-10-21): its cradle "
-             "links are 5-13 x softer out of their plane than the tie rods, so the box racks in "
-             "the rods' twist through single-screw friction joints that hold about 7 N·m each; "
-             "the clutch's whole couple across the bay slips them and bends the links far past "
-             "yield (walking it holds). B's racking brace (simplification round 2, "
-             "decanters.BRACE: a 2 in 6061 tube behind the rear saddle, keyed into both cradle "
-             "links) can't go on A: A's hand crank (130 mm on a 230 mm reach) sweeps the bay's "
-             "drive end there, the tube 16-28 mm inside a hand on its grip; the user's call "
-             "(a reach of about 300 mm clears the tube and its socket's pad; "
-             "docs/agentlib/DECANTER.md, \"The cradle box across the bay\")")
-OPEN_AT_CAP: dict[str, dict[str, str]] = {
-    "decanter_hinge": dict.fromkeys(("box:tie rods", "box:tie rod ends", "box:cradle link"),
-                                    _BOX_OPEN)}
+OPEN_AT_CAP: dict[str, dict[str, str]] = {}
 """Per cradle, the parts that fall under the jam floor (``cradle_drive.JAM_FLOOR``) at the
 hand crank's clutch's cap, and why: an open item, the user's call (the tests hold every other
 part at 1.3 and nothing else under it, then xfail on these; the report's verdict names
-them). Round 1 of the simplification (2026-10-21) rated the cradle box as a 3D frame
-(:func:`box_racking`) and found its tie rods (0.58 / 0.55), their end screws (1.08 / 1.02)
-and its cradle link out of its plane (0.18 / 0.16) under the cap on B / A; the user chose a
-racking brace. B's (round 2: ``decanters.BRACE``, :func:`box_brace`, a closed tube keyed into
-both cradle links, the box's twist crossing in its torsion) closes its three; A's stay open
-(:data:`_BOX_OPEN`). None from the side frames' redesign (2026-10-20,
-``docs/agentlib/DECANTER.md``, "The side frames at the clutch's cap"): design review round 2
-(2026-10-15) had rated each side's posts and both frame plates as one frame
-(``cradle_structure.side_frame``) and found B's outer plate (0.6), pillar O2 (0.73) and
+them). None since A's racking brace (2026-10-21). Round 1 of the simplification (2026-10-21)
+rated the cradle box as a 3D frame (:func:`box_racking`) and found its tie rods (0.58 / 0.55),
+their end screws (1.08 / 1.02) and its cradle link out of its plane (0.18 / 0.16) under the cap
+on B / A; the user chose a racking brace (``decanters.BRACE``, :func:`box_brace`, a closed tube
+keyed into both cradle links, the box's twist crossing in its torsion). B's (round 2, behind
+the rear saddle) closed its three; A's three stayed open until A's own (the study's option 1:
+a 1-3/4 in tube mid-bay, where A's hand crank doesn't sweep). None from the side frames'
+redesign (2026-10-20, ``docs/agentlib/DECANTER.md``, "The side frames at the clutch's cap"):
+design review round 2 (2026-10-15) had rated each side's posts and both frame plates as one
+frame (``cradle_structure.side_frame``) and found B's outer plate (0.6), pillar O2 (0.73) and
 column D2 (0.97), A's outer plate (0.41), column D3 (0.83), inner plate (1.09) and pillar G
 (1.25) under it."""
 
@@ -3326,8 +3321,10 @@ def _ties_of() -> dict[str, tuple[float, float]]:
 ROOM_BAND = 5.0         # the room's height steps (mm)
 _MOVING = ("tie_", "brace_", "front_saddle", "rear_saddle", "led", "base_stop", "bottle")
 """The bay's parts that ride the cradle box (by name), for :func:`room`: everything else in the
-bay is fixed. B's racking brace's tube (``brace_``, simplification round 2) rides the box: it
-had been taken as fixed at its crank-0 pose until the round's integration."""
+bay is fixed. A racking brace's tube (``brace_``, simplification round 2: B's, then A's)
+rides the box: it had been taken as fixed at its crank-0 pose until the round's integration
+(A's, beside the decanter's neck at rest, is the lowest part within its rim's reach:
+``construction.cradle.BRACE_ROOM``)."""
 
 
 def _surface_points(part, step: float = 5.0) -> np.ndarray:
@@ -3448,6 +3445,18 @@ def riser_stack(mm: float | None) -> tuple[float, list[str]] | None:
     return max((s for s in riser_stacks() if s[0] <= mm + 1e-9), key=lambda s: s[0])
 
 
+def stack_for(vessel, rows, clear=cr.RISER_CLEAR) -> tuple[float, list[str]] | None:
+    """The highest stack (:func:`riser_stacks`) ``vessel`` stands on by the rule
+    (:func:`riser_fits` at the stack's own height); None if none, not even the table. Under
+    a room that only narrows upward this is :func:`riser_stack` of :func:`riser_for`; A's
+    racking brace's tube beside the decanter's neck at rest (2026-10-21,
+    ``construction.cradle.BRACE_ROOM``) makes a lower stack no safer: a neck that widens
+    upward comes nearer the tube, so each stack is checked itself (``liquid.ts``'s
+    ``bestStack`` is its twin)."""
+    ok = [s for s in riser_stacks() if riser_fits(vessel, s[0], rows, clear)]
+    return max(ok, key=lambda s: s[0]) if ok else None
+
+
 def room(config: BuildConfig, mech, n: int = 72) -> dict:
     """The room a vessel has under the mouth (``/api/cradle/{key}/room``, the cradle page's
     fit check): at each height over the table (every :data:`ROOM_BAND` mm up to the mouth),
@@ -3529,7 +3538,7 @@ def room(config: BuildConfig, mech, n: int = 72) -> dict:
                    "tilt_deg": round(lowest[2], 1), "within_mm": rim},
         "rule": {"rim_under_mm": cr.RISER_CLEAR[0], "side_mm": cr.RISER_CLEAR[1]},
         "stacks": [[h, names] for h, names in riser_stacks()],
-        "drawn": {"riser_max_mm": best, "stack": riser_stack(best),
+        "drawn": {"riser_max_mm": best, "stack": stack_for(drawn, rows),
                   "riser_mm": cr.DECANTER_RISER},
     }
 
