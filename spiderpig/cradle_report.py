@@ -447,7 +447,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     # the gearbox's riser walking (its cap's: jam_capped's rows; design review round 3's M2)
     out["drive"]["riser"] = {
         "walk": riser_rating(box, notes, f_rod, peak),
-        "basis": "a clamped stack (ring, sleeve, shims, plate) on each of four A2-70 M8 "
+        "basis": "a clamped stack (ring, faced sleeve, plate) on each of four A2-70 M8 "
                  "studs: the stud's tension and shear, the 6061 sleeve's crush and bending, "
                  "the ring's bearing; its slip at the faces' friction "
                  "(cradle_drive.riser_rating)"}
@@ -1680,9 +1680,10 @@ def _holes(config: BuildConfig, notes: dict) -> dict[str, float]:
                   default=0.0)
         out[strength._stem(name)] = round(float(sec["bearing_d"]) + gap, 3)
     out[config.lk.crank[1]] = strength.rider_hole(config)
-    from spiderpig.linkages.decanters import TIES
+    from spiderpig.linkages.decanters import BRACE, TIES
 
     out.update(dict.fromkeys(TIES, cr.TIE_ROD_HOLE))
+    out.update(dict.fromkeys(BRACE, 2 * cr.BRACE_SOCKET[0]))   # the racking brace's socket
     return out
 
 
@@ -1955,8 +1956,16 @@ def structure(config: BuildConfig, mech, *, crank_nm: float | None = None, ts=No
     from spiderpig.config import PRODUCT_BOSS_R
 
     bosses = PRODUCT_BOSS_R.get(lk.key, {})
+    # the racking brace (simplification round 2, 2026-10-21) carries the jam's couple across
+    # the bay: it comes into the cradle link at its socket, a couple, not at the tie rods
+    braced = next(iter(box_brace(config)), None)
+    couple = {"jam": {link: braced}} if braced is not None and block is None else {}
+    from spiderpig.config import band
+
+    bands = {n: b for n in lk.links if (b := band(config, n)) is not None}
     frames = {tag: cs.link_bending(lk, pts, joints, v, sections, holes, {link: on[tag]}, sk,
-                                   width, bosses, keep_forces=(link,))
+                                   width, bosses, keep_forces=(link,),
+                                   couples=couple.get(tag), bands=bands)
               for tag, (v, sk, _) in cases.items()}
     inplane = {tag: fr.pop(link + ":forces", {}).get("forces", {})
                for tag, fr in frames.items()}
@@ -2320,8 +2329,8 @@ CARRIER_PLAY = 0.15     # a carrier's bores on its tie rods, each side (cradle.S
 def box_rods(config: BuildConfig, stock: str | None = None, d: float | None = None,
              nm: float | None = None) -> dict:
     """The cradle box's four tie rods as :class:`cradle_structure.TieRod`, by tie point: as
-    built (``construction.cradle.TIE_D``, :data:`TIE_STOCK`, each end's ``TIE_M`` at
-    ``TIE_TIGHTEN_NM``: its least preload, friction 0.2), or ``stock`` / ``d`` / ``nm``
+    built (``construction.cradle.TIE_D``, :data:`TIE_STOCK`, each end's ``tie_screw`` at
+    ``tie_nm``: its least preload, friction 0.2), or ``stock`` / ``d`` / ``nm``
     instead (a probe's)."""
     from spiderpig import cradle_structure as cs
     from spiderpig.hardware.fasteners import BUTTON_10_9_PROOF_N, preload_band
@@ -2329,17 +2338,41 @@ def box_rods(config: BuildConfig, stock: str | None = None, d: float | None = No
 
     e, g, yld, what = TIE_STOCKS[stock or TIE_STOCK]
     d = cr.TIE_D if d is None else d
-    s = cr.TIE_M
+    s = cr.tie_screw(config.linkage)
     size = f"{s.d:g}"
     proof = BUTTON_10_9_PROOF_N[size] if s.kind == "bhcs109" else TIE_PROOF_N
     root = (ROD_ROOT if (stock or TIE_STOCK) == "6061" else NETRF12_ROOT) if d > 10.0 \
         else NETRF10_ROOT
     rod = cs.TieRod(d=d, bore=root, e=e, g=g,
                     yield_mpa=yld,
-                    preload=preload_band(size, cr.TIE_TIGHTEN_NM if nm is None else nm)[0],
+                    preload=preload_band(size, cr.tie_nm(config.linkage) if nm is None
+                                         else nm)[0],
                     hole=cr.TIE_ROD_HOLE, head_d=s.head_d, proof=proof,
                     stock=f"{d:g} mm {what}")
     return dict.fromkeys(TIES, rod)
+
+
+def box_brace(config: BuildConfig, play: float | None = None) -> dict:
+    """The cradle box's racking brace (simplification round 2, 2026-10-21) as
+    :class:`cradle_structure.BoxBrace`, by its joint, on a cradle whose link has one
+    (``decanters.BRACE``): the tube as built (``construction.cradle.BRACE_TUBE``,
+    ``hardware.cradle_catalog.BRACE_STOCK``), its sockets' teeth (``BRACE_TEETH``), its play
+    both ends' notches over their teeth at its wall's mid radius (``BRACE_CLEAR``) or
+    ``play`` (rad, a probe's)."""
+    from spiderpig import cradle_structure as cs
+    from spiderpig.hardware.cradle_catalog import BRACE_STOCK
+    from spiderpig.linkages.decanters import BRACE
+
+    lk = config.lk
+    joints = lk.links[cr.cradle_link(lk)][0]
+    od, wall = cr.BRACE_TUBE
+    r_mid = (od - wall) / 2
+    teeth, tooth = cr.BRACE_TEETH
+    if play is None:
+        play = 2 * cr.BRACE_CLEAR / r_mid
+    return {n: cs.BoxBrace(n, od, wall, ROD_E, 26000.0, BRACE_STOCK["yield_mpa"], teeth,
+                           tooth, play, f"{od / 25.4:g} x {wall / 25.4:.3f} in 6061-T6 tube")
+            for n in BRACE if n in joints}
 
 
 def box_links(config: BuildConfig, joints, pts, tie_mm: float,
@@ -2353,7 +2386,7 @@ def box_links(config: BuildConfig, joints, pts, tie_mm: float,
     by default)."""
     from spiderpig import cradle_structure as cs
     from spiderpig.config import chord_r
-    from spiderpig.linkages.decanters import TIES
+    from spiderpig.linkages.decanters import BRACE, TIES
     from spiderpig.materials import allowable_mpa, link_sheets, thickness
 
     lk = config.lk
@@ -2378,14 +2411,27 @@ def box_links(config: BuildConfig, joints, pts, tie_mm: float,
     rod_links = {n for n, (js, _) in lk.links.items() if lk.crank[1] in js}
     rod_joints = {j for n in rod_links for j in lk.links[n][0]}
     pins = tuple(dict.fromkeys(j for j, b1, b2 in joints
-                               if link in (b1, b2) and j not in TIES and j in used))
+                               if link in (b1, b2) and j not in TIES and j not in BRACE
+                               and j in used))
     key = link_sheets(config).get(link, config.sheet)
     hole = dict.fromkeys(TIES, cr.TIE_ROD_HOLE)
     hole.update({k: v for k, v in (holes or {}).items() if k in used})
+    from spiderpig.config import PRODUCT_BOSS_R
+
+    bosses = dict(PRODUCT_BOSS_R.get(lk.key, {}).get(link, {}))
+    for (p, q), w in segs:          # a wider chord's end disc round a joint is a boss there too
+        for j in (p, q):            # (as link_bending counts them)
+            bosses[j] = max(bosses.get(j, 0.0), w / 2)
+    from spiderpig.config import band
+
+    bd = band(config, link)
     return cs.BoxLinks(xy={n: xy[n] for n in used}, segs=segs, t=thickness(config, key),
                        yield_mpa=allowable_mpa(config, key),
                        pins=(pins, tuple(p for p in pins if p not in rod_joints)),
-                       ties=tuple(TIES), length=float(tie_mm), holes=hole)
+                       ties=tuple(TIES), length=float(tie_mm), holes=hole,
+                       bosses={j: r for j, r in bosses.items() if j in used},
+                       band=(cs.Band.of(xy[bd[0]], xy[bd[1]], bd[2], bd[3])
+                             if bd is not None else None))
 
 
 def _carriers(res, links, theta_ok: bool = True) -> dict:
@@ -2455,7 +2501,7 @@ def _carriers(res, links, theta_ok: bool = True) -> dict:
 
 def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
                 holes: dict | None = None, inplane: dict | None = None,
-                rods: dict | None = None) -> dict:
+                rods: dict | None = None, braces: dict | None = None) -> dict:
     """The cradle box across the bay (design review round 2's M1; as a 3D frame since
     simplification round 1, 2026-10-21). The passive side holds its cradle link in place but
     lets it turn about the mouth (B's double parallelogram, A's hinge at G), so what the
@@ -2481,7 +2527,13 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
     (``inplane``: :func:`cradle_structure.link_bending`'s forces, ``keep``; the drive link's,
     for both), on the net section through the end's hole (``holes``); the carriers forced
     (:func:`_carriers`). The strength rows (``"rows"``): the rods, their end screws, the
-    cradle link out of its plane."""
+    cradle link out of its plane.
+
+    Since simplification round 2 (2026-10-21, the user's racking brace): ``braces``
+    (default :func:`box_brace`, the cradle's own) in the frame, the tube's teeth bearing
+    past its play; per case its twist, its end moment, its stress (torsion and bending) and
+    its teeth's bearing, and two more rows: the tube on its least yield, its sockets' teeth
+    (the cradle link's sheet, bearing on its yield, and their roots in shear)."""
     from spiderpig import cradle_structure as cs
 
     lk = config.lk
@@ -2489,6 +2541,8 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
     mouth = pts[cr.mouth_name(lk)]
     links = box_links(config, joints, pts, tie_mm, holes)
     rods = rods or box_rods(config)
+    tie_s = cr.tie_screw(config.linkage)
+    braces = box_brace(config) if braces is None else braces
     stock = sorted({r.stock for r in rods.values()})
     width = dict(links.segs)
     out: dict = {"rods": ", ".join(stock), "share": {"walk": PASSIVE_SHARE, "jam": JAM_SHARE},
@@ -2506,8 +2560,8 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
                      "what": "the cradle box's tie rods racking across the bay, the box a 3D "
                              "frame (cradle_report.box_racking)"}
     joint_row: dict = {"joint": "box:tie rod ends", "kind": "box", "links": [],
-                       "section": f"the tie rods' M{cr.TIE_M.d:g} end screws (ISO 7380, class "
-                                  f"{'10.9' if cr.TIE_M.kind == 'bhcs109' else 'A2-70'}) "
+                       "section": f"the tie rods' M{tie_s.d:g} end screws (ISO 7380, class "
+                                  f"{'10.9' if tie_s.kind == 'bhcs109' else 'A2-70'}) "
                                   "prying a gapped end joint",
                        "what": "the tie rods' end joints", "walk": None}
     link_row: dict = {"joint": "box:cradle link", "kind": "box", "links": [link],
@@ -2515,6 +2569,25 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
                                  "their stress in it, on the net section at each end's hole",
                       "what": "the cradle links carrying the tie rods' end moments and "
                               "twists out of their plane"}
+    tube_row: dict | None = None
+    teeth_row: dict | None = None
+    if braces:
+        b0 = next(iter(braces.values()))
+        out["brace"] = {"node": list(braces), "stock": b0.stock, "od_mm": b0.od,
+                        "wall_mm": b0.wall, "teeth": b0.teeth, "tooth_mm": b0.tooth,
+                        "play_deg": round(math.degrees(b0.play), 3),
+                        "radius_mm": {n: round(math.hypot(*links.xy[n]), 1) for n in braces},
+                        "torsion_nm_deg": round(b0.gj() / tie_mm / 1000 * math.pi / 180, 1)}
+        tube_row = {"joint": "box:brace", "kind": "box", "links": [],
+                    "section": f"the racking brace, a {b0.stock} ({b0.od:g} x {b0.wall:g} mm), "
+                               "in torsion and bending",
+                    "what": "the cradle box's racking brace across the bay "
+                            "(cradle_report.box_racking)"}
+        teeth_row = {"joint": "box:brace teeth", "kind": "box", "links": [link],
+                     "section": f"the brace's sockets' {b0.teeth} teeth ({b0.tooth:g} mm) in "
+                                f"the cradle link {link}, bearing on the tube's notches",
+                     "what": "the racking brace's teeth: their bearing on the link's sheet "
+                             "and the tube's wall, their roots in shear"}
     for tag, (v, sk, _) in cases.items():
         keep = ~np.asarray(sk, bool)
         m = np.zeros(len(v))
@@ -2528,12 +2601,38 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
         cross = share * m[keep]                         # N·mm, signed
         if not len(cross):
             continue
-        got = {h: cs.box_frame(links, rods, cross, hold=h, mu=SLIP_MU) for h in cs.BOX_HOLDS}
+        got = {h: cs.box_frame(links, rods, cross, hold=h, mu=SLIP_MU, braces=braces)
+               for h in cs.BOX_HOLDS}
         ip = (inplane or {}).get(tag) or {}
         holds = {}
         rod_sf, slip_x, gap_x, prying, link_w = math.inf, 0.0, math.inf, 0.0, None
+        tube_w, teeth_w = None, None
         for h, res in got.items():
             per = {}
+            bp = {}
+            for n, br in braces.items():
+                tw, end = res.twist[n], res.end_moment[n].max(axis=1)
+                sf = br.yield_mpa / np.maximum(br.stress(end, tw), 1e-9)
+                f_t = br.tooth_n(tw)
+                bear = f_t / (br.wall * links.t)
+                t_sf = np.minimum.reduce([links.yield_mpa / np.maximum(bear, 1e-9),
+                                          br.yield_mpa / np.maximum(bear, 1e-9),
+                                          0.577 * links.yield_mpa * br.tooth * links.t
+                                          / np.maximum(f_t, 1e-9)])
+                i, k = int(np.argmin(sf)), int(np.argmax(f_t))
+                bp[n] = {"twist_nm": round(float(tw.max()) / 1000, 2),
+                         "end_nm": round(float(end.max()) / 1000, 2),
+                         "shear_n": round(float(res.shear[n].max()), 1),
+                         "engaged": round(float(res.engaged[n].mean()), 2),
+                         "stress_mpa": round(float(br.stress(end, tw)[i]), 1),
+                         "safety": round(float(sf[i]), 2),
+                         "tooth_n": round(float(f_t[k]), 1),
+                         "bearing_mpa": round(float(bear[k]), 1),
+                         "teeth_safety": round(float(t_sf[k]), 2)}
+                if tube_w is None or bp[n]["safety"] < tube_w["safety"]:
+                    tube_w = {**bp[n], "hold": h}
+                if teeth_w is None or bp[n]["teeth_safety"] < teeth_w["teeth_safety"]:
+                    teeth_w = {**bp[n], "hold": h}
             for n, rod in rods.items():
                 end = res.end_moment[n].max(axis=1)
                 sf = rod.yield_mpa / np.maximum(rod.stress(end, res.twist[n]), 1e-9)
@@ -2555,25 +2654,51 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
                 flip = False
                 if fi is None and (b, a) in ip:
                     fi, flip = ip[(b, a)], True
-                for end, mo, tw, col in ((a, f[:, 2], f[:, 1], 1), (b, f[:, 5], f[:, 4], 2)):
-                    if fi is not None and len(fi) == len(mo):
-                        n_ = fi[:, 0]
-                        m_in = fi[:, (3 - col) if flip else col]
-                    else:
-                        n_ = m_in = np.zeros(len(mo))
-                    vm, sf = cs.combined_sf(n_, m_in, np.abs(mo), np.abs(tw), w, links.t,
-                                            links.holes.get(end, 0.0), links.yield_mpa)
-                    i = int(np.argmin(sf))
-                    if worst is None or sf[i] < worst["safety"]:
-                        worst = {"chord": f"{a}-{b}", "at": end,
-                                 "link": "drive" if li == 0 else "passive",
-                                 "width_mm": w, "hole_mm": links.holes.get(end, 0.0),
-                                 "out_nm": round(float(abs(mo[i])) / 1000, 2),
-                                 "twist_nm": round(float(abs(tw[i])) / 1000, 2),
-                                 "inplane_nm": round(float(abs(m_in[i])) / 1000, 2),
-                                 "axial_n": round(float(n_[i]), 1),
-                                 "stress_mpa": round(float(vm[i]), 1),
-                                 "safety": float(sf[i])}
+                if fi is not None and len(fi) == len(f):
+                    n_ = fi[:, 0]
+                    m_a, m_b = (fi[:, 2], fi[:, 1]) if flip else (fi[:, 1], fi[:, 2])
+                else:
+                    n_ = m_a = m_b = np.zeros(len(f))
+                L_ab = float(np.hypot(*(np.asarray(links.xy[b], float)
+                                        - np.asarray(links.xy[a], float))))
+                for end, mo, tw, m_in in ((a, f[:, 2], f[:, 1], m_a), (b, f[:, 5], f[:, 4], m_b)):
+                    # at a boss (link_bending's sections): through its hole at the boss's
+                    # width, and past it on the chord, the moments there, no hole; each
+                    # section on what the links' band leaves of it
+                    r_b = float(links.bosses.get(end, 0.0))
+                    at_e = np.asarray(links.xy[end], float)
+                    v = (np.asarray(links.xy[b if end == a else a], float) - at_e) / max(L_ab,
+                                                                                        1e-9)
+                    nv = np.array([-v[1], v[0]])
+
+                    def span(at, half, nv=nv):
+                        return (links.band.span(at, nv, half) if links.band is not None
+                                else (-half, half))
+
+                    cuts = [(mo, m_in, w, links.holes.get(end, 0.0), 0.0, span(at_e, w / 2))]
+                    if 2 * r_b > w:
+                        s_b = min(math.sqrt(r_b * r_b - w * w / 4), L_ab)
+                        x = s_b if end == a else L_ab - s_b
+                        cuts = [(mo, m_in, 2 * r_b, links.holes.get(end, 0.0), 0.0,
+                                 span(at_e, r_b)),
+                                (-f[:, 2] + (f[:, 2] + f[:, 5]) * x / L_ab,
+                                 -m_a + (m_a + m_b) * x / L_ab, w, 0.0, s_b,
+                                 span(at_e + s_b * v, w / 2))]
+                    for mo_, mi_, w_, d_, s_, sp in cuts:
+                        vm, sf = cs.combined_sf(n_, mi_, np.abs(mo_), np.abs(tw), w_, links.t,
+                                                d_, links.yield_mpa, sp)
+                        i = int(np.argmin(sf))
+                        if worst is None or sf[i] < worst["safety"]:
+                            worst = {"chord": f"{a}-{b}", "at": end,
+                                     "link": "drive" if li == 0 else "passive",
+                                     "width_mm": round(sp[1] - sp[0], 2), "hole_mm": d_,
+                                     "from_mm": round(s_, 1),
+                                     "out_nm": round(float(abs(mo_[i])) / 1000, 2),
+                                     "twist_nm": round(float(abs(tw[i])) / 1000, 2),
+                                     "inplane_nm": round(float(abs(mi_[i])) / 1000, 2),
+                                     "axial_n": round(float(n_[i]), 1),
+                                     "stress_mpa": round(float(vm[i]), 1),
+                                     "safety": float(sf[i])}
             if worst is not None:
                 worst["safety"] = round(worst["safety"], 2)
                 if link_w is None or worst["safety"] < link_w["safety"]:
@@ -2581,6 +2706,8 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
             holds[h] = {"theta_deg": round(math.degrees(float(np.abs(res.theta).max())), 3),
                         "stiffness_nm_deg": round(res.stiffness / 1000 * math.pi / 180, 2),
                         "rods": per, "link": worst, "carriers": _carriers(res, links)}
+            if bp:
+                holds[h]["brace"] = bp
         mc = float(np.abs(cross).max()) / 1000
         top = max((x for hv in holds.values() for x in hv["rods"].values()),
                   key=lambda x: x["end_nm"])
@@ -2592,6 +2719,17 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
                              "rods": min(holds.values(), key=lambda hv: min(
                                  x["safety"] for x in hv["rods"].values()))["rods"],
                              "link": link_w}
+        if (tube_w is not None and teeth_w is not None and tube_row is not None
+                and teeth_row is not None):
+            out["cases"][tag]["brace"] = tube_w
+            tube_row[tag] = {"load_n": tube_w["shear_n"], "moment_nm": tube_w["twist_nm"],
+                             "safety": tube_w["safety"],
+                             "governs": f"{tube_w['twist_nm']:g} N·m twist, "
+                                        f"{tube_w['end_nm']:g} N·m end moment ({tube_w['hold']})"}
+            teeth_row[tag] = {"load_n": teeth_w["tooth_n"], "moment_nm": teeth_w["twist_nm"],
+                              "safety": teeth_w["teeth_safety"],
+                              "governs": f"{teeth_w['bearing_mpa']:g} MPa bearing a tooth "
+                                         f"({teeth_w['hold']})"}
         rod_row[tag] = {"load_n": max(x["shear_n"] for hv in holds.values()
                                       for x in hv["rods"].values()),
                         "moment_nm": top["end_nm"], "safety": round(rod_sf, 2)}
@@ -2604,7 +2742,8 @@ def box_racking(config: BuildConfig, joints, pts, cases: dict, tie_mm: float,
             joint_row["jam"] = {"load_n": round(top["end_nm"] * 1000 / (min(
                 r.d for r in rods.values()) / 2)), "moment_nm": top["end_nm"],
                 "safety": round(1.0 / max(prying, 1e-9), 2)}
-    out["rows"] = [rod_row, joint_row, link_row]
+    out["rows"] = [rod_row, joint_row, link_row,
+                   *([tube_row, teeth_row] if tube_row is not None else [])]
     return out
 
 
@@ -2625,16 +2764,20 @@ def thread_strip(engaged: float) -> tuple[float, float]:
 
 
 def post_engaged(config: BuildConfig) -> float:
-    """How far a post's M6 x 16 end screw reaches into its tapped end (mm): its length less
-    the DIN 125 washer under its head, the frame plate and the fender washer between the
+    """How far a post's M6 x 16 end screw reaches into its tapped end at the least (mm): its
+    length less the DIN 125 washer under its head where an end keeps one (a pillar's foot,
+    ``construction.cradle.HEAD_WASHED``), the frame plate and the fender washer between the
     plate and the post's end (``construction.cradle.column_parts``; every post's both ends,
     :data:`POST_WASHED`)."""
+    from spiderpig.construction.pivots.standoff import StandoffAxle
     from spiderpig.hardware.catalog import get
     from spiderpig.materials import sheet_of, thickness
 
     col = cr.column_parts(cr.stand_of(config.lk))
     t = thickness(config, sheet_of(config, "frame"))
-    w = float(get(col.washer).dims["t"]) if col.washer else 0.0
+    pillar = StandoffAxle().cradle_shaft()
+    keys = [k for k in (col.washer, pillar.washer_key if pillar.washer_ends else None) if k]
+    w = max((float(get(k).dims["t"]) for k in keys), default=0.0)
     f = float(get(col.face).dims["t"]) if col.face else 0.0
     return col.screw_len - w - t - f
 
@@ -2642,7 +2785,7 @@ def post_engaged(config: BuildConfig) -> float:
 def tie_threads(config: BuildConfig, box: dict) -> dict:
     """The tie rods' tapped ends (the simplification round 1, 2026-10-21: 6061, tapped at home):
     each end's M6 thread (``construction.cradle.TIE_ROD_SCREW`` through the cradle link) against
-    the most its screw pulls: its preload's top at ``TIE_TIGHTEN_NM`` walking, the prying of a
+    the most its screw pulls: its preload's top at ``tie_nm`` walking, the prying of a
     gapped end at the jam (:func:`box_racking`'s), and against the screw's head proof (the
     screw, not the thread, should go first). Strip SF at the rod's shear yield."""
     from spiderpig.hardware.fasteners import BUTTON_10_9_PROOF_N, preload_band
@@ -2652,9 +2795,9 @@ def tie_threads(config: BuildConfig, box: dict) -> dict:
     t = thickness(config, sheet_of(config, "link", link))
     engaged = cr.TIE_ROD_SCREW - t
     strip_y, strip_u = thread_strip(engaged)
-    top = preload_band(f"{cr.TIE_M.d:g}", cr.TIE_TIGHTEN_NM)[1]
-    proof = (BUTTON_10_9_PROOF_N[f"{cr.TIE_M.d:g}"] if cr.TIE_M.kind == "bhcs109"
-             else TIE_PROOF_N)
+    s = cr.tie_screw(config.linkage)
+    top = preload_band(f"{s.d:g}", cr.tie_nm(config.linkage))[1]
+    proof = BUTTON_10_9_PROOF_N[f"{s.d:g}"] if s.kind == "bhcs109" else TIE_PROOF_N
     out = {"engaged_mm": round(engaged - LEAD_THREAD, 2), "strip_yield_n": round(strip_y),
            "strip_ultimate_n": round(strip_u), "screw_proof_n": round(proof),
            "over_proof": round(strip_y / proof, 2)}
@@ -2682,6 +2825,34 @@ P_LIMIT_BASIS = ("VDI 2230-1 (2015) Table A9's limiting surface pressure p_G, Al
                  "Flaechenpressung sheet 01-2025)")
 SLIP_MU = 0.2               # a post's end face on aluminium, threadlocker on it: the least
 #                             friction a slip is rated at (steel on aluminium dry 0.47-0.61)
+HEAD_MU_BARE = 0.3          # the most under-head friction of an 18-8 button head straight on
+#                             the deburred 5052, no washer (simplification round 2's review: on
+#                             bare aluminium it runs higher and scatters more than on a steel
+#                             washer, 0.2-0.3; the washered joint's band is preload_band's 0.1-
+#                             0.2): its least preload at the same torque
+M6_THREAD = (1.0, 5.350)    # ISO 724's M6 x 1: the pitch and the pitch diameter d2 (mm)
+HEAD_BEARING = (10.07, 7.0)  # an ISO 7380-1 M6 head's least diameter (dk min) and its 6.4 mm
+#                             hole's deburred edge (mm): the annulus a bare head bears on
+
+
+def bare_head_factor(mu_thread: float = 0.2, mu_ref: float = 0.2,
+                     mu_head: float = HEAD_MU_BARE) -> float:
+    """A bare head's least preload over the washered one's at the same torque and thread
+    friction (simplification round 2's P6): VDI 2230 Part 1's tightening torque, ``M_A = F_M
+    (0.16 P + 0.58 d2 mu_G + D_Km / 2 mu_K)``, with ``D_Km`` the mean of
+    :data:`HEAD_BEARING`, the head's friction ``mu_head`` against ``mu_ref``."""
+    pitch, d2 = M6_THREAD
+    d_km = sum(HEAD_BEARING) / 2
+
+    def k(mu_k: float) -> float:
+        return 0.16 * pitch + 0.58 * d2 * mu_thread + d_km / 2 * mu_k
+    return k(mu_ref) / k(mu_head)
+
+
+def head_area() -> float:
+    """The bare head's bearing annulus (mm^2, :data:`HEAD_BEARING`)."""
+    od, hole = HEAD_BEARING
+    return math.pi * (od * od - hole * hole) / 4
 
 
 def contact_peak(clamp: np.ndarray, moment: np.ndarray, od: float, bore: float) -> np.ndarray:
@@ -2735,7 +2906,12 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
     (:data:`P_LIMIT_MPA`, ``bearing_sf``: VDI 2230's S_P), what strips the M6 thread tapped
     in the 6061 post's end over the screw's most tension (``strip_sf``, :func:`thread_strip`
     over :func:`post_engaged`: the simplification round 1, 2026-10-21),
-    and the shear over the face's friction at the least preload (``slip_x``). Walking, every
+    and the shear over the face's friction at the least preload (``slip_x``). An end whose
+    head bears on the bare plate (no DIN 125 under it, ``construction.cradle.HEAD_WASHED``:
+    simplification round 2) takes the least preload a bare head's friction leaves
+    (:func:`bare_head_factor`) and a row of its own, the head's pressure on the plate at the
+    screw's most tension over :data:`P_LIMIT_MPA` (``head_sf``, on :data:`HEAD_BEARING`'s
+    annulus); a washered end's is ``None``. Walking, every
     face must stay shut and not slip (fretting each pour); at the clutch's cap a face may
     lift (the guide re-tightens them after a slip) if the screw and the plate hold."""
     from spiderpig.hardware.fasteners import BUTTON_10_9_PROOF_N, BUTTON_A2_70_NM, preload_band
@@ -2767,12 +2943,15 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                 if not len(m):
                     continue
                 is_steel = end == "foot" and p.name in steel
+                kind = "column" if p.name.startswith("column:") else "pillar"
+                bare = end not in cr.HEAD_WASHED[kind]
                 f_lo, f_hi = bands[is_steel]
+                if bare:
+                    f_lo = f_lo * bare_head_factor()
                 c_lo = np.maximum(f_lo - pull, 0.0)
                 c_hi = np.maximum(f_hi - pull, 1e-9)
                 open_x = m / np.maximum(c_lo * kern, 1e-9)
                 screw = np.maximum(f_hi, m / (od / 2) + pull)
-                kind = "column" if p.name.startswith("column:") else "pillar"
                 face = spread if end in POST_WASHED[kind] else od
                 peak = contact_peak(c_hi, m, face, bore)
                 slip = v / np.maximum(SLIP_MU * c_lo, 1e-9)
@@ -2787,6 +2966,8 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                                     if math.isfinite(float(peak.max())) else None),
                        "bearing_sf": round(plate / float(peak.max()), 2),
                        "strip_sf": round(strip_y / float(screw.max()), 2),
+                       "head_sf": (round(plate / (float(screw.max()) / head_area()), 2)
+                                   if bare else None),
                        "slip_x": round(float(slip.max()), 2), "at": int(i)}
                 rows.setdefault(f"{p.name} {end}", {})[tag] = row
                 w = worst.setdefault(tag, {"open_x": 0.0, "slip_x": 0.0, "screw_sf": math.inf,
@@ -2794,12 +2975,20 @@ def post_joints(config: BuildConfig, side, got: dict) -> dict:
                 for k in ("open_x", "slip_x"):
                     if row[k] > w[k]:
                         w[k], w[k + "_at"] = row[k], f"{p.name} {end}"
-                for k in ("screw_sf", "bearing_sf", "strip_sf"):
-                    if row[k] < w[k]:
+                for k in ("screw_sf", "bearing_sf", "strip_sf", "head_sf"):
+                    if row[k] is not None and row[k] < w.get(k, math.inf):
                         w[k], w[k + "_at"] = row[k], f"{p.name} {end}"
     f_lo, f_hi = bands[False]
     out = {"screw": f"M6 x 16 button head A2-70 (ISO 7380), {nm:g} N·m",
            "preload_n": [round(f_lo), round(f_hi)], "kern_mm": round(kern, 2),
+           "bare_head": {"ends": {k: [e for e in ("foot", "end") if e not in v]
+                                  for k, v in cr.HEAD_WASHED.items()},
+                         "head_mu": HEAD_MU_BARE,
+                         "preload_n": [round(f_lo * bare_head_factor()), round(f_hi)],
+                         "bearing_mm2": round(head_area(), 1),
+                         "basis": "VDI 2230-1's tightening torque split (thread 0.2, the "
+                                  "head on the bare 5052 up to 0.3); the head's least "
+                                  "diameter (ISO 7380-1) on the deburred hole's edge"},
            "decompression_nm": [round(f_lo * kern / 1000, 2), round(f_hi * kern / 1000, 2)]}
     if steel:
         h_lo, h_hi = bands[True]
@@ -3011,23 +3200,26 @@ design, first (design review round 2's M5: the page had opened on A, "the one to
 
 _BOX_OPEN = ("the cradle box as a 3D frame (simplification round 1, 2026-10-21): its cradle "
              "links are 5-13 x softer out of their plane than the tie rods, so the box racks in "
-             "the rods' twist through single-screw friction joints that hold about 6.8 N·m "
-             "each; the clutch's whole couple across the bay (a block on the passive side, or "
-             "on the bottle or a saddle through the drive half) slips them and bends the "
-             "links far past yield. Walking it holds (no joint slips). The box holds about "
-             "55 N·m across at SF 1.3 (92 with dry faces), a quarter of the cap's: no screw, "
-             "threadlocker or chord width closes it, nor a lower cap above the running peak; "
-             "a racking member is the user's call (docs/agentlib/DECANTER.md, \"The cradle "
-             "box across the bay\")")
+             "the rods' twist through single-screw friction joints that hold about 7 N·m each; "
+             "the clutch's whole couple across the bay slips them and bends the links far past "
+             "yield (walking it holds). B's racking brace (simplification round 2, "
+             "decanters.BRACE: a 2 in 6061 tube behind the rear saddle, keyed into both cradle "
+             "links) can't go on A: A's hand crank (130 mm on a 230 mm reach) sweeps the bay's "
+             "drive end there, the tube 16-28 mm inside a hand on its grip; the user's call "
+             "(a reach of about 300 mm clears the tube and its socket's pad; "
+             "docs/agentlib/DECANTER.md, \"The cradle box across the bay\")")
 OPEN_AT_CAP: dict[str, dict[str, str]] = {
-    key: dict.fromkeys(("box:tie rods", "box:tie rod ends", "box:cradle link"), _BOX_OPEN)
-    for key in ("decanter_rcm", "decanter_hinge")}
+    "decanter_hinge": dict.fromkeys(("box:tie rods", "box:tie rod ends", "box:cradle link"),
+                                    _BOX_OPEN)}
 """Per cradle, the parts that fall under the jam floor (``cradle_drive.JAM_FLOOR``) at the
 hand crank's clutch's cap, and why: an open item, the user's call (the tests hold every other
 part at 1.3 and nothing else under it, then xfail on these; the report's verdict names
-them). Since simplification round 1 (2026-10-21) the cradle box (:func:`box_racking`, a 3D
-frame): rated with its links rigid out of their plane it had held the cap (B's rods 1.73,
-A's 1.43, on half the couple). None from the side frames' redesign (2026-10-20,
+them). Round 1 of the simplification (2026-10-21) rated the cradle box as a 3D frame
+(:func:`box_racking`) and found its tie rods (0.58 / 0.55), their end screws (1.08 / 1.02)
+and its cradle link out of its plane (0.18 / 0.16) under the cap on B / A; the user chose a
+racking brace. B's (round 2: ``decanters.BRACE``, :func:`box_brace`, a closed tube keyed into
+both cradle links, the box's twist crossing in its torsion) closes its three; A's stay open
+(:data:`_BOX_OPEN`). None from the side frames' redesign (2026-10-20,
 ``docs/agentlib/DECANTER.md``, "The side frames at the clutch's cap"): design review round 2
 (2026-10-15) had rated each side's posts and both frame plates as one frame
 (``cradle_structure.side_frame``) and found B's outer plate (0.6), pillar O2 (0.73) and
@@ -3042,7 +3234,9 @@ xfail on it. None since 2026-10-20: design review round 3's M5 had put every M6 
 ISO 7380's 4 N·m in A2-70, and both cradles' tie rods' end joints stood at their gap walking
 (0.98 of it at the least preload) and A's pillar G's foot lifted (1.06 x its decompression);
 the tie rods' ends and that foot take class 10.9 button heads at 6 N·m
-(``construction.cradle.TIE_M``, ``STEEL_FEET``): the same heads, no plan changed."""
+(``construction.cradle.TIE_M``, ``STEEL_FEET``): the same heads, no plan changed. B's tie rods'
+ends A2-70 again at 4 N·m since simplification round 2's racking brace (P8,
+``construction.cradle.TIE_SCREWS``): shut walking at 3.92 x their gap moment."""
 
 OPEN_GRIP: dict[str, str] = {}
 """Per cradle, a grip at MIL-STD-1472H's light-load bar (``handcrank.LIGHT_LOAD_N``) run in:
@@ -3130,7 +3324,10 @@ def _ties_of() -> dict[str, tuple[float, float]]:
 
 
 ROOM_BAND = 5.0         # the room's height steps (mm)
-_MOVING = ("tie_", "front_saddle", "rear_saddle", "led", "base_stop", "bottle")
+_MOVING = ("tie_", "brace_", "front_saddle", "rear_saddle", "led", "base_stop", "bottle")
+"""The bay's parts that ride the cradle box (by name), for :func:`room`: everything else in the
+bay is fixed. B's racking brace's tube (``brace_``, simplification round 2) rides the box: it
+had been taken as fixed at its crank-0 pose until the round's integration."""
 
 
 def _surface_points(part, step: float = 5.0) -> np.ndarray:

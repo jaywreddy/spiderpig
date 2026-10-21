@@ -54,9 +54,26 @@ point sweeps an arc about the mouth: :mod:`construction.cradle` keeps the frame 
 them."""
 
 
-def _ties(at):
-    """The tie points as steps: ``at(cx, cy)`` places a cradle-frame point."""
-    return [(name, at(cx, cy)) for name, (cx, cy) in TIES.items()]
+BRACE = {"Br": (412, -124)}
+"""Where the cradle box's racking brace rides on the cradle link, in the cradle's frame (as
+:data:`TIES`; simplification round 2, 2026-10-21, the user's choice of a brace for the box's
+jam): the axis of a 2 in 6061 tube across the bay behind the rear saddle and under the base
+stop's rails, keyed into each cradle link (``construction.cradle.BRACE_TUBE``). The tie rods'
+box can't carry the clutch's whole couple across the bay (their single-screw end joints slip
+in twist and the 4.75 mm links bend out of their plane); a closed tube carries it in torsion
+and puts it into each link in the link's own plane. Its front 6.6 mm behind the rear carrier,
+its top 7.6 mm under the rails; B's cradle link reaches it by a chord from ``Tr2``. B's only:
+A's hand crank (130 mm on a 230 mm reach) sweeps the bay's drive end behind the rear saddle,
+where nothing else of the box can go (the tube there came 16-28 mm inside a hand on its grip,
+the decanter stands under the box between the saddles at rest, and A's stand fills the front
+of its mouth)."""
+
+
+def _ties(at, brace: bool = False):
+    """The tie points (and, ``brace``, the racking brace's) as steps: ``at(cx, cy)`` places
+    a cradle-frame point."""
+    return [(name, at(cx, cy))
+            for name, (cx, cy) in (*TIES.items(), *(BRACE.items() if brace else ()))]
 
 
 def _two(a, b):
@@ -138,7 +155,7 @@ def decanter_rcm(p):
         # axis, ``skew`` from the arm's
         ("Lc", _on_cradle(p, 0, 0)),
         ("Ax", _on_cradle(p, 100, 0)),
-        *_ties(lambda cx, cy: _on_cradle(p, cx, cy)),
+        *_ties(lambda cx, cy: _on_cradle(p, cx, cy), brace=True),
     ]
 
 
@@ -192,9 +209,10 @@ register(Linkage(
            # (no chord Y-Tr1: 200 mm from the mouth it would sweep across the pivot O1; the
            # chord X-Tf1 triangulates the front quad X-Y-Tf1-Tf2, which bent at X under the
            # jam as a four-bar frame: design review round 1, 2026-10-14)
-           "b6": (("X", "Y", "Lc", "Ax", *TIES),
+           # (the racking brace's socket at Br on a chord from Tr2: simplification round 2)
+           "b6": (("X", "Y", "Lc", "Ax", *TIES, *BRACE),
                   (("X", "Y"), ("Y", "Tf1"), ("Tf1", "Tf2"), ("Tf2", "X"), ("X", "Tf1"),
-                   ("X", "Tr1"), ("Tr1", "Tr2")))},
+                   ("X", "Tr1"), ("Tr1", "Tr2"), ("Tr2", "Br")))},
     labels={"b1": "connecting rod", "b2": "lower arm O2-K (driven at P)",
             "b3": "copy arm O1-J-J2", "b4": "translating bar X-J-K",
             "b5": "cradle link Y-J2", "b6": "cradle (turns about the mouth Lc)"},

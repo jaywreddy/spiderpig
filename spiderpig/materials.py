@@ -132,9 +132,12 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # 2 t "to prevent microcracks", the 2 t only guidance in 5052)
     # (simplification round 1, 2026-10-21: b4 in 0.187 in 5052, its chord X-K 28 mm wide,
     # config.PRODUCT_CHORD_R, inside the 335 x 28 blank its bosses already made: its jam is
-    # the chord's buckling out of its plane, E t^3 x its width, not the alloy; b3 stays
+    # the chord's buckling out of its plane, E t^3 x its width, not the alloy; b3 stayed
     # 7075, its bending at O1: wider in 5052 it meets b2 or K in their layer, no plan)
-    "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al5052_4p8mm", "b3": "al7075_4p8mm",
+    # (simplification round 2, 2026-10-21: b3 in 6061-T6 0.187 in, its chords O1-J and
+    # O1-J2 25 mm wide, config.PRODUCT_CHORD_R: cap SF 1.37 on 6061's minimum, walking 12.6;
+    # SendCutSend quotes the pair USD 32.18 against 7075's 45.86, and 7075 leaves the order)
+    "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al5052_4p8mm", "b3": "al6061_4p8mm",
                      "b4": "al5052_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_4p8mm"},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links

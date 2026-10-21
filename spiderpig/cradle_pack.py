@@ -612,9 +612,11 @@ PACK_PLANS: dict[str, vp.Plan] = {
              "the hand crank, the riser; the printed spacers where the pads were and beside "
              "what would slide (voxpack.spacers, turn 2). The box's length is the cradle "
              "box's (723 mm levelled, 41 mm longer than the board) and its height the board, "
-             "the cradle box standing (178 mm) and the two panels nested over it. Before turn "
-             "1 the drive side carried the cradle box, 441 mm across the bay whichever way it "
-             "lay: the box was the board's footprint times that, about 211 L. (The other "
+             "the cradle box standing (178 mm; 212 since simplification round 2, b6 cut to "
+             "its band round the racking brace's boss and pad) and the two panels nested over "
+             "it. Before "
+             "turn 1 the drive side carried the cradle box, 441 mm across the bay whichever "
+             "way it lay: the box was the board's footprint times that, about 211 L. (The other "
              "orders tried: the passive panel on the board, the drive panel bay to bay over "
              "it and the box on top, 182 L; the drive panel on the board under the passive, "
              "the box on top, 186 L; turn 2: the riser in the box's bay too, 158.5 L, the "
@@ -817,7 +819,8 @@ def pack_items(inp: dict, splits: dict[str, Sequence[str]] | None = None,
                           dict[str, np.ndarray]]:
     """The pieces of :func:`gather`'s input ``inp``, the steps that free them, each as a
     :class:`spiderpig.voxpack.Item` (its parts' meshes, a hanging link swung in: :func:`tuck`;
-    a fill piece levelled: :func:`level`; a side's ``outer`` and ``bay`` faces, and the
+    a fill piece levelled: :func:`level`, but B's cradle box stood as in use, its axis level;
+    a side's ``outer`` and ``bay`` faces, and the
     ``cradle box``'s where the piece carries it: its bay's), and each
     moved part's own 4 x 4 within its piece. ``splits``: a what-if (``spiderpig
     pack-inspect --split``), a new piece's key -> the patterns (``fnmatch``) of the parts it
@@ -865,14 +868,21 @@ def _items(inp: dict, pcs: list[Piece], pres: dict[str, np.ndarray] | None = Non
         mass = sum(inp["parts"][n]["mass"] for n in pc.parts)
         c = (sum(inp["parts"][n]["mass"] * com[n] for n in pc.parts) / mass if mass > 0
              else np.concatenate([p for p, _ in ms]).mean(axis=0))
+        sides = [_side(n)[0] for n in pc.parts if _side(n)[0]]
+        box_alone = set(sides) == set(SIDES) and any(n.startswith("tie_") for n in pc.parts)
         pre = np.eye(3)
         if pres is not None and pc.key in pres:
             pre = pres[pc.key]
+        elif box_alone:
+            # the cradle box stands as in use, its axis level (the cradle's tilt undone), as
+            # its "bottom" face says: not the least footprint's turn, which stood it on end
+            # once b6's boss at X and the racking brace's pad made it squarer (simplification
+            # round 2; until then the two had agreed)
+            pre = vp.rot_about("z", ((-inp["tilt"] + 90) % 180) - 90)
         elif pc.role == "fill":
             pre = vp.rot_about("z", level([p for p, _ in ms], inp["tilt"]))
         faces = {}
-        sides = [_side(n)[0] for n in pc.parts if _side(n)[0]]
-        if set(sides) == set(SIDES) and any(n.startswith("tie_") for n in pc.parts):
+        if box_alone:
             # the cradle box on its own (B's): a cradle link each side, as it stands in use
             drive_z = -1.0 if any(f"{s}.conn" in inp["parts"] for s in SIDES[:1]) else 1.0
             faces = {"drive link": pre @ np.array([0.0, 0.0, drive_z]),

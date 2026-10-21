@@ -101,6 +101,8 @@ from spiderpig.shapes import (
     Cut,
     Rect,
     Shape3D,
+    Socket,
+    box,
     cut_holes,
     difference,
     disc,
@@ -177,8 +179,10 @@ TIE_M = M6_109          # the tie rods' end screws: M6 x 16 button heads, class 
 #                         OPEN_JOINTS). The same 3.3 mm head under the cradle link: a full-
 #                         strength A2-70 head (an ISO 4017 hex's 4.15, an ISO 4762's 6) needs a
 #                         clearance gap over the planner's 4 mm there, a layer that neither
-#                         cradle's plan has (B's pin K's clevis pin would span 19.1 mm)
-TIE_ROD_SCREW = 16.0    # through the cradle link's 4.75 mm: 11.25 mm in the rod's 12 mm tap
+#                         cradle's plan has (B's pin K's clevis pin would span 19.1 mm). A's
+#                         only since simplification round 2's P8: B's braced box takes A2-70
+#                         again (TIE_SCREWS, tie_screw)
+TIE_ROD_SCREW = 16.0   # through the cradle link's 4.75 mm: 11.25 mm in the rod's 12 mm tap
 TIE_ROD_HOLE = 6.4      # their clearance holes in the cradle link (ISO 273 fine)
 TIE_TIGHTEN_NM = 6.0    # the tie rods' screws tightened (the guide), and STEEL_FEET's: 3/4 of
 #                         ISO 7380's most in 10.9 (fasteners.BUTTON_10_9_NM, 8), 3.8-7.0 kN of
@@ -188,15 +192,64 @@ TIE_TIGHTEN_NM = 6.0    # the tie rods' screws tightened (the guide), and STEEL_
 #                         a foot's washer and into the rods' mild-steel taps for no joint that
 #                         needs it. (6 N·m on A2-70 button heads until design review round 3;
 #                         4 until 2026-10-20)
+BRACE_TUBE = (50.8, 1.651)     # the racking brace (simplification round 2, 2026-10-21): a
+#                               2 in x 0.065 in 6061-T6 round tube (McMaster 9056K83) across
+#                               the bay at decanters.BRACE, each end keyed into its cradle link
+BRACE_TEETH = (12, 6.0)        # its socket's teeth in each cradle link: how many, how wide
+#                               (cut with the link: 6 mm, over the 4.75 mm sheet), in as many
+#                               notches sawn and filed in the tube's end by hand
+BRACE_SOCKET = (26.6, 23.45, 1.0)   # the socket: its edge's radius (the tube's 25.4 and its
+#                               teeth's root rounds, r 1.0, the laser's corner, clear of it),
+#                               the teeth's tips (0.3 mm inside the tube's bore: they centre it)
+BRACE_CLEAR = 0.1              # a notch over its tooth, filed to the teeth as cut (calipered):
+#                               the tube's free turn in each link, 0.1 mm at its wall's mid
+#                               radius (cradle_report.box_brace's play, both ends: 0.47°)
+BRACE_SHORT = 0.25             # its ends short of the links' outer faces (nothing proud in the
+#                               side's next layer)
+BRACE_GAP = 0.1                # its notches' bottoms off the teeth at each end (it doesn't
+#                               take the tie rods' clamp: the screws close the links on the rods)
+TIE_SCREWS: dict[str, Screw] = {"decanter_rcm": M6}
+"""Per cradle, its tie rods' end screws where not :data:`TIE_M`'s class 10.9 (simplification
+round 2's P8, 2026-10-21, the materials rule: the structural steel's last part on B): B's
+racking brace takes 87 % of the jam's twist across the bay, so the same ISO 7380 head in A2-70
+at its 4 N·m (:data:`TIE_NMS`; least preload 2.52 kN) holds the box. Walking every end joint
+stays shut (3.92 x its gap moment) and none slips (0.47 of its friction); at the clutch's cap
+the faces stay shut (1.65), the end joints slip in twist (1.11 x: the rods take 4.66 N·m each,
+the brace 195.9 of 223.6), and the rows hold (``cradle_report.box_racking``: the rods 9.12,
+their screws 18.9, the brace 4.45, its teeth 1.87, the link 1.40). A has no brace: its 10.9
+stays (its end joints stood at their gap walking in A2-70 at 4 N·m, 2026-10-20)."""
+TIE_NMS: dict[str, float] = {"decanter_rcm": BUTTON_A2_70_NM["6"]}
+"""Per cradle, its tie rods' screws' torque where not :data:`TIE_TIGHTEN_NM` (N·m;
+:data:`TIE_SCREWS`): B's A2-70 at ISO 7380's most, 4."""
+
+
+def tie_screw(key: str) -> Screw:
+    """Cradle ``key``'s tie rods' end screw family (:data:`TIE_SCREWS`, else :data:`TIE_M`)."""
+    return TIE_SCREWS.get(key, TIE_M)
+
+
+def tie_nm(key: str) -> float:
+    """Cradle ``key``'s tie rods' screws' torque, N·m (:data:`TIE_NMS`, else
+    :data:`TIE_TIGHTEN_NM`)."""
+    return TIE_NMS.get(key, TIE_TIGHTEN_NM)
+
+
+def tie_screw_words(key: str) -> str:
+    """The guide's name of cradle ``key``'s tie rods' end screws' grade."""
+    return ("steel button head (class 10.9, from its own bag: not a stainless one)"
+            if tie_screw(key).kind == "bhcs109" else "stainless button head (A2-70)")
+
+
 STEEL_FEET: dict[str, tuple[str, ...]] = {}
 """The pillars whose foot (its end on the outer plate) takes the tie rods' class 10.9 button head
 at :data:`TIE_TIGHTEN_NM` in both sides, not an A2-70 one at ISO 7380's 4 N·m: none since the
 simplification round 1 (2026-10-21, the materials rule). A's pillar G, whose foot had lifted
 walking at the A2-70 head's least preload on its 12 mm steel post (1.06 x its decompression,
-2026-10-20), stays shut on the 1/2 in 6061 one (``cradle_report.post_joints``). The tie rods'
-heads stay class 10.9 (:data:`TIE_M`): outside the bay the wine runs in (on the cradle links'
-outer faces), unplated (an electroplated 10.9 risks hydrogen embrittlement), greased or
-threadlocked into the aluminium rods."""
+2026-10-20), stays shut on the 1/2 in 6061 one (``cradle_report.post_joints``). A's tie rods'
+heads stay class 10.9 (:data:`TIE_M`; B's A2-70 since simplification round 2's P8,
+:data:`TIE_SCREWS`): outside the bay the wine runs in (on the cradle links' outer faces),
+unplated (an electroplated 10.9 risks hydrogen embrittlement), greased or threadlocked into the
+aluminium rods."""
 SMALL_TIE_D = 10.0      # a 10 mm standoff (MISUMI NETRF10, M5 x 10 deep each end): a base or
 #                         bay tie, a 10 mm column
 TIE_SCREW = 12.0        # M5 x 12 button heads through a 3.2-4.8 mm plate: 7.2-8.8 mm in the tie
@@ -564,7 +617,7 @@ CARVERA_LONGEST = 285.0         # a part's longest side cut on the Carvera: a 12
 #                                 3 mm margins, with room
 CLEAT_JOINT = 1.0               # a cleat longer than that comes in equal pieces butted end to
 #                                 end on its pencil marks, this far apart, each glued along its
-#                                 length (B's 452 mm ones in two), their joint ends square
+#                                 length (B's 402 mm ones in two), their joint ends square
 BOARD_WINDOW = (285.0, 390.0, 105.0, 20.0)
 """A window through the base board under the base stop's lowest sweep (design review round
 2, 2026-10-14): from and to (x behind the mouth), its half-width across the bay's middle and
@@ -700,16 +753,19 @@ STANDS: dict[str, Stand] = {
     # the bar at 90.5°, the triangle and the leg in front of it) and the front ones above
     # it. Nothing crosses the bay: the decanter stands under the mouth, between the bars.
     "decanter_rcm": Stand(
-        nodes={"Ff": (-110.0, rail_y(_RAIL_B)), "Fr": (386.0, rail_y(_RAIL_B)),
+        # (simplification round 2, 2026-10-21: the front foot Ff 50 mm back, from x -110, and
+        # the board's front with it, its width kept; E1 and E2 60 mm forward, from 220 and
+        # 280: the outer plate's blank 13 % smaller, the inner plate's chord 60 mm shorter)
+        nodes={"Ff": (-60.0, rail_y(_RAIL_B)), "Fr": (386.0, rail_y(_RAIL_B)),
                # on the front leg O2-Ff, a quarter and 0.6 of the way down it from O2 (O2 is
                # (-2.7, -307))
-               **{n: (-2.7 + (-110.0 + 2.7) * f, -307.0 + (rail_y(_RAIL_B) + 307.0) * f)
+               **{n: (-2.7 + (-60.0 + 2.7) * f, -307.0 + (rail_y(_RAIL_B) + 307.0) * f)
                   for n, f in (("D1", 0.25), ("D2", 0.6))},
                # (the side frames' redesign, 2026-10-20) two columns on the rail toward the
                # rear, the inner plate's bottom chord from D2 to them: a box toward the rear,
                # so the posts no longer stand on one line and the inner plate holds their ends
                # across it (DECANTER.md, "The side frames")
-               "E1": (220.0, rail_y(_RAIL_B)), "E2": (280.0, rail_y(_RAIL_B))},
+               "E1": (160.0, rail_y(_RAIL_B)), "E2": (220.0, rail_y(_RAIL_B))},
         outer=(("O1", "O2"), ("O2", "Ff"), ("O2", "O"), ("O1", "O"), ("O", "Fr"),
                ("Ff", "Fr"), ("O2", "Fr")),
         inner=(("O1", "O2"), ("O2", "D1"), ("O1", "D1"), ("D1", "D2"), ("D2", "E1"),
@@ -738,8 +794,10 @@ STANDS: dict[str, Stand] = {
         # hand crank) took 682's to 24.9°: 684; with round 2's window under the base stop as
         # well, 684's rear stood at 25.0° to the tenth: 686, 2 mm more at the rear. That bound
         # counts a full 6 L at every tilt; with the wine leaving as it pours the rear holds
-        # 28°: cradle_report.stability's "pouring")
-        base=(-160.0, 526.0),
+        # 28°: cradle_report.stability's "pouring"). Simplification round 2: its front 50 mm
+        # back with the front foot (-160 before), so the front pad keeps its carriage bolt's
+        # spacing; the rear stays (a 10 mm trim took the rear to 25.2°)
+        base=(-110.0, 526.0),
     ),
 }
 
@@ -780,6 +838,16 @@ def tie_points(topo, lk) -> dict[str, str]:
     link = cradle_link(lk)
     return {joint: p for (body, joint), p in sorted(topo.point_of.items())
             if body_class(body) == link and joint.startswith("T")}
+
+
+def brace_points(topo, lk) -> dict[str, str]:
+    """The racking brace's joint (``decanters.BRACE``: ``Br``) -> its topology point, on a
+    cradle whose link has one (simplification round 2, 2026-10-21)."""
+    from spiderpig.linkages.decanters import BRACE
+
+    link = cradle_link(lk)
+    return {joint: p for (body, joint), p in sorted(topo.point_of.items())
+            if body_class(body) == link and joint in BRACE}
 
 
 def _point_of(topo, lk, joint: str) -> str:
@@ -984,11 +1052,14 @@ class CradleStand(Group):
         outer = view.named(r"stand_column_\w+_(?:screw|washer)i")
         inner = view.named(r"stand_column_\w+_(?:screw|washer)o")
         nm = BUTTON_A2_70_NM["6"]
+        washed = bool(view.named(r"stand_column_\w+_washer[io]"))
+        head = ("(and its washer, on a 12 mm column)" if washed else
+                "(straight on the deburred plate: no washer under it)")
         ops = []
         if columns:
             ops.append(Op(STACK, (-1, 1), whole(*columns, *faces, *outer), "",
-                          "Screw the stand's columns to the outer plate, a button head "
-                          "(and its washer, on a 12 mm column) from outside into each "
+                          f"Screw the stand's columns to the outer plate, a button head {head} "
+                          "from outside into each "
                           + ("through an 18 mm fender washer on the plate's inner face under "
                              "the column's end, another on its top end for the inner plate "
                              "(all of one thickness: caliper them from the bag, within 0.05 "
@@ -997,7 +1068,8 @@ class CradleStand(Group):
                           "Fastenings' table).", "columns"))
         if inner:
             ops.append(Op(JOIN, (2,), whole(*inner), "",
-                          "The columns' inner button heads (and washers) from the bay side "
+                          "The columns' inner button heads "
+                          + ("(and washers) " if washed else "") + "from the bay side "
                           f"(threadlocker, {nm:g} N·m). After a clutch slip (a blocked cradle "
                           f"cranked until the clutch clicks), take every post's screws back to "
                           f"{nm:g} N·m: the slip may have set the plates under the posts' "
@@ -1019,8 +1091,11 @@ class CradleTies(Group):
         lk = ctx.config.lk
         link = next(n for n in ctx.topo.links if body_class(n) == cradle_link(lk))
         ties = list(tie_points(ctx.topo, lk).values())
+        braces = list(brace_points(ctx.topo, lk).values())
         r = TIE_D / 2 + 0.3
-        head = TIE_M.head_d / 2 + 0.3
+        r_brace = BRACE_TUBE[0] / 2 + 0.3
+        tie_s = tie_screw(lk.key)
+        head = tie_s.head_d / 2 + 0.3
 
         def make(L: Layout):
             k = L.layers[link]
@@ -1040,7 +1115,14 @@ class CradleTies(Group):
                 # (the rod under it is held off it by its washer on the crankpin: its play,
                 # handcrank.CRANKPIN_PLAY, is less than the 0.4 mm left)
                 out.append(Placed(k - 1, Disc(name, head), self.name, "tie screw head",
-                                  gap=True, height=TIE_M.head_h + 0.25, toward=-1))
+                                  gap=True, height=tie_s.head_h + 0.25, toward=-1))
+            for name in braces:     # the racking brace's tube, as a tie rod (no screw head)
+                out.extend(Placed(j, Disc(name, r_brace), self.name, "brace tube")
+                           for j in range(k + 1, L.top))
+                out.extend(Placed(j, Disc(name, r_brace), self.name, "brace tube", gap=True)
+                           for j in range(k, L.top))
+                out.append(Placed(L.top, Disc(name, r_brace), self.name, "brace tube",
+                                  seat=True))
             return out
 
         return [Claim("tie rods", frozenset((link,)), make)]
@@ -1053,6 +1135,8 @@ class CradleTies(Group):
         ties = tie_points(topo, lk)
         for name in ties.values():
             out.cut(link, Cut(tuple(build.xy(name)), TIE_ROD_HOLE))
+        for name in brace_points(topo, lk).values():
+            out.cut(link, brace_socket(build, name))
         _ties_clear_the_inner_plate(build, done, ties)
         return out
 
@@ -1081,14 +1165,19 @@ class CradleTies(Group):
                           "keepers"))
         if view.side == "R":
             return [Op(STACK, (k, 1), whole(link), "", "", "cradle_link"), *ops]
+        brace = (f" The racking brace's tube into the link's toothed socket from its bay side, "
+                 f"its notches down over the {BRACE_TEETH[0]} teeth (either end, at any "
+                 "turn they drop in at), standing up beside the rods: "
+                 "no screw holds it, the teeth key it and the rods' screws close the box on it."
+                 if any(j.startswith("B") for j in lk.links[link][0]) else "")
         return [Op(STACK, (k, 0, "ties"), whole(link), "Cradle link and tie rods",
-                   f"The four tie rods onto the cradle link, an M{TIE_M.d:g} x "
-                   f"{TIE_ROD_SCREW:g} steel button head (class 10.9, from its own bag: not "
-                   "a stainless one) through the link from its leg side into each "
-                   f"(threadlocker, {TIE_TIGHTEN_NM:g} N·m on the key: closed, the joint holds "
+                   f"The four tie rods onto the cradle link, an M{tie_screw(lk.key).d:g} x "
+                   f"{TIE_ROD_SCREW:g} {tie_screw_words(lk.key)} through the link from its "
+                   "leg side into each "
+                   f"(threadlocker, {tie_nm(lk.key):g} N·m on the key: closed, the joint holds "
                    "the box's walking moment without working); the rods "
-                   "stand up from its bay side. It goes onto the stack rods up, its bores "
-                   "down over the posts and the pins it rides.", "cradle_link",
+                   f"stand up from its bay side.{brace} It goes onto the stack rods up, its "
+                   "bores down over the posts and the pins it rides.", "cradle_link",
                    sub=True), *ops]
 
     def motion(self, got: Realized) -> Motion:
@@ -1348,17 +1437,20 @@ def _keep_out(build: Build) -> tuple[Shape3D, ...]:
 
 
 def _tie_specs(build: Build) -> list[tuple]:
-    """:func:`_tie_paths`' pills as :func:`pill`'s arguments."""
-    ties = tie_points(build.plan.topo, build.ctx.config.lk)
+    """:func:`_tie_paths`' pills as :func:`pill`'s arguments (the racking brace's tube's
+    too)."""
+    lk = build.ctx.config.lk
     z0, z1 = build.z(build.top)
-    r = TIE_D / 2 + build.plan.spec.margin
     out = []
-    for name in ties.values():
-        path = np.asarray(build.plan.topo.geometry.points[name], float).reshape(-1, 2)
-        step = max(1, len(path) // 48)
-        pts = [*path[::step], path[0]]
-        out += [(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0)
-                for a, b in itertools.pairwise(pts)]
+    for names, d in ((tie_points(build.plan.topo, lk), TIE_D),
+                     (brace_points(build.plan.topo, lk), BRACE_TUBE[0])):
+        r = d / 2 + build.plan.spec.margin
+        for name in names.values():
+            path = np.asarray(build.plan.topo.geometry.points[name], float).reshape(-1, 2)
+            step = max(1, len(path) // 48)
+            pts = [*path[::step], path[0]]
+            out += [(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0)
+                    for a, b in itertools.pairwise(pts)]
     return out
 
 
@@ -1414,6 +1506,22 @@ def _ties_clear_the_inner_plate(build: Build, done: Realized, ties: Mapping[str,
     reach = TIE_D / 2 + build.plan.spec.margin
     for tie, name in ties.items():
         _clear_the_inner_plate(build, done, tie, name, reach, "tie rod")
+    reach = BRACE_TUBE[0] / 2 + build.plan.spec.margin
+    for brace, name in brace_points(build.plan.topo, build.ctx.config.lk).items():
+        _clear_the_inner_plate(build, done, brace, name, reach, "racking brace")
+
+
+def brace_socket(build: Build, name: str) -> Socket:
+    """The racking brace's socket in the cradle link at point ``name`` (:data:`BRACE_SOCKET`,
+    :data:`BRACE_TEETH`): its first tooth along the link's chord from ``Tr2``, as the
+    link lies in the build."""
+    lk = build.ctx.config.lk
+    tr2 = tie_points(build.plan.topo, lk).get("Tr2")
+    at = np.asarray(build.xy(name), float)
+    d = at - np.asarray(build.xy(tr2), float) if tr2 is not None else np.array([1.0, 0.0])
+    r_out, r_tip, root = BRACE_SOCKET
+    return Socket((float(at[0]), float(at[1])), r_out, r_tip, BRACE_TEETH[0], BRACE_TEETH[1],
+                  math.atan2(float(d[1]), float(d[0])), root)
 
 
 def _clear_the_inner_plate(build: Build, done: Realized, label: str, name: str,
@@ -1458,6 +1566,31 @@ def _rod(length: float, d: float = TIE_D) -> str:
     from spiderpig.hardware.cradle_catalog import al_rod
 
     return al_rod(d, round(length, 1))
+
+
+def _brace_key(length: float) -> str:
+    """The catalog key of the racking brace's tube, ``length`` mm (made on first use:
+    ``hardware.cradle_catalog.brace_tube``)."""
+    from spiderpig.hardware.cradle_catalog import brace_tube
+
+    return brace_tube(round(length, 1))
+
+
+def _brace_tube(xy, z0: float, z1: float, notch: float, angle: float) -> Shape3D:
+    """The racking brace's tube from ``z0`` to ``z1`` (:data:`BRACE_TUBE`), a notch ``notch``
+    deep at each end for each of its socket's teeth (:data:`BRACE_TEETH`, the first at
+    ``angle``), each :data:`BRACE_CLEAR` over its tooth."""
+    od, wall = BRACE_TUBE
+    n, tooth = BRACE_TEETH
+    tube = difference(disc(xy, od / 2, z0, z1), disc(xy, od / 2 - wall, z0 - 1.0, z1 + 1.0))
+    cuts = []
+    r = od / 2 - wall / 2
+    for k in range(n):
+        a = angle + 2.0 * math.pi * k / n
+        at = (float(xy[0]) + r * math.cos(a), float(xy[1]) + r * math.sin(a))
+        cuts.extend(box(at, (wall + 2.0, tooth + BRACE_CLEAR, notch + 1.0), lo, a)
+                    for lo in (z0 - 1.0, z1 - notch))
+    return difference(tube, union(cuts))
 
 
 def _tie(xy, z0: float, z1: float, d: float = TIE_D, thread: float = TIE_THREAD) -> Shape3D:
@@ -1516,6 +1649,16 @@ FACE_WASHER = "m6_washer_wide"  # the 18-8 M6 fender washer (6.4 x 18 x 1.6, Bol
 #                         guide: a post's length scatter is the inner plate's locked-in stress)
 
 
+HEAD_WASHED: dict[str, tuple[str, ...]] = {"pillar": ("foot",), "column": ()}
+"""The post ends whose M6 button head keeps a DIN 125 washer under it, by kind (simplification
+round 2, 2026-10-21: every end had one since design review round 2's m2): a pillar's foot on
+the outer plate, where the walking moment opens the face at the least preload a bare head's
+friction on the 5052 leaves (``cradle_report.post_joints``: 1.07 x its decompression on B's
+O1 and O2, 1.05 on A's G, at an under-head friction of 0.3; 0.85 and 0.83 washered), and where
+B's lay-flat block takes O1's head in its relief (:data:`RISER_RELIEF`). Elsewhere the head
+bears on the deburred plate (``cradle_report``'s head rows, VDI 2230's limiting pressure)."""
+
+
 def face_washer() -> tuple[float, float, float]:
     """:data:`FACE_WASHER`'s OD, ID and thickness (mm)."""
     from spiderpig.hardware.catalog import get
@@ -1528,14 +1671,15 @@ def column_parts(stand: Stand) -> ColumnParts:
     """:class:`ColumnParts` of ``stand``'s columns: a NETRF10 on M5 x 12 button heads in
     5.5 mm holes, or a 1/2 in 6061-T6511 round (M6 x 12 deep each end, tapped at home: the
     simplification round 1, 2026-10-21; MISUMI's 12 mm NETRF12 steel before) on M6 x 16
-    button heads (A2-70) and DIN 125 washers in 6.4 mm holes (design review round 2's m2: the
-    heads had borne on the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated
+    button heads (A2-70) in 6.4 mm holes, their heads on the plate (:data:`HEAD_WASHED`:
+    simplification round 2; DIN 125 washers under them since design review round 2's m2, when
+    the heads had borne on the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated
     class)."""
     if stand.column_d > SMALL_TIE_D:
         from spiderpig.hardware.cradle_catalog import ROD_HALF, ROD_THREAD
 
-        return ColumnParts(ROD_HALF, ROD_THREAD, M6, 16.0, POST_HOLE, "m6_washer",
-                           FACE_WASHER)
+        return ColumnParts(ROD_HALF, ROD_THREAD, M6, 16.0, POST_HOLE,
+                           "m6_washer" if HEAD_WASHED["column"] else None, FACE_WASHER)
     return ColumnParts(SMALL_TIE_D, 10.0, M5, TIE_SCREW, TIE_HOLE)
 
 
@@ -1679,8 +1823,9 @@ def seat(size: BottleSize, at: Setting | None = None) -> tuple[float, float, flo
     return yf - xf * math.tan(slope), slope, 0.0
 
 
-SET_SCREW = 6.0            # an M3 cup-point set screw (the light's clip, the rear knob's hub,
-#                            the barrel nut's)
+SET_SCREW = 5.0            # an M3 cup-point set screw (the light's clip, the rear knob's hub,
+#                            the barrel nut's): 5 mm since simplification round 2 (the
+#                            carriers' length, one SKU; 6 before)
 CARRIER_SET_SCREW = 5.0    # the M3 cup-point set screw locking a carrier on each tie: 5 mm
 #                            since the 1/2 in tie rods (the simplification round 1,
 #                            2026-10-21: an M3 x 6 left 5.7 mm under a 12.7 mm rod)
@@ -2121,7 +2266,7 @@ POST = (150.0, -141.0)        # the post: 5/8 in 6061-T6511 rod (simplification 
 #                               length, its flats milled and its foot tapped M6 on the Carvera:
 #                               its length and foot. It takes the roll of a load hung at the
 #                               screw, all of it since the nut floats
-POST_KEY = "rod_6061_5_8_150"       # (hardware.cradle_catalog: Speedy Metals 2439)
+POST_KEY = "rod_6061_5_8_150"       # (hardware.cradle_catalog: McMaster 8974K48)
 POST_D = 15.875
 POST_YIELD = 241.3            # MPa: 6061-T6511 rod's least (the Aluminum Association's Table
 #                               11.1, extruded rod 0.250 in and over: 35 ksi)
@@ -2778,7 +2923,9 @@ CLIP_CUT = 33.0             # the plate's lower front, cut at 45° this far up f
 #                             foot at the saddle's back face (clear of a decanter at rest)
 CLIP_SCREW_X, CLIP_SCREW_Z = 82.5, 7.5   # its two M5 screws (their pilots 1.2 mm clear of
 #                                          the front tie's bore)
-CLIP_BITE = 7.0             # their thread in the saddle
+CLIP_BITE = 7.0             # their thread in the saddle (simplification round 2: 11 for the
+#                             base stop's M5 x 16, one SKU, put each screw's tip into the front
+#                             tie rod Tf2's bore, 4.9 mm^3: the clip keeps its M5 x 12)
 CLIP_SCREW = M5.key(CLIP_FLANGE + CLIP_BITE)    # M5 x 12
 M5_PILOT = 4.2              # a printed pilot an M5 cuts its own thread in
 
@@ -3408,9 +3555,21 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                                bom_key=_rod(tie_len), color=TIE_COLOR))
         for s, sign in (("L", -1), ("R", 1)):
             face = sign * (z_mid - link_bottom)      # the link's outer face
-            extras.append(hardware(f"tie_{n}_screw{s}", _screw(xy, face, sign), host,
-                                   fab="purchased", bom_key=TIE_M.key(TIE_ROD_SCREW),
+            extras.append(hardware(f"tie_{n}_screw{s}",
+                                   _screw(xy, face, sign, s=tie_screw(lk.key)), host,
+                                   fab="purchased",
+                                   bom_key=tie_screw(lk.key).key(TIE_ROD_SCREW),
                                    color=TIE_COLOR))
+    # the racking brace's tube (simplification round 2): its ends in the cradle links'
+    # sockets, BRACE_SHORT short of their outer faces, its notches on their teeth
+    for n, p in brace_points(topo, lk).items():
+        sock = brace_socket(build, p)
+        reach = half + t_link - BRACE_SHORT
+        extras.append(hardware(f"brace_{n}", _brace_tube(sock.xy, -reach, reach,
+                                                         t_link - BRACE_SHORT + BRACE_GAP,
+                                                         sock.angle),
+                               host, fab="purchased", bom_key=_brace_key(2 * reach),
+                               color=TIE_COLOR))
     stand = stand_of(lk)
     z0 = plan.z(0)[1]
     foot_half = z_mid - z0                            # a base tie between the outer plates
@@ -3628,6 +3787,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                 cradle_lip=[float(cf.lip[0]), float(cf.lip[1])], cradle_tilt=float(cf.tilt),
                 mid_plane=z_mid, bay_mm=BAY, lip_height_mm=LIP_HEIGHT,
                 tie_mm=tie_len, base_tie_mm=foot_len, bay_tie_mm=bay_len, fastened=fastened,
+                brace_notch_mm=round(t_link - BRACE_SHORT + BRACE_GAP, 2),
                 bottle=shown.name, cradle_linkage=lk.key, cradle_modules=lk.key in PACK_POSES,
                 keepers=sorted(prefixed(n, s) for n in keepers for s in SIDES_LR),
                 petg=sorted([n for n in PETG_PARTS if any(b.name == n for b in extras)]
@@ -3637,6 +3797,11 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                 board_window=[float(cf.lip[0]) + BOARD_WINDOW[0],
                               float(cf.lip[0]) + BOARD_WINDOW[1], -BOARD_WINDOW[2],
                               BOARD_WINDOW[2], BOARD_WINDOW[3]])
+    for b in bodies + extras:
+        # every cut file turned to its least-area box (simplification round 2's C1:
+        # SendCutSend prices a part by its box; the walkers' files lie as they did)
+        if b.fab == "laser":
+            b.turn = "least"
     return Mechanism(name=f"{side.name}_cradle", bodies=bodies + extras,
                      connections=connections, meta=meta,
                      bom_extras=list(side.bom_extras) + list(passive.bom_extras) + glue)
@@ -3683,7 +3848,8 @@ def assembly(view) -> list:
     k = int(view.meta.get("cradle_layer", 0))
     ties = view.named(r"tie_[A-Za-z0-9]+")
     if ties:
-        ops.append(Op(STACK, (k, 0, "ties"), whole(*ties, *view.named(r"tie_\w+_screwL")),
+        ops.append(Op(STACK, (k, 0, "ties"), whole(*ties, *view.named(r"tie_\w+_screwL"),
+                                                    *view.named(r"brace_[A-Za-z0-9]+")),
                       "Cradle link and tie rods", "", "cradle_link", sub=True, side="L"))
     key = str(view.meta.get("cradle_linkage") or "")
     modules = bool(view.meta.get("cradle_modules"))
@@ -3692,8 +3858,9 @@ def assembly(view) -> list:
     right = view.named(r"tie_\w+_screwR")
     if right:
         ops.append(Op(UNIT, (99,), whole(*right), "",      # (after the link: its key)
-                      f"The cradle link's M{TIE_M.d:g} steel button heads (class 10.9) from "
-                      f"its outside into the rods' ends (threadlocker, {TIE_TIGHTEN_NM:g} N·m "
+                      f"The cradle link's M{tie_screw(key).d:g} "
+                      f"{tie_screw_words(key).replace('head (', 'heads (')} from "
+                      f"its outside into the rods' ends (threadlocker, {tie_nm(key):g} N·m "
                       "on the key).",
                       "tie_screws", side="R", scene=lying))
     if modules and key in PACK_POSES:   # its passive panel onto the cradle link (its pins'
@@ -3933,10 +4100,14 @@ def shop_ops(view) -> list:
         f"Saw the pivot posts ({len(hard)}: the pillars a link turns on, {', '.join(pivots)}) "
         "from the hard-anodised 1/2 in rod, each 1.5 mm over its length (the BOM's cut list), "
         "a fine-tooth hacksaw in the vise, the rod wrapped in tape where the jaws hold it. "
-        f"The plain posts and tie rods ({len(plain)}) and the riser's sleeves come cut, 1.5 "
-        "mm over (Speedy Metals, +1/8 -0 in).")
+        f"Saw the plain posts and tie rods ({len(plain)}) from McMaster's plain 1/2 in 3 ft "
+        "sticks the same way, 1.5 mm over, and the riser's four sleeves as 1 in (25.4 mm) "
+        "pieces (a mitre box keeps each cut square within the facing's 1.5 mm; the sticks' "
+        "spare is the sleeves' fallback). The sleeves are only drilled here: each is faced at "
+        "the gearbox's step, to the gearbox's calipered height, once it has come.")
     rod_lines = (
-        "Face every piece square to its length on the Carvera: the pieces lying along X in "
+        "Face every piece but the riser's sleeves square to its length on the Carvera: the "
+        "pieces lying along X in "
         "the vise against one stop, a batch a setup, an end mill's flank across the end, then "
         "re-clamped once for the other end. Each to its length within 0.05 mm (a side's "
         "posts all one length: they set its plates' gap), each end square to "
@@ -3956,6 +4127,38 @@ def shop_ops(view) -> list:
                   scene=Scene("built", show=("*",),
                               marks=(r"[LR]\.pillar_\w+", r"[LR]\.stand_column_\w+",
                                      r"tie_T[a-z]+\d"))))
+    # the racking brace's tube (simplification round 2): to length, then notched to its
+    # sockets' teeth, each end marked from its own socket
+    braces = sorted(n for n, k in keys.items() if k.startswith("tube6061_2in_065_"))
+    if braces:
+        n_t, tooth = BRACE_TEETH
+        notch = float(view.meta.get("brace_notch_mm") or 0.0)
+        ops.append(Op(
+            SHOP, (1, 1), (), "The racking brace's tube, notched",
+            "The racking brace's 2 in tube comes as a 1 ft stick (McMaster, with the rods' "
+            "sticks): saw it 1.5 mm over its length (the BOM's line), then bring it to "
+            "that length within 0.1 mm, both ends "
+            "square: each end rubbed on 120-grit paper taped to the flat table, the tube "
+            "upright and turned as it goes, a caliper across it and a machinist's square on "
+            "it between strokes (its notches' ends stand 0.1 mm off the teeth: a tube that "
+            "long holds the box apart on it, not on its rods).",
+            "brace", count=False,
+            lines=(f"Mark one end from a socket: the tube stood on a cradle link over its "
+                   f"socket, centred, and both sides of each of the {n_t} teeth (about "
+                   f"{tooth:g} mm wide, visible past the tube's wall) drawn up it with a fine "
+                   "paint pen. Carry each line down the tube to the other end along a "
+                   "straightedge (the tube on the flat table, a square against it): both ends' "
+                   "notches in line, as the two links' teeth are across the bay, so either end "
+                   f"goes into either link at any of its {n_t} turns.",
+                   f"Saw each notch's two sides to the marks, {notch:.2f} mm deep from the "
+                   "end, with the fine-tooth hacksaw, the tube in the vise in tape, and file "
+                   f"out the wall between them square: {n_t * 2} notches in all.",
+                   "Try each end in each link's socket and file any notch that holds it "
+                   f"off until the end drops over every tooth, {BRACE_CLEAR:g} mm over each "
+                   "tooth's width at most: no shake you can feel when you twist it (shake is "
+                   "the box racking before the tube takes its share). Deburr the notches; "
+                   "never file a tooth."),
+            scene=Scene("built", show=("*",), marks=(r"brace_\w+",))))
     # drilled and tapped
     m6 = 2 * (len(hard) + len(plain)) + 2 * len(crankpin) + 1      # (+ the rear post's foot)
     m3 = 2 * (len(pins) - len(clips)) + len(clips)
@@ -4014,7 +4217,7 @@ CARVERA_TEXT = (
     "rail finds its slot blind on the way back; either edge can go to the rail), before the "
     "parts are cut free.",
     "Cut the tabs and sand them flush, each cleat's long faces before all (a nub there takes "
-    "up the rail's play). A cleat longer than the bed comes in pieces (B's 452 mm ones in "
+    "up the rail's play). A cleat longer than the bed comes in pieces (B's 402 mm ones in "
     f"two): they go onto the board end to end on its pencil line, {CLEAT_JOINT:g} mm apart, "
     "each glued along its length.",
 )
@@ -4234,11 +4437,15 @@ def use_steps(key: str, saddles: bool = True) -> list[UseStep]:
         "with the bottle out, and press it down on its teeth after.",
         "Keep your hands off the decanter and the bottle while the handle turns.",
         "Lift the cradle by its base board, never by the hand crank or the cradle box.",
-        f"After the clutch has slipped against a block (a click under load), take every "
-        f"post's stainless M6 button head back to {BUTTON_A2_70_NM['6']:g} N·m and every steel "
-        "one (the tie rods'" + (", pillar " + " and ".join(STEEL_FEET[key]) + "'s foot"
-                                if key in STEEL_FEET else "")
-        + f") to {TIE_TIGHTEN_NM:g}: the slip may have set the plates under the posts' ends.",
+        (f"After the clutch has slipped against a block (a click under load), take every "
+         f"post's stainless M6 button head back to {BUTTON_A2_70_NM['6']:g} N·m and every steel "
+         "one (the tie rods'" + (", pillar " + " and ".join(STEEL_FEET[key]) + "'s foot"
+                                 if key in STEEL_FEET else "")
+         + f") to {tie_nm(key):g}: the slip may have set the plates under the posts' ends."
+         if tie_screw(key).kind == "bhcs109" or key in STEEL_FEET else
+         f"After the clutch has slipped against a block (a click under load), take every "
+         f"post's and tie rod's stainless M6 button head back to {BUTTON_A2_70_NM['6']:g} N·m: "
+         "the slip may have set the plates under the posts' ends."),
         "Keep it out of the sun and under 50 °C (a hot car too), and hand-wash the printed "
         "parts: the PETG ones that carry the bottle bear up to 11 MPa as long as a bottle "
         "rests in it, and PETG's resin deflects at 64 °C under 1.8 MPa (Eastman's Eastar "
@@ -4420,15 +4627,17 @@ def _block_xy(key: str) -> tuple[np.ndarray, list[np.ndarray]]:
     return pts[lk.crank[0]][0], at
 
 
-LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 12.7, "drive_box": 9.9},
-                                      "decanter_hinge": {"cradle": 12.0}}
+LIFTS: dict[str, dict[str, float]] = {"decanter_rcm": {"cradle": 12.8, "drive_box": 10.2},
+                                      "decanter_hinge": {"cradle": 11.9}}
 """What a person lifts onto and off the lay-flat blocks, or off the board (kg;
 ``cradle_pack.rest_poses``' masses, held to them in ``tests/test_cradle.py``): B's cradle off
 its board, and its drive side with the cradle box (the first build's lay); A's cradle off its
 board (its first build: the board's finish). Two people, one each side, or one in the order
 :func:`lay_down` gives (design review round 3's stand and use, M5: lifted by its outer
 plates' 4.75 mm top edges 430 mm apart, 465 mm over a counter, the NIOSH lifting equation's
-recommended limit is 11.7 kg at most)."""
+recommended limit is 11.7 kg at most). B's 12.7 and 9.9 until simplification round 2 (its
+racking brace, 0.46 kg on the box, the round's lighter parts and b6 cut to its band: 12.80 and
+10.17), A's 12.0 (11.89)."""
 
 
 def lay_down(key: str, what: str = "cradle") -> str:

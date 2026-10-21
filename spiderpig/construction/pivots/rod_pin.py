@@ -127,7 +127,7 @@ def _section(d: float, what: str) -> Section:
 STOCK_WORDS = (
     "the hard-anodized rods (McMaster: 5/16 in 6750K14 and 3/8 in 6750K15 for the link pins, "
     "1/2 in 6750K16 for the pivot posts and the crankpin; each +-0.008 or 0.009 in) and the "
-    "plain 1/2 in pieces (Speedy Metals, +-0.009 in). Write each stick's reading on it.")
+    "plain 1/2 in sticks (McMaster 8974K28, +-0.006 in). Write each stick's reading on it.")
 """The arrival step's first sentence (``construction.cradle.shop_ops``)."""
 ARRIVAL_WORDS = (
     "A pin stick reading over " + " or ".join(

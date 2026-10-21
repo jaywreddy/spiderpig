@@ -285,17 +285,68 @@ def product_outline(ctx: Context, link: str, segs) -> Outline:
 
     pills = tuple((local(p), local(q), _chord_r(ctx, link, p, q)) for p, q in segs)
     discs = tuple((local(p), r) for p, r in product_bosses(ctx, link, segs).items())
-    key = (pills, discs, fillet_r(ctx, link))
+    cut = product_band(ctx, link, local)
+    key = (pills, discs, fillet_r(ctx, link), cut)
     got = _OUTLINES.get(key)
     if got is None:
         try:
-            got = _close(*key)
+            got = _close(*key[:3])
+            if cut is not None:
+                got = (_band_cut(got[0], *cut), got[1])
         except ConstructionError as e:
             raise ConstructionError(f"{link}: {e}") from None
         if len(_OUTLINES) > 64:
             _OUTLINES.clear()
         _OUTLINES[key] = got
     return Outline((a, b), length, got[0], got[1])
+
+
+def product_band(ctx: Context, link: str, local) -> tuple | None:
+    """A product's link ``link``'s band (:func:`config.band`) in the link's own frame
+    (``local``: a point name to its local x, y): ``(origin, along, lo, hi)``, the band between
+    ``lo`` and ``hi`` across ``along`` from ``origin``; ``None`` if it has none."""
+    from spiderpig.config import band
+
+    got = band(ctx.config, link) if _product(ctx) else None
+    if got is None:
+        return None
+    o, x, lo, hi = got
+    po, px = (ctx.topo.point_of.get((link, j)) for j in (o, x))
+    if po is None or px is None:
+        raise ConstructionError(f"{link} has no joints {o} and {x} for its band")
+    a, b = np.asarray(local(po), float), np.asarray(local(px), float)
+    u = (b - a) / float(np.hypot(*(b - a)))
+    return (tuple(map(float, a)), tuple(map(float, u)), float(lo), float(hi))
+
+
+BAND_CORNER_R = 5.0
+"""A product link's corners where its band cuts it (:func:`product_band`), rounded to this
+radius (opened: shrunk by it and grown back), so its outline stays smooth all round; under half
+its narrowest chord, so nothing else changes."""
+
+
+def _band_cut(face, origin, along, lo: float, hi: float):
+    """``face`` cut to the band between ``lo`` and ``hi`` across ``along`` from ``origin``
+    (:func:`product_band`), the cut's corners rounded (:data:`BAND_CORNER_R`): one face."""
+    from build123d import Kind, Wire, offset
+
+    o, u = np.asarray(origin, float), np.asarray(along, float)
+    v = np.array([-u[1], u[0]])
+    big = 1.0e4
+    ring = [o + s * big * u + y * v for s, y in ((-1, lo), (1, lo), (1, hi), (-1, hi))]
+    strip = Face(Wire.make_polygon([_xy0(p) for p in ring], close=True))
+    got = [f for f in _faces(face & strip) if f.area > 1e-6]
+    if len(got) != 1:
+        raise ConstructionError(f"its outline cut to its band is {len(got)} pieces")
+    opened = offset(offset(got[0], -BAND_CORNER_R, kind=Kind.ARC), BAND_CORNER_R,
+                    kind=Kind.ARC).faces()
+    if len(opened) != 1:
+        raise ConstructionError(f"its outline cut to its band and rounded is {len(opened)} "
+                                "pieces")
+    out = opened[0]
+    if out.normal_at().Z < 0:
+        out = -out
+    return out
 
 
 CRANK_FILLET_R = 10.0

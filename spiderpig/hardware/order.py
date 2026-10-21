@@ -271,8 +271,8 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
             lines += ["", f"{sum(r['qty'] for r in rows)} parts in {len(rows)} files.", ""]
             if fitted:      # (a cradle's: design review round 3, laser-cut parts minor 6)
                 lines += ["As the parts arrive, write each one's label (its file name's first "
-                          "word) on it with a paint pen: some files differ only by a hole or "
-                          "a slot (the crank block's keyed and clear plates).", ""]
+                          "word) on it with a paint pen: some files differ only by a hole "
+                          "(the crank block's seat plate and its bored ones).", ""]
 
     if print_rows:
         lines += ["## Print", "",

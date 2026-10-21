@@ -49,7 +49,7 @@ import numpy as np
 from spiderpig.fit import Params as Params
 from spiderpig.hardware.bom import BomLine
 from spiderpig.mechanism import Body
-from spiderpig.shapes import Cut, Rect
+from spiderpig.shapes import Cut, Rect, Socket
 from spiderpig.stack import Claim, Keepout, Placed, StackPlan, Topology
 
 if TYPE_CHECKING:
@@ -209,7 +209,7 @@ class Realized:
     """A group's contribution to the fabricated side."""
 
     bodies: list[Body] = field(default_factory=list)
-    cuts: dict[str, list[Cut | Rect]] = field(default_factory=dict)   # plate -> holes
+    cuts: dict[str, list[Cut | Rect | Socket]] = field(default_factory=dict)  # plate -> holes
     # frame plate -> pills to add to its outline
     pads: dict[str, list[tuple[tuple[float, ...], tuple[float, ...], float]]] = field(
         default_factory=dict)
@@ -218,7 +218,7 @@ class Realized:
     # the crank's ("crank_bolt"), the pivots' tilt ("wobble")
     notes: dict[str, dict] = field(default_factory=dict)
 
-    def cut(self, plate: str, cut: Cut | Rect) -> None:
+    def cut(self, plate: str, cut: Cut | Rect | Socket) -> None:
         self.cuts.setdefault(plate, []).append(cut)
 
     def pad(self, plate: str, p: XY | np.ndarray, q: XY | np.ndarray, r: float) -> None:
