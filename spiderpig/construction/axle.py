@@ -27,6 +27,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from spiderpig.construction.base import Build, Context, Group, Motion, Realized
+from spiderpig.construction.joints import ErrorTerms, from_wobble_note
 from spiderpig.stack import Axis, Claim, Disc, Keepout, Layout, Placed, Unbuildable
 
 STOP_OVERLAP = 0.8   # how far a spacer must overlap a link's hole to hold it (radial, mm)
@@ -49,6 +50,13 @@ class AxleDims:
     # the radius of the washers the axle carries through a clearance gap it crosses
     # (0: ``spacer``)
     washer: float = 0.0
+    # the radius it claims in its own links' layers (0: ``axle``): what sits in a link's
+    # bore beyond the shaft (a ball bearing bonded in: construction.pivots.ball); a
+    # shoulder still only has to overlap the shaft's hole to hold the link
+    seat: float = 0.0
+    # the radius it claims inside a drive's hub coaxial with it (0: ``axle``): what runs
+    # through the pulley's bore beside the shaft (a ball pair's spacer tube)
+    nested: float = 0.0
 
 
 End = tuple[str, float]     # (label, radius) of one layer claimed beyond an axle's end
@@ -88,6 +96,16 @@ class AxleGroup(Group):
     def dims(self, ctx: Context) -> AxleDims:
         return self.construction.dims(ctx, self.pillar)
 
+    def error_terms(self, ctx: Context, got: Realized | None = None) -> ErrorTerms | None:
+        """The construction's terms (its ``error_terms``), with this joint's measured end
+        float and tilt when ``got`` holds its wobble note."""
+        make = getattr(self.construction, "error_terms", None)
+        if make is None:
+            return None
+        base = make(ctx)
+        note = ((got.notes.get("wobble") or {}).get(self.name) if got is not None else None)
+        return from_wobble_note(note, base) if note else base
+
     def keepouts(self, ctx: Context) -> list[Keepout]:
         """At its thinnest (the neck) the axle still fills every layer it spans."""
         return [Keepout(self.name, ("pt", self.axis.name), self.dims(ctx).neck,
@@ -117,8 +135,8 @@ class AxleGroup(Group):
         p = ctx.params
         geo = ctx.topo.geometry
         ax, g, members = self.axis.name, self.name, self.axis.members
-        seat = d.axle
-        stop = p.hole(2 * seat) / 2 + STOP_OVERLAP       # a shoulder this wide holds a link
+        seat = d.seat or d.axle
+        stop = p.hole(2 * d.axle) / 2 + STOP_OVERLAP     # a shoulder this wide holds a link
         room: dict[str, float] = {}                      # link -> radius free around the axle
         for n, segs in ctx.topo.links.items():
             if n in members:
@@ -130,10 +148,21 @@ class AxleGroup(Group):
         ends = getattr(self.construction, "ends", None)
         link_t = {m: ctx.sheet_t("link", m) for m in members}
         full = full_rings(ctx)
+        # a drive's hub coaxial with this axle (an arm's pulley or drum under the link it
+        # turns: construction.transmissions.DriveHub) takes the layers under that link: the
+        # axle only seats inside its bore there (no spacer ring)
+        hubs = [h for h in ctx.interfaces.values()
+                if getattr(h, "axis", None) == ax and getattr(h, "below", 0)
+                and getattr(h, "link", None) in members]
+
+        def nested_of(L: Layout) -> set[int]:
+            return {L.layers[h.link] + getattr(h, "side", -1) * i for h in hubs
+                    for i in range(1, h.below + 1)}
 
         def make(L: Layout):
             ms = sorted(L.layers[m] for m in members)
             mset = set(ms)
+            nested = nested_of(L)
             own: dict[int, float] = {}
             for m in members:
                 own[L.layers[m]] = max(own.get(L.layers[m], 0.0), link_t[m])
@@ -192,8 +221,18 @@ class AxleGroup(Group):
                                       + " below its links and " + crossing(ku) + " above")
             column = getattr(self.construction, "column", None)
             if column is not None:          # a construction's own rule over the whole column
-                column(self.pillar, ms, L.top, (down, up), L.pitch, layout=L, air=air,
-                       hi=stack_hi)
+                # (a drive's hub layers round the column take no shims: passed as links')
+                # (its own links, and the room each other layer leaves it: a ball pair's
+                # hubs, construction.pivots.pair)
+                column(self.pillar, sorted(mset | nested), L.top, (down, up), L.pitch,
+                       layout=L, air=air, hi=stack_hi, members=ms, room=dict(free),
+                       spacer=d.spacer)
+            lands = getattr(self.construction, "lands", None)    # a construction's own
+            # clearance gaps inside its column (a ball pair's inner-ring lands between two
+            # neighbours: construction.pivots.pair.land_gaps), as layer -> height
+            land_h = ({} if lands is None else
+                      lands(self.pillar, sorted(mset | nested), L.top, (down, up), members=ms,
+                            layout=L, room=dict(free), spacer=d.spacer))
             k0 = 0 if down else lo              # the retained stack: outer anchor or lowest link
             k1 = L.top if up else hi            # ... to inner anchor or highest link
             out = [Placed(k, Disc(ax, seat), g, f"{g} axle", seat=True) for k in ms]
@@ -233,7 +272,8 @@ class AxleGroup(Group):
             # a cantilever's), the gap between that end layer and the retainer: filled, so
             # the end's link can't slide
             wr = d.washer or d.spacer
-            out += [Placed(k, Disc(ax, wr), g, f"{g} washer", gap=True) for k in range(w0, w1)]
+            out += [Placed(k, Disc(ax, wr), g, f"{g} washer", gap=True,
+                           height=land_h.get(k, 0.0)) for k in range(w0, w1)]
             tips = getattr(self.construction, "tips", None)
             if tips is not None:            # what passes beyond its end's retainer (a clevis
                 out += tips(d, L, k0, k1, ax, g)    # pin's end past its clip)
@@ -249,6 +289,10 @@ class AxleGroup(Group):
             beside = {k for m in ms for k in (m - 1, m + 1)} - mset
             for k in range(k0 + 1, k1):
                 if k in mset:
+                    continue
+                if k in nested:
+                    out.append(Placed(k, Disc(ax, d.nested or d.axle), g, f"{g} nested",
+                                      seat=True))
                     continue
                 if k in beside:
                     r = min(d.spacer, free.get(k, np.inf))
@@ -268,12 +312,18 @@ class AxleGroup(Group):
             their thinnest between them (a pillar's ends may still become anchors)."""
             ms = sorted(L.layers[m] for m in members)
             mset = set(ms)
+            nested = nested_of(L)
             lo, hi = ms[0], ms[-1]
             beside = {k for m in ms for k in (m - 1, m + 1)}
-            out = [Placed(k, Disc(ax, d.axle), g, f"{g} axle", seat=True) for k in ms]
+            out = [Placed(k, Disc(ax, d.seat or d.axle), g, f"{g} axle", seat=True)
+                   for k in ms]
             h_lo, h_hi = d.end_h
             for k in range(lo - 1, hi + 2):
                 if k in mset or (self.pillar and k in (0, L.top)):
+                    continue
+                if k in nested:
+                    out.append(Placed(k, Disc(ax, d.nested or d.axle), g, f"{g} nested",
+                                      seat=True))
                     continue
                 if not self.pillar and k == lo - 1 and h_lo > 0:
                     out.append(Placed(k, Disc(ax, d.head), g, f"{g} head", gap=True,
@@ -332,7 +382,20 @@ class AxleGroup(Group):
                       hold=hold if holding is not None else None)]
 
     def realize(self, build: Build, done: Realized) -> Realized:
-        return self.construction.realize(self, build)
+        """The construction's parts, then its column's spacers from stock where it declares
+        them (``spacers``, :class:`construction.pivots.common.Stock`): tubes between the links,
+        shims and cut rings for the rest. A product's printed rings fill their layers
+        (:func:`full_rings`: a decanting cradle's sleeves, its keepers among them) and stay
+        printed."""
+        out = self.construction.realize(self, build)
+        stock = getattr(self.construction, "spacers", None)
+        if stock is not None and not full_rings(build.ctx):
+            from spiderpig.construction.pivots.common import stock_spacers, stock_tubes
+
+            stock_tubes(out, build, self, stock.tube, self.axis.members, plates=stock.plates,
+                        land_key=stock.land)
+            stock_spacers(out, build, stock.shim, "", 0)
+        return out
 
     def assembly(self, view) -> list:
         """The construction's ``assembly(group, view)`` when it has one."""

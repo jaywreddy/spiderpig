@@ -419,7 +419,8 @@ def check(mech, default: str, dxf: bool = True) -> dict:
         return (i["rule"], -v if i["rule"] == "dxf" else v)
 
     issues.sort(key=worst_first)
-    return {"parts": len(bodies), "by_rule": by_rule, "errors": errors, "issues": issues,
+    return {"parts": len(bodies), "by_rule": by_rule, "errors": errors,
+            "issues": issues,
             "sheets": sheets, "kerf": kerf, "dxf": fids,
             "dxf_worst_mm": max((f["deviation_mm"] for f in fids.values()), default=None)}
 

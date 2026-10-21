@@ -24,8 +24,6 @@ from spiderpig.construction.contract import check_side
 from spiderpig.construction.pivots.common import (
     Column,
     column_air,
-    column_slots,
-    sleeve_count,
 )
 from spiderpig.fabricate import fabricate
 from spiderpig.hardware.bom import bom_from_mechanism
@@ -35,8 +33,8 @@ from spiderpig.stack import verify_plan
 from tests import cache
 from tests._construction import overlapping_pairs
 
-KEYS = ("chicago", "standoff", "chicago6", "pivot8", "clevis8", "rod516", "rod38",
-        "rodclip516")
+KEYS = ("chicago", "standoff", "ball", "ball_pillar", "ball_pair", "ball_pair_pillar",
+        "chicago6", "pivot8", "clevis8", "rod516", "rod38", "rodclip516")
 T = 1.0
 
 
@@ -217,7 +215,9 @@ def test_holes_cut_for_each_construction(side):
             assert [x.d for x in got.cuts[host]] == [pytest.approx(c.shaft.host_hole())]
             for m in set(g.axis.members) - {host}:
                 assert [x.d for x in got.cuts[m]] == [pytest.approx(c.hole())]
-            assert {e.key for e in got.extras} == {"epoxy_2part", "threadlocker_222"}
+            # (and the shims' extra pieces where a head spacer takes more than one)
+            assert {e.key for e in got.extras} - {"shim_din988_4x8"} == {"epoxy_2part",
+                                                                       "threadlocker_222"}
 
 
 def _assert_nothing_slides(side, which) -> list[str]:
@@ -274,25 +274,20 @@ def test_nothing_on_a_cantilever_pillar_can_slide(side):
 
 
 def test_spacers_and_retainers_are_what_the_key_says(side):
-    """Between its retained parts an axle prints one sleeve per run of touching rings and
-    gap rings (the sleeve rule, ``common.sleeve_runs``), each named after its lowest, and
-    together they fill every spacer layer and every gap the column crosses."""
+    """A walker's axle declares stock spacers (``spacers``): between its links stock tubes
+    cut to length, the rest shims or cut rings, nothing printed. (A product's printed
+    sleeves, the sleeve rule's: ``tests/test_cradle.py``.)"""
     _, _design, build, fab, axles = side
     for g in axles:
         bodies = {b.name.split("_", 2)[2]: b for b in _group_bodies(fab, g)}
         col = Column.of(build, g)
-        slots = column_slots(build, g, col)
-        sleeves = {n for n in bodies if n.startswith(("ring", "gap"))}
-        assert sleeves <= {s.name for s in slots}, g.name
-        if not g.pillar:            # (a pillar's end shims may stop its top sleeve short)
-            assert len(sleeves) == sleeve_count(slots), g.name
-        printed = {n for n, b in bodies.items() if b.fab == "printed"}
-        assert sleeves <= printed
-        spans = sorted((bodies[n].part.bounding_box().min.Z,
-                        bodies[n].part.bounding_box().max.Z) for n in sleeves)
-        for sl in slots:            # every slot inside a sleeve (to its print tolerance)
-            assert any(z0 <= sl.z0 + 1e-3 and sl.z0 + 0.1 <= z1 for z0, z1 in spans), (
-                g.name, sl)
+        # nothing printed (the user's "fewer printed spacers", 2026-10-14): the column
+        # between its links is stock tubes cut to length, what's left shims or cut rings
+        assert not [n for n, b in bodies.items() if b.fab == "printed"], g.name
+        tubes = [b for n, b in bodies.items() if n.startswith("tube")]
+        assert all(b.fab == "purchased" and b.bom_key.startswith("collar_") for b in tubes)
+        if col.between:
+            assert tubes, g.name
         if g.pillar:
             (standoff,) = [b for n, b in bodies.items() if n.startswith("standoff")]
             assert standoff.bom_key.startswith(("gobilda_1501_", "pillar_shaft_"))
@@ -307,7 +302,8 @@ def test_spacers_and_retainers_are_what_the_key_says(side):
             assert screw.bom_key.startswith("chicago_m3_")
             host = min(g.axis.members, key=lambda m: (build.layers[m], m))
             assert screw.rigid_with == host                  # bonded into the lowest link
-            assert {n for n in bodies if n.startswith("spacer_")} <= printed
+            assert all(bodies[n].fab in ("purchased", "laser")
+                       for n in bodies if n.startswith("spacer_"))
 
 
 def test_bom_counts_per_construction(side):

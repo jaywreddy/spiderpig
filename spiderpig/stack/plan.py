@@ -95,6 +95,29 @@ class StackSpec:
     # search may give up (:data:`GIVE_UP`). :attr:`StackPlan.heads` says which ("sink" or
     # "gap"). (Until 2026-10-14 the second only ran where the first found no plan.)
     heads: str = "best"
+    # Pins whose links stack in consecutive layers (the role ``pin_stack``: "adjacent",
+    # :data:`PIN_STACKS`): each a pin's links and the most layers its column may span (its
+    # links and the hubs its thin riders take beside them); empty: no such rule
+    adjacent: tuple[tuple[tuple[str, ...], int], ...] = ()
+
+
+@dataclass(frozen=True)
+class PinStack:
+    """How a pin's links may sit in the stack (the role ``pin_stack``)."""
+
+    key: str
+    label: str
+    slack: int = 0      # layers a pin's links may leave between them (``free``: unbounded)
+
+
+PIN_STACKS: dict[str, PinStack] = {p.key: p for p in (
+    PinStack("free", "a pin's links in any layers (a spacer fills each layer between them)"),
+    PinStack("adjacent", "a pin's links in consecutive layers (no spacer between them: "
+                         ":attr:`StackSpec.adjacent`)"),
+    PinStack("near", "a pin's links at most one layer apart (one spacer at most)", 1),
+)}
+"""The role ``pin_stack``'s choices: the user's (2026-10-13): "a separate constraint that
+can be toggled on or off so that all pin links are adjacent"."""
 
 
 def thread_time() -> float:

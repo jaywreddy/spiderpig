@@ -24,6 +24,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from spiderpig.hardware.cad import CadRef as CadRef  # (the servos' models: hardware.cad)
+
 THREAD_D = {"M2": 2.0, "M2.5": 2.5, "M2.6": 2.6, "M3": 3.0}   # nominal diameters (mm)
 KGF_CM = 9.80665e-2             # N·m per kgf·cm
 
@@ -312,38 +314,6 @@ class Recess:
 
 
 @dataclass(frozen=True)
-class CadRef:
-    """A downloadable model of the servo, aligned to the servo frame by ``transform``.
-
-    ``transform`` is a 4x4 row-major matrix (as a tuple of 16 floats) taking
-    the file's coordinates (after scaling by ``scale`` to mm) into the servo
-    frame. ``sha256`` pins the exact file; a mismatch means "don't use it".
-
-    Optional: ``member`` names the model inside a zip archive (``url`` is
-    then the archive, pinned by ``archive_sha256``; ``sha256`` pins the
-    member). ``strip`` lists the servo-frame bounding boxes ``(x0, y0, z0,
-    x1, y1, z1)`` of solids to drop (the stock output horn and its screw,
-    which :mod:`servos.model` draws separately); ``strip_cut`` a cylinder
-    ``(r, z0, z1)`` about the output axis cut away where a model fuses the
-    horn into the case. Files are downloaded and cached at build time
-    (:mod:`servos.cad`), never checked into the repo.
-    """
-
-    url: str
-    sha256: str
-    filename: str
-    format: str = "step"           # "step" | "stl"
-    scale: float = 1.0
-    transform: tuple[float, ...] = (1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
-    license: str = ""
-    source: str = ""               # human-readable provenance
-    member: str = ""
-    archive_sha256: str = ""
-    strip: tuple[tuple[float, ...], ...] = ()
-    strip_cut: tuple[float, float, float] | None = None
-
-
-@dataclass(frozen=True)
 class ServoSpec:
     key: str                        # registry key, e.g. "sts3215"
     name: str
@@ -368,6 +338,8 @@ class ServoSpec:
     rated_kgcm: float | None = None           # rated (continuous) torque, if published
     voltage: tuple[float, float] | None = None
     interface: str = ""
+    protocol: str = ""              # its bus's (actuators.controllers.PROTOCOLS): what a
+    #                                 controller must speak, what control.servos writes
     notes: str = ""
     sources: tuple[str, ...] = field(default_factory=tuple)
     # optional detail

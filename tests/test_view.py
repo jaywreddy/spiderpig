@@ -454,16 +454,17 @@ def test_r5_the_export_cli_writes_a_design_and_the_sim_cli_takes_a_design_or_an_
     with pytest.raises(SystemExit):
         sim_walk._args(["--mjcf", str(tmp_path / "none.xml"), "--linkage", "klann"])
     assert "--mjcf needs" in capsys.readouterr().err
-    # a mechanism has nothing to walk: its mjcf is skipped with a warning, not an error
+    # a mechanism's mjcf is the same emitter's: its frame fixed, its crank's servo, no floor
     lift = tmp_path / "lift"
     assert export_cli.main(["--linkage", "hoecken", "--formats", "bom", "mjcf", "--out",
                             str(lift), "--store", str(store.root)]) == 0
-    assert "warning: mjcf: hoecken is a mechanism" in capsys.readouterr().err
+    assert "warning: mjcf" not in capsys.readouterr().err
     assert (lift / "bom.md").is_file()
-    assert not (lift / "hoecken.xml").exists()
-    rep = api.load(api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}},
-                               store).id, store).reports.get("export")
-    assert rep is None or any(w.startswith("mjcf: hoecken is a mechanism") for w in rep.warnings)
+    meta = json.loads((lift / "hoecken.json").read_text())
+    assert meta["freejoint"] is None
+    assert [a["type"] for a in meta["actuators"].values()] == ["velocity"]
+    assert "output" in meta["sites"]
+    assert (lift / "hoecken.xml").read_text().startswith("<mujoco")
 
 
 def export_cli_config():

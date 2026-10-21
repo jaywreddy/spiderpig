@@ -22,9 +22,11 @@ build answers in well under a second.
   exactly as given but ``--out`` and ``--force``, and the store's folder;
 - the store's **plan** is the one the build read (``designs/<id>/plan.json``, less when it
   was written): a re-planned or removed design builds again;
-- the **servo model**: ``SPIDERPIG_SERVO_CAD``, ``SPIDERPIG_OFFLINE`` and
-  ``SPIDERPIG_CAD_CACHE`` as they were, each pinned CAD file as it was (path, size,
-  modification time), and none missing that a build could download now;
+- the **servo model**: ``SPIDERPIG_SERVO_CAD``, ``SPIDERPIG_OFFLINE``,
+  ``SPIDERPIG_CAD_CACHE``, ``SPIDERPIG_PART_CAD`` and ``SPIDERPIG_CAD_STRICT`` as they were
+  (a build without strict CAD may hold a parametric fallback a strict one refuses), each
+  pinned CAD file as it was (path, size, modification time), and none missing that a build
+  could download now;
 - **every output** there with its size and SHA-256, and no other cut, print, STEP or
   STL file beside them (the files a build owns: :func:`outputs`). A file whose size,
   modification and change times and inode are the recorded ones isn't read again (a
@@ -45,12 +47,16 @@ import json
 import os
 from pathlib import Path
 
-GENERATED = (".dxf", ".stl", ".csv")
+from spiderpig import fabmethods
+
+GENERATED = (".dxf", ".stl", ".csv", ".urdf")
 """What a build or an export writes under ``laser/`` and ``print/`` (the DXFs, the STLs,
-their ``parts.csv`` / ``order.csv`` / ``<name>_sheet_parts.csv``)."""
+their ``parts.csv`` / ``order.csv`` / ``<name>_sheet_parts.csv``) and an arm's ``urdf/``
+(the URDF and its link meshes)."""
 
 TOP_OUTPUTS = ("ORDER.md", "bom.csv", "bom.md", "bom.json")
-CAD_ENV = ("SPIDERPIG_SERVO_CAD", "SPIDERPIG_OFFLINE", "SPIDERPIG_CAD_CACHE")
+CAD_ENV = ("SPIDERPIG_SERVO_CAD", "SPIDERPIG_OFFLINE", "SPIDERPIG_CAD_CACHE",
+           "SPIDERPIG_PART_CAD", "SPIDERPIG_CAD_STRICT")
 _OURS = ("--out", "--store", "--force")
 STORE_ENV, DEFAULT_ROOT = "SPIDERPIG_STORE", ".spiderpig"
 """:mod:`spiderpig.store`'s (that module imports the engine; ``tests/test_uptodate.py``
@@ -183,7 +189,7 @@ def outputs(out: Path) -> list[Path]:
     """The files a build owns in ``out``: what it writes under ``laser/`` and ``print/``
     (:data:`GENERATED`), any STEP or STL beside them, the BOM and ``ORDER.md``."""
     out = Path(out)
-    files = [f for d in ("laser", "print") if (out / d).is_dir()
+    files = [f for d in fabmethods.folders() if (out / d).is_dir()
              for f in sorted((out / d).rglob("*"))
              if f.is_file() and f.suffix.lower() in GENERATED]
     if out.is_dir():
@@ -236,18 +242,66 @@ def servo_files(config) -> list[list]:
     return out
 
 
-def inputs(opts: Options, config) -> dict:
+def inputs(opts: Options, config, plan_id: str | None = None) -> dict:
     """What the build of ``config`` reads beside its code, captured when it reads it
-    (after the plan, before fabricating): the stored plan, the servo model's files."""
+    (after the plan, before fabricating): the stored plan, the servo model's files.
+    ``plan_id``: the stored design whose plan it read (``spiderpig build DESIGN``), else
+    the design the options resolve to."""
     from dataclasses import replace
 
     from spiderpig.config import default_robot
     from spiderpig.stages.resolve import resolve, spec_of
 
-    plan_id = resolve(spec_of(replace(config, robot=default_robot(config.linkage))),
-                      store=None).id
-    return {"plan_design": plan_id, "plan_hash": plan_hash(plan_file(opts.store, plan_id)),
-            "cad_env": cad_env(), "servo_files": servo_files(config)}
+    if plan_id is None:
+        plan_id = resolve(spec_of(replace(config, robot=default_robot(config.linkage))),
+                          store=None).id
+    out = {"plan_design": plan_id, "plan_hash": plan_hash(plan_file(opts.store, plan_id)),
+           "cad_env": cad_env(), "servo_files": servo_files(config)}
+    parts = part_files(config)
+    if parts:           # (a design drawing no bought part's model: the record as it was)
+        out["part_files"] = parts
+    return out
+
+
+def part_files_unchanged(records) -> bool:
+    """Whether every vendor model :func:`part_files` recorded is as it was: still absent
+    (one imported since changes the parts), or there with its size and modification time."""
+    for path, present, size, mtime in records:
+        p = Path(path)
+        if not present:
+            if p.exists():
+                return False
+            continue
+        try:
+            st = p.stat()
+        except OSError:
+            return False
+        if (st.st_size, st.st_mtime_ns) != (size, mtime):
+            return False
+    return True
+
+
+def part_files(config) -> list[list]:
+    """Each bought part's vendor model the config's constructions draw (their
+    ``cad_keys``; :data:`hardware.cad.PART_CAD`): its cache path, whether it is there, size,
+    modification time (``spiderpig cad import`` or a deletion makes the build stale)."""
+    from spiderpig import construction
+    from spiderpig.hardware import cad
+
+    keys = sorted({k for key in {config.pin, config.pillar}
+                   for k in getattr(construction.AXLES.get(key), "cad_keys", ())})
+    out = []
+    for k in keys:
+        ref = cad.part_cad(k)
+        if ref is None:
+            continue
+        p = cad.cached_path(ref)
+        try:
+            st = p.stat()
+            out.append([str(p), True, st.st_size, st.st_mtime_ns])
+        except OSError:
+            out.append([str(p), False, None, None])
+    return out
 
 
 def record_path(opts: Options) -> Path:
@@ -312,6 +366,8 @@ def check(opts: Options, key: str | None = None) -> str | None:
             st = p.stat()
             if (st.st_size, st.st_mtime_ns) != (size, mtime):
                 return None
+        if not part_files_unchanged(cur.get("part_files", [])):
+            return None
         listed = cur["outputs"]
         if {str(f.relative_to(opts.out)) for f in outputs(opts.out)} != set(listed):
             return None

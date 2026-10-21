@@ -81,7 +81,7 @@ from typing import TYPE_CHECKING, TypeGuard, overload
 
 import numpy as np
 
-from spiderpig.design import Design, design_id, jsonable, now_iso, spec_hash
+from spiderpig.design import Design, design_id, jsonable, now_iso, side_hash, spec_hash
 
 if TYPE_CHECKING:
     from build123d import Shape
@@ -101,7 +101,7 @@ def _product_of(key: str | None) -> str | None:
 
 STORE_ENV = "SPIDERPIG_STORE"
 DEFAULT_ROOT = ".spiderpig"
-STAGES = ("check", "plan", "walk", "build", "recheck", "verify", "export")
+STAGES = ("check", "plan", "walk", "precision", "build", "recheck", "verify", "export")
 META_KEYS = ("stage", "design", "engine_version", "written_at")
 PROJECT = "project"          # the ``store`` argument's default: the project store
 
@@ -327,7 +327,7 @@ class Store:
             "spec_hash": spec_hash(design.resolved), "created_at": design.created_at,
             "derived_from": design.derived_from, "patch": design.patch,
             "kind": design.kind, "linkage": cfg.linkage, "module": cfg.module,
-            "sides": 2 if cfg.robot else 1, "warnings": list(design.warnings),
+            "sides": cfg.sides, "warnings": list(design.warnings),
             "resolved": design.resolved,
         })
         return True
@@ -585,16 +585,20 @@ class Store:
     def list_designs(self) -> list[dict]:
         return [self.summary(i) for i in self.ids()]
 
-    def find_plans(self, spec_hash_: str, exclude: Iterable[str] = ()) -> list[tuple[str, dict]]:
+    def find_plans(self, spec_hash_: str, exclude: Iterable[str] = (),
+                   side: bool = False) -> list[tuple[str, dict]]:
         """Other designs of the same resolved spec (another engine version) that hold a
-        plan: ``[(id, plan doc)]``, newest first."""
+        plan: ``[(id, plan doc)]``, newest first. ``side``: ``spec_hash_`` is a
+        :func:`design.side_hash`, matched against each design's (the same side, another
+        turntable or homing reference)."""
         skip = set(exclude)
         out = []
         for i in self.ids():
             if i in skip:
                 continue
             rec = self.read_design(i) or {}
-            if rec.get("spec_hash") != spec_hash_:
+            mine = (side_hash(rec.get("resolved") or {}) if side else rec.get("spec_hash"))
+            if mine != spec_hash_:
                 continue
             doc = self.read_report(i, "plan")
             if doc is not None and doc.get("ok") and doc.get("layers"):

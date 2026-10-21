@@ -1,0 +1,373 @@
+{
+ "data": {
+  "meta": {
+   "actuators": {
+    "drive": {
+     "ctrl_units": "rad/s crank speed, positive = forward",
+     "ctrlrange": [
+      -5.445427266222308,
+      5.445427266222308
+     ],
+     "forcerange": [
+      -1.91229675,
+      1.91229675
+     ],
+     "joint": "crank",
+     "kv": 3.511747851012305,
+     "rated_torque": 0.4903325,
+     "servo": "sts3215",
+     "speed_rpm": 52,
+     "stall_torque_kgcm": 19.5,
+     "type": "velocity"
+    }
+   },
+   "base": "base",
+   "bodies": {
+    "b1": {
+     "kind": "b1",
+     "kinematic": [
+      "b1"
+     ],
+     "mass": 0.003113440842574764,
+     "parent": "conn",
+     "pivot": "M",
+     "ref_pos": [
+      0.012,
+      0.0,
+      0.024232
+     ],
+     "side": null
+    },
+    "b2": {
+     "kind": "b2",
+     "kinematic": [
+      "b2"
+     ],
+     "mass": 0.004498755200563851,
+     "parent": "base",
+     "pivot": "Q",
+     "ref_pos": [
+      0.026400000000000003,
+      0.0,
+      0.019432
+     ],
+     "side": null
+    },
+    "b3": {
+     "kind": "b3",
+     "kinematic": [
+      "b3"
+     ],
+     "mass": 0.0024537297970450888,
+     "parent": "base",
+     "pivot": "F",
+     "ref_pos": [
+      0.026400000000000003,
+      0.0936,
+      0.009432000000000003
+     ],
+     "side": null
+    },
+    "b4": {
+     "kind": "b4",
+     "kinematic": [
+      "b4"
+     ],
+     "mass": 0.007397725285584014,
+     "parent": "b6",
+     "pivot": "J2",
+     "ref_pos": [
+      0.048794325141778186,
+      0.051658519184476864,
+      0.006432
+     ],
+     "side": null
+    },
+    "b5": {
+     "kind": "b5",
+     "kinematic": [
+      "b5"
+     ],
+     "mass": 0.008773994829598288,
+     "parent": "b1",
+     "pivot": "P",
+     "ref_pos": [
+      0.026400000000000007,
+      0.06563901278965124,
+      0.006432
+     ],
+     "side": null
+    },
+    "b6": {
+     "kind": "b6",
+     "kinematic": [
+      "b6"
+     ],
+     "mass": 0.0014358129033187176,
+     "parent": "b5",
+     "pivot": "P",
+     "ref_pos": [
+      0.026400000000000007,
+      0.06563901278965124,
+      0.009432000000000003
+     ],
+     "side": null
+    },
+    "base": {
+     "kind": "base",
+     "kinematic": [
+      "torso"
+     ],
+     "mass": 0.10344008049652048,
+     "parent": null,
+     "pivot": null,
+     "ref_pos": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "side": null
+    },
+    "conn": {
+     "kind": "crank",
+     "kinematic": [
+      "coupler",
+      "conn"
+     ],
+     "mass": 0.015402113685577964,
+     "parent": "base",
+     "pivot": "O",
+     "ref_pos": [
+      0.0,
+      0.0,
+      0.017997999999999997
+     ],
+     "side": null
+    }
+   },
+   "config": {
+    "linkage": "hoecken_pantograph",
+    "module": "single",
+    "phases": null,
+    "proportions": {},
+    "servo": "sts3215",
+    "sheet": "acrylic_3mm"
+   },
+   "crank_angle": "t = t_ref + crank_sign * qpos[S.crank]",
+   "crank_sign": 1,
+   "feet": {},
+   "format": "spiderpig-mjcf/1",
+   "frames": {
+    "base": "the base body's frame is the mech frame in metres",
+    "mech": "design frame (mm): x walking axis, y up, z lateral stack (left side z < 0); origin on the crank axis O at the mid-plane",
+    "mech_to_world_ref": [
+     [
+      0.001,
+      0.0,
+      0.0,
+      -0.0
+     ],
+     [
+      0.0,
+      0.0,
+      -0.001,
+      -0.0
+     ],
+     [
+      0.0,
+      0.001,
+      0.0,
+      -0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "rest_pitch": 0.0,
+    "rotation_world_from_mech": [
+     [
+      1.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      -1.0
+     ],
+     [
+      0.0,
+      1.0,
+      0.0
+     ]
+    ],
+    "world": "z up, x forward, y left; gravity -z; the base fixed, its floor (a turret's, under the yaw axis: the URDF's base_link) at the origin"
+   },
+   "freejoint": null,
+   "loops": [
+    {
+     "body1": "b1",
+     "body2": "b2",
+     "name": "B"
+    },
+    {
+     "body1": "b5",
+     "body2": "b3",
+     "name": "J1"
+    },
+    {
+     "body1": "b4",
+     "body2": "b3",
+     "name": "K"
+    }
+   ],
+   "mass": {
+    "by_material": {
+     "aluminium": 0.005910750084788948,
+     "printed": 0.0014659887414836268,
+     "servo": 0.05500000000000001,
+     "sheet": 0.050236563401293025,
+     "steel": 0.03390235081321757
+    },
+    "total": 0.14651565304078318
+   },
+   "node_motion": "node_matrix(t) = D_body(t) @ node_matrix(frame 0), D_body(t) = X_base_body(t) @ inv(X_base_body(qpos0)) in mech mm",
+   "nodes": {
+    "b1": "b1",
+    "b2": "b2",
+    "b3": "b3",
+    "b4": "b4",
+    "b5": "b5",
+    "b6": "b6",
+    "conn": "conn",
+    "coupler": "conn",
+    "crank_horn_screw0": "conn",
+    "crank_horn_screw1": "conn",
+    "crank_horn_screw2": "conn",
+    "crank_horn_screw3": "conn",
+    "crank_pin_M": "conn",
+    "crank_pin_collar_lo_M": "conn",
+    "crank_pin_screw_lo_M": "conn",
+    "crank_pin_sleeve_M": "conn",
+    "crank_pin_washer_lo_M": "conn",
+    "crank_plate4": "conn",
+    "crank_plate6": "conn",
+    "crank_stub": "conn",
+    "crank_stub_screw": "conn",
+    "crank_stub_thrust": "conn",
+    "frame_outer": "base",
+    "pillar_F_screw0": "base",
+    "pillar_F_screw8": "base",
+    "pillar_F_shims8": "base",
+    "pillar_F_standoff0": "base",
+    "pillar_F_tube0": "base",
+    "pillar_F_tube1": "base",
+    "pillar_F_washer0": "base",
+    "pillar_F_washer8": "base",
+    "pillar_Q_screw0": "base",
+    "pillar_Q_screw8": "base",
+    "pillar_Q_shims8": "base",
+    "pillar_Q_standoff0": "base",
+    "pillar_Q_tube0": "base",
+    "pillar_Q_tube1": "base",
+    "pillar_Q_washer0": "base",
+    "pillar_Q_washer8": "base",
+    "pin_B_screw": "b2",
+    "pin_B_spacer_hi": "b2",
+    "pin_B_tube0": "b2",
+    "pin_J1_screw": "b5",
+    "pin_J1_spacer_hi": "b5",
+    "pin_J2_screw": "b4",
+    "pin_J2_spacer_hi": "b4",
+    "pin_K_screw": "b4",
+    "pin_K_spacer_hi": "b4",
+    "pin_P_screw": "b5",
+    "pin_P_spacer_hi": "b5",
+    "pin_P_tube0": "b5",
+    "servo": "base",
+    "servo_horn": "conn",
+    "servo_horn_spacer": "conn",
+    "servo_screw0": "base",
+    "servo_screw1": "base",
+    "torso": "base"
+   },
+   "params": {
+    "clearance": 0.5,
+    "contact_solimp": [
+     0.9,
+     0.95,
+     0.001,
+     0.5,
+     2.0
+    ],
+    "contact_solref": [
+     0.01,
+     1.0
+    ],
+    "crank_armature": 0.005,
+    "crank_damping": 0.0,
+    "eq_solimp": [
+     0.99,
+     0.999,
+     0.0001,
+     0.5,
+     2.0
+    ],
+    "eq_solref": [
+     0.002,
+     1.0
+    ],
+    "friction": 0.65,
+    "hull_tolerance": 0.5,
+    "iterations": 100,
+    "ls_iterations": 50,
+    "payload_g": 0.0,
+    "payload_pos": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "phase_lock_ki": 4.0,
+    "phase_lock_kp": 1.0,
+    "pin_armature": 1e-06,
+    "pin_damping": 0.0001,
+    "pin_frictionloss": 0.0015,
+    "printed_fill": 1.0,
+    "rolling_friction": 0.0001,
+    "servo_mismatch": 0.03,
+    "stall_error": 0.1,
+    "timestep": 0.001,
+    "torsional_friction": 0.005
+   },
+   "rest_height": -0.0,
+   "sites": {
+    "output": {
+     "body": "b4",
+     "ref_pos": [
+      0.026400000000000007,
+      0.037678025579302485,
+      0.006432
+     ]
+    }
+   },
+   "t_ref": 0.0,
+   "units": {
+    "design": "mm",
+    "model": "SI (m, kg, s, rad)"
+   }
+  },
+  "xml_bytes": 27711,
+  "xml_gz_b64": "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",
+  "xml_sha256": "77724e3206bca7ff73bf7dd97a82b0cdebf76a9eaaa145850ba3e4c0d3f82ac4"
+ },
+ "engine_version": "0.1.0+e2cf649bc7a2",
+ "generator": "tests/test_sim.py::test_recorded_mjcf_current[hoecken_pantograph]",
+ "source": {
+  "file": "tests/test_sim.py",
+  "name": null
+ },
+ "source_key": "gen-6266c1ae01288f0b"
+}

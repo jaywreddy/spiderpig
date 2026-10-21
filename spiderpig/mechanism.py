@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from spiderpig import fabmethods
+
 if TYPE_CHECKING:
     from build123d import Shape
 
@@ -104,8 +106,8 @@ class Body:
     for bodies that aren't links). ``rigid_with`` marks fabricated hardware
     that moves with another body; such a body has no joints of its own and
     its part is modelled in the same frame as its host's. ``fab`` says how
-    the part is made (``"laser"``, ``"printed"`` or ``"purchased"``); a
-    purchased body names its catalog item in ``bom_key``.
+    the part is made (a :mod:`spiderpig.fabmethods` key: ``"laser"``, ``"printed"``,
+    ``"purchased"``, ...); a purchased body names its catalog item in ``bom_key``.
     """
 
     name: str
@@ -122,6 +124,11 @@ class Body:
     # (a link's first outline segment), "least" turned to its least-area box (a decanting
     # cradle's, simplification round 2: SendCutSend prices a part by its box)
     turn: str = ""
+
+    def __post_init__(self) -> None:
+        if self.fab is not None and not fabmethods.known(self.fab):
+            raise ValueError(f"body {self.name!r}: unknown fab method {self.fab!r} "
+                             f"(spiderpig.fabmethods: {sorted(fabmethods.METHODS)})")
 
     def joint(self, name: str) -> Joint:
         for j in self.joints:

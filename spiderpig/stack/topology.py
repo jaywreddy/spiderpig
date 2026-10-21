@@ -161,6 +161,32 @@ class Axis:
     joints: tuple[tuple[str, str], ...]      # every (body, joint) on it
 
 
+@dataclass(frozen=True)
+class LinkPoint:
+    """A point fixed to a link, drawn from two of its points: from ``about`` toward
+    ``toward``, ``along`` that direction and ``across`` it (turned 90° counter-clockwise), in
+    mm (an arm's hub bolts: :meth:`Topology.add_link_point`) or, ``scaled``, in units of the
+    two points' distance (an affine combination of the link's points: a cradle plate's
+    outline, :meth:`Topology.add_link_points`). ``lateral``: its move between an arm's tour
+    rows (:class:`Geometry`)."""
+
+    about: str
+    toward: str
+    along: float
+    across: float
+    lateral: float = 0.0
+    scaled: bool = False
+
+    def at(self, o: np.ndarray, q: np.ndarray) -> np.ndarray:
+        """Where it is with ``about`` at ``o`` and ``toward`` at ``q`` (``(2,)`` or
+        ``(..., 2)``)."""
+        d = q - o
+        if not self.scaled:
+            d = d / (np.linalg.norm(d) if d.ndim == 1 else
+                     np.linalg.norm(d, axis=-1, keepdims=True))
+        return o + self.along * d + self.across * np.stack([-d[..., 1], d[..., 0]], axis=-1)
+
+
 @dataclass
 class Topology:
     """The planner's view of one side: link outlines and axles as named points."""
@@ -173,27 +199,32 @@ class Topology:
     frame_bodies: tuple[str, ...] = ()
     crank_bodies: tuple[str, ...] = ()
     crank_points: dict[str, tuple[float, float]] = field(default_factory=dict)
-    # points fixed to a link: name -> (a, b, u, v), a + u (b - a) + v (b - a) turned 90°
-    link_points: dict[str, tuple[str, str, float, float]] = field(default_factory=dict)
+    # points a group fixed to a link (an arm's hub bolts, a cradle plate's outline): name ->
+    # how it is drawn from two of the link's points (:class:`LinkPoint`)
+    link_points: dict[str, LinkPoint] = field(default_factory=dict)
 
     def axes_of(self, kind: AxisKind) -> list[Axis]:
         return [a for a in self.axes if a.kind == kind]
 
-    def add_link_points(self, points: Mapping[str, tuple[str, str, float, float]]) -> None:
-        """Points fixed to a link, each ``(a, b, u, v)``: ``a + u (b - a) + v (b - a)``
-        turned 90° counter-clockwise, ``a`` and ``b`` two of the link's points (an affine
-        combination of points of one rigid body rides it), added to the geometry (and
+    def add_link_points(self, points: Mapping[str, LinkPoint | tuple[str, str, float, float]]
+                        ) -> None:
+        """Points fixed to a link (:class:`LinkPoint`, or ``(a, b, u, v)``: ``a + u (b - a) +
+        v (b - a)`` turned 90° counter-clockwise, ``a`` and ``b`` two of the link's points, an
+        affine combination of points of one rigid body riding it), added to the geometry (and
         remembered, so a re-sampled topology gets them too: :func:`stack.verify_plan`;
         :meth:`construction.base.Build.xy` places them)."""
-        new = {n: v for n, v in points.items() if self.link_points.get(n) != v}
+        new: dict[str, LinkPoint] = {}
+        for n, v in points.items():
+            lp = v if isinstance(v, LinkPoint) else LinkPoint(*v, scaled=True)
+            if self.link_points.get(n) != lp:
+                new[n] = lp
         if not new:
             return
         g = self.geometry.points
-        xy = {}
-        for name, (a, b, u, v) in new.items():
-            pa, d = g[a], g[b] - g[a]
-            xy[name] = pa + u * d + v * np.stack([-d[:, 1], d[:, 0]], axis=-1)
-        self.geometry = self.geometry.extend(xy)
+        xy = {n: lp.at(np.asarray(g[lp.about], dtype=float), np.asarray(g[lp.toward], dtype=float))
+              for n, lp in new.items()}
+        lateral = {n: lp.lateral for n, lp in new.items() if not lp.scaled}
+        self.geometry = self.geometry.extend(xy, lateral=lateral or None)
         self.link_points.update(new)
 
     def add_crank_point(self, name: str, r: float, angle_deg: float) -> str:
@@ -206,6 +237,15 @@ class Topology:
         xy = g["O"] + r * np.stack([np.cos(theta), np.sin(theta)], axis=-1)
         self.geometry = self.geometry.extend({name: xy})
         self.crank_points[name] = (r, angle_deg)
+        return name
+
+    def add_link_point(self, name: str, about: str, toward: str,
+                       offset: tuple[float, float], lateral: float = 0.0) -> str:
+        """A point fixed to a link, ``offset`` (along, across) mm from the point ``about`` in
+        the direction of ``toward``, added to the geometry with its ``lateral`` bound (an
+        arm's tour) and remembered (a re-sampled topology gets it too: ``verify_plan``)."""
+        self.add_link_points({name: LinkPoint(about, toward, float(offset[0]),
+                                              float(offset[1]), float(lateral))})
         return name
 
     @property
@@ -269,6 +309,25 @@ _SAMPLED: dict[tuple, Topology] = {}     # a module template's topology, sampled
 SAMPLED_MAX = 16                          # templates kept (the newest)
 
 
+ARM_SAMPLES = 4
+"""An arm's topology is sampled this many times as densely (its tour crosses a box,
+:meth:`linkage.Linkage.tour`, where a crank's cycle is one line)."""
+
+
+def _arm_of(tmpl):
+    """The arm linkage a template is of (its ``meta``), else ``None``."""
+    meta = tmpl.meta if isinstance(getattr(tmpl, "meta", None), dict) else {}
+    if "linkage" not in meta:
+        return None
+    from spiderpig.linkage import get
+
+    try:
+        lk = get(meta["linkage"])
+    except KeyError:
+        return None
+    return lk if lk.ranged else None
+
+
 def topology_from_template(tmpl, samples: int = 1440) -> Topology:
     """Classify a template's bodies and joints into links and axles.
 
@@ -284,6 +343,8 @@ def topology_from_template(tmpl, samples: int = 1440) -> Topology:
     read-only :class:`Geometry`, whose distance table then serves them all.
     """
     meta = tmpl.meta if isinstance(getattr(tmpl, "meta", None), dict) else {}
+    if _arm_of(tmpl) is not None:
+        samples *= ARM_SAMPLES
     key = None
     if {"linkage", "module", "phases", "proportions"} <= set(meta):
         key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections),
@@ -345,9 +406,15 @@ def _sample_topology(tmpl, samples: int) -> Topology:
         b.name: tuple((point_of[(b.name, p)], point_of[(b.name, q)]) for p, q in b.outline)
         for b in tmpl.bodies if is_link(b.name)
     }
+    lateral: dict[str, float] = {}
+    arm = _arm_of(tmpl)
+    if arm is not None:         # each point's move between the tour's rows: its joints' most
+        lk_lat = arm.tour_lateral(tuple(tmpl.meta["proportions"]))
+        for node, name in point_of.items():
+            lateral[name] = max(lateral.get(name, 0.0), lk_lat.get(node[1], 0.0))
     return Topology(
         name=tmpl.name,
-        geometry=Geometry(points),
+        geometry=Geometry(points, lateral=lateral),
         links=links,
         axes=tuple(sorted(axes, key=lambda a: a.name)),
         point_of=point_of,

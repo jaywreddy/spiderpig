@@ -67,7 +67,13 @@ class PlanReport(Report):
     keeps its bottom bearing), whether it is proven the thinnest (``optimal``, ``proof``),
     and the plan's table (``table``). A failure carries the blockers and recommendations.
     ``reused`` names the stored plan this one was re-made and verified from (``"store"``:
-    the design's own; another design's id: the same spec on another engine version)."""
+    the design's own; another design's id: the same spec on another engine version).
+    ``budget_s`` is the planner's CPU budget the plan was searched under
+    (:attr:`stack.StackSpec.max_seconds`, ``SPIDERPIG_PLAN_SECONDS``: outside the design's
+    id, so a plan's reach can depend on the machine and that budget); a reused plan keeps
+    its record's (and says so in ``warnings`` when this process's differs). ``None``: no
+    clock (the node budgets alone), or a record written before it was kept
+    (``budget_recorded`` false)."""
 
     ok: bool = True
     failures: list[Failure] = field(default_factory=list)
@@ -87,3 +93,5 @@ class PlanReport(Report):
     seconds: float = 0.0
     heads: str | None = None       # fasteners' heads sunk into layers, or in clearance gaps
     gaps_mm: dict[str, float] = field(default_factory=dict)   # layer -> the gap over it
+    budget_s: float | None = None  # the CPU seconds the search had (None: no clock)
+    budget_recorded: bool = True   # false: re-made from a record that didn't keep its budget

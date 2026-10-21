@@ -770,7 +770,7 @@ def test_r5_the_metrics_say_when_and_how_it_fell_and_an_exported_model_runs(buil
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", list(_sim.RECORDED))
+@pytest.mark.parametrize("name", list(_sim.WALKERS))
 def test_a_recorded_export_runs_as_is(name):
     """A model exported by an earlier engine (the recorded XML and its ``.json``) runs
     through ``simulate(model_xml=, model_meta=)`` and its metrics, standing."""
@@ -779,6 +779,7 @@ def test_a_recorded_export_runs_as_is(name):
     xml, meta = _sim.recorded_mjcf(name)
     assert meta["format"] == "spiderpig-mjcf/1"
     assert meta["config"]["linkage"] == key
+    assert meta["freejoint"] == "base"
     r = simulate(cfg, (0.0, 0.0), 0.5, model_xml=xml, model_meta=meta)
     assert np.isfinite(r.base_pos).all()
     assert r.loop_error.max() < 0.5e-3
@@ -786,6 +787,44 @@ def test_a_recorded_export_runs_as_is(name):
     assert m["fell_at_s"] is None
     assert m["mass"] == pytest.approx(meta["mass"]["total"])
     assert set(m["loop_force"]) == {lp["name"] for lp in meta["loops"]}
+
+
+@pytest.mark.parametrize("name", sorted(set(_sim.RECORDED) - set(_sim.WALKERS)))
+def test_a_recorded_fixed_design_holds_its_pose(name):
+    """The same emitter's model of a design that doesn't walk (the approved arm on its
+    turret, a mechanism's one side): fixed to the world, no floor; its motors by what its
+    inputs declare (an arm's ranged inputs and turntable: steppers' position actuators; a
+    mechanism's crank: its servo's velocity actuator); ``spiderpig sim`` holds it at its
+    pose under gravity (:func:`spiderpig.sim.run.hold`): its sites (the tool's tip, the
+    output) sag under a millimetre, its loops stay closed, no motor at its limit. A
+    walker's model is refused there."""
+    from spiderpig.sim.run import hold
+
+    key, module = _sim.RECORDED[name]
+    cfg = BuildConfig(linkage=key, module=module)
+    xml, meta = _sim.recorded_mjcf(name)
+    assert meta["freejoint"] is None
+    assert not meta["feet"]
+    kinds = {a["type"] for a in meta["actuators"].values()}
+    if cfg.lk.ranged:
+        assert set(cfg.lk.inputs) <= set(meta["actuators"])
+        assert kinds == {"position"}
+    else:
+        assert kinds == {"velocity"}
+    assert meta["sites"]
+    model = mujoco.MjModel.from_xml_string(xml)
+    assert model.njnt == model.nv              # hinges only: no free base
+    assert "floor" not in {model.geom(i).name for i in range(model.ngeom)}
+    assert model.neq == len(meta["loops"]) > 0
+    m = hold(cfg, 1.0, model_xml=xml, model_meta=meta)
+    assert m["holds"], m
+    assert set(m["sag"]) == set(meta["sites"])
+    assert m["sag_max"] < 1.0
+    assert m["loop_error"] < 0.1
+    assert max(m["torque_fraction"].values()) < 1.0
+    with pytest.raises(ValueError, match="walking"):
+        hold(BuildConfig(linkage="klann", module="single"), 0.1,
+             model_xml=xml, model_meta={**meta, "freejoint": "base"})
 
 
 @pytest.mark.slow

@@ -50,7 +50,8 @@ EXPECTED = {
 
 def test_walkers_have_feet_mechanisms_an_output():
     assert set(VERIFY) == set(MECHANISMS)
-    assert sorted(linkage.available()) == sorted(linkage.available("walker") + MECHANISMS)
+    assert sorted(linkage.available()) == sorted(linkage.available("walker") + MECHANISMS
+                                                 + linkage.available("arm"))
     for key in linkage.available():
         lk = linkage.get(key)
         assert (lk.kind == "walker") == bool(lk.feet) == (lk.output is None)

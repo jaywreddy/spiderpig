@@ -49,7 +49,7 @@ import warnings
 from pathlib import Path
 from typing import cast
 
-from spiderpig import construction, linkage, servos, uptodate
+from spiderpig import construction, fabmethods, linkage, servos, uptodate
 from spiderpig.config import (
     ParamError,
     add_build_args,
@@ -73,7 +73,12 @@ from spiderpig.uptodate import GENERATED  # api.export's clear_generated reads i
 
 
 def _parse_args(argv) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Walking-robot generator")
+    from spiderpig.stages.resolve import DESIGN_HELP
+
+    p = argparse.ArgumentParser(description="build a design's files: the whole machine's "
+                                            "STEP and STL, print STLs, DXF sheets, BOM, "
+                                            "ORDER.md")
+    p.add_argument("design", nargs="?", metavar="DESIGN", help=DESIGN_HELP)
     add_design_args(p)
     p.add_argument("--side-only", action="store_true",
                    help="build one side (no second side, no chassis)")
@@ -98,10 +103,26 @@ def _parse_args(argv) -> argparse.Namespace:
                    help="build even when --out already holds this build's outputs, "
                         "unchanged (else it says so and does nothing)")
     args = p.parse_args(argv)
-    try:            # robot=None: the linkage's kind decides (a mechanism is one side)
-        args.config = config_from_args(args, robot=False if args.side_only else None)
-    except ParamError as e:
-        p.error(str(e))
+    args.stored = None
+    if args.design:         # a stored design: its config as recorded (its spec's roles)
+        from spiderpig.stages.resolve import load_stored
+
+        try:
+            args.stored = load_stored(args.design, args.store)
+        except (KeyError, ValueError, ParamError) as e:
+            p.error(str(e))
+        cfg = args.stored.config
+        args.config = cfg.side_config() if args.side_only else cfg
+        fit = args.stored.spec.fit          # its cut files' kerf and sheet, unless given
+        if args.kerf is None:
+            args.kerf = fit.kerf_mm
+        if args.sheet_size is None and fit.sheet_size_mm:
+            args.sheet_size = list(fit.sheet_size_mm)
+    else:
+        try:        # robot=None: the linkage's kind decides (a mechanism is one side)
+            args.config = config_from_args(args, robot=False if args.side_only else None)
+        except ParamError as e:
+            p.error(str(e))
     args.name = args.name or args.config.linkage
     return args
 
@@ -259,7 +280,6 @@ def clear_generated(folder: Path) -> None:
 # the export worker: the grouping and the cut files beside the STEP and STL
 # ---------------------------------------------------------------------------
 
-GROUPED = ("laser", "printed")
 
 
 class _ExportJob:
@@ -387,7 +407,7 @@ def _exports_job(go: str, parent: int, out: str, name: str, sheet: str,
         return None
     timings = {"load": time.perf_counter() - t0}
     t0 = time.perf_counter()
-    groups = {m: group_made(mech.bodies, m) for m in GROUPED}
+    groups = {m: group_made(mech.bodies, m) for m in fabmethods.made()}
     timings["group"] = time.perf_counter() - t0
     res: dict = {"groups": {m: [(g.ref.name, list(g.names), list(g.mirrored)) for g in gs]
                             for m, gs in groups.items()}, "timings": timings}
@@ -433,8 +453,11 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     if opts is not None:
         uptodate.forget(opts)       # (a build that stops short is never current)
-    for owned in ("laser", "print"):     # no cut or print files left from an earlier build
-        clear_generated(out / owned)
+    # (an earlier engine's MuJoCo model beside the URDF too: now the export's mjcf)
+    for stale in [*(out / "urdf").glob("*.joints.json"), *(out / "urdf").glob("*.mjcf.xml")]:
+        stale.unlink(missing_ok=True)
+    for owned in (*fabmethods.folders(), "urdf"):   # no cut, print or URDF files left
+        clear_generated(out / owned)              # from an earlier build
     # an export's manifest no longer describes the folder (api.export reuses one by it):
     # this build writes its own once it has written everything; nor do an earlier build's
     # shopping list and BOM (a build that stops short leaves none of them behind)
@@ -465,7 +488,12 @@ def main(argv=None) -> int:
 
     store = Store.of(args.store) if args.store else Store.default()
     try:
-        plan_config(config, store)
+        if args.stored is not None:     # its own plan (a task's spec: not the options')
+            from spiderpig.stages.planning import plan_stored
+
+            plan_stored(args.stored)
+        else:
+            plan_config(config, store)
     except ValueError as e:
         print(f"error: no layer plan: {e}", file=sys.stderr)
         return 2
@@ -475,7 +503,9 @@ def main(argv=None) -> int:
           f"{config.pitch:g} mm ({plan.height:.1f} mm):")
     print(plan.describe())
     # (key is set exactly when opts is: uptodate.check_once)
-    read = uptodate.inputs(opts, config) if opts is not None and key is not None else None
+    read = (uptodate.inputs(opts, config,
+                            plan_id=args.stored.id if args.stored is not None else None)
+            if opts is not None and key is not None else None)
     # the grouping and the cut files in a worker beside the STEP and STL, from the
     # fabrication the cache keeps (started now: its imports overlap the fabrication)
     job, entry = _start_exports(store, out, args, config), None
@@ -497,11 +527,19 @@ def main(argv=None) -> int:
                                                          for name, n in split),
                   file=sys.stderr)
             return 2
-        if config.robot:
+        if config.mirrored:
             m = mech.meta
             print(f"chassis: {m['centre_plates']} centre plates; rear screws "
                   f"{m.get('rear_screws_per_servo', 0)} x {m.get('rear_screw')} per servo; "
                   f"{m.get('ties', 0)} frame ties ({m.get('tie_screw')})")
+        elif config.layout == "turret":
+            tu = mech.meta["turret"]
+            print(f"turret: {tu['preset']} ({tu['support']}, {tu['transmission']} "
+                  f"{tu['ratio']:g}:1, {tu['motor']}, {tu['sensor']}), yaw "
+                  f"{tu['range_deg'][0]:g}..{tu['range_deg'][1]:g} deg; the shoulder "
+                  f"{-tu['axis'][1]:.0f} mm over the base's floor")
+            for n in tu["notes"]:
+                print(f"  note: {n}")
 
         step_path, stl_path = out / f"{args.name}.step", out / f"{args.name}.stl"
         with warnings.catch_warnings():
@@ -511,6 +549,12 @@ def main(argv=None) -> int:
             mech.export_step(step_path)
         mech.export_stl(stl_path)
         print(f"wrote {step_path} and {stl_path}")
+        if config.lk.ranged:               # the arm in ROS: its URDF (spiderpig.urdf)
+            from spiderpig import urdf
+
+            files = urdf.write(mech, config, 1.0, out / "urdf", args.name)
+            print(f"wrote {files[0]} ({len(files) - 2} link meshes) and {files[1]} (its "
+                  "MuJoCo model: spiderpig export --formats mjcf)")
 
         done = _exports_result(job) if job is not None else None
     except BaseException:
@@ -520,7 +564,7 @@ def main(argv=None) -> int:
     if job is not None:
         job.adopt(out)                      # (the build reports on them below)
     if done is None:
-        groups = {method: group_made(mech.bodies, method) for method in GROUPED}
+        groups = {method: group_made(mech.bodies, method) for method in fabmethods.made()}
     else:
         by_name = {b.name: b for b in mech.bodies}
         groups = {m: [MadeGroup(m, by_name[ref], names, mirrored)
@@ -578,7 +622,7 @@ def main(argv=None) -> int:
     bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups, extra=kit)
     if args.no_dxf:
         bom.notes.append("Sheet stock not counted (--no-dxf).")
-    if config.robot and (note := torque_limit_note(config)):
+    if note := torque_limit_note(config):       # every crank servo's (its motor role)
         bom.notes.append(note)
     if custom or config.linkage != linkage.DEFAULT:
         bom.notes.append(f"Design: {design_note}.")
@@ -680,19 +724,29 @@ def _write_manifest(out: Path, config, args=None) -> None:
     it: with ``--kerf``, which shapes the cut files, as the Spec's ``fit.kerf_mm``), so an
     ``api.export`` of the same design into this folder keeps its cut and print files and
     ORDER.md, and one of another design clears them. It lists no ``formats``: an export
-    never takes a build's files for its own earlier ones (:func:`api.export`'s reuse)."""
+    never takes a build's files for its own earlier ones (:func:`api.export`'s reuse). A
+    stored design (``DESIGN``) built as recorded is itself; with another kerf or sheet
+    size, its spec with them."""
     import json
 
     from spiderpig.stages.resolve import resolve, spec_of
 
-    spec = spec_of(config)
+    stored = getattr(args, "stored", None)
+    if stored is not None and stored.config != config:
+        stored = None               # (--side-only of a stored robot: the side's spec)
+    spec = spec_of(config) if stored is None else stored.spec.to_dict()
     kerf = getattr(args, "kerf", None)
     size = getattr(args, "sheet_size", None)
     if kerf is not None:
         spec.setdefault("fit", {})["kerf_mm"] = kerf
     if size:
         spec.setdefault("fit", {})["sheet_size_mm"] = list(size)
-    design = resolve(spec, store=None)
+    design = resolve(spec, store=None) if stored is None else stored
+    if stored is not None:      # built as recorded: itself; with another kerf or sheet: not
+        fit = stored.spec.fit
+        if (kerf != fit.kerf_mm or (list(size) if size else None)
+                != (list(fit.sheet_size_mm) if fit.sheet_size_mm else None)):
+            design = resolve(spec, store=None)
     (out / "manifest.json").write_text(json.dumps(
         {"design": design.id, "engine_version": design.engine_version,
          "written_by": "spiderpig build", "kerf_mm": kerf,

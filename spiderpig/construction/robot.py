@@ -144,7 +144,7 @@ def mid_plane(design) -> float:
 class FrameTies(Group):
     """Side-level part of the frame ties and the deck rails: their screws' holes and pads in
     the inner frame plate (the screws' heads under the plate are the drive group's claims,
-    :meth:`servos.mount.DriveGroup.claims`)."""
+    :meth:`servos.mount.ServoDrive.claims`)."""
 
     name = "frame ties"
 
@@ -186,11 +186,13 @@ def _moved(part, dz: float, mirror: bool):
     return moved(part, Location((0.0, 0.0, dz)))
 
 
-def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, list, dict]:
+def _deck(side: Mechanism, design, z_mid: float, host, bodies, kit: bool = True
+          ) -> tuple[list, list, dict]:
     """The electronics deck (:mod:`construction.deck`): its bodies and purchases, and what
     ``mech.meta["deck"]`` says (``fitted: False`` and why when it doesn't fit). The rails
     must clear everything the chassis put between the inner plates: checked here on the
-    real parts, not only on :func:`deck.deck_floor`'s estimate."""
+    real parts, not only on :func:`deck.deck_floor`'s estimate. ``kit``: the deck carries
+    its electronics (the role ``controller``'s deck kit), else it is bare."""
     build = Build(design.ctx, design.plan, side)
     try:
         place = deck_place(build, design.drive)
@@ -228,7 +230,8 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
                  for bb in (box_of(b.part),)
                  if z_in - 1e-6 > bb.min.Z and -z_in + 1e-6 < bb.max.Z]
     try:
-        parts, extras, info, fastened = deck_parts(design, z_mid, place, host, obstacles)
+        parts, extras, info, fastened = deck_parts(design, z_mid, place, host, obstacles,
+                                                   kit=kit)
     except ConstructionError as e:
         return [], [], {"fitted": False, "why": str(e)}
     info["chassis_top_y"] = round(top, 2)
@@ -236,8 +239,198 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
     return parts, extras, info
 
 
-def assemble_robot(side: Mechanism, design) -> Mechanism:
-    """Both sides of the robot and the frame between their servos."""
+def assemble_robot(side: Mechanism, design, config=None) -> Mechanism:
+    """The robot ``config`` (else the design's, as a robot) makes of its fabricated
+    ``side``: its layout's (:data:`LAYOUTS`)."""
+    config = config if config is not None else replace(design.config, robot=True)
+    return layout_of(config).assemble(side, design, config)
+
+
+def robot_groups(design, config=None) -> list:
+    """The side-level groups the robot's layout adds to its side (realized before the
+    plates, which cut what they ask): a walker's frame ties, a turret's feet and tool."""
+    config = config if config is not None else replace(design.config, robot=True)
+    return layout_of(config).side_groups(design, config)
+
+
+def layout_of(config) -> Layout:
+    if not config.layout:
+        raise ValueError(f"{config.linkage}: one side, no robot layout")
+    return LAYOUTS[config.layout]
+
+
+class Layout:
+    """How a robot is made of its planar side: the kinematics it samples
+    (:meth:`template`), the groups it adds to the side (:meth:`side_groups`), and the robot
+    assembled round the fabricated side (:meth:`assemble`)."""
+
+    key = ""
+    label = ""
+
+    def template(self, tmpl: MechanismTemplate) -> MechanismTemplate:
+        raise NotImplementedError
+
+    def side_groups(self, design, config) -> list:
+        raise NotImplementedError
+
+    def assemble(self, side: Mechanism, design, config) -> Mechanism:
+        raise NotImplementedError
+
+
+class MirroredPair(Layout):
+    """A walker's: two mirror-image sides with their servos back to back in one frame
+    (the module docstring)."""
+
+    key = "mirrored_pair"
+    label = "two mirror-image sides, servos back to back, the chassis between them"
+
+    def template(self, tmpl: MechanismTemplate) -> MechanismTemplate:
+        return robot_template(tmpl)
+
+    def side_groups(self, design, config) -> list:
+        return [FrameTies(design.drive)]
+
+    def assemble(self, side: Mechanism, design, config) -> Mechanism:
+        return _assemble_pair(side, design, config)
+
+
+class Turret(Layout):
+    """An arm's: its side on a turntable about the vertical, its tool on the flange
+    (:mod:`construction.rotary.turret`, :mod:`construction.tools`)."""
+
+    key = "turret"
+    label = "the side standing on a turntable (yaw), its tool on the flange"
+
+    def template(self, tmpl: MechanismTemplate) -> MechanismTemplate:
+        return tmpl
+
+    def plans(self, design, config):
+        """``(turret plan, tool plan or None)`` of ``design`` in the robot's ``config`` (its
+        turntable and tool roles: the side's design doesn't hold them)."""
+        from spiderpig.actuators.sensors import REFERENCES
+        from spiderpig.construction.rotary import PRESETS
+        from spiderpig.construction.rotary.turret import turret_plan
+        from spiderpig.construction.tools import TOOLS, camera_of, tool_plan
+
+        cfg = config
+        key = cfg.role("tool")
+        ref = REFERENCES.get(cfg.role("homing_reference"))    # its camera rides the tool
+        tp = (None if not key          # (the role emptied: config.role says "")
+              else tool_plan(design.ctx, design.plan, _pick(TOOLS, key, "tool"),
+                             design.groups, camera=camera_of(ref.bom if ref else ())))
+        preset = _pick(PRESETS, cfg.role("turntable"), "turntable")
+        return turret_plan(design, preset, tp), tp
+
+    def side_groups(self, design, config) -> list:
+        from spiderpig.actuators.sensors import REFERENCES
+        from spiderpig.construction.rotary.turret import TurretFoot
+        from spiderpig.construction.tools import ToolMount
+
+        turret, tool = self.plans(design, config)
+        ref = REFERENCES.get(config.role("homing_reference"))    # its camera rides the tool
+        return [TurretFoot(turret)] + ([ToolMount(tool, ref.bom if ref else ())]
+                                       if tool is not None else [])
+
+    def assemble(self, side: Mechanism, design, config) -> Mechanism:
+        from spiderpig.construction.rotary.base_pair import turret_parts
+        from spiderpig.kinematics import RobotTree, SpatialJoint
+
+        turret, _ = self.plans(design, config)
+        bodies, turning, extras, info = turret_parts(turret, design.ctx)
+        extras = extras + controller_lines(config)      # the electronics: bought lines
+
+        def over(bb) -> bool:      # over the turret's keep-out (only that)
+            return (turret.x_a + turret.keep_r > bb.min.X
+                    and turret.x_a - turret.r_base < bb.max.X)
+
+        low = min((bb.min.Y for b in side.bodies
+                   if not b.joints and _static(b, side) and (pp := b.placed_part()) is not None
+                   and over(bb := pp.bounding_box())), default=math.inf)
+        if low < turret.y_t - 1e-6:
+            raise ConstructionError(f"turret: a part of the side reaches y = {low:.2f} mm, "
+                                    f"under the turntable's top at {turret.y_t:.2f}")
+        tool = side.meta.get("tool")
+        joints = [SpatialJoint("q1", (0.0, 1.0, 0.0), (turret.x_a, turret.y_t, turret.z_a),
+                               turret.range_deg, label="the turntable (yaw)")]
+        carried = {b.name: "q1" for b in side.bodies}
+        carried.update(dict.fromkeys(turning, "q1"))
+        if tool and tool.get("wrist"):
+            joints.append(SpatialJoint("q4", (0.0, 1.0, 0.0), tuple(tool["axis"]),
+                                       (-180.0, 180.0), parent="q1", host=tool["body"],
+                                       label="the wrist (roll)"))
+            carried.update(dict.fromkeys(tool["rotating"], "q4"))
+        tree = RobotTree(tuple(joints), carried)
+        fastened = list(side.meta.get("fastened", [])) + info.pop("fastened")
+        meta = dict(side.meta, layout="turret", turret=info, tree=tree.to_meta(),
+                    filament="pla_filament", fastened=fastened)
+        return Mechanism(name=f"{side.name}_turret", bodies=list(side.bodies) + bodies,
+                         connections=list(side.connections), meta=meta,
+                         bom_extras=list(side.bom_extras) + extras)
+
+
+def _static(body: Body, side: Mechanism) -> bool:
+    """A part riding a frame body (the side's own frame: static in the plane)."""
+    from spiderpig.mechanism import is_frame
+
+    by = {b.name: b for b in side.bodies}
+    b: Body | None = body
+    seen = set()
+    while b is not None and b.name not in seen:
+        if is_frame(b.name):
+            return True
+        seen.add(b.name)
+        b = by.get(b.rigid_with) if b.rigid_with else None
+    return False
+
+
+def controller_of(config):
+    """The robot's controller (the role ``controller``, :func:`actuators.controllers.of`):
+    ``None`` for your own; :class:`ConstructionError` where it can't drive the design's
+    motors."""
+    from spiderpig.actuators import controllers
+
+    try:
+        return controllers.of(config)
+    except (KeyError, ValueError) as e:
+        raise ConstructionError(str(e.args[0])) from None
+
+
+def controller_lines(config, deck: bool = True) -> list:
+    """The controller's parts as BOM lines: those that aren't bodies of the machine. With a
+    ``deck`` (a robot: a walker's electronics deck draws a ``mount="deck"`` controller's
+    parts as bodies) a deck-mounted one buys none; without (a mechanism: its side is the
+    machine, no deck) every controller is bought as lines."""
+    from spiderpig.hardware.bom import BomLine
+
+    ctl = controller_of(config)
+    if ctl is None or (ctl.mount and deck):
+        return []
+    return [BomLine(k, q, f"controller: {ctl.key}") for k, q in ctl.bom]
+
+
+def _pick(registry, key: str, what: str):
+    try:
+        return registry[key]
+    except KeyError:
+        raise ConstructionError(f"unknown {what} {key!r}; have {sorted(registry)}") from None
+
+
+LAYOUTS: dict[str, Layout] = {lay.key: lay for lay in (MirroredPair(), Turret())}
+"""The robot layouts, by :data:`config.ROBOT_LAYOUTS`' keys."""
+
+
+def _assemble_pair(side: Mechanism, design, config=None) -> Mechanism:
+    """Both sides of the robot and the frame between their servos, and the electronics
+    deck over them: its electronics the role ``controller``'s (``config``'s, else the
+    design's): the deck's kit (:data:`actuators.controllers.DECK_KIT`), a controller
+    bought as lines over a bare deck, or none (your own: the deck bare)."""
+    from spiderpig.actuators.controllers import DECK_KIT
+
+    config = config if config is not None else replace(design.config, robot=True)
+    ctl = controller_of(config)
+    if ctl is not None and ctl.mount == "deck" and ctl.key != DECK_KIT:
+        raise ConstructionError(f"controller {ctl.key}: the electronics deck is drawn for "
+                                f"{DECK_KIT} alone (construction.deck)")
     z_mid = mid_plane(design)
     bodies: list[Body] = []
     connections = []
@@ -253,12 +446,15 @@ def assemble_robot(side: Mechanism, design) -> Mechanism:
     host = {s: prefixed(design.plan.topo.frame_bodies[0], s) for s in SIDES}
     parts, extras, info = chassis(side, design, z_mid, host)
     bodies += parts
-    deck, deck_extras, info["deck"] = _deck(side, design, z_mid, host, bodies)
+    deck, deck_extras, info["deck"] = _deck(side, design, z_mid, host, bodies,
+                                            kit=ctl is not None and ctl.mount == "deck")
+    extras += controller_lines(config)
     if deck:
         bodies += deck
         extras += deck_extras
         info["fastened"] = list(info["fastened"]) + info["deck"].pop("fastened")
-    meta = dict(side.meta, robot=True, mid_plane=z_mid, filament="pla_filament", **info)
+    meta = dict(side.meta, robot=True, layout=MirroredPair.key, mid_plane=z_mid,
+                filament="pla_filament", **info)
     return Mechanism(
         name=f"{side.name}_robot", bodies=bodies, connections=connections, meta=meta,
         bom_extras=list(side.bom_extras) * 2 + extras,

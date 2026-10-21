@@ -1,99 +1,99 @@
 {
  "data": {
   "fourbar_quad_robot": {
-   "config": "BuildConfig(linkage='fourbar', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+   "config": "BuildConfig(linkage='fourbar', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -85.932,
-    -61.232,
-    -49.332,
-    -72.932
+    -89.332,
+    -62.132,
+    -49.331999999999994,
+    -75.732
    ]
   },
   "jansen_double_robot": {
-   "config": "BuildConfig(linkage='jansen', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+   "config": "BuildConfig(linkage='jansen', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -64.432,
-    -58.432
+    -64.232,
+    -64.232
    ]
   },
-  "jansen_double_robot_77fc0727d728": {
-   "config": "BuildConfig(linkage='jansen', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='xl330_m288', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+  "jansen_double_robot_1a8969b5097b": {
+   "config": "BuildConfig(linkage='jansen', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='xl330_m288', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -54.342,
-    -48.342
+    -54.242000000000004,
+    -54.242000000000004
    ]
   },
   "jansen_quad_robot": {
-   "config": "BuildConfig(linkage='jansen', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+   "config": "BuildConfig(linkage='jansen', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": null
   },
   "klann_decker_robot": {
-   "config": "BuildConfig(linkage='klann', module='decker', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+   "config": "BuildConfig(linkage='klann', module='decker', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -77.99449999999999,
-    -45.81949999999999
+    -78.0945,
+    -45.8195
    ]
   },
   "klann_double_robot": {
-   "config": "BuildConfig(linkage='klann', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+   "config": "BuildConfig(linkage='klann', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -60.49449999999999,
-    -43.019499999999994
+    -64.09449999999998,
+    -58.41949999999999
    ]
   },
-  "klann_double_robot_7a1f7cadafe4": {
-   "config": "BuildConfig(linkage='klann', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='xl330_m288', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+  "klann_double_robot_ed84842accef": {
+   "config": "BuildConfig(linkage='klann', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='xl330_m288', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -50.8045,
-    -45.329499999999996
+    -54.10450000000001,
+    -48.32950000000001
    ]
   },
   "klann_quad_robot": {
-   "config": "BuildConfig(linkage='klann', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+   "config": "BuildConfig(linkage='klann', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -95.24449999999999,
-    -89.36949999999999,
-    -49.4195,
-    -56.0945
+    -96.06949999999999,
+    -96.06949999999999,
+    -49.41949999999999,
+    -56.19449999999999
    ]
   },
-  "klann_quad_robot_9f7fb22c9331": {
-   "config": "BuildConfig(linkage='klann', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='xl330_m288', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+  "klann_quad_robot_0819b13458bc": {
+   "config": "BuildConfig(linkage='klann', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='xl330_m288', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -85.25450000000001,
-    -79.37950000000001,
+    -85.9795,
+    -85.9795,
     -39.3295,
     -46.1045
    ]
   },
   "klann_single_robot": {
-   "config": "BuildConfig(linkage='klann', module='single', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+   "config": "BuildConfig(linkage='klann', module='single', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -64.2195
+    -54.81949999999999
    ]
   },
   "strider_double_robot": {
-   "config": "BuildConfig(linkage='strider', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+   "config": "BuildConfig(linkage='strider', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -76.93199999999999,
-    -88.63199999999999,
-    -52.331999999999994,
-    -63.431999999999995
+    -77.03199999999998,
+    -88.73199999999999,
+    -52.33199999999999,
+    -63.53199999999999
    ]
   },
   "strider_single_robot": {
-   "config": "BuildConfig(linkage='strider', module='single', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
+   "config": "BuildConfig(linkage='strider', module='single', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', roles=(), params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -52.332,
-    -63.532000000000004
+    -52.331999999999994,
+    -63.532
    ]
   }
  },
- "engine_version": "0.1.0+e5812d70d3bd",
+ "engine_version": "0.1.0+e2cf649bc7a2",
  "generator": "tests/test_walk.py::test_foot_z_fixture_is_current",
  "source": {
   "file": "tests/_linkage.py",
   "name": "foot_z_doc"
  },
- "source_key": "gen-3834db18384c6712"
+ "source_key": "gen-729bc36dcbe253f7"
 }

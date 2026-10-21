@@ -52,6 +52,8 @@ class Sheet:
     corner_r: float        # an inside corner comes out this round (mm)
     metal: bool
     sheet_mm: tuple[float, float]
+    modulus_gpa: float     # Young's modulus, GPa (the item's, else the material's)
+    cte_um_per_m_k: float  # linear thermal expansion, um/m/K (the item's, else the material's)
     yield_min_mpa: float | None = None  # its alloy and temper's specified minimum yield in
     #                                     this gauge (None: none known): a product is rated
     #                                     on it (:func:`allowable_mpa`)
@@ -83,7 +85,7 @@ def sheet(key: str) -> Sheet:
     d = it.dims
     t = float(d["thickness"])
     material = d.get("material") or ("plywood" if "plywood" in key else "acrylic")
-    from spiderpig.hardware.mass import DENSITY
+    from spiderpig.hardware.mass import CTE_UM_PER_M_K, DENSITY, MODULUS_GPA
 
     return Sheet(
         key=key, name=it.name, material=material, thickness=t,
@@ -94,6 +96,8 @@ def sheet(key: str) -> Sheet:
         min_part=_pair(d.get("min_part", (0.0, 0.0))),
         corner_r=float(d.get("corner_r", 0.0)), metal=bool(d.get("metal", False)),
         sheet_mm=_pair(d.get("sheet_mm", (300.0, 300.0))),
+        modulus_gpa=_constant(d, "modulus_gpa", MODULUS_GPA, material, key),
+        cte_um_per_m_k=_constant(d, "cte_um_per_m_k", CTE_UM_PER_M_K, material, key),
         yield_min_mpa=(float(d["yield_min_mpa"]) if d.get("yield_min_mpa") else None))
 
 
@@ -109,6 +113,23 @@ def allowable_mpa(config, key: str) -> float:
         return sh.yield_min_mpa
     return sh.yield_mpa
 
+
+def _constant(dims: dict, name: str, table: dict, material: str, key: str) -> float:
+    """A sheet's material constant: its item's own, else its material's from the table
+    (:mod:`hardware.mass`); a material the table lacks is an error, never acrylic's."""
+    if name in dims:
+        return float(dims[name])
+    try:
+        return float(table[material])
+    except KeyError:
+        raise KeyError(f"sheet {key!r}: no {name} for material {material!r} (add it to "
+                       f"spiderpig.hardware.mass or to the item's dims)") from None
+
+
+PALLETIZER_LINKS: dict[str, str] = {
+    **dict.fromkeys(("b1", "b2", "b3", "b5", "b6", "b7", "b8"), "acrylic_5p4mm"),
+    "b4": "al5052_3p2mm"}
+"""The palletizer arms' links' sheets (both linkages share the links ``b1`` .. ``b8``)."""
 
 LINK_SHEETS: dict[str, dict[str, str]] = {
     # the user's decision of 2026-10-04 (3): klann_lego's crank rider b1 jams past what
@@ -139,6 +160,12 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # SendCutSend quotes the pair USD 32.18 against 7075's 45.86, and 7075 leaves the order)
     "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al5052_4p8mm", "b3": "al6061_4p8mm",
                      "b4": "al5052_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_4p8mm"},
+    # the user's arm (2026-10-13): every link 5.4 mm acrylic (stiff across the plane, its
+    # bearings' seats inside it) but b4, the elbow's long lever, in 1/8 in 5052; the plain
+    # palletizer's too since 2026-10-14 (the same links: its acrylic b4 broke at a crash at
+    # the tool, jam SF 0.48)
+    "palletizer_reach": PALLETIZER_LINKS,
+    "palletizer": PALLETIZER_LINKS,
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links
 (:func:`default_link_sheets`); ``BuildConfig.link_sheets`` overrides the lot."""

@@ -32,8 +32,8 @@ def walk(design: Design, force: bool = False) -> WalkReport:
     t0 = time.time()
     rep = WalkReport()
     cfg = design.config
-    if design.kind == "mechanism":
-        rep.skipped = f"{cfg.linkage} is a mechanism: it has an output, not feet"
+    if not design.lk.walks:
+        rep.skipped = f"{cfg.linkage} is a {design.kind}: it has an output, not feet"
         return _finish(design, "walk", rep, t0)
     feet_z = None
     if design.side is not None:

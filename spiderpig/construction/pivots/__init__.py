@@ -1,10 +1,11 @@
 """Pivot constructions on purchased metal shafts: the pillars' and the link pins'.
 
 Registered in :data:`construction.AXLES` and picked with ``BuildConfig.pillar`` /
-``.pin``: ``--pillar standoff --pin chicago``, the only two since 2026-10-07 (the user's
-decision D1: the printed, rod, bolt, PTFE-lined, bearing, bushing and spliced pivots were
-removed; :data:`config.REMOVED_CONSTRUCTIONS` names each one's replacement, and the pivot
-review that chose these two is in :mod:`construction.pivots.chicago`'s docstring). Every
+``.pin``: ``--pillar standoff --pin chicago`` by default; the ball-bearing pivots
+``ball`` / ``ball_pillar`` since 2026-10-11 (the robot-arm workstream). The user's
+decision D1 of 2026-10-07 removed the printed, rod, bolt, PTFE-lined, bearing, bushing and
+spliced pivots (:data:`config.REMOVED_CONSTRUCTIONS` names each one's replacement; the
+pivot review that chose chicago and standoff is in :mod:`construction.pivots.chicago`). Every
 construction reports its links' tilt (:mod:`construction.wobble`).
 
 ==================  ================================================================
@@ -36,12 +37,24 @@ key                 construction
 ``rodclip516``      a 5/16 in 6061-T6 rod pin, its head an M3 button head and washer,
                     a hairpin cotter through its drilled hole, on the clevis pin's
                     column: B's X and Y since 2026-10-21
+``ball``            the Chicago pin with an MR84ZZ ball bearing bonded into every link
+                    but the host (:mod:`construction.pivots.ball`, 2026-10-11)
+``ball_pillar``     the standoff pillar with an MR106ZZ bearing bonded into every link on
+                    it (link_radius 6.6 mm)
+``ball_pair``       ``ball`` with a preloaded pair in every link thick enough for two, the
+                    column clamped by a disc spring through the inner rings
+                    (:mod:`construction.pivots.pair`, 2026-10-12)
+``ball_pair_pillar`` ``ball_pillar`` likewise
 ==================  ================================================================
 
 Every pivot's spacer rings and gap rings are printed, one sleeve per run of them between
 the parts the axle retains (the sleeve rule of 2026-10-14, :func:`common.sleeve_runs`,
 :func:`common.build_sleeves`): an unclamped spacer only sets play, so it needn't be bought;
-clamped shims are steel (:data:`hardware.bom.SHIM_AS`). What an axle prints and the stock
+clamped shims are steel (:data:`hardware.bom.SHIM_AS`). Where a construction declares its
+stock spacers (``spacers``, :class:`common.Stock`: a walker's ``chicago`` and ``standoff``,
+the arm's pivots, since 2026-10-14) :meth:`construction.axle.AxleGroup.realize` makes them
+stock tubes and shims instead, but on a product, whose printed rings fill their layers (a
+decanting cradle's: :func:`construction.axle.full_rings`). What an axle prints and the stock
 part it buys at a plan's z (``prints``, ``stock_keys``) are the planner's ``tally``.
 
 Every one states its claims through :class:`construction.axle.AxleDims`: a shaft can't
@@ -53,10 +66,13 @@ the planner as unbuildable, with the link in the way.
 
 from __future__ import annotations
 
+from spiderpig.construction.pivots.ball import BallAxle, BallPillar
 from spiderpig.construction.pivots.chicago import CHICAGO_M6, ChicagoAxle
 from spiderpig.construction.pivots.clevis import CLEVIS8
+from spiderpig.construction.pivots.pair import BallPairAxle, BallPairPillar
 from spiderpig.construction.pivots.pivot_pin import PIVOT8
 from spiderpig.construction.pivots.rod_pin import ROD38, ROD516, RODCLIP516
 from spiderpig.construction.pivots.standoff import StandoffAxle
 
-PIVOTS = (ChicagoAxle(), StandoffAxle(), CHICAGO_M6, PIVOT8, CLEVIS8, ROD516, ROD38, RODCLIP516)
+PIVOTS = (ChicagoAxle(), StandoffAxle(), BallAxle(), BallPillar(), BallPairAxle(),
+          BallPairPillar(), CHICAGO_M6, PIVOT8, CLEVIS8, ROD516, ROD38, RODCLIP516)

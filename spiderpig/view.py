@@ -70,16 +70,10 @@ def viewer_built() -> Path | None:
 
 def load_design(design_id: str, store):
     """The recorded design (:func:`spiderpig.api.load`); ``KeyError`` names the store
-    and what it holds."""
-    from spiderpig import api
+    and what it holds (:func:`spiderpig.stages.resolve.load_stored`, every CLI's)."""
+    from spiderpig.stages.resolve import load_stored
 
-    try:
-        return api.load(design_id, store)
-    except KeyError:
-        ids = [c["id"] for c in api.list_designs(store)]
-        have = ", ".join(ids[-8:]) if ids else "nothing"
-        raise KeyError(f"no design {design_id!r} in {store.root.resolve()} (has: {have})"
-                       ) from None
+    return load_stored(design_id, store)
 
 
 def export_glb(design) -> Path:
@@ -180,7 +174,8 @@ def resolve_args(args, store):
     """The design the build options ask for (``--linkage``, ``--module``, ``--pin``, ...:
     the same options as ``spiderpig build``), resolved into ``store`` through the API
     (:func:`spiderpig.api.spec_of`), so a CLI build can be viewed by its options; or
-    ``None`` when none was given."""
+    ``None`` when none was given. An arm resolves to its side (a spec builds an arm's side
+    only, until the spec carries its robot), where ``spiderpig build`` builds its turret."""
     given = {k: getattr(args, k) for k in DESIGN_OPTIONS if getattr(args, k, None) is not None}
     if not given or given == {"side_only": False}:
         return None
@@ -229,6 +224,15 @@ def add_lazy_build_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--link-sheet", dest="link_sheet", action="append", default=None,
                     metavar="LINK=SHEET",
                     help="cut a link class from another sheet, e.g. b4=al6061_3p2mm (repeatable)")
+    from spiderpig import roles as rolemod  # (light: the role names, not their registries)
+
+    for role in rolemod.extra():
+        ap.add_argument(f"--{role.name.replace('_', '-')}", dest=f"role_{role.name}",
+                        default=None, help=f"{role.title}" + see)
+    ap.add_argument("--role", dest="role_slots", action="append", default=None,
+                    metavar="ROLE@SLOT=KEY",
+                    help="one slot's construction for a per-drive or per-joint role "
+                         "(repeatable)")
 
 
 def convert_build_args(args) -> None:

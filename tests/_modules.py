@@ -22,6 +22,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_transforms.py": "linkage",
     "test_mechanisms.py": "linkage",
     "test_cradle.py": "construction",
+    "test_arm.py": "linkage",
     "test_walk.py": "linkage",
     "test_viewer_parity.py": "linkage",
     # server / view (P1)
@@ -29,6 +30,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_server_hardening.py": "server",
     "e2e/test_drive.py": "server",
     "e2e/test_viewer.py": "server",
+    "test_precision.py": "strength",
     # the planner (P2)
     "test_stack.py": "planner",
     "test_route.py": "planner",
@@ -39,7 +41,16 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_clearance.py": "planner",
     # constructions and fabrication (P3)
     "test_axle.py": "construction",
+    "test_platform.py": "construction",
     "test_pivots.py": "construction",
+    "test_pair.py": "construction",
+    "test_stiffness.py": "linkage",
+    "test_band.py": "linkage",
+    "test_repeatability.py": "strength",
+    "test_ball_pivots.py": "construction",
+    "test_transmissions.py": "construction",
+    "test_turret.py": "construction",
+    "test_control.py": "linkage",
     "test_crank.py": "construction",
     "test_bolt_crank.py": "construction",
     "test_standoff.py": "construction",
@@ -48,6 +59,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_deck.py": "construction",
     "test_joinery.py": "construction",
     "test_klann_lego_cranks.py": "construction",
+    "test_machines.py": "construction",
     "test_fabricate.py": "construction",
     "test_contract.py": "construction",
     "test_shapes.py": "construction",
@@ -62,10 +74,15 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_rounding.py": "hardware",
     # strength / wobble / loads (P4)
     "test_strength.py": "strength",
+    "test_gate_audits.py": "strength",
+    "test_task_targets.py": "strength",
     "test_wobble.py": "strength",
     "test_seam_reports.py": "strength",
     # API / store / verify / MCP / CLI build (P5)
     "test_spiderpig_api.py": "api",
+    "test_task.py": "api",
+    "test_task_verify.py": "api",
+    "test_surfaces.py": "api",
     "test_spiderpig_store.py": "api",
     "test_spiderpig_mcp.py": "api",
     "test_review_fixes.py": "api",
@@ -85,6 +102,7 @@ MODULE_OF_FILE: dict[str, str] = {
     # sim and bake (P6)
     "test_sim.py": "sim",
     "test_sim_live.py": "sim",
+    "test_sim_live_kinds.py": "sim",
     "test_bake_gltf.py": "sim",
     "test_guide.py": "sim",
 }

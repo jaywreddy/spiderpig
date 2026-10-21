@@ -275,7 +275,7 @@ def _hint_config(cfg):
     """The config :func:`spiderpig.fabricate._leg_hint` plans first (``None``: a single)."""
     if cfg.module == "single":
         return None
-    return replace(cfg, module="single", phases=None, robot=False)
+    return replace(cfg.side_config(), module="single", phases=None)
 
 
 def cached_design(cfg):
@@ -285,7 +285,7 @@ def cached_design(cfg):
     again), written there after a solve. One object per config per process."""
     from spiderpig import fabricate
 
-    cfg = replace(cfg, robot=False)
+    cfg = cfg.side_config()
     memo = ("design", cfg)
     if memo in _MEMO:
         return _MEMO[memo]
@@ -335,7 +335,7 @@ def seed_plan(cfg) -> bool:
     of searching. ``False`` when the cache holds none (or is off)."""
     from spiderpig import fabricate
 
-    cfg = replace(cfg, robot=False)
+    cfg = cfg.side_config()
     path = _plan_path(cfg) if enabled() else None
     if path is None or not path.is_file():
         return False
@@ -358,7 +358,7 @@ def _mechanism(kind: str, cfg, t: float, build: Callable[[], Any], fresh: bool):
     if not enabled():
         _MEMO[memo] = build()
         return _MEMO[memo]
-    if not _plan_path(replace(cfg, robot=False)).is_file():
+    if not _plan_path(cfg.side_config()).is_file():
         cached_design(cfg)                  # (the plan first: its record names the entry)
     entry = _entry(kind, cfg, t)
     mech = None
@@ -386,7 +386,7 @@ def _entry(kind: str, cfg, t: float) -> Path:
     its plan is re-made from) and of the code this module's fabrication path reaches
     (:func:`spiderpig.keys.function_key`: :func:`cached_side`, :func:`cached_robot`)."""
     try:
-        plan = _plan_path(replace(cfg, robot=False)).read_bytes()
+        plan = _plan_path(cfg.side_config()).read_bytes()
     except OSError:
         plan = b"no plan record"
     h = hashlib.sha256(plan + _fabrication_key().encode()).hexdigest()[:12]
@@ -409,7 +409,7 @@ def cached_side(cfg, t: float = 1.0, *, fresh: bool = False):
     ``FAB_DIR`` when there. ``fresh``: built now, nothing read or written."""
     from spiderpig.fabricate import fabricate_side
 
-    cfg = replace(cfg, robot=False)
+    cfg = cfg.side_config()
 
     def build():
         tmpl, d = cached_design(cfg)

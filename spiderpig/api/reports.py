@@ -10,7 +10,7 @@ from spiderpig.failure import Failure, Recommendation
 from spiderpig.stages.reports import CheckReport, PlanReport, Report
 
 __all__ = ["AdviceReport", "BuildReport", "CheckReport", "ExportReport", "PlanReport",
-           "RecheckReport", "Report", "WalkReport"]
+           "PrecisionReport", "RecheckReport", "Report", "WalkReport"]
 
 
 def _rows(v: list) -> list:
@@ -43,6 +43,31 @@ class WalkReport(Report):
     servo: dict = field(default_factory=dict)
     rows: list = field(default_factory=list)
     notes: list[str] = field(default_factory=list)      # why a stride reads zero
+    seconds: float = 0.0
+
+
+@dataclass
+class PrecisionReport(Report):
+    """The error budget at the output (:func:`spiderpig.precision.precision`): the spec's
+    ``precision.*`` metrics (``metrics``) with each target's verdict (``rows``), the whole
+    budget (``budget``: :meth:`Precision.as_dict`; ``text``: its lines), and whether the
+    links' tilt out of the plane was counted (``complete``: a ranged linkage's
+    out-of-plane, ISO 9283 RP and payload sag read a fabricated side's wobble notes;
+    ``planar`` for a budget without them). ``skipped`` for a linkage without an output
+    (a walker: its foot is no placement)."""
+
+    readers: ClassVar[dict[str, Any]] = {"rows": _rows}
+
+    ok: bool = True
+    failures: list[Failure] = field(default_factory=list)
+    skipped: str | None = None
+    complete: bool = False
+    payload_g: float | None = None
+    metrics: dict = field(default_factory=dict)
+    budget: dict = field(default_factory=dict)
+    text: list[str] = field(default_factory=list)
+    rows: list = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
     seconds: float = 0.0
 
 

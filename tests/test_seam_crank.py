@@ -238,8 +238,9 @@ def test_the_xl330_horn_takes_self_tapping_screws():
     assert (sk.kind, sk.size) == ("self_tap", "2")
 
 
-def test_no_horn_screw_reaches_through_a_40mm_stack():
-    assert HEX.horn_fit_web(_ctx.context(servo="sts3215"), 40.0, 3.032) is None
+def test_no_horn_screw_reaches_through_an_80mm_stack():
+    """Past the longest stock M3 (70 mm: hardware.fasteners) no screw reaches the horn."""
+    assert HEX.horn_fit_web(_ctx.context(servo="sts3215"), 80.0, 3.032) is None
 
 
 # -- small pieces ---------------------------------------------------------------------------------

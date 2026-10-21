@@ -632,6 +632,15 @@ def _settle_from(topo: Topology, claims: tuple[Claim, ...], spec: StackSpec,
                                     sunk, memo, floor)
     gaps, shapes, layout = _take_up(claims, spec, layers, top, choices, gaps, thick, shapes,
                                     sunk, memo)
+    # the role pin_stack: no gap between a pin's neighbours but a column's own land washers'
+    # (a bearing pair's inner-ring lands between face-to-face links: pivots.pair.land_gaps)
+    lands = {p.layer for p in shapes if p.gap and p.height > 0 and p.label.endswith(" washer")}
+    for members, _ in spec.adjacent:
+        ks = sorted(layers[m] for m in members if m in layers)
+        for a, b in itertools.pairwise(ks):
+            if b == a + 1 and gaps.get(a) and a not in lands:
+                raise PlanReject(f"a clearance gap over layer {a} parts the links of the pin "
+                                 f"of {', '.join(members)}")
     hold = _held(claims, layout)
     placed = settle(shapes, sunk, layout)
     return StackPlan(spec, layers, top, topo, claims, tuple(placed), choices,

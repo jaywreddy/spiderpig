@@ -42,6 +42,7 @@ over it in layer order; once the highest link is on, the other ring into the upp
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from spiderpig.construction.axle import AxleGroup
 from spiderpig.construction.base import Build, ConstructionError, Realized, hardware
@@ -49,6 +50,7 @@ from spiderpig.construction.pivots.chicago import ChicagoAxle, ChicagoShaft, Fit
 from spiderpig.construction.pivots.common import (
     EPS,
     HEAD_CLEARANCE,
+    Stock,
     column_air,
     host_of,
     stem_of,
@@ -83,7 +85,7 @@ class PivotPinShaft(ChicagoShaft):
     min_play: float = 0.25          # least axial play (as the M6 Chicago's)
     lock_key: str = ""              # (nothing threaded: no threadlocker)
 
-    def key_of(self, length: float) -> str:
+    def key(self, length: float) -> str:
         from spiderpig.hardware.cradle_catalog import pivot_pin8
 
         return pivot_pin8(length)
@@ -108,7 +110,7 @@ class PivotPinShaft(ChicagoShaft):
                                     f"don't fit a {GAP_MAX:g} mm clearance gap")
 
     def column(self, pillar: bool, links, top: int, anchored: tuple[bool, bool],
-               pitch: float, layout=None, air=None, hi=None) -> None:
+               pitch: float, layout=None, air=None, hi=None, **_) -> None:
         """The Chicago screw's rule (no pin longer than the longest), and the pin's own: made
         to its stack, it takes no shims, so the stack and the least play must reach the
         shortest length (:meth:`realize` refuses the rest). A minimum: a search's layout
@@ -174,10 +176,10 @@ class PivotPinShaft(ChicagoShaft):
                      ring(xy, ring_od, groove_d, zt + (groove - ring_t) / 2,
                           zt + groove - (groove - ring_t) / 2)])
         out.bodies.append(hardware(f"{stem}_pin", pin, host, fab="purchased",
-                                   bom_key=self.key_of(f.length), color=BLACK_OXIDE))
+                                   bom_key=self.key(f.length), color=BLACK_OXIDE))
         out.notes.setdefault("pivot_pin", {})[group.name] = {
             "length_mm": f.length, "stack_mm": round(z_hi - z_lo - air, 3),
-            "play_mm": round(f.play, 3), "item": self.key_of(f.length)}
+            "play_mm": round(f.play, 3), "item": self.key(f.length)}
         return f
 
 
@@ -191,6 +193,10 @@ class PivotPinAxle(ChicagoAxle):
                   "stack, an E-ring at each end; printed rings (pins only): a decanting "
                   "cradle's")
     shaft: ChicagoShaft = field(default_factory=PivotPinShaft)
+    spacers: ClassVar[Stock | None] = None  # printed rings (no stock tube fits the pin)
+    # a decanting cradle's own (config.PRODUCT_PINS, PRODUCT_PIN_JOINTS): chosen by its
+    # product, never a strength fix's alternative (strength._alt_sections)
+    product_only: ClassVar[bool] = True
 
     def assembly(self, group: AxleGroup, view) -> list:
         """How a pin goes on (:mod:`construction.assembly`): the pin with its lower ring up

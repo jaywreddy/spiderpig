@@ -52,17 +52,15 @@ from __future__ import annotations
 import argparse
 import logging
 import math
-import time
 from collections import defaultdict
-from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
 import pygltflib
 
+from spiderpig import fabmethods, walk
 from spiderpig import linkage as linkage_mod
-from spiderpig import walk
 from spiderpig.config import (
     BuildConfig,
     ParamError,
@@ -71,99 +69,26 @@ from spiderpig.config import (
     config_from_args,
     is_cradle,
 )
-from spiderpig.construction.robot import robot_template
+from spiderpig.construction.robot import layout_of
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware.bom import printed_filaments
 from spiderpig.hardware.catalog import finish as catalog_finish
 from spiderpig.hardware.catalog import get as catalog_get
 from spiderpig.hardware.mass import PartProps, part_props
+from spiderpig.kinematics import RobotTree, planar_matrix, quat_from_matrix
 from spiderpig.mechanism import Body, Mechanism, MechanismTemplate
 from spiderpig.mesh import mesh_part, read_meshes
 from spiderpig.stack import body_class, is_link
+from spiderpig.tools.profiler import Profiler
 
 logger = logging.getLogger("bake_gltf")
 
 
-@dataclass
-class _Profiler:
-    """Lightweight perf recorder: nested wall-clock timers + counters + metrics.
-
-    Durations are accumulated per label so the same bracket can be entered
-    many times (e.g. once per animation frame) and reported as total / mean /
-    p50 / p95.
-    """
-
-    enabled: bool = True
-    _durations: dict[str, list[float]] = field(
-        default_factory=lambda: defaultdict(list)
-    )
-    _counters: dict[str, int] = field(default_factory=lambda: defaultdict(int))
-    _metrics: dict[str, float] = field(default_factory=dict)
-
-    @contextmanager
-    def timed(self, label: str):
-        if not self.enabled:
-            yield
-            return
-        start = time.perf_counter()
-        try:
-            yield
-        finally:
-            self._durations[label].append(time.perf_counter() - start)
-
-    def bump(self, label: str, n: int = 1) -> None:
-        if self.enabled:
-            self._counters[label] += n
-
-    def set_metric(self, key: str, value: float) -> None:
-        if self.enabled:
-            self._metrics[key] = float(value)
-
-    def log_summary(self) -> None:
-        if not self.enabled:
-            return
-
-        bake_total = sum(self._durations.get("bake_total", [])) or None
-
-        rows = []
-        for label, times_ in self._durations.items():
-            n = len(times_)
-            total = sum(times_)
-            mean_ms = (total / n) * 1000.0 if n else 0.0
-            ts = sorted(times_)
-            p50 = ts[n // 2] * 1000.0 if n else 0.0
-            p95 = ts[min(n - 1, int(n * 0.95))] * 1000.0 if n else 0.0
-            pct = (total / bake_total * 100.0) if bake_total else 0.0
-            rows.append((label, n, total, mean_ms, p50, p95, pct))
-        rows.sort(key=lambda r: -r[2])
-
-        lines = [
-            "bake profile summary:",
-            f"  {'label':40} {'calls':>6} {'total_s':>9} "
-            f"{'mean_ms':>9} {'p50_ms':>9} {'p95_ms':>9} {'%bake':>6}",
-            f"  {'-' * 40} {'-' * 6} {'-' * 9} {'-' * 9} "
-            f"{'-' * 9} {'-' * 9} {'-' * 6}",
-        ]
-        for label, n, total, mean_ms, p50, p95, pct in rows:
-            lines.append(
-                f"  {label:40} {n:6d} {total:9.3f} "
-                f"{mean_ms:9.3f} {p50:9.3f} {p95:9.3f} {pct:6.1f}"
-            )
-        if self._counters:
-            lines.append("  counters:")
-            for k, v in sorted(self._counters.items()):
-                lines.append(f"    {k}: {v}")
-        if self._metrics:
-            lines.append("  metrics:")
-            for k, v in sorted(self._metrics.items()):
-                # Integers stay integers for readability (vert counts, bytes).
-                if v == int(v):
-                    lines.append(f"    {k}: {int(v)}")
-                else:
-                    lines.append(f"    {k}: {v:.3f}")
-
-        logger.info("\n".join(lines))
-
+def _profiler(enabled: bool = True) -> Profiler:
+    """The bake's stage profiler: the shared one (:mod:`spiderpig.tools.profiler`, outside
+    the engine's hash) titled ``bake``, its shares of ``bake_total``, on the ``bake_gltf``
+    logger. The summary's text and the stage keys are what scripts parse: keep them."""
+    return Profiler(enabled=enabled, name="bake", total="bake_total", logger_name="bake_gltf")
 
 
 def default_bake_dir() -> Path:
@@ -191,7 +116,11 @@ def _build_template(config: BuildConfig) -> MechanismTemplate:
     """The kinematics the animation samples: one side, or both sides of the robot (or of a
     decanting cradle: :mod:`construction.cradle`)."""
     tmpl = template_for(config)
-    return robot_template(tmpl) if config.robot or is_cradle(config) else tmpl
+    if is_cradle(config):           # both sides, as a walker's two (construction.robot)
+        from spiderpig.construction.robot import robot_template
+
+        return robot_template(tmpl)
+    return layout_of(config).template(tmpl) if config.robot else tmpl
 
 
 # ---------------------------------------------------------------------------
@@ -245,18 +174,19 @@ def _material_of(body: Body, metal: bool = False) -> str:
     """Material key for a body: by ``fab``, then by role. ``metal``: aluminium sheets are drawn
     as aluminium (a decanting cradle; a walker's plates all draw as acrylic)."""
     cls = body_class(body.name)
-    if body.fab == "laser":
+    made_of = fabmethods.stock(body.fab)
+    if made_of == "sheet":
         if (body.sheet or "").startswith("birch"):
             return "plywood"
         metal = metal and (body.sheet or "").startswith("al")
         if is_link(body.name):
             return "aluminium" if metal else "acrylic"
         return "aluminium_frame" if metal else "acrylic_frame"
-    if body.fab == "printed":
+    if made_of == "filament":
         return "printed"
-    if body.fab == "display":
+    if body.fab == fabmethods.DISPLAY:
         return "glass_bottle" if cls == "bottle" else "glass_clear"
-    if body.fab == "purchased":
+    if body.fab == fabmethods.PURCHASED:
         category = _catalog_category(body.bom_key)
         if category == "electronics":
             return "led" if cls == "led" else "electronics"
@@ -373,7 +303,7 @@ class _MeshPlan:
 
 
 def _plan_meshes(bodies: list[Body], anchors: dict[str, dict[str, np.ndarray]],
-                 owner: dict[str, str | None], prof: _Profiler,
+                 owner: dict[str, str | None], prof: Profiler,
                  props: dict[str, PartProps] | None = None) -> _MeshPlan:
     """Group bodies into shared meshes (see :func:`_congruent`).
 
@@ -590,9 +520,11 @@ class _Animation:
     rotations: dict[str, np.ndarray]
     thetas: dict[str, np.ndarray]
     motion: dict[str, tuple[np.ndarray, np.ndarray]]
+    matrices: dict[str, np.ndarray] = field(default_factory=dict)   # a spatial joint's
+    #                                   bodies' rotations, (T, 3, 3) (the rest turn about z)
 
 
-def _reference(config: BuildConfig, prof: _Profiler, fabricated: Mechanism | None = None
+def _reference(config: BuildConfig, prof: Profiler, fabricated: Mechanism | None = None
                ) -> _Reference:
     """Stage 1: fabricate the walker at ``T_REF`` (or take ``fabricated``, the walker
     already fabricated at that angle); every body's anchor and its joints."""
@@ -615,7 +547,7 @@ def _reference(config: BuildConfig, prof: _Profiler, fabricated: Mechanism | Non
     return _Reference(mech, feet, owner, anchors)
 
 
-def _share_and_tessellate(ref: _Reference, prof: _Profiler,
+def _share_and_tessellate(ref: _Reference, prof: Profiler,
                           mass_props: dict[str, PartProps] | None = None) -> _Meshes:
     """Stage 2: one mesh per congruence group (see :func:`_plan_meshes`), tessellated.
     ``mass_props`` collects the parts' mass properties as they are measured."""
@@ -645,7 +577,7 @@ def _share_and_tessellate(ref: _Reference, prof: _Profiler,
     return _Meshes(plan, class_mesh, mass_props, metal)
 
 
-def _pack_geometry(meshes: _Meshes, prof: _Profiler) -> _Geometry:
+def _pack_geometry(meshes: _Meshes, prof: Profiler) -> _Geometry:
     """Stage 3: per-mesh position / index accessors, one material per fabrication kind."""
     geom = _Geometry(_Packer())
     material_idx: dict[str, int] = {}
@@ -671,7 +603,7 @@ def _pack_geometry(meshes: _Meshes, prof: _Profiler) -> _Geometry:
 
 
 def _animate(config: BuildConfig, ref: _Reference, meshes: _Meshes, n_frames: int,
-             duration_s: float, prof: _Profiler) -> _Animation:
+             duration_s: float, prof: Profiler) -> _Animation:
     """Stage 4: sample the template over one revolution and fit each body's motion.
 
     A body's motion is the planar rigid transform taking its anchor joints at
@@ -716,6 +648,9 @@ def _animate(config: BuildConfig, ref: _Reference, meshes: _Meshes, n_frames: in
                 anim.translations[body.name] = trans.astype(np.float32)
                 anim.rotations[body.name] = _quat_hemisphere_continuous(
                     _quat_z(theta)).astype(np.float32)
+            tree = RobotTree.from_meta(ref.mech.meta.get("tree"))
+            if tree is not None:
+                _spatial(tree, ref, meshes, anim, ts - T_REF)
     return anim
 
 
@@ -732,10 +667,33 @@ def _surfaces(mech: Mechanism) -> dict[str, dict[str, str]]:
         elif body.fab == "purchased" and (f := catalog_finish(body.bom_key)):
             out[body.name] = {"finish": f}
     return out
+def _spatial(tree: RobotTree, ref: _Reference, meshes: _Meshes, anim: _Animation,
+             ts: np.ndarray) -> None:
+    """The bodies a spatial joint carries (:mod:`spiderpig.kinematics`): each joint's
+    sweep over the clip composed with the planar motions (the turntable's yaw over the
+    side's tour, the wrist's roll after the end plate's motion)."""
+    n = len(ts)
+    planar = {name: planar_matrix(th, tr) for name, (th, tr) in anim.motion.items()}
+    joints = tree.joint_transforms(tree.sweep(ts), planar)
+    for body in ref.bodies:
+        jname = tree.carried.get(body.name)
+        if jname is None:
+            continue
+        if tree.joint(jname).host is not None:       # its host's motion is in the joint's
+            g = meshes.plan.place.get(body.name, _Planar())
+            inner = planar_matrix(np.full(n, g.theta), np.tile([*g.txy, g.dz], (n, 1)))
+        else:
+            inner = planar_matrix(anim.thetas[body.name],
+                                  anim.translations[body.name].astype(float))
+        m = np.einsum("tij,tjk->tik", joints[jname], inner)
+        anim.matrices[body.name] = m[:, :3, :3]
+        anim.translations[body.name] = m[:, :3, 3].astype(np.float32)
+        anim.rotations[body.name] = _quat_hemisphere_continuous(
+            quat_from_matrix(m[:, :3, :3])).astype(np.float32)
 
 
 def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim: _Animation,
-                        prof: _Profiler) -> tuple[list[pygltflib.Node], pygltflib.Animation]:
+                        prof: Profiler) -> tuple[list[pygltflib.Node], pygltflib.Animation]:
     """Stage 5: the root node ``walker`` (standing the robot up) with one animated child per
     body, and the animation's samplers and channels."""
     n_frames = len(anim.times)
@@ -762,8 +720,11 @@ def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim:
             if key is not None:
                 node.mesh = geom.mesh_index[key]
                 v = meshes.class_mesh[key][0]
-                th = anim.thetas[body.name]
-                y = np.outer(np.sin(th), v[:, 0]) + np.outer(np.cos(th), v[:, 1])
+                if body.name in anim.matrices:
+                    y = np.einsum("tj,vj->tv", anim.matrices[body.name][:, 1, :], v)
+                else:
+                    th = anim.thetas[body.name]
+                    y = np.outer(np.sin(th), v[:, 0]) + np.outer(np.cos(th), v[:, 1])
                 ground = min(ground, float((y.min(axis=1) + anim.translations[body.name][:, 1])
                                            .min()))
             node.extras = {
@@ -791,7 +752,7 @@ def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim:
 
 
 def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animation,
-           root: pygltflib.Node, duration_s: float, prof: _Profiler, side=None
+           root: pygltflib.Node, duration_s: float, prof: Profiler, side=None
            ) -> pygltflib.Scene:
     """Stage 6: the scene with the foot-path extra (leg 0's first foot; a mechanism's output
     point as ``output_path``) and, for a robot, the walking model's data on the root node
@@ -808,7 +769,7 @@ def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animati
         # Drawn just outside that foot's link (first side), in model Z.
         link = next((by_name[b] for b, _ in ref.feet if by_name[b].part), None)
         foot_z = link.part.bounding_box().min.Z - 0.5 if link is not None else 0.0
-    if config.robot:
+    if config.mirrored:
         extras = root.extras
         assert extras is not None  # _nodes_and_channels (stage 5) set the root's extras
         with prof.timed("6b_drive_extra"):
@@ -830,11 +791,17 @@ def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animati
         scene.extras["output"] = asdict(lk.output)
     if lk.product:                  # a product (a decanting cradle): the viewer drives nothing
         scene.extras["product"] = lk.product
+    if ref.mech.meta.get("tree"):      # an arm's spatial joints (the viewer's joint sliders)
+        scene.extras["tree"] = ref.mech.meta["tree"]
+    if lk.ranged:                      # its inputs at the clip's first frame (the sliders')
+        q0 = lk.tour(np.array([T_REF]))
+        scene.extras["inputs0"] = {n: math.degrees(float(v[0]))
+                                   for n, v in zip(lk.inputs, q0, strict=True)}
     return scene
 
 
 def _write(out: Path, scene: pygltflib.Scene, nodes: list[pygltflib.Node], geom: _Geometry,
-           animation: pygltflib.Animation, prof: _Profiler) -> None:
+           animation: pygltflib.Animation, prof: Profiler) -> None:
     """Stage 7: assemble the glTF and serialize it as one binary ``.glb``."""
     with prof.timed("7_serialize"):
         blob = geom.packer.bytes
@@ -901,7 +868,7 @@ def bake_gltf(
     config = config or BuildConfig()
     if duration_s is None:          # a walker's crank turn a second; a cradle's decant slower
         duration_s = PRODUCT_SECONDS if is_cradle(config) else 1.0
-    prof = _Profiler(enabled=profile)
+    prof = _profiler(profile)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
 

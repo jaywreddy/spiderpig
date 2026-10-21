@@ -33,7 +33,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-KINDS = ("printed", "laser", "purchased")
+from spiderpig import fabmethods
 
 _WHAT = (           # (pattern in a printed body's bare name, what it is, family), first wins
     (r"horn_spacer", "horn spacer", "HS"), (r"spacer_hi", "top spacer", "SP"),
@@ -153,7 +153,7 @@ def part_types(mech, order: list[str] | None = None, groups: dict | None = None,
     from spiderpig.layout import outline_size
 
     groups = dict(groups or {})
-    for method in ("printed", "laser"):
+    for method in fabmethods.made():
         if method not in groups:
             groups[method] = group_made(mech.bodies, method)
     filament = filament or mech.meta.get("filament", "pla_filament")
@@ -208,7 +208,8 @@ def part_types(mech, order: list[str] | None = None, groups: dict | None = None,
             t.file = t.extra["twin"].file.removesuffix(".stl") + "_mirrored.stl"
     rank = {n: i for i, n in enumerate(order or [b.name for b in mech.bodies])}
     big = len(rank)
-    return sorted(found, key=lambda t: (KINDS.index(t.kind),
+    listing = fabmethods.kinds()
+    return sorted(found, key=lambda t: (listing.index(t.kind),
                                         min((rank.get(n, big) for n in t.names), default=big),
                                         t.label))
 

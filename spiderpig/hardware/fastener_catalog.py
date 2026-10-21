@@ -49,6 +49,147 @@ for _L in CHICAGO_LENGTHS:
               "are domed at the rim: measure a sample. McMaster sells no M3 (M4 and up).",
     ))
 
+DISC_SPRINGS = {
+    # key: (OD, ID, material t, free height h0, load at 75 % of h0 - t (N, estimate))
+    "disc_spring_din2093_c8": (8.0, 4.2, 0.2, 0.45, 39.0),
+    "disc_spring_din2093_c12p5": (12.5, 6.2, 0.35, 0.8, 151.0),
+}
+"""DIN 2093 series C disc springs: the preload of a ball pair's column
+(:mod:`construction.pivots.pair`): the C8 on a 4 mm pin, the C12.5 on a 6 mm shaft,
+compressed by the shims under them to the column's preload. Loads at 75 % of the cone's
+travel (``h0`` is the free height, the cone ``h0 - t``): DIN 2093's table (39 N and 151 N;
+Lesjöfors' stainless C8 36 N), checked 2026-10-12."""
+
+DISC_SPRINGS_123 = {
+    # key: (123Bearing reference, (from qty, USD each), ...): its pages read 2026-10-12
+    "disc_spring_din2093_c8": ("S4206", ((1, 1.02), (5, 0.88), (10, 0.74))),
+    "disc_spring_din2093_c12p5": ("S4227", ((1, 1.22),)),
+}
+"""The disc springs' first (the BOM's) offer: 123Bearing's DIN 2093 springs, sold singly with
+quantity breaks (shipping not verified); Lesjöfors' the alternative."""
+
+
+def _disc_123(key: str) -> tuple[Offer, ...]:
+    if key not in DISC_SPRINGS_123:
+        return ()
+    ref, tiers = DISC_SPRINGS_123[key]
+    return (Offer("123Bearing", "https://www.123bearing.com/accessories/washer/spring-disc-"
+                  f"din2093/{ref.lower()}", ref, price_usd=tiers[0][1], tiers=tiers,
+                  note=f"DIN 2093 disc spring {ref}, sold singly, USD each from "
+                       + ", ".join(f"{q}: {p:.2f}" for q, p in tiers)
+                       + " (page read 2026-10-12; shipping not verified)"),)
+
+for _k, (_od, _id, _t, _h0, _f) in DISC_SPRINGS.items():
+    register(Item(
+        _k, f"DIN 2093 series C disc spring {_od:g} x {_id:g} x {_t:g} mm", "spring",
+        (*_disc_123(_k),
+         Offer("Lesjöfors", "https://shop.lesjofors.com/fi/en-US/all-products/disc-springs-"
+               "washers/", f"DSS {_od:g}X{_id:g}X{_t:g}", pack_qty=1,
+               price_usd=2.6 if _od < 10 else 3.5,
+               note="stainless 1.4310; EUR 5.16 each, 2.35 from 25 (the C8, read 2026-10-12); "
+                    "the C12.5 an estimate"),
+         Offer("Amazon", f"https://www.amazon.com/s?k=DIN+2093+disc+spring+{_od:g}x{_id:g}",
+               pack_qty=10, price_usd=8.0, note="search; packs of 10-20, an estimate"),
+         Offer("McMaster-Carr", "https://www.mcmaster.com/metric-belleville-springs",
+               note=f"metric Belleville (disc) springs {_id:g} mm ID; part number not "
+                    "confirmed")),
+        # "t": its installed height with a 0.1 mm shim over it (the slot a ground pin's
+        # end keeps for it: construction.pivots.pair.GroundShaft)
+        dims={"od": _od, "id": _id, "t_mat": _t, "h0": _h0, "load_n": _f,
+              "t": round(_t + 0.25 * (_h0 - _t) + 0.1 + 0.15, 2)},
+        notes=f"About {_f:g} N at 75 % of its {_h0 - _t:.2f} mm travel (DIN 2093 series C, "
+              "an estimate)."))
+
+GROUND_LENGTHS = tuple(float(L) for L in range(10, 61))
+"""The ground pin's lengths (mm): MISUMI's SFJW4 (g6, M2 both ends) is made from 10 mm in
+1 mm steps (its catalogue, p. 93; 0.1 mm steps are a special): the shims take up the rest
+(the cost loop's round 2, 2026-10-13: the 0.5 mm steps were specials)."""
+
+
+def ground_pin(length: float) -> str:
+    return f"shaft_g6_4mm_{length:g}"
+
+
+for _L in GROUND_LENGTHS:
+    register(Item(
+        ground_pin(_L), f"Ground shaft 4 mm g6 x {_L:g} mm, both ends tapped M2", "fastener",
+        (Offer("MISUMI", "https://us.misumi-ec.com/vona2/selector/rotary-shafts/"
+               "tapped-rotary-shafts", price_usd=6.0,
+               note="rotary shaft, one or both ends tapped, length to order; whether a 4 mm "
+                    "shaft takes M2 both ends and the price are estimates (unverified)"),),
+        dims={"thread": 2.0, "barrel_d": 4.0, "head_d": 5.0, "head_h": 1.6,
+              "screw_head_h": 1.6, "length": float(_L), "tolerance": "g6 (-4/-12 um)"},
+        notes="The pin of a preloaded ball pair (construction.pivots.pair): an M2 x 4 button "
+              "head (ISO 7380) and a 2.2 x 5 washer at each end (head 1.3 + washer 0.3 mm; "
+              "a socket head's 2.0 put the top end over a 3 mm layer once the land was "
+              "under it, 2026-10-13); the "
+              "washer's rim holds the stack, on the inner rings' land. MISUMI SFJW4 / "
+              "PSFJW4-L-M2-N2 (a 4 mm shaft takes M2 both ends, its 2019 catalogue); its "
+              "standard lengths start at 20 mm: a shorter pin is a special, or cut from a "
+              "20 mm one and tapped. Price only in MISUMI's configurator: $6 an estimate."))
+
+CAPILLARY = {
+    # key: (ASIN, pack, USD, the tube): uxcell 304 stainless tube, Amazon 2026-10-12
+    "collar_5p5x4p1": ("B0BX4C4DYJ", 1, 7.59, "5.5 OD x 0.6 wall (4.3 ID) x 250 mm"),
+    "collar_7x6p1": ("B0GWMRQN6Q", 2, 7.49, "7 OD x 0.5 wall (6.0 ID) x 254 mm"),
+}
+"""A cheap stock tube for the collars, an alternative only: its OD and ends are not held to
+MISUMI's tolerances (cut and face each piece square; the 7 mm one's 6.0 ID may not pass a
+6 mm shaft)."""
+
+TUBE_PIECES = 12
+"""Spacers cut from one 250 mm capillary tube (the pins' are 5-15 mm; a saw's kerf each)."""
+
+for _k, (_od, _id) in {"collar_5p5x4p1": (5.5, 4.1), "collar_7x6p1": (7.0, 6.1)}.items():
+    _asin, _n, _usd, _tube = CAPILLARY[_k]
+    _cheap = (Offer("Amazon", f"https://www.amazon.com/dp/{_asin}", _asin,
+                    pack_qty=TUBE_PIECES, price_usd=_usd,
+                    note=f"uxcell 304 stainless capillary tube {_tube}: the pins' spacers cut "
+                         f"from it (about {TUBE_PIECES} a tube), each faced square and "
+                         "deburred; the disc spring takes up their length error (round 2 of "
+                         "the cost loop; search-result price 2026-10-12)"),)
+    register(Item(
+        _k, f"Precision collar (spacer tube) {_od:g} OD x {_id:g} ID, cut to length", "spacer",
+        (*(_cheap if _k == "collar_5p5x4p1" else (Offer(
+            "Amazon", "https://www.amazon.com/dp/B005WPASC8", "B005WPASC8",
+            pack_qty=2 * TUBE_PIECES, price_usd=10.19,
+            note="K&S 9825 brass tube 7 x 0.45 mm wall (6.1 ID) x 300 mm, 2 a pack: the "
+                 "pillars' spacers cut from it (about 12 a tube), each faced square and "
+                 "deburred (round 3 of the cost loop; search-result price 2026-10-12)"),)),
+         Offer("MISUMI", "https://my.misumi-ec.com/vona2/detail/110310886139/", price_usd=4.0,
+               note="precision collar, OD in 0.5 mm and length in 0.1 mm steps; the price an "
+                    "estimate (MISUMI's configurator)"),
+         *(() if _k == "collar_5p5x4p1" else (Offer(
+             "Amazon", f"https://www.amazon.com/dp/{_asin}", _asin, pack_qty=_n,
+               price_usd=_usd, note=f"uxcell 304 stainless capillary tube {_tube}, {_n} a "
+               "pack (search-result price 2026-10-12): an alternative only, not ground; cut "
+               "each spacer and face its ends square, deburred"),))),
+        dims={"od": _od, "id": _id},
+        notes="A ball pair's column spacer (construction.pivots.pair.stock_tubes): one per "
+              "gap between neighbouring links (or a hub), cut to the faces' distance; its OD "
+              "bears on the bearings' inner rings only (the 7 mm one passes the drive "
+              "pulleys' 8 mm bores on the shoulder's pillar)."))
+
+for _k, (_id, _od) in {"shim_4x6x0p5": (4.0, 6.0), "shim_6x8x0p5": (6.0, 8.0)}.items():
+    register(Item(
+        _k, f"Stainless shim washer {_id:g} x {_od:g} x 0.5 mm", "washer",
+        (Offer("Amazon", f"https://www.amazon.com/s?k={_id:g}x{_od:g}x0.5mm+shim+washer",
+               pack_qty=50, price_usd=7.0, note="search; precision shim washers in packs, an "
+                                               "estimate"),),
+        dims={"id": _id, "od": _od, "t": 0.5},
+        notes="A ball pair's inner-ring land (construction.pivots.pair): it bears on the "
+              "bearing's inner ring only, so a wider ring or spacer beside the link doesn't "
+              "carry the column's preload around the balls."))
+
+register(Item("m2_washer_din125", "DIN 125 flat washer M2 (2.2 x 5 x 0.3 mm)", "washer",
+              (Offer("Amazon", "https://www.amazon.com/s?k=M2+flat+washer+DIN+125",
+                     pack_qty=100, price_usd=6.0, note="search; an estimate"),),
+              dims={"id": 2.2, "od": 5.0, "t": 0.3}))
+register(Item("m2_nut", "M2 hex nut (ISO 4032, 4 mm across flats, 1.6 mm)", "nut",
+              (Offer("Amazon", "https://www.amazon.com/s?k=M2+hex+nut+ISO+4032",
+                     pack_qty=100, price_usd=6.0, note="search; an estimate"),),
+              dims={"af": 4.0, "h": 1.6}))
+
 register(
     Item("ptfe_washer_4x8x0p5", "PTFE flat washer 4.2 x 7 x 0.5 mm", "washer",
          (Offer("McMaster-Carr", "https://www.mcmaster.com/products/ptfe-washers/",

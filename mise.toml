@@ -145,6 +145,10 @@ run         = "uv run python -m spiderpig.cli mcp"
 description = "Download the servo manufacturers' CAD models into the cache (sha256-pinned)"
 run = "uv run python -m spiderpig.servos.cad"
 
+[tasks.precision]
+description = "The error budget at a design's output (joint play, levers, tolerances, heat)"
+run         = "uv run python -m spiderpig.cli precision"
+
 [tasks.lint]
 description = "ruff check, then the layers' import contracts (lint-imports: pyproject.toml [tool.importlinter])"
 run         = ["uv run ruff check .", "uv run lint-imports"]

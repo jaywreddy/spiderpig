@@ -18,7 +18,7 @@ from spiderpig.construction.base import (
     Motion,
     Realized,
 )
-from spiderpig.servos.mount import MIN_SPACER
+from spiderpig.servos import MIN_SPACER
 from spiderpig.shapes import moved
 from spiderpig.stack import Claim, Disc, Keepout, Layout, Pill, Placed, Unbuildable
 

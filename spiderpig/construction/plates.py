@@ -159,6 +159,13 @@ def _chord_r(ctx: Context, link: str, a: str, b: str) -> float:
 RIDER_BOSS_T = 1.0      # a metal link keeps this many x its thickness round its crank bore
 
 
+def hub_pads(ctx: Context) -> dict[str, tuple[str, float]]:
+    """Per link a drive turns (an arm's: :class:`construction.transmissions.DriveHub`, its
+    ``pad_r``): the pad it grows round its pivot, wide enough for the hub's bolts."""
+    return {h.link: (h.axis, float(h.pad_r)) for h in ctx.interfaces.values()
+            if getattr(h, "pad_r", 0.0) and getattr(h, "link", None)}
+
+
 def rider_bosses(ctx: Context) -> dict[str, tuple[str, float]]:
     """Per aluminium link riding a crankpin: (the crankpin, the radius of the boss its end
     grows round the bore), where the link's own width leaves less than ``RIDER_BOSS_T`` x
@@ -519,12 +526,58 @@ def _placed_outline(build: Build, ol: Outline, z0: float, z1: float) -> Shape3D:
     turn = math.degrees(math.atan2(pb[1] - pa[1], pb[0] - pa[0]))
     face = ol.face.moved(Location((float(pa[0]), float(pa[1]), z0), (0, 0, 1), turn))
     return cast("Shape3D", Solid.extrude(face, Vector(0, 0, z1 - z0)))
+def _seat_candidates(ctx: Context) -> list[tuple[str, str, tuple[str, ...], dict[str, float]]]:
+    """Per pin or pillar whose construction seats a bearing in its links: ``(axle, kind,
+    members, {metal link: the boss's radius})`` for each member whose width can't hold the
+    seat (:func:`seat_bosses` picks the riders at a plan)."""
+    from spiderpig import construction
+    from spiderpig.materials import sheet
+
+    out = []
+    for ax in ctx.topo.axes:
+        if ax.kind not in ("pin", "frame"):
+            continue
+        seat = getattr(construction.axle(ctx.config.pin if ax.kind == "pin"
+                                         else ctx.config.pillar), "seat", None)
+        if seat is None:
+            continue
+        need = {}
+        for m in ax.members:
+            key = ctx.sheet("link", m)
+            if key is None or not sheet(key).metal:     # (acrylic's rule is a 1.35 mm
+                continue                                #  bridge: the link holds it)
+            r = seat.seat_d() / 2 + RIDER_BOSS_T * ctx.sheet_t("link", m) + 0.1
+            if r > ctx.params.link_radius + 1e-9:
+                need[m] = round(r, 3)
+        if need:
+            out.append((ax.name, ax.kind, tuple(ax.members), need))
+    return out
+
+
+def seat_bosses(ctx: Context, layers, candidates=None) -> dict[str, list[tuple[str, float]]]:
+    """Per metal link seating a bearing (a ball pivot's rider: every link on a pin but its
+    host, the lowest in ``layers``; every link on a pillar): (the axle, the radius of the
+    boss its end grows round the seat), where the link's own width leaves less than
+    ``RIDER_BOSS_T`` x its thickness of web there (the cut rules' error, 2026-10-14: the
+    arm's 1/8 in 5052 b4 left 2.5 mm round its MR84 seats)."""
+    out: dict[str, list[tuple[str, float]]] = {}
+    for name, kind, members, need in (_seat_candidates(ctx) if candidates is None
+                                      else candidates):
+        placed = all(m in layers for m in members)   # (a search's partial plan: any of them
+        #                                              may be a rider yet, so each keeps it)
+        host = (min(members, key=lambda m: (layers[m], m)) if kind == "pin" and placed
+                else None)
+        for m, r in need.items():
+            if m != host:
+                out.setdefault(m, []).append((name, r))
+    return out
 
 
 class LinkPlates(Group):
     """Every leg link, cut from the sheet, in the layer the plan gives it (an aluminium
-    link's end grown round a crank bore its width can't hold: :func:`rider_bosses`); a
-    product's with its own bosses and its outline closed (:func:`product_outline`)."""
+    link's end grown round a crank bore or a bearing seat its width can't hold:
+    :func:`rider_bosses`, :func:`seat_bosses`); a product's with its own bosses and its
+    outline closed (:func:`product_outline`)."""
 
     name = "links"
     cuts = True
@@ -540,6 +593,8 @@ class LinkPlates(Group):
                 outline = product_outline(ctx, n, segs)
                 ctx.topo.add_link_points(outline.points(n))
                 fills[n] = outline.pills(n)
+        pads = hub_pads(ctx)
+        seat_cands = _seat_candidates(ctx)
 
         feet = {name: foot for name, foot, _ in foot_links(ctx.topo, ctx.config.lk)} \
             if hasattr(ctx.config, "lk") else {}
@@ -552,6 +607,12 @@ class LinkPlates(Group):
                     out.append(Placed(L.layers[link], Disc(at, rb), link, f"{link} boss"))
                 out += [Placed(L.layers[link], Pill(p, q, w), link, f"{link} fillet")
                         for p, q, w in fills.get(link, ())]
+                for at, rb in seat_bosses(ctx, L.layers, seat_cands).get(link, ()):
+                    out.append(Placed(L.layers[link], Disc(at, rb), link,
+                                      f"{link} seat boss {at}"))
+                if link in pads:        # its pad round the pivot for a drive's hub bolts
+                    at, rp = pads[link]
+                    out.append(Placed(L.layers[link], Disc(at, rp), link, f"{link} hub pad"))
                 if link in feet:        # its TPU sock round the toe, in its own layer
                     out.append(Placed(L.layers[link], Disc(feet[link], r + SOCK_REACH), link,
                                       f"{link} sock"))
@@ -588,6 +649,8 @@ class LinkPlates(Group):
         r = build.ctx.params.link_radius
         ctx = build.ctx
         bosses = rider_bosses(ctx)
+        pads = hub_pads(ctx)
+        seats = seat_bosses(ctx, build.layers)
         feet = {name: (foot, other) for name, foot, other in
                 (foot_links(build.plan.topo, ctx.config.lk) if hasattr(ctx.config, "lk")
                  else ())}
@@ -607,10 +670,11 @@ class LinkPlates(Group):
                 part = cut_holes(_placed_outline(build, product_outline(ctx, name, segs),
                                                  z0, z1), cuts, z0, z1)
             else:
-                boss = bosses.get(name)
+                discs = [(build.xy(t[0]), t[1]) for t in (bosses.get(name), pads.get(name),
+                                                          *seats.get(name, ()))
+                         if t is not None]
                 part = plate([(build.xy(a), build.xy(b), _chord_r(ctx, name, a, b))
-                              for a, b in segs], z0, z1, cuts,
-                             discs=[(build.xy(boss[0]), boss[1])] if boss else ())
+                              for a, b in segs], z0, z1, cuts, discs=discs)
             out.bodies.append(hardware(name, part, name, fab="laser",
                                        sheet=ctx.sheet("link", name)))
         return out
@@ -673,9 +737,13 @@ class FramePlates(Group):
             ops.append(Op(STACK, (-1, 0), whole("frame_outer"),
                           "Outer frame plate and pillar columns",
                           "Lay the outer frame plate down, leg side up.", "plate"))
+        arm = getattr(getattr(view.ctx, "config", None), "lk", None)
+        arm = arm is not None and arm.ranged
         if inner is not None and inner in view.z:
-            ops.append(Op(UNIT, (0,), whole(inner), "Inner plate and servo",
-                          "Lay the inner frame plate down, servo side up.", "plate"))
+            ops.append(Op(UNIT, (0,), whole(inner),
+                          "Inner plate" if arm else "Inner plate and servo",
+                          "Lay the inner frame plate down, its motor's side up." if arm
+                          else "Lay the inner frame plate down, servo side up.", "plate"))
         return ops
 
     def realize(self, build: Build, done: Realized) -> Realized:

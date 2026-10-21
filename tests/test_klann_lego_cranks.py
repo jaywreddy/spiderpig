@@ -151,6 +151,10 @@ def test_the_pillar_rings_close_the_columns_air():
     for name, note in notes.items():
         # the 0.1 mm assumed, and at most half a step of the 0.5 mm take-up washers
         assert note["play_mm"] <= 0.1 + 0.25 + 1e-9, name
+    # since 2026-10-14 the column between its links is stock tubes cut face to face, which
+    # close the air whatever the layers' thickness; nothing on a pillar is printed
+    assert [b for b in mech.bodies if "pillar" in b.name and "_tube" in b.name]
+    assert not [b.name for b in mech.bodies if "pillar" in b.name and b.fab == "printed"]
 
 
 @pytest.mark.slow

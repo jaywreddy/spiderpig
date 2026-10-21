@@ -163,7 +163,7 @@ class RodPinShaft(PivotPinShaft):
     washer_key: str = "ptfe_washer_8x14x0p5"   # (its OD only: the ends' claims)
     lock_key: str = LOCK
 
-    def key_of(self, length: float) -> str:
+    def key(self, length: float) -> str:
         return ROD_KEY[self.rod]
 
     def item(self, length: float | None = None) -> dict:
@@ -217,7 +217,7 @@ class RodPinShaft(PivotPinShaft):
         tap_hi = disc(xy, TAP_R, zt - END_TAP[1], zt + 1.0)
         rod = difference(disc(xy, (d - self.model_gap) / 2, zb, zt), tap, tap_hi)
         out.bodies.append(hardware(f"{stem}_pin", rod, host, fab="purchased",
-                                   bom_key=self.key_of(f.length), color=ALU))
+                                   bom_key=self.key(f.length), color=ALU))
         s_d, s_len, s_key = END_SCREW
         for tag, face, s in (("lo", zb, -1.0), ("hi", zt, 1.0)):
             w0, w1 = sorted((face, face + s * w_t))
@@ -234,7 +234,7 @@ class RodPinShaft(PivotPinShaft):
         out.extras.append(BomLine(self.lock_key, 2 * self.lock_per_pin, group.name))
         out.notes.setdefault("rod_pin", {})[group.name] = {
             "length_mm": f.length, "stack_mm": round(z_hi - z_lo - air, 3),
-            "play_mm": round(f.play, 3), "d_mm": round(d, 4), "item": self.key_of(f.length)}
+            "play_mm": round(f.play, 3), "d_mm": round(d, 4), "item": self.key(f.length)}
         return f
 
 
@@ -311,7 +311,7 @@ class RodClipShaft(ClevisPinShaft):
     rod: str = "516"
     lengths: tuple[float, ...] = field(default_factory=_clip_lengths)
 
-    def key_of(self, length: float) -> str:
+    def key(self, length: float) -> str:
         return ROD_KEY[self.rod]
 
     def item(self, length: float | None = None) -> dict:
@@ -355,7 +355,7 @@ class RodClipShaft(ClevisPinShaft):
         rod = difference(disc(xy, (d - self.model_gap) / 2, zh, zh + overall + air), cross,
                          disc(xy, TAP_R, zh - 1.0, zh + END_TAP[1]))
         out.bodies.append(hardware(f"{stem}_pin", rod, host, fab="purchased",
-                                   bom_key=self.key_of(f.length), color=ALU))
+                                   bom_key=self.key(f.length), color=ALU))
         out.bodies.append(hardware(f"{stem}_washer_lo", ring(xy, w_od, 4.3, zh - w_t, zh),
                                    host, fab="purchased", bom_key=END_WASHER, color="#b8b8b8"))
         s_d, s_len, s_key = END_SCREW
@@ -374,7 +374,7 @@ class RodClipShaft(ClevisPinShaft):
         out.notes.setdefault("rod_clip_pin", {})[group.name] = {
             "usable_mm": f.length, "stack_mm": round(z_hi - z_lo - air, 3),
             "spacer_mm": f.shims_lo, "play_mm": f.play, "d_mm": round(d, 4),
-            "overall_mm": overall, "item": self.key_of(f.length), "clip": "hairpin_cotter_2x50",
+            "overall_mm": overall, "item": self.key(f.length), "clip": "hairpin_cotter_2x50",
             "past_link_mm": round(f.play + hole + self.tip(), 3)}
         return f
 

@@ -23,14 +23,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
 
-from spiderpig import construction, linkage, servos
-from spiderpig.config import BuildConfig, is_cradle, plan_objective
+from spiderpig import construction, fabmethods, linkage, servos
+from spiderpig.config import BuildConfig, is_cradle, plan_objective, robot_layout
 from spiderpig.construction.base import Build, Context, Realized
-from spiderpig.construction.robot import FrameTies, assemble_robot
+from spiderpig.construction.robot import assemble_robot, controller_lines, robot_groups
 from spiderpig.construction.underside import underside
 from spiderpig.hardware.catalog import sheet_name
 from spiderpig.mechanism import Mechanism
-from spiderpig.servos.mount import DriveGroup
+from spiderpig.servos.mount import ServoDrive
 from spiderpig.stack import (
     Clearance,
     ClearanceError,
@@ -76,7 +76,7 @@ class SideDesign:
     facts: CrankFacts | None = None     # the crank router's static facts
 
     @property
-    def drive(self) -> DriveGroup:
+    def drive(self) -> ServoDrive:
         return self.groups[0]
 
     @property
@@ -113,7 +113,8 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
         # else the pivots' heads sunk with the crank's in gaps (stack.HEADS_ORDER)
         heads = "gap_sink"
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin, heads=heads,
-                     objective=plan_objective(config.lk), **plate_z(ctx))
+                     objective=plan_objective(config.lk),
+                     adjacent=adjacent_pins(groups, config), **plate_z(ctx))
     if deadline is not None:
         spec = replace(spec, max_seconds=min(spec.max_seconds, deadline.remaining))
     crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
@@ -122,6 +123,30 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
     problem = StackProblem(topo, claims, spec, router, side_clearances(ctx, groups),
                            hint=_leg_hint(config, deadline) if hint else None)
     return ctx, groups, problem
+
+
+def adjacent_pins(groups: list, config: BuildConfig) -> tuple:
+    """The pins whose links stack in consecutive layers (the role ``pin_stack``:
+    "adjacent"; :attr:`stack.StackSpec.adjacent`): each pin's links and the layers its
+    column may span: one a link, one more for each link thin enough to need a hub beside it
+    (``hubless``: :mod:`construction.pivots.pair`) but one: the lowest, the bonded host,
+    rides on nothing (if a thin one isn't lowest, its hub's rule refuses the layering)."""
+    kind = config.lk.kind
+    from spiderpig import roles as rolemod
+    from spiderpig.stack.plan import PIN_STACKS
+
+    if not rolemod.applies("pin_stack", kind) or config.role("pin_stack") in ("", "free"):
+        return ()
+    slack = PIN_STACKS[config.role("pin_stack")].slack
+    out = []
+    for g in groups:
+        ax, axle = getattr(g, "axis", None), getattr(g, "construction", None)
+        if ax is None or ax.kind != "pin" or len(ax.members) < 2:
+            continue
+        hubless = getattr(axle, "hubless", None)
+        thin = 0 if hubless is None else sum(m not in hubless for m in ax.members)
+        out.append((tuple(sorted(ax.members)), len(ax.members) + max(0, thin - 1) + slack))
+    return tuple(sorted(out))
 
 
 def plate_z(ctx: Context) -> dict:
@@ -146,7 +171,7 @@ def _leg_hint(config: BuildConfig, deadline: Deadline | None = None) -> dict[str
     legs found no plan at it (2026-10-14). Remembered per single module."""
     if config.module == "single":
         return None
-    one = replace(config, module="single", phases=None, robot=False)
+    one = replace(config.side_config(), module="single", phases=None)
     tmpl = template_for(one)
     key = _key(tmpl, one)
     if key in _HINTS and deadline is None:
@@ -184,7 +209,7 @@ def _key(tmpl, config: BuildConfig) -> tuple:
     the ``meta`` that made it) and the side's config."""
     meta = tuple(sorted((k, v) for k, v in tmpl.meta.items()))
     return (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), meta,
-            replace(config, robot=False))
+            config.side_config())
 
 
 def remember(tmpl, design: SideDesign) -> None:
@@ -194,7 +219,7 @@ def remember(tmpl, design: SideDesign) -> None:
     stays."""
     key = _key(tmpl, design.config)
     _DESIGNS.setdefault(key, design)
-    _LAYOUTS.setdefault((*key[:4], replace(design.config, robot=False)), design.plan)
+    _LAYOUTS.setdefault((*key[:4], design.config.side_config()), design.plan)
 
 
 def router_facts(problem: StackProblem) -> CrankFacts | None:
@@ -246,7 +271,7 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
     within a few minutes at worst. ``deadline``: a caller's (the recommendation checks'):
     what is left of it caps every search here, and the design isn't cached.
     """
-    config = replace(config or BuildConfig(), robot=False)
+    config = (config or BuildConfig()).side_config()
     key = _key(tmpl, config)
     if key in _DESIGNS:
         return _DESIGNS[key]
@@ -254,7 +279,7 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
     static_stage(tmpl, problem, config if advise else None)
     # The robot's side has the same layout as the side on its own; reuse
     # a solved layout when every claim still clears (checked, not assumed).
-    layout_key = (*key[:4], replace(config, robot=False))
+    layout_key = (*key[:4], config)
     plan = _reuse(problem, _LAYOUTS.get(layout_key))
     if plan is None:
         try:
@@ -283,7 +308,8 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
 def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mechanism:
     """Build every part of one side for ``mech`` (the side's template frozen at some ``t``).
 
-    ``extra_groups`` (the robot's frame ties) realize after the design's
+    ``extra_groups`` (the robot layout's: :func:`construction.robot.robot_groups`) realize
+    after the design's
     groups and before the plates, which cut what they ask for.
     """
     build = Build(design.ctx, design.plan, mech)
@@ -308,12 +334,17 @@ def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mech
         layers=design.plan.top + 1, stack_mm=design.plan.height,
         **done.notes,
     )
+    if isinstance(meta.get("fastened"), dict):     # the groups' threaded pairs, by name
+        meta["fastened"] = [tuple(p) for p in meta["fastened"].values()]
+    extras = list(mech.bom_extras) + done.extras
+    if not robot_layout(cfg.lk):    # the side is the machine (a mechanism): its controller
+        extras += controller_lines(cfg, deck=False)    # bought with it, no deck to hold it
     return Mechanism(
         name=mech.name,
         bodies=list(bodies.values()) + extra,
         connections=list(mech.connections),
         meta=meta,
-        bom_extras=list(mech.bom_extras) + done.extras,
+        bom_extras=extras,
     )
 
 
@@ -331,28 +362,28 @@ def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0, *,
     design = design_side(tmpl, config)
 
     def build() -> Mechanism:
-        return product(design, tmpl, t, robot=config.robot)
+        return product(design, tmpl, t, config)
 
     store = store if store is not None else fabcache.current()
     return fabcache.fabricated(store, tmpl, config, design, t, build)
 
 
-def product(design: SideDesign, tmpl, t: float, robot: bool) -> Mechanism:
-    """What a planned side ``design`` makes at crank angle ``t``: the side on its own, the
-    robot (``robot``: two sides, the frame ties and the chassis), or a decanting cradle
-    (both sides and the cradle box: :mod:`construction.cradle`)."""
-    ties = [FrameTies(design.drive)] if robot else []
-    side = fabricate_side(design, tmpl.freeze_at(t), ties)
+def product(design: SideDesign, tmpl, t: float, config: BuildConfig) -> Mechanism:
+    """What a planned side ``design`` makes at crank angle ``t`` for ``config``: the side on
+    its own, the robot (``config.robot``: its layout's groups and parts,
+    :func:`construction.robot.robot_groups`, :func:`construction.robot.assemble_robot`), or
+    a decanting cradle (both sides and the cradle box: :mod:`construction.cradle`)."""
+    extra = robot_groups(design, config) if config.robot else []
+    side = fabricate_side(design, tmpl.freeze_at(t), extra)
     if is_cradle(design.config):
         from spiderpig.construction.cradle import assemble_cradle
 
         return assemble_cradle(side, design)
-    return assemble_robot(side, design) if robot else side
+    return assemble_robot(side, design, config) if config.robot else side
 
 
-MADE = ("laser", "printed")
-"""The fabrications the design makes itself: each part one solid (a purchased model may be
-several)."""
+# the fabrications the design makes itself (fabmethods.made()): each part one solid (a
+# purchased model may be several)
 
 
 def split_parts(mech: Mechanism) -> list[tuple[str, int]]:
@@ -362,5 +393,5 @@ def split_parts(mech: Mechanism) -> list[tuple[str, int]]:
     :func:`construction.contract.bad_solids`, the audit's and verify's): cheap enough for
     every build."""
     return [(b.name, n) for b in mech.bodies
-            if b.part is not None and getattr(b, "fab", None) in MADE
+            if b.part is not None and getattr(b, "fab", None) in fabmethods.made()
             and (n := len(cast("Shape3D", b.part).solids())) != 1]

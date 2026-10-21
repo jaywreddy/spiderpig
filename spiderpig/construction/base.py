@@ -82,6 +82,16 @@ class ConstructionError(ValueError):
         self.notes = list(notes)
 
 
+def stock_length(s, need: float, what: str) -> float:
+    """``s.length_for(need)`` (:meth:`hardware.fasteners.Screw.length_for`: the shortest
+    stocked length that reaches), a :class:`ConstructionError` naming ``what`` when none
+    does."""
+    try:
+        return s.length_for(need)
+    except LookupError as e:
+        raise ConstructionError(f"{what}: {e}") from None
+
+
 @dataclass(frozen=True)
 class DriveInterface:
     """What the crank couples to, in side coordinates.
@@ -164,9 +174,9 @@ class Build:
 
         A point a group added to the geometry (not a joint) is where the
         geometry says if it's fixed (e.g. a servo mounting screw); one fixed to a link
-        (:meth:`stack.Topology.add_link_points`) rides the two points it is drawn from;
-        any other that moves is fixed to the crank (:meth:`stack.Topology.add_crank_point`)
-        and has turned with it about O.
+        (``Topology.link_points``: an arm's hub bolts, a cradle plate's outline) rides the two
+        points it is drawn from; any other that moves is fixed to the crank
+        (:meth:`stack.Topology.add_crank_point`) and has turned with it about O.
         """
         node = self._node(point)
         if node is not None:
@@ -174,11 +184,8 @@ class Build:
             b = self.mech.body(body)
             return (b.pose @ b.joint(joint).pose).matrix[:2, 3].copy()
         on_link = self.plan.topo.link_points.get(point)
-        if on_link is not None:
-            a, b_, u, v = on_link
-            pa = self.xy(a)
-            d = self.xy(b_) - pa
-            return pa + u * d + v * np.array([-d[1], d[0]])
+        if on_link is not None:             # fixed to a link: where its two points say
+            return on_link.at(self.xy(on_link.about), self.xy(on_link.toward))
         g = self.plan.topo.geometry.points
         p = np.asarray(g[point][0], dtype=float)
         if not np.ptp(g[point], axis=0).any():
@@ -254,8 +261,8 @@ class Group:
     """A functional part of a side, built by one construction (the contract above).
 
     A group implements :meth:`claims` and :meth:`realize`; :meth:`keepouts`,
-    :meth:`interface` and :meth:`motion` are optional. ``cuts``: the group cuts what the
-    others asked for (holes, pads), so it realizes after them.
+    :meth:`interface`, :meth:`motion` and :meth:`error_terms` are optional. ``cuts``: the
+    group cuts what the others asked for (holes, pads), so it realizes after them.
     """
 
     name: str
@@ -277,6 +284,13 @@ class Group:
         """The group's parts for the solved plan; ``done`` is what the groups before it
         built (a plate cuts the holes and adds the pads they asked for)."""
         raise NotImplementedError
+
+    def error_terms(self, ctx: Context, got: Realized | None = None):
+        """How far the joint this group builds lets it wander
+        (:class:`construction.joints.ErrorTerms`), from what :meth:`realize` built when
+        ``got`` is given (its notes); ``None``: the group is no joint part, or reports
+        nothing (the precision analysis takes it as rigid and says so)."""
+        return
 
     def assembly(self, view) -> list:
         """How the group's parts go on (:mod:`construction.assembly`): ``Op`` records over

@@ -270,7 +270,7 @@ def test_the_check_counts_the_rules_and_errors_over_every_laser_part():
     default), worst first per rule; the summary not ok on an error."""
     bad = _body(_plate(30, 30, 2.54, [(15, 15, 2.0)]), name="bad")
     good = _body(_plate(30, 30, 3.0, [(15, 15, 4.0)]), sheet=None, name="good")
-    printed = Body("ring", _plate(10, 10, 3.0), fab="print")
+    printed = Body("ring", _plate(10, 10, 3.0), fab="printed")
     m = manufacture.check(SimpleNamespace(bodies=[bad, good, printed]), "acrylic_3mm",
                           dxf=False)
     assert m["parts"] == 2
@@ -396,3 +396,20 @@ def test_a_length_made_on_demand_takes_its_sourced_offer_first(monkeypatch):
         assert len(item.offers) == 2                 # the item's own offer after it
     finally:
         dict.pop(CATALOG, key, None)
+
+
+def test_a_screw_picks_the_shortest_priced_length_that_reaches():
+    """``Screw.length_for`` (the one picker, 2026-10-14): a priced length first (Bolt Depot
+    has no M3 x 14 socket head: McMaster's, unpriced, is its first offer), else any listed."""
+    from spiderpig.hardware.fasteners import screw
+
+    sk = screw("shcs", "3")
+    assert 14 in sk.lengths
+    assert not sk.priced(14)
+    assert sk.length_for(12.2) == 16
+    assert sk.length_for(12.0) == 12
+    tap = screw("self_tap", "2")                   # only the 6 mm priced: 8 from the kit
+    assert tap.length_for(6.5) == 8
+    assert sk.length_for(1e3, longest=True) == max(sk.lengths)
+    with pytest.raises(LookupError):
+        sk.length_for(1e3)

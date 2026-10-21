@@ -40,7 +40,8 @@ def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e
                  if k not in topo.geometry.points and k not in plan.topo.crank_points
                  and not np.ptp(v, axis=0).any()}
         if fixed:
-            topo.geometry = Geometry({**topo.geometry.points, **fixed})
+            topo.geometry = Geometry({**topo.geometry.points, **fixed},
+                                     lateral=topo.geometry.lateral)
         for name, (r, ang) in plan.topo.crank_points.items():
             topo.add_crank_point(name, r, ang)
         topo.add_link_points(plan.topo.link_points)

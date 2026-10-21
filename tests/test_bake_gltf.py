@@ -321,7 +321,8 @@ def test_bad_designs_are_rejected_before_baking():
     with pytest.raises(ParamError, match="unknown linkage"):
         BuildConfig(linkage="octopus")
     with pytest.raises(ParamError, match="is a mechanism, not a walker"):
-        BuildConfig(linkage="crank_rocker", module="single")
+        BuildConfig(linkage="crank_rocker", module="single", robot=True)
+    assert not BuildConfig(linkage="crank_rocker").robot     # (its kind's: one side)
 
 
 # ---------------------------------------------------------------------------

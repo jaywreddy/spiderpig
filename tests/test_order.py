@@ -4,6 +4,7 @@ user's three order designs' BOM (recorded, ``tests/fixtures/hardware/``) and ord
 
 from __future__ import annotations
 
+import math
 import re
 
 import pytest
@@ -238,23 +239,155 @@ def test_the_order_designs_order_list(name):
     assert "never its 3S / 12.6 V jumper setting" in md.split("## Before you order")[1]
 
 
-def test_cutting_is_an_area_estimate_calibrated_to_sendcutsends_quote():
-    """bom.cut_estimate: SendCutSend's live quotes of 2026-10-08 for the Strider double's 47
-    parts came to USD 117.14 (acrylic 49.44, aluminium 67.70); the estimate on those parts'
-    areas is within 1 % of it, the least part 1.33 in acrylic, 2.20 in aluminium."""
-    from spiderpig.hardware.bom import cut_estimate
+def test_cutting_is_an_area_and_cut_length_estimate_fitted_to_sendcutsends_quotes():
+    """bom.cut_estimate, fitted on SendCutSend's live quotes of two designs: the Strider
+    double's 47 parts (2026-10-08, USD 117.14: acrylic 49.44, aluminium 67.70) and the
+    palletizer arm's 18 (2026-10-12, USD 163.01), each part's area and cut length (cm)
+    measured on the DXF quoted. 5052 pays for its cut length (refit 2026-10-14): the
+    Strider's hole-dense aluminium within 3 % (it was 8.9 % low on the area alone), the arm
+    within 1 %, 6061 and acrylic within 3 % a sheet, a 5052 sheet within 10 %; 6061 and
+    acrylic have no cut term (acrylic's small parts all quoted the 2.00 floor; 6061's eight
+    prices don't support one). A part at one off costs at least the sheet's least (3 mm
+    acrylic 2.00, 5052 2.70, 6061 3.20), at 4 off SendCutSend's break (1.33 of 2.00: linear
+    between its 2 and 10 off prices).
+
+    These are the shipped rates against the quotes they were fitted on (in sample: they
+    hold the rates in place, they don't show the model predicts):
+    :func:`test_the_cut_length_term_predicts_a_5052_quote_left_out_of_the_fit` does."""
+    from spiderpig.hardware.bom import cut_estimate as priced
+    from spiderpig.hardware.bom import same_files
+
+    def cut_estimate(key, parts) -> float:      # every sheet here is priced
+        out = priced(key, parts)
+        assert out is not None, key
+        return out
 
     acrylic = cut_estimate("acrylic_3mm", [(4.58, 8), (16.7, 4), (11.0, 4), (8.66, 4),
                                            (16.7, 4), (11.0, 4), (8.65, 4), (93.1, 1)])
-    al = (cut_estimate("al5052_2mm", [(51.8, 2), (42.6, 2)])
-          + cut_estimate("al5052_2p3mm", [(16.4, 2), (16.2, 2)])
-          + cut_estimate("al6061_2p5mm", [(7.98, 2), (5.09, 2), (8.63, 2)]))
-    assert acrylic == pytest.approx(49.44, rel=0.01)
-    assert al == pytest.approx(67.70, rel=0.02)
-    assert acrylic + al == pytest.approx(117.14, rel=0.01)
-    assert cut_estimate("acrylic_3mm", [(0.0, 1)]) == 1.33
-    assert cut_estimate("al6061_2p5mm", [(0.0, 1)]) == 2.20
-    assert cut_estimate("acrylic_3mm_ponoko", [(10.0, 1)]) is None      # no rates there
+    al = (cut_estimate("al5052_2mm", [(51.84, 2, 88.0), (42.56, 2, 61.9)])
+          + cut_estimate("al5052_2p3mm", [(16.4, 2, 29.6), (16.17, 2, 30.2)])
+          + cut_estimate("al6061_2p5mm", [(7.98, 2, 21.3), (5.09, 2, 15.7), (8.63, 2, 24.5)]))
+    assert acrylic == pytest.approx(49.44, rel=0.05)
+    assert al == pytest.approx(67.70, rel=0.03)
+    # the area alone (no cut length given) prices the hole-dense torso far lower
+    assert cut_estimate("al5052_2mm", [(51.84, 1)]) < 0.75 * cut_estimate(
+        "al5052_2mm", [(51.84, 1, 88.0)])
+    # the arm's parts (their DXFs' net areas and cut lengths), SendCutSend's quote a sheet
+    arm = {"al5052_3p2mm": ([(221.6, 1, 91.9), (228.28, 1, 75.5), (194.28, 1, 61.4)], 68.61),
+           "al5052_2mm": ([(73.98, 2, 88.9), (98.02, 1, 46.4), (31.61, 2, 38.6)], 50.31),
+           "al6061_3p2mm": ([(24.71, 1, 45.0), (32.64, 1, 56.1)], 14.49),
+           "acrylic_5p4mm": ([(19.42, 1, 37.0), (17.18, 1, 35.9), (17.87, 1, 34.0),
+                              (20.11, 1, 39.3), (10.99, 1, 24.9), (11.52, 1, 26.6)], 25.60),
+           "acrylic_3mm": ([(0.46, 1, 6.1), (0.55, 1, 7.3)], 4.00)}
+    est = {k: cut_estimate(k, parts) for k, (parts, _) in arm.items()}
+    for k, (_, quoted) in arm.items():          # a 5052 sheet: its plates' scatter
+        assert est[k] == pytest.approx(quoted, rel=0.03 if "5052" not in k else 0.10), k
+    assert est["al5052_3p2mm"] + est["al5052_2mm"] == pytest.approx(68.61 + 50.31, rel=0.02)
+    assert sum(est.values()) == pytest.approx(163.01, rel=0.01)
+    assert cut_estimate("acrylic_3mm", [(0.0, 1)]) == 2.00
+    assert cut_estimate("acrylic_3mm", [(5.0, 4)]) == pytest.approx(4 * 1.33, abs=0.01)
+    assert cut_estimate("acrylic_3mm", [(5.0, 4, 80.0)]) == cut_estimate("acrylic_3mm",
+                                                                         [(5.0, 4)])
+    assert cut_estimate("al6061_2p5mm", [(0.0, 1)]) == 3.20
+    assert cut_estimate("al5052_2mm", [(0.0, 1)]) == 2.70
+    assert priced("acrylic_3mm_ponoko", [(10.0, 1)]) is None            # no rates there
+    # an ungrouped BOM's rows of one shape are one file's quantity (area and cut alike)
+    assert same_files([(16.7, 1), (4.58, 1), (16.7001, 1)]) == [(4.58, 1), (16.7, 2)]
+    assert same_files([(16.7, 1, 30.0), (16.7, 1, 40.0), (16.7, 2, 30.0)]) == [
+        (16.7, 3, 30.0), (16.7, 1, 40.0)]
+    # a shape's copies a cut-length rounding step apart (0.001 cm) are still one file
+    assert same_files([(16.7, 1, 30.0), (16.7, 1, 30.001), (16.7, 1, 30.01)]) == [
+        (16.7, 2, 30.0), (16.7, 1, 30.01)]
+
+
+FIVE052_QUOTES = [
+    # the Strider double's one-off prices of 2026-10-08 (the quote record's per-file lines):
+    # the torso, the outer frame plate, the two centre plates in 0.090 in and in 0.080 in
+    ([(51.84, 1, 88.0)], 13.72),
+    ([(42.56, 1, 61.9)], 9.85),
+    ([(16.4, 1, 29.6)], 4.39),
+    ([(16.17, 1, 30.2)], 4.14),
+    ([(16.4, 1, 29.6)], 3.74),
+    ([(16.17, 1, 30.2)], 3.47),
+    # the palletizer arm's two 5052 sheets of 2026-10-12, each its parts' quote summed
+    ([(221.6, 1, 91.9), (228.28, 1, 75.5), (194.28, 1, 61.4)], 68.61),
+    ([(73.98, 2, 88.9), (98.02, 1, 46.4), (31.61, 2, 38.6)], 50.31),
+]
+"""SendCutSend's 5052 quotes as the repository records them: ``([(area cm^2, qty, cut cm)],
+USD)`` (no floor binds: every part here is over 2.70)."""
+
+
+def _log_fit(X, y):
+    """The non-negative ``p`` minimising ``sum(log(X p / y)^2)`` (Gauss-Newton from the
+    linear least squares; the fit :func:`spiderpig.hardware.bom.cut_estimate` documents)."""
+    import numpy as np
+
+    p = np.clip(np.linalg.lstsq(X, y, rcond=None)[0], 1e-6, None)
+    for _ in range(50):
+        est = X @ p
+        r = np.log(est / y)
+        J = X / est[:, None]
+        step = np.linalg.lstsq(J, -r, rcond=None)[0]
+        p = np.clip(p + step, 1e-6, None)
+        if np.max(np.abs(step)) < 1e-12:
+            break
+    return p
+
+
+def test_the_cut_length_term_predicts_a_5052_quote_left_out_of_the_fit():
+    """DECISIONS.md (2026-10-14): 5052's cut-length term was chosen because it predicts a
+    quote left out of the fit better than the area alone. Here on the quotes the repository
+    records (:data:`FIVE052_QUOTES`, each one off or at its quantity break): each quote left
+    out in turn, both two-rate models refitted on the rest (area and cut, no fixed charge;
+    a fixed charge and the area) and the left-out quote predicted. The cut term's error is
+    about half the area's (rms 0.23 against 0.42; the arm's big 0.125 in plates, left out,
+    the worst of both), and on every quote the fitted rates are near the shipped ones."""
+    import numpy as np
+
+    from spiderpig.hardware.bom import qty_factor
+    from spiderpig.hardware.sheet_catalog import CUT_RATES
+
+    rates = CUT_RATES["5052"]
+    breaks = rates["cut_qty_factors"]
+
+    def row(parts):     # (parts, area, cut) each at its quantity's price
+        w = [q * qty_factor(breaks, q) for _, q, _ in parts]
+        return (sum(w), sum(wi * a for wi, (a, _, _) in zip(w, parts, strict=True)),
+                sum(wi * c for wi, (_, _, c) in zip(w, parts, strict=True)))
+
+    F = np.array([row(p) for p, _ in FIVE052_QUOTES])
+    y = np.array([usd for _, usd in FIVE052_QUOTES])
+    models = {"cut": F[:, 1:], "area": F[:, :2]}
+    loo = {}
+    for name, X in models.items():
+        errs = []
+        for i in range(len(y)):
+            rest = np.arange(len(y)) != i
+            p = _log_fit(X[rest], y[rest])
+            errs.append(float(X[i] @ p / y[i] - 1))
+        loo[name] = float(np.sqrt(np.mean(np.square(errs))))
+    assert loo["cut"] < 0.6 * loo["area"], loo
+    assert loo["cut"] < 0.25, loo
+    area, cut = _log_fit(models["cut"], y)
+    assert area == pytest.approx(rates["cut_usd_cm2"], rel=0.15)
+    assert cut == pytest.approx(rates["cut_usd_cm"], rel=0.15)
+
+
+def test_a_parts_cut_length_is_every_contour_of_its_face():
+    """bom.cut_length_cm: a 40 x 20 mm plate 3 mm thick with a 4 mm hole cuts its outline
+    and its hole, 120 + 4 pi mm; the BOM's made rows carry it, the cutting rows sum it."""
+    from build123d import Box, Cylinder
+
+    from spiderpig.hardware.bom import MadeRow, cut_length_cm, cutting_rows
+
+    plate = Box(40, 20, 3) - Cylinder(2, 3)
+    assert cut_length_cm(plate) == pytest.approx((120 + 4 * math.pi) / 10, abs=1e-3)
+    rows = [MadeRow("a", "laser", "", "", 40 * 20 * 0.3 / 1000 * 10, qty=2,
+                    sheet="al5052_2mm", cut_cm=13.257)]
+    cut = cutting_rows(rows)[0]
+    assert cut.cut_cm == pytest.approx(26.5, abs=0.06)
+    assert cut.usd is not None
+    assert cut.usd > 2 * 0.78 * 0.104 * 13.257
 
 
 @pytest.mark.slow

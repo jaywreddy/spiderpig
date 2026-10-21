@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 Category = str  # "fastener" | "nut" | "washer" | "bearing" | "bushing" | "dowel" | "spacer"
 #                  | "servo" | "horn" | "sheet" | "adhesive" | "clip" | "electronics" | "misc"
+#                  | "motor" | "pulley" | "belt" | "cord" (an arm's drives)
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,18 @@ class Offer:
 
         n = min([need] + [m for m, _ in self.tiers if m > need], key=lambda n: (cost(n), n))
         return n, round(cost(n), 2)
+
+
+def unpriced_offer(vendor: str, url: str, note: str) -> Offer:
+    """A seller's listing not fetched: no price (the BOM lists it, its total leaves it out)."""
+    return Offer(vendor, url, None, note=f"{note}; not fetched: unpriced")
+
+
+def amazon_offer(asin: str, pack: int, usd: float, note: str,
+                 seen: str = "2026-10-12") -> Offer:
+    """An Amazon listing by its ASIN at a search result's price (``seen``: that day)."""
+    return Offer("Amazon", f"https://www.amazon.com/dp/{asin}", asin, pack_qty=pack,
+                 price_usd=usd, note=f"{note}; search-result price {seen}")
 
 
 @dataclass(frozen=True)
@@ -164,14 +177,6 @@ def get(key: str) -> Item:
         raise KeyError(f"no catalog item {key!r}") from None
 
 
-def pick_length(needed: float, lengths: tuple[float, ...]) -> float:
-    """The shortest standard length that is at least ``needed``."""
-    for length in sorted(lengths):
-        if length >= needed - 1e-9:
-            return length
-    raise ValueError(f"no standard length >= {needed:.1f} mm in {lengths}")
-
-
 def sheet_thickness(sheet: str, override: float | None = None) -> float:
     """The layer pitch: ``override`` (a measured sheet) or the sheet item's nominal thickness."""
     return override if override is not None else float(get(sheet).dims["thickness"])
@@ -243,6 +248,7 @@ def _load() -> None:
         return
     _LOADED = True
     from spiderpig.hardware import (
+        arm_electronics,  # noqa: F401  (an arm's controller: actuators.controllers)
         cradle_catalog,  # noqa: F401  (a decanting cradle's drive and light)
         electronics,  # noqa: F401  (the deck's electronics)
         parts,  # noqa: F401  (registers fasteners, bearings, sheets, ...)

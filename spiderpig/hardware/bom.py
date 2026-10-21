@@ -52,6 +52,7 @@ from typing import TYPE_CHECKING, NamedTuple, cast
 
 import numpy as np
 
+from spiderpig import fabmethods
 from spiderpig.hardware.catalog import get, sheet_name
 from spiderpig.hardware.mass import filament_density, surface_props, volume_props
 from spiderpig.hardware.mass import volume as part_volume
@@ -106,6 +107,7 @@ class MadeRow:
     names: list[str] = field(default_factory=list)
     mirrored: int = 0    # of qty, how many are mirror images (printed parts: "print mirrored")
     sheet: str = ""      # a laser part's sheet item (its key)
+    cut_cm: float = 0.0  # one sheet part's cut length (cm): every contour, holes included
     # a decanting cradle's laser parts (:func:`cut_features`; ``None`` elsewhere, and left
     # out of the BOM's JSON then): what its cutting fit prices a file by
     cut_mm: float | None = None      # the cut's length: every contour, outline and holes
@@ -121,7 +123,8 @@ was before them)."""
 @dataclass
 class CutRow:
     """One service's cutting of the parts on one of its sheets (the material included):
-    ``usd`` its estimate (:func:`cut_estimate`; ``None``: no rates for that sheet)."""
+    ``usd`` its estimate (:func:`cut_estimate`; ``None``: no rates for that sheet), from the
+    parts' area (``area_cm2``) and their cut length (``cut_cm``), every part counted."""
 
     service: str
     sheet: str
@@ -129,11 +132,13 @@ class CutRow:
     parts: int
     area_cm2: float
     usd: float | None
+    cut_cm: float = 0.0
 
 
-CUT_SOURCE = ("an area estimate calibrated to SendCutSend's live quotes of 2026-10-08 (the "
-              "Strider double's 47 parts, USD 117.14 in all, free US shipping over USD 39: "
-              "bom-study/evidence/sheet/prices.json); upload the files for the real quote")
+CUT_SOURCE = ("an estimate from each part's area and cut length, fitted to SendCutSend's live "
+              "quotes of 2026-10-08 (the Strider double's 47 parts, USD 117.14) and "
+              "2026-10-12 (the palletizer arm's 18 parts, USD 163.01), free US shipping over "
+              "USD 39; upload the files for the real quote")
 """Where :func:`cut_estimate`'s rates come from (what the BOM and ORDER.md say of it)."""
 
 
@@ -342,19 +347,85 @@ def _least(key: str) -> tuple[float, float]:
     return lo, hi
 
 
+def cut_length_cm(part) -> float:
+    """A sheet part's cut length (cm): the perimeter of every contour of its face, holes
+    included (the edges of its largest flat face: the contours its DXF holds,
+    :mod:`spiderpig.layout`), settled to 0.001 cm (:func:`rounding.rounded`: the same
+    whatever OCCT's thread count)."""
+    from build123d import GeomType
+
+    from spiderpig.rounding import rounded
+
+    flat = [f for f in part.faces() if f.geom_type == GeomType.PLANE]
+    if not flat:
+        return 0.0
+    face = max(flat, key=lambda f: f.area)
+    return rounded(sum(w.length for w in face.wires()) / 10.0, 3)
+
+
+def qty_factor(factors, qty: int) -> float:
+    """A part's price at ``qty`` off over its price at one: ``factors`` are a sheet's
+    ``cut_qty_factors``, ``(from qty, factor)`` ascending, linear in the quantity between
+    them (SendCutSend's own: 3 mm acrylic at 1.40 each at 2 off, 1.12 at 10, quoted 1.33 at
+    4 and 1.26 at 6) and flat past the last."""
+    pts = [(int(q), float(f)) for q, f in factors] or [(1, 1.0)]
+    if qty <= pts[0][0]:
+        return pts[0][1]
+    for (q0, f0), (q1, f1) in itertools.pairwise(pts):
+        if qty <= q1:
+            return f0 + (f1 - f0) * (qty - q0) / (q1 - q0)
+    return pts[-1][1]
+
+
+Part = tuple[float, ...]
+"""A cut part for :func:`cut_estimate`: ``(area cm^2, qty)`` or ``(area cm^2, qty, cut
+length cm)`` (without a length: none, the area alone)."""
+
+
 def cut_estimate(key: str, parts: list, fit: CutFit | None = None) -> float | None:
-    """What a service charges to cut ``parts`` (``(area cm^2, qty)`` each, or a
-    :class:`CutPart`) from sheet ``key``, the material included: each part
-    ``max(cut_min_usd, cut_usd_cm2 x area)`` (the sheet item's rates); ``None`` without them.
-    Calibrated on SendCutSend's per-file live quotes of 2026-10-08 (:data:`CUT_SOURCE`): in
-    3 mm acrylic a small part is USD 1.26-1.40 whatever its size (1.33 at 4 off), the 93
-    cm^2 deck plate 6.88; in 5052 0.080-0.090 in the plates come to about 0.20 per cm^2, in
-    6061 0.100 in 0.40, a small one at least 2.20. On the Strider double: acrylic 49.45
-    (quoted 49.44), aluminium 68.48 (67.70). ``fit``: a decanting cradle's sheet
-    (:data:`CRADLE_CUT_FITS`) instead, each file at its quantity's discount: the parts are
-    merged into files by their features first, so a grouped and an ungrouped BOM (verify's,
-    audit's) come to the same; each part the service deburrs (its blank at least
-    :func:`deburr_least`'s) adds the fit's ``deburr``."""
+    """What a service charges to cut ``parts`` (``(area cm^2, qty, cut cm)`` each: a part's
+    net area and its cut length, :func:`cut_length_cm`) from sheet ``key``, the material
+    included: each part ``max(cut_min_usd, cut_fixed_usd + cut_usd_cm2 x area + cut_usd_cm x
+    cut length)`` at one off, times its quantity's :func:`qty_factor` (the sheet item's
+    ``cut_qty_factors``); ``None`` without the rates.
+
+    Fitted (:data:`CUT_SOURCE`, 2026-10-14) on SendCutSend's per-file live quotes, 42 part
+    prices at one off with their quantity breaks (the Strider double's 21 files of
+    2026-10-08 and the palletizer arm's 16 files plus 5 alternatives of 2026-10-12), each
+    quoted DXF's area and cut length measured, by least squares of the log of estimate over
+    quote (unbiased in the ratio):
+
+    * **5052** (14 prices, 0.080-0.125 in): 0.076 / cm^2 + 0.104 / cm of cut, no fixed
+      charge, at least 2.70 (just under the cheapest aluminium part quoted, 2.73: not seen as
+      a floor, no smaller part was quoted); per part rms 12 %, worst +26 % (the area alone
+      24 %, worst +45 %; each part left out of the fit in turn, 14 % against 27 %). The cut
+      length is what a hole-dense plate pays for: the Strider's torso, 52 cm^2 with 88 cm of
+      cut, quoted 13.72 (the area model 8.84).
+    * **6061** (8 prices): no cut term; it keeps the area fit of 2026-10-12 (3.20 + 0.138 /
+      cm^2, rms 20 %). A cut rate fits its own prices a little better (15 %) but predicts a
+      part left out worse (35 % against 22 %): one big plate carries the area rate, and the
+      arm's b4 (253 x 13 mm, 56 cm of cut, 6.20) and b1 (a wide link, 45 cm, 8.29) pull it
+      opposite ways. Their bounding rectangles (33 and 58 cm^2) tell them apart: the
+      material by the rectangle is the next term to fit, on more prices.
+    * **Acrylic**: no cut term. Every 3 mm part up to 17 cm^2 and 36 cm of cut quoted the
+      2.00 floor, which bounds any cut rate the deck plate and the big base plate (6.88 and
+      12.42) would fit to under 0.002 / cm; 5.4 mm's best fit puts it at 0. They keep the
+      area fit of 2026-10-12 (3 mm 1.0 + 0.055 / cm^2, at least 2.00; 5.4 mm 2.6 + 0.097;
+      rms 3 % and 9 %).
+
+    The quantity breaks (the quotes' own): at 2 off 0.70 of the one-off price in acrylic,
+    0.78 in 5052, 0.79 in 6061; at 10 off 0.56, 0.57, 0.67. The totals as quoted (the
+    estimate before, area only, in brackets): the Strider double's aluminium 67.70 estimated
+    68.98, +1.9 % (61.69, -8.9 %); its acrylic 49.44 at 48.72 (unchanged); the arm's 163.01 at
+    161.58, -0.9 % (163.87; 5052 118.92 at 118.24, -0.6 %, was +1.4 %). (The model of
+    2026-10-08, per part ``max(min, rate x area)``, put the arm at 228.96: +40 %.)
+
+    ``fit``: a decanting cradle's sheet (:data:`CRADLE_CUT_FITS`) instead, each file at its
+    quantity's discount: the parts (:class:`CutPart`) are merged into files by their features
+    first, so a grouped and an ungrouped BOM (verify's, audit's) come to the same; each part
+    the service deburrs (its blank at least :func:`deburr_least`'s) adds the fit's
+    ``deburr``.
+    """
     if fit is not None:
         files: dict[tuple, int] = {}
         for p in parts:
@@ -376,7 +447,14 @@ def cut_estimate(key: str, parts: list, fit: CutFit | None = None) -> float | No
     rate, least = d.get("cut_usd_cm2"), d.get("cut_min_usd")
     if rate is None or least is None:
         return None
-    return round(sum(q * max(float(least), float(rate) * a) for a, q in parts), 2)
+    fixed = float(d.get("cut_fixed_usd", 0.0))
+    per_cm = float(d.get("cut_usd_cm", 0.0))
+    factors = d.get("cut_qty_factors", ((1, 1.0),))
+    total = 0.0
+    for a, q, *cut in parts:
+        one = fixed + float(rate) * a + per_cm * (cut[0] if cut else 0.0)
+        total += q * qty_factor(factors, int(q)) * max(float(least), one)
+    return round(total, 2)
 
 
 def cut_parts(rows: list[MadeRow], key: str) -> list[CutPart]:
@@ -397,12 +475,45 @@ def cutting_rows(made: list[MadeRow], fits: dict[str, CutFit] | None = None) -> 
     out = []
     for key, rows in by.items():
         t_cm = float(get(key).dims.get("thickness", 3.0)) / 10.0
-        parts = [(m.volume_cm3 / t_cm, m.qty) for m in rows]
         fit = (fits or {}).get(key)
+        parts = same_files([(m.volume_cm3 / t_cm, m.qty, m.cut_cm) for m in rows])
+        area = (sum(m.volume_cm3 / t_cm * m.qty for m in rows) if fit
+                else sum(p[0] * p[1] for p in parts))
         out.append(CutRow(cut_by(key), key, get(key).name, sum(m.qty for m in rows),
-                          round(sum(a * q for a, q in parts), 1),
-                          cut_estimate(key, cut_parts(rows, key) if fit else parts, fit)))
+                          round(area, 1),
+                          cut_estimate(key, cut_parts(rows, key) if fit else parts, fit),
+                          round(sum(m.cut_cm * m.qty for m in rows), 1)))
     return sorted(out, key=lambda c: (c.service, c.sheet))
+
+
+CUT_TOL_CM = 0.002
+"""How far two rows' cut lengths may differ and still be one shape (cm, absolute):
+:func:`cut_length_cm` settles each to 0.001 cm, so a shape's congruent copies and mirrors
+can read one step apart (a rounding tie either side), which a relative 1e-5 split into
+two files for any cut under 100 cm."""
+
+
+def same_files(parts: list[Part], rel: float = 1e-5,
+               cut_tol: float = CUT_TOL_CM) -> list[Part]:
+    """``parts`` (``(area cm^2, qty)``, or ``(area, qty, cut cm)``) with the rows of one
+    shape (their area within ``rel``, their cut length within ``cut_tol`` cm) as one: the
+    quantity a service's price break sees is a file's, and a file is a shape (congruent
+    parts and their mirrors), which an ungrouped BOM (``group=False``) lists a row each; so
+    its cutting costs what the grouped BOM's does. Two shapes of nearly one area stay two
+    files, as SendCutSend quotes them (the Strider's b4 and b8, 8.66 and 8.65 cm^2: until
+    2026-10-14 ``rel`` was 1e-3 and they were priced as one file of 8)."""
+    def near(x: float, y: float) -> bool:
+        return abs(x - y) <= rel * max(abs(y), 1.0)
+
+    out: list[Part] = []
+    for a, q, *rest in sorted(parts, key=lambda p: (p[0], *p[2:], p[1])):
+        last = out[-1] if out else None
+        if (last is not None and near(a, last[0])
+                and all(abs(x - y) <= cut_tol for x, y in zip(rest, last[2:], strict=True))):
+            out[-1] = (last[0], last[1] + q, *last[2:])
+        else:
+            out.append((a, q, *rest))
+    return out
 
 
 def file_estimates(made: list[MadeRow], fits: dict[str, CutFit] | None = None
@@ -532,7 +643,7 @@ def unpriced_cut_note(cutting: list[CutRow], ranges: dict[str, tuple[float, floa
             + "; ".join(each) + "." + tail)
 
 
-SAW_KERF = 1.0    # mm lost to each cut of rod stock (a hacksaw or a cut-off disc)
+SAW_KERF = 1.0     # mm lost to each cut of rod stock (a hacksaw or a cut-off disc)
 
 
 @dataclass(frozen=True)
@@ -708,7 +819,8 @@ class Bom:
             for c in self.cutting:
                 w.writerow([f"cut by {c.service}", c.name, c.parts, "", "", c.service, c.sheet,
                             "" if c.usd is None else f"{c.usd:.2f}", "", "",
-                            f"{c.area_cm2:g} cm^2 of parts; {self.cut_source}"])
+                            f"{c.area_cm2:g} cm^2 of parts, {c.cut_cm / 100:.2f} m of cut; "
+                            f"{self.cut_source}"])
             for c in self.cuts:
                 for L, q in c.pieces:
                     w.writerow(["cut", c.name, q, "", "", "", "", "", "", f"{L:.1f} mm",
@@ -735,10 +847,10 @@ class Bom:
             lines.append(f"| {_num(r.qty)} | {r.name} | {link} | {packs} | {cost} | {where} |")
         if self.cutting:
             lines += ["", "## Cut by a service (the material included)", "",
-                      "| service | sheet | parts | area cm² | est. cost |",
-                      "|---|---|---:|---:|---:|"]
+                      "| service | sheet | parts | area cm² | cut m | est. cost |",
+                      "|---|---|---:|---:|---:|---:|"]
             lines += [f"| {c.service} | {c.name} | {c.parts} | {c.area_cm2:g} | "
-                      f"{self._cut_cost(c)} |" for c in self.cutting]
+                      f"{c.cut_cm / 100:.2f} | {self._cut_cost(c)} |" for c in self.cutting]
             lines += ["", f"The cutting is {self.cut_source}."]
         lines += ["", f"Estimated total: **${self.cost_usd:.2f}**: purchases "
                   f"${self.purchases_usd:.2f} (pack prices at the listed vendor) and cutting "
@@ -749,7 +861,7 @@ class Bom:
             lines.append(f"{len(self.unpriced)} item(s) have no listed price and are not in "
                          "the total: " + ", ".join(r.name for r in self.unpriced) + ".")
         lines.append("")
-        for method, title in (("laser", "Laser-cut"), ("printed", "3D printed")):
+        for method, title in ((k, fabmethods.get(k).title) for k in fabmethods.made()):
             rows = [m for m in self.made if m.method == method]
             if not rows:
                 continue
@@ -1664,7 +1776,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
     by_name = {b.name: b for b in mech.bodies}
     fil_of = printed_filaments(mech, filament)
     grams: dict[str | None, float] = {}         # filament key -> grams at 100 % infill
-    for method in ("laser", "printed"):
+    for method in fabmethods.made():
         bodies = [b for b in mech.bodies if b.fab == method and b.part is not None]
         if groups is not None and method in groups:
             found = groups[method]
@@ -1687,9 +1799,12 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
             made.append(MadeRow(
                 name=g.ref.name, method=method,
                 material=(sheet_name(g.ref.sheet) if g.ref.sheet else sheet)
-                if method == "laser" else (_filament_name(fil) if fil else fil_name),
+                if fabmethods.stock(method) == "sheet"
+                else (_filament_name(fil) if fil else fil_name),
                 size_mm=size, volume_cm3=part_volume(g.ref.part) / 1000.0,
                 qty=g.qty, names=list(g.names), mirrored=len(g.mirrored), sheet=key,
+                cut_cm=(cut_length_cm(g.ref.part) if fabmethods.stock(method) == "sheet"
+                        else 0.0),
                 cut_mm=cut_mm, pierces=pierces, blank_mm=blank,
             ))
             if method == "printed":

@@ -29,7 +29,8 @@ from spiderpig.construction.crank import CrankGroup as CrankGroup
 from spiderpig.construction.handcrank import HAND_CRANK, HandCrank
 from spiderpig.construction.pivots import PIVOTS
 from spiderpig.construction.plates import FramePlates, LinkPlates
-from spiderpig.servos.mount import DriveGroup
+from spiderpig.construction.transmissions import TRANSMISSIONS as TRANSMISSIONS
+from spiderpig.construction.transmissions import JointDrive
 
 AXLES = {c.key: c for c in PIVOTS}
 # ``bolt`` (the default, config.DEFAULT_CRANKS): hex standoff crankpins on single aluminium
@@ -57,10 +58,55 @@ def crank(key: str) -> BoltCrank:
     return _pick(CRANKS, key, "crank")
 
 
+def transmission(key: str):
+    return _pick(TRANSMISSIONS, key, "transmission")
+
+
+def _servo_drive(ctx: Context, config) -> list[Group]:
+    """The servo on the crank (the role ``servo``)."""
+    from spiderpig.servos.mount import ServoDrive  # (it imports the constructions)
+
+    return [ServoDrive(ctx.servo)]
+
+
+def _joint_drives(ctx: Context, config) -> list[Group]:
+    """Each input a link turns on a frame joint declares (:attr:`linkage.Linkage.drives`) a
+    stepper and a transmission to that link (:mod:`construction.transmissions`; the roles
+    ``actuator`` and ``transmission``, per drive): an arm's every input. Keyed on the
+    declared drives, not on the inputs' kind, so a cranked linkage whose second input
+    declares one (a five-bar's ``t2``) gets its drive here beside the crank's servo."""
+    from spiderpig import actuators
+
+    lk = config.lk
+    out: list[Group] = []
+    for name in (n for n in lk.inputs if n in lk.drives):
+        link, about = lk.drives[name]
+        out.append(JointDrive(name, link, about,
+                              transmission(config.role("transmission", name)),
+                              actuators.get(config.role("actuator", name))))
+    return out
+
+
+DRIVES = {"servo": _servo_drive, "actuator": _joint_drives}
+"""The drive groups by the motor role that fills them (:data:`roles.MOTOR_ROLES`): a design
+takes its own (:func:`roles.motor_role`, from its inputs: a crank's servo, ranged inputs'
+actuators; 2026-10-14: a kind test before). A cranked linkage's other inputs that declare a
+drive get theirs too (:func:`_joint_drives`)."""
+
+
 def _drive_groups(ctx: Context, config) -> list[Group]:
-    if config.crank == HAND:        # a decanting cradle: the hand crank drives it
+    """The drives of the design's motor role (:data:`DRIVES`), and a cranked linkage's
+    declared joint drives beside its servo; none for a hand-cranked product (a decanting
+    cradle: its hand crank, the crank group, drives it)."""
+    from spiderpig import roles as rolemod
+
+    if config.crank == HAND:
         return []
-    return [DriveGroup(ctx.servo)]
+    role = rolemod.motor_role(config.lk)
+    groups = DRIVES[role](ctx, config)
+    if role != "actuator" and config.lk.drives:
+        groups += _joint_drives(ctx, config)
+    return groups
 
 
 def _crank_groups(ctx: Context, config) -> list[Group]:

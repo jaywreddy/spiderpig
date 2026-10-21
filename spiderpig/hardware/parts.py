@@ -135,6 +135,25 @@ for _L in _sk.lengths:
         notes="ISO 7380-1",
     ))
 
+# M2 button heads (ISO 7380-1): the ball pair's ground pin ends (pivots.pair.GroundShaft)
+_sk = SCREWS["button", "2"]
+for _L in _sk.lengths:
+    register(Item(
+        _sk.key(_L), f"M2 x {_L:g} mm button head socket screw", "fastener",
+        (*([Offer("Fastener Express", "https://www.fastener-express.com/"
+                  "M2x.4x4mmButtonSocketCapA2StainlessSteelQty.aspx", "60010", pack_qty=20,
+                  price_usd=5.84, verified=True,
+                  note="A2 stainless M2 x 4 button socket cap screw, 20 a pack (item 60010, "
+                       "BSMSS2004-5F2; page read 2026-10-13)")] if _L == 4 else []),
+         Offer("Amazon", "https://www.amazon.com/s?k=M2+button+head+socket+screw+stainless",
+               pack_qty=100, price_usd=7.0,
+               note=f"search: M2 x {_L:g} ISO 7380 stainless; the price an estimate")),
+        dims={"d": 2.0, "length": float(_L), "head_d": _sk.head_d, "head_h": _sk.head_h,
+              "clearance_d": CLEARANCE["2"]},
+        notes="ISO 7380-1 M2 (head 3.5-3.8 x 1.16-1.3 mm, Aspen Fasteners' drawing); under "
+              "it a DIN 125 M2 washer (5 mm), which bears on the disc spring's 4.2 mm bore.",
+    ))
+
 # ---------------------------------------------------------------------------
 # Self-tapping screws for plastic (the STS3215's case pilots are 1.6 mm, for PA2.0)
 # ---------------------------------------------------------------------------
@@ -198,6 +217,13 @@ PONOKO_RULES_ACRYLIC_3MM = {"service": "Ponoko", "min_hole": 1.0, "min_part": (6
                             "edge_t": 0.0, "edge_mm": 1.0, "corner_r": 0.1, "metal": False,
                             "kerf_mm": 0.2}
 
+CUT_ACRYLIC = {"cut_qty_factors": ((1, 1.0), (2, 0.70), (10, 0.56), (50, 0.45)),
+               "cut_usd_cm": 0.0}
+"""SendCutSend's quantity breaks in acrylic (3 and 5.4 mm alike): a part's price at 2, 10 and
+50 off over its price at one (:func:`hardware.bom.qty_factor`); and no charge per cm of cut
+(its quotes show none: every 3 mm part up to 36 cm of cut quoted the 2.00 floor,
+:func:`hardware.bom.cut_estimate`)."""
+
 _ACRYLIC_3MM = {"thickness": 3.0, "sheet_mm": (300.0, 300.0), "material": "acrylic",
                 "density": 1.19, "yield_mpa": 50.0}
 
@@ -218,10 +244,19 @@ register(
                 note="13 coloured 12 x 12 in cast sheets")),
          dims={**_ACRYLIC_3MM, **SCS_RULES_ACRYLIC,
                # the cutting, material included (hardware.bom.cut_estimate: SendCutSend's
-               # live quotes of 2026-10-08, a small part 1.33 at 4 off, the deck plate 6.88)
-               "cut_usd_cm2": 0.074, "cut_min_usd": 1.33},
+               # live quotes, a small part 2.00 at one off, 1.33 at 4; 6.88 at 94 cm^2)
+               **CUT_ACRYLIC, "cut_fixed_usd": 1.0, "cut_usd_cm2": 0.055, "cut_min_usd": 2.00},
          notes="Nominal 3 mm; SendCutSend's arrives 2.24-3.46 mm (+.018 / -.030 in). "
                "Measure yours and pass --thickness."),
+    Item("acrylic_5p4mm", "5.4 mm (0.213 in) cast acrylic sheet, cut by SendCutSend", "sheet",
+         (Offer("SendCutSend", "https://sendcutsend.com/materials/acrylic/",
+                note="one of its cast acrylic thicknesses (1.6, 3.0, 4.5, 5.4, 9.5, 12.7 mm, "
+                     "read 2026-10-12); the arm's six links quoted USD 25.60 (2026-10-12)"),),
+         dims={**_ACRYLIC_3MM, "thickness": 5.4, **SCS_RULES_ACRYLIC,
+               **CUT_ACRYLIC, "cut_fixed_usd": 2.6, "cut_usd_cm2": 0.097, "cut_min_usd": 2.6},
+         notes="An arm's links (2026-10-12): a preloaded pair of bearings fits inside a link "
+               "this thick (an MR84ZZ and an MR84, 5.2 mm; two MR106, 5.2), no hub. Measure "
+               "the sheet: a pair needs its 0.2 mm between them."),
     Item("acrylic_3mm_ponoko", "3 mm (1/8 in) cast acrylic sheet, cut by Ponoko", "sheet",
          (Offer("Ponoko", "https://www.ponoko.com/materials/clear-acrylic", verified=True,
                 note="laser-cutting service; kerf 0.2 mm (the files compensate it); 3 mm "
@@ -337,4 +372,11 @@ register(
 # The pivots' hardware (the Chicago screws), the bolt crank's and the standoff pillar's
 # (construction.crank.BoltCrank, construction.pivots.standoff); registered on import (they
 # append to the catalog; the NETRF6 pillar shafts are made on demand, register_factory).
-from spiderpig.hardware import crank_catalog, fastener_catalog, sheet_catalog  # noqa: E402, F401
+from spiderpig.hardware import (  # noqa: E402, F401
+    bearing_catalog,
+    crank_catalog,
+    fastener_catalog,
+    motion_catalog,
+    robot_catalog,
+    sheet_catalog,
+)

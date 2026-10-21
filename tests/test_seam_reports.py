@@ -14,6 +14,7 @@ import re
 import warnings
 from dataclasses import replace
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pytest
@@ -638,7 +639,8 @@ def test_strength_design_loads_falls_back_when_the_sim_fails_or_has_nothing(monk
     assert (over["source"], over["note"]) == ("override", "--pin-load 5,50 N on every joint")
     mech = strength.design_loads(BuildConfig(linkage="parallelogram_lift", module="single",
                                              robot=False))
-    assert (mech["source"], mech["walk_n"], mech["jam_n"]) == ("none", 0.0, 0.0)
+    assert mech["source"] == "static"                   # (2026-10-14: no longer "none")
+    assert 0 < mech["walk_n"] < mech["jam_n"]
 
 
 def test_strength_joint_loads_match_the_sim_joint_by_stem_kind_and_links():
@@ -1036,7 +1038,7 @@ def _fake_audit(monkeypatch, *, dxf_error=None, bom_error=None, deck=None):
     st = {"loads": loads, "rows": [], "worst": {},
           "findings": [_finding("error", "pin:J1 jam SF 0.5", "fix A"),
                        _finding("warning", "crank jam SF 1.5", "fix B")]}
-    monkeypatch.setattr(strength, "check", lambda notes, m, config, lo: st)
+    monkeypatch.setattr(strength, "check", lambda notes, m, config, lo, design=None: st)
     monkeypatch.setattr(audit, "deck_clearance", lambda m: {
         "overlapping": [["horn", "deck"]], "blocked": [["deck", "J2 head", 1.5]]})
 
@@ -1234,11 +1236,15 @@ def test_crank_fixes_a_thicker_sheet_for_a_hex_pocket():
         "keep the servo's torque limit under 0.50 N·m")
 
 
-def test_a_pin_no_construction_clears_says_so():
+def test_a_pin_no_construction_clears_says_so(monkeypatch):
     """A pin already on the Chicago barrel in adjacent layers, its jam SF fine but its
-    walking SF short: no other section, no shorter span, no torque fix for the walking
-    case: the catch-all."""
+    walking SF short: no other section (the ground pin of the preloaded pairs left out of
+    the registry), no shorter span, no torque fix for the walking case: the catch-all."""
+    from spiderpig import construction
     from spiderpig.construction.pivots.chicago import ChicagoShaft, chicago_section
+
+    monkeypatch.setattr(construction, "AXLES", {k: v for k, v in construction.AXLES.items()
+                                                if k != "ball_pair"})
 
     n = _snote({"a": 1, "b": 2}, section=chicago_section(ChicagoShaft()))
     row = {"kind": "pin", "joint": "pin:J1", "jam": {"safety": 5.0}, "walk": {"safety": 1.0}}
@@ -1261,6 +1267,7 @@ def test_link_rows_net_section_bending_foot_lever_and_needs(monkeypatch):
            "J7": (0.0, 50.0), "J8": (0.0, 90.0)}
     stand_in = SimpleNamespace(
         key="strider", family="strider", crank=("O", "J1"), feet=(("b3", "J4"), ("b7", "J8")),
+        ranged=False,
         links={"b2": (), "b3": (), "b7": (), "b5": ()},
         solve=lambda params: SimpleNamespace(joints_at=lambda t: pts))
     monkeypatch.setattr(linkage, "get", lambda key: stand_in)
@@ -1302,7 +1309,7 @@ def test_link_rows_net_section_bending_foot_lever_and_needs(monkeypatch):
 
 def _design(motion=None, budget=None, size=None, allowance=None, **kw):
     spec = SimpleNamespace(motion=motion or {}, budget=budget or {}, size=size or {},
-                           allowance_usd=allowance)
+                           allowance_usd=allowance, precision={}, payload_g=None)
     return SimpleNamespace(spec=spec, config=BuildConfig(), store=None, reports={}, **kw)
 
 
@@ -1395,7 +1402,7 @@ def test_strength_rows_fail_only_on_the_designs_own_loads(monkeypatch):
           "findings": [err, warn]}
     seen = {}
 
-    def loads(config, store, sim):
+    def loads(config, store, sim, payload_g=None):
         seen["sim"] = sim
         return {"source": seen["source"], "note": "n"}
 
@@ -1421,7 +1428,7 @@ def test_strength_rows_fail_only_on_the_designs_own_loads(monkeypatch):
     assert (rows[0].tier, rows[0].hard) == ("estimated", False)
     assert "(an estimate: verify full simulates the design's own)" in rows[0].detail
 
-    def broken(config, store, sim):
+    def broken(config, store, sim, payload_g=None):
         raise RuntimeError("no store")
 
     monkeypatch.setattr(strength, "design_loads", broken)
@@ -1489,9 +1496,10 @@ def test_stack_floor_note_names_the_modules_with_fewer_legs_that_walk(monkeypatc
     strides = {"single": 0.0, "double": 40.0}
     monkeypatch.setattr(api, "module_stride", lambda key, module: strides.get(module))
     pr = SimpleNamespace(height_mm=66.5, n_layers=14)
-    lk = SimpleNamespace(leg_modules={"single": [0], "double": [0, 1], "quad": [0, 1, 2, 3]})
+    legs = {"single": [0], "double": [0, 1], "quad": [0, 1, 2, 3]}
 
     def note(module, kind="walker"):
+        lk = SimpleNamespace(leg_modules=legs, walks=kind == "walker")
         d = SimpleNamespace(config=replace(BuildConfig(), module=module), kind=kind, lk=lk)
         return vf.stack_floor_note(d, pr)
 
@@ -1581,6 +1589,50 @@ def test_sim_rows_without_mujoco_say_how_to_get_it(monkeypatch):
     (row,) = vf._sim_rows(_design(), VerifyReport("full"))
     assert (row.requirement, row.value, row.passed, row.hard, row.detail) == (
         "sim.mujoco", "not installed", True, False, "pip install mujoco to simulate")
+
+
+def test_a_fixed_designs_full_verify_holds_it_in_mujoco(monkeypatch):
+    """``verify("full")`` of a design that doesn't walk: the same MuJoCo model, held at its
+    pose (``sim.run.hold``) with its payload: one soft ``sim.holds`` row, the worst sag its
+    value; a cranked one's crank turned too (``sim.run.turn``), a soft ``sim.torque`` row; a
+    failure to run is ``sim_failed``."""
+    pytest.importorskip("mujoco")
+    from spiderpig.repeatability import PAYLOAD_G
+    from spiderpig.sim import run
+
+    held = {"finite": True, "holds": True, "sag": {"tool0": 0.04, "output": 0.03},
+            "sag_max": 0.04, "torque_fraction": {"q2": 0.08, "q3": 0.0}, "loop_error": 0.009}
+    asked = []
+    monkeypatch.setattr(run, "hold", lambda config, params: asked.append(
+        (config, params.payload_g)) or held)
+    monkeypatch.setattr(run, "turn", lambda config, params=None: None)
+    d: Any = _design()          # (a design's stand-in: its config and spec)
+    d.config = BuildConfig(linkage="palletizer_reach")
+    d.lk = d.config.lk
+    (row,) = vf._hold_rows(d, VerifyReport("full"))
+    assert asked == [(d.config, PAYLOAD_G)]               # the arm's payload rides its tool
+    assert (row.requirement, row.value, row.target, row.passed, row.hard, row.unit) == (
+        "sim.holds", 0.04, f"<= {run.HOLD_SAG_MM:g}", True, False, "mm")
+    assert "tool0 sags 0.040 mm" in row.detail
+    assert f"a {PAYLOAD_G:g} g payload" in row.detail
+    assert "q2 at 8 % of its torque" in row.detail
+    turned = {"torque_peak": 0.03, "torque_mean": 0.01, "torque_limit": 0.21, "stall": 1.91,
+              "saturates": False, "completed": True, "revolutions": 1.0}
+    monkeypatch.setattr(run, "turn", lambda config, params=None: turned)
+    _, torque = vf._hold_rows(d, VerifyReport("full"))
+    # bounded by the torque limit the servo is set to (sim.run.turn's), not its stall
+    assert (torque.requirement, torque.value, torque.target, torque.passed, torque.hard) == (
+        "sim.torque", 0.03, "<= 0.21", True, False)
+    assert "0.21 N·m torque limit it is set to (1.91 stall)" in torque.detail
+
+    def broken(config, params=None):
+        raise RuntimeError("bad model")
+
+    monkeypatch.setattr(run, "hold", broken)
+    rep = VerifyReport("full")
+    (row,) = vf._hold_rows(d, rep)
+    assert (row.requirement, row.passed) == ("sim.run", False)
+    assert [f.code for f in rep.failures] == ["sim_failed"]
 
 
 def test_done_scores_soft_rows_and_leaves_estimated_hard_targets_unverified(monkeypatch):

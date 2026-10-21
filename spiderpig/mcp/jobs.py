@@ -1,10 +1,11 @@
 """Long operations off the server's event loop: a process pool per store, jobs with ids.
 
-``build``, ``verify`` at ``standard`` or ``full`` and ``export`` take seconds to a
-minute. The installed MCP SDK (2.x) carries the wire types of task-augmented execution
-but its server doesn't run tools as tasks, so a long tool submits a :class:`Job` here,
-waits a grace period, and returns either the finished result or the job's record for
-``get_job`` / ``wait_job`` to follow.
+``build``, ``verify`` at ``standard`` or ``full``, ``export`` and ``precision`` (an
+arm's side fabricated for its links' tilt) take seconds to a minute. The installed MCP
+SDK (2.x) carries the wire types of task-augmented execution but its server doesn't run
+tools as tasks, so a long tool submits a :class:`Job` here, waits a grace period, and
+returns either the finished result or the job's record for ``get_job`` / ``wait_job`` to
+follow.
 
 A worker process loads the design from the store, runs the operation (which writes
 its report, parts or files into the store, exactly as the Python API would) and
@@ -45,7 +46,7 @@ from spiderpig.failure import Failure
 
 log = logging.getLogger("spiderpig.mcp")
 
-LONG_OPS = ("build", "verify", "export")
+LONG_OPS = ("build", "verify", "export", "precision")
 KEEP_FINISHED = 64          # finished jobs kept with their results, newest first
 KEEP_SECONDS = 3600.0       # a finished job's result is kept at most this long
 KEEP_EVICTED = 4096         # evicted ids remembered (op, design, state), newest first
@@ -90,6 +91,8 @@ def _run_op(store, op: str, design: str, args: dict) -> dict:
         doc = report_doc(api.verify(d, args["level"]))
     elif op == "export":
         doc = report_doc(api.export(d, args.get("formats"), args.get("out_dir")))
+    elif op == "precision":
+        doc = report_doc(api.precision(d))
     else:
         raise ValueError(f"unknown long operation {op!r}; have {LONG_OPS}")
     doc["design"] = design

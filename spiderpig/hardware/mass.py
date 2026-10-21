@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from spiderpig import fabmethods
 from spiderpig.hardware.catalog import get
 from spiderpig.stack import body_class
 
@@ -31,8 +32,44 @@ DENSITY = {
     "plastic": 1.41,      # acetal, a plastic horn
     "ptfe": 2.2,          # PTFE washers and tube liners
     "nylon": 1.14,        # PA66 standoffs, screws and nuts
+    "UHMWPE": 0.97,       # Dyneema fibre (DSM: 0.97-0.98)
+    "polycarbonate": 1.20,  # PC (Makrolon: 1.20)
+    "stainless": 8.0,     # 300-series stainless (304: 7.9-8.0)
 }
 SERVO_BOX_DENSITY = 1.5   # g/cm^3 of a servo's body box, when its spec has no weight
+
+# Young's modulus, GPa (room temperature, handbook typicals: the stiffness and precision
+# models read these; a sheet or stock item may carry its own ``modulus_gpa``)
+MODULUS_GPA = {
+    "acrylic": 3.2,       # cast PMMA (Röhm PLEXIGLAS GS: 3.3; 3.1-3.3 typical)
+    "polycarbonate": 2.35,  # PC (Makrolon: 2.35)
+    "plywood": 9.0,       # Baltic birch along the face grain (7-12)
+    "pla": 3.5,           # printed PLA, along the layers (2.7-4.1)
+    "steel": 200.0,       # carbon / alloy steel
+    "stainless": 193.0,   # 300-series stainless
+    "brass": 97.0,        # CuZn39Pb3
+    "aluminium": 69.0,    # 5052 70.3, 6061 68.9 (ASM handbook): the same stiffness
+    "plastic": 2.9,       # acetal (POM: 2.8-3.1)
+    "ptfe": 0.5,
+    "nylon": 2.8,         # PA66, dry
+    "UHMWPE": 100.0,      # Dyneema fibre along its length (DSM SK75: 109-132; a braid less)
+}
+
+# Linear thermal expansion, micrometre per metre per kelvin (20-100 °C typicals)
+CTE_UM_PER_M_K = {
+    "acrylic": 70.0,      # PMMA 70-77
+    "polycarbonate": 65.0,
+    "plywood": 6.0,       # along the face grain
+    "pla": 68.0,
+    "steel": 12.0,
+    "stainless": 17.3,
+    "brass": 20.5,
+    "aluminium": 23.6,    # 6061 23.6, 5052 23.8
+    "plastic": 110.0,     # acetal
+    "ptfe": 120.0,
+    "nylon": 80.0,
+    "UHMWPE": -12.0,      # Dyneema fibre along its length: it shortens warming (DSM)
+}
 
 
 def sheet_density(sheet: str) -> float:
@@ -112,19 +149,21 @@ def material_of(body, sheet: str, filament: str | None, servo) -> tuple[str, flo
     """
     cls = body_class(body.name)
     category = _category(body.bom_key)
-    if body.fab == "laser":
+    made_of = fabmethods.stock(body.fab)
+    if made_of == "sheet":
         return "sheet", sheet_density(getattr(body, "sheet", None) or sheet), None
-    if body.fab == "printed":
+    if made_of == "filament":
         return "printed", filament_density(filament), None
-    if body.fab == "display":      # drawn only (a cradle's bottle and decanter): no mass
+    if body.fab == fabmethods.DISPLAY:   # drawn only (a cradle's bottle and decanter): no mass
         return "display", 0.0, 0.0
-    if body.fab != "purchased":
+    if body.fab != fabmethods.PURCHASED:
         raise ValueError(f"body {body.name!r} has a part but no known fabrication ({body.fab!r})")
     if category == "servo" or cls == "servo":
         return "servo", 0.0, servo_mass_g(servo)
     fixed = _fixed_mass(body.bom_key)
     if fixed is not None:       # a part catalogued by its mass (the deck's electronics)
-        return ("electronics" if category == "electronics" else "nylon"), 0.0, fixed
+        return ({"electronics": "electronics", "bearing": "steel"}.get(str(category), "nylon"),
+                0.0, fixed)
     if category == "horn" or cls.startswith("servo_horn"):
         alu = "alumin" in servo.horn.name.lower()
         return ("aluminium", DENSITY["aluminium"], None) if alu else ("plastic", DENSITY["plastic"],

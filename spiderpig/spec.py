@@ -10,6 +10,13 @@ engine can verify today exist; anything else is an error, never ignored:
 values, nearest key) and :meth:`Spec.from_dict` raises them as one
 :class:`SpecErrors`.
 
+A spec may carry the **task** it was written for (``task``: a
+:class:`spiderpig.task.Task` document, what ``candidates`` writes into each candidate's
+spec): the task's numbers that are Spec targets are targets already, and the task's own
+geometry (a place task's area, points and height, a trace task's path) is what
+:mod:`spiderpig.verify` re-checks on the planned design (its ``task.*`` rows). It enters
+the design's id (it changes what verify checks); a spec without one keeps its id.
+
 Hard targets fail :func:`spiderpig.verify`; soft ones lower its score. The
 defaults (:data:`TARGET_FIELDS`): physical limits (size, budget, the stack,
 ground clearance) are hard, gait quality (stride, lift, speed, bob, slip,
@@ -30,13 +37,19 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, fields
 
 from spiderpig import construction, linkage, servos
+from spiderpig import roles as rolemod
 from spiderpig.config import (
     CRANK_SHEET,
     DEFAULT_CRANKS,
     REMOVED_PARAMS,
+    REMOVED_ROLES,
+    ROLE_FIELDS,
     BuildConfig,
     removed_construction,
     removed_param,
+    removed_role,
+    robot_layout,
+    unused_field,
 )
 from spiderpig.config import default_module as config_default_module
 from spiderpig.construction.base import Params
@@ -45,13 +58,13 @@ from spiderpig.hardware.catalog import _load as _load_catalog
 from spiderpig.layout import DEFAULT_KERF
 
 SPEC_VERSION = "1"
-KINDS = ("walker", "mechanism")
-OUTPUTS = ("step", "stl", "print", "dxf", "bom", "glb", "mjcf")
+KINDS = ("walker", "mechanism", "arm")
+OUTPUTS = ("step", "stl", "print", "dxf", "bom", "glb", "mjcf", "urdf")
 DEFAULT_OUTPUTS = ("step", "stl", "print", "dxf", "bom")
 WILDCARDS = frozenset({"any", "*", "?", ""})
 FIT_FIELDS = tuple(f.name for f in fields(Params))
 FIT_NONNEG = frozenset({"servo_screw_web_t"})   # 0 is a setting (keep every front screw)
-SECTIONS = ("motion", "size", "budget")
+SECTIONS = ("motion", "size", "budget", "precision")
 
 
 # ---------------------------------------------------------------------------
@@ -144,18 +157,52 @@ class TargetField:
     source: str
     tier: str
     doc: str
+    needs: str = ""      # a capability the linkage must have (:data:`CAPABILITIES`)
 
     @property
     def path(self) -> str:
         return f"{self.section}.{self.name}"
+
+    def applies(self, lk) -> bool:
+        """Can ``lk`` have this metric (its capability, :data:`CAPABILITIES`)?"""
+        return not self.needs or CAPABILITIES[self.needs][0](lk)
+
+
+CAPABILITIES = {
+    "output": (lambda lk: lk.output is not None,
+               "has an output (a mechanism's or an arm's point): precision is measured there",
+               "has feet, no output"),
+    "ranged": (lambda lk: lk.ranged,
+               "has inputs that turn over ranges (an arm's drives): its pins seat under "
+               "gravity, its links tilt out of the plane and bend under the payload",
+               "turns a crank through full turns (no ranged inputs: no ISO 9283 pose, no "
+               "payload on its drives)"),
+}
+"""A target field's ``needs``: the linkage's capability (``lk -> bool``), what it means,
+and what a linkage without it is instead (the refusal's words)."""
+
+
+def urdf_unsupported(lk) -> str:
+    """Why ``lk``'s designs export no URDF (by capability: inputs over ranges on a fixed
+    base, :attr:`linkage.Linkage.ranged`), or ``""`` when they do: ``resolve`` refuses a
+    spec whose ``outputs`` name it with this reason, ``export`` the format
+    (:func:`spiderpig.urdf.unsupported` is this)."""
+    if lk.ranged:
+        return ""
+    why = ("it walks on its feet (no fixed base_link)" if lk.walks else
+           "its joints follow a crank's full turn, which a URDF tree can only table")
+    return (f"{lk.key} has no URDF: the URDF is a ranged linkage's (inputs over ranges on a "
+            f"fixed base, Linkage.ranged) and {why}; its MuJoCo model is the export that "
+            f"holds it (mjcf)")
 
 
 def _fields(*rows: tuple) -> dict[str, TargetField]:
     return {r[0]: TargetField(*r) for r in rows}
 
 
-BOTH = ("walker", "mechanism")
-WALKER, MECHANISM = ("walker",), ("mechanism",)
+BOTH = ("walker", "mechanism", "arm")       # (every kind)
+WALKER, MECHANISM = ("walker",), ("mechanism", "arm")   # (what has feet; what has an output)
+ARM = ("arm",)                              # (what has ranged inputs)
 
 TARGET_FIELDS: dict[str, dict[str, TargetField]] = {
     "motion": _fields(
@@ -213,6 +260,28 @@ TARGET_FIELDS: dict[str, dict[str, TargetField]] = {
         ("sheets", "budget", BOTH, "sheets", True, "layout", "measured",
          "sheets of the stock the laser-cut parts pack onto"),
     ),
+    # the error budget at the output (spiderpig.precision): what a task asks of the placement
+    "precision": _fields(
+        ("repeatability_mm", "precision", MECHANISM, "mm", True, "precision", "estimated",
+         "the worst-case bound on the output's lost motion: every pin's clearance the same "
+         "way at the worst pose, the drives' backlash and homing, the turntable's tilt, the "
+         "links' rise out of the plane in quadrature (Precision.repeatability_mm)", "output"),
+        ("accuracy_mm", "precision", MECHANISM, "mm", False, "precision", "estimated",
+         "what is the same every time and calibrates out, added up: every hole off by its "
+         "laser tolerance, a 10 K swing over the reach, the turntable's and the drives' "
+         "systematic errors and a step of each drive (Precision.accuracy_mm)", "output"),
+        ("rp_mm", "precision", ARM, "mm", True, "precision", "estimated",
+         "ISO 9283 pose repeatability within a session: 30 cycles to each of 5 poses, mean + "
+         "3 sigma, gravity seating the pins (Monte Carlo, repeatability.iso_rp)", "ranged"),
+        ("rp_powerup_mm", "precision", ARM, "mm", False, "precision", "estimated",
+         "ISO 9283 RP across power-ups: every cycle re-homed (Rp.powerup_mm)", "ranged"),
+        ("out_of_plane_mm", "precision", ARM, "mm", False, "precision", "estimated",
+         "the tool's tip out of the plane in the links' tilt and end float, worst over the "
+         "box (precision.out_of_plane)", "ranged"),
+        ("payload_sag_mm", "precision", ARM, "mm", False, "precision", "estimated",
+         "the links bending under the payload at the tool, worst over the box (it calibrates "
+         "out at one payload; linkage.stiffness)", "ranged"),
+    ),
 }
 
 
@@ -226,6 +295,10 @@ _OUTPUT_METRICS: dict[str, tuple[str, ...]] = {}
 # the budget section's one plain number: what to allow, in all, for the items the catalog
 # doesn't price (they are otherwise left out of the total, which then can't confirm a max)
 ALLOWANCE = "allowance_usd"
+# the precision section's one plain number: the load at the output (g) that the budget's sag,
+# the ISO RP's gravity seating and the strength check's static loads assume
+PAYLOAD = "payload_g"
+PLAIN = {"budget": ALLOWANCE, "precision": PAYLOAD}
 
 
 def output_metrics(lk) -> tuple[str, ...]:
@@ -264,12 +337,21 @@ class LinkageSpec:
 @dataclass(frozen=True)
 class LegsSpec:
     """A named leg module of the linkage (``single``, ``double``, ``decker``, ``quad`` or its
-    own), the crank phase of each leg in degrees, and how many sides (2: the robot; 1: one
-    side). ``None`` is inferred: a walker's ``quad`` on 2 sides, a mechanism's ``single``."""
+    own), the crank phase of each leg in degrees, and ``robot``: the whole robot the
+    linkage's kind makes (:data:`config.ROBOT_LAYOUTS`: a walker's two mirrored sides, an
+    arm's side on its turntable) or its side alone, every kind's one word (a mechanism makes
+    no robot: ``false`` only). ``None`` is inferred: the linkage's module
+    (:func:`default_module`) and its kind's robot (:func:`config.default_robot`).
+
+    ``sides`` is ``robot``'s older name, still read (a stored spec's): a walker's 2 is
+    ``robot: true``, 1 ``false``; one side is every other kind's only. :meth:`Spec.from_dict`
+    writes it into ``robot`` (:func:`legs_robot`), so a spec reads back in one vocabulary
+    and resolves to the id it had."""
 
     module: str | None = None
     phases_deg: tuple[float, ...] | None = None
     sides: int | None = None
+    robot: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -287,12 +369,19 @@ class MaterialsSpec:
 
 @dataclass(frozen=True)
 class ConstructionsSpec:
-    """The pillar, pin and crank constructions (:data:`construction.AXLES`, ``.CRANKS``)."""
+    """The pillar, pin and crank constructions (:data:`construction.AXLES`, ``.CRANKS``),
+    and every later role's (:mod:`spiderpig.roles`: ``roles``, written flat beside them in
+    the spec's ``constructions`` object)."""
 
     pillar: str | None = None
     pin: str | None = None
     crank: str | None = None
     heads: str | None = None     # fasteners' heads: "sink", "gap" or "best" (stack.StackSpec)
+    roles: Mapping[str, str] | None = None   # role -> key, for the roles without a field
+
+
+CONSTRUCTION_FIELDS = ("pillar", "pin", "crank", "heads")
+"""The ``constructions`` keys of their own; every other key there is a role's."""
 
 
 @dataclass(frozen=True)
@@ -345,6 +434,9 @@ class Spec:
     budget: dict[str, Target] = field(default_factory=dict)
     outputs: tuple[str, ...] = DEFAULT_OUTPUTS
     allowance_usd: float | None = None      # ``budget.allowance_usd``: for the unpriced items
+    precision: dict[str, Target] = field(default_factory=dict)
+    payload_g: float | None = None          # ``precision.payload_g``: the load at the output
+    task: Mapping | None = None             # the task's document (:mod:`spiderpig.task`)
 
     @classmethod
     def from_dict(cls, data: Mapping) -> Spec:
@@ -360,6 +452,7 @@ class Spec:
         if self.linkage.params:
             out["linkage"]["params"] = dict(self.linkage.params)
         legs = _drop_none({"module": self.legs.module, "sides": self.legs.sides,
+                           "robot": self.legs.robot,
                            "phases_deg": (list(self.legs.phases_deg)
                                           if self.legs.phases_deg is not None else None)})
         if legs:
@@ -370,15 +463,21 @@ class Spec:
                 out[section] = {k: t.to_dict() for k, t in targets.items()}
         if self.allowance_usd is not None:
             out.setdefault("budget", {})[ALLOWANCE] = self.allowance_usd
+        if self.payload_g is not None:
+            out.setdefault("precision", {})[PAYLOAD] = self.payload_g
         for name in ("materials", "constructions", "fit"):
             sub = _drop_none({f.name: getattr(getattr(self, name), f.name)
                               for f in fields(getattr(self, name))})
+            if name == "constructions":                 # the roles sit flat beside the rest
+                sub.update(sub.pop("roles", None) or {})
             if "sheet_size_mm" in sub:
                 sub["sheet_size_mm"] = list(sub["sheet_size_mm"])
             if sub:
                 out[name] = sub
         if tuple(self.outputs) != DEFAULT_OUTPUTS:
             out["outputs"] = list(self.outputs)
+        if self.task is not None:
+            out["task"] = dict(self.task)
         return out
 
     def targets(self) -> list[tuple[TargetField, Target]]:
@@ -396,31 +495,64 @@ def _drop_none(d: dict) -> dict:
     return {k: v for k, v in d.items() if v is not None}
 
 
+def _constructions(data: Mapping) -> ConstructionsSpec:
+    """The ``constructions`` object: its own keys, every other key a role's."""
+    own = {k: v for k, v in data.items() if k in CONSTRUCTION_FIELDS}
+    roles = {k: v for k, v in data.items() if k not in CONSTRUCTION_FIELDS}
+    return ConstructionsSpec(**own, roles=roles or None)
+
+
+def legs_robot(lk: linkage.Linkage, legs: Mapping) -> bool | None:
+    """A ``legs`` object's robot (:class:`LegsSpec`): ``robot`` as given, else a walker's
+    ``sides`` (its older name: 2 is the robot), else ``None`` (the kind's default)."""
+    if legs.get("robot") is not None:
+        return bool(legs["robot"])
+    if legs.get("sides") is not None and lk.walks:
+        return int(legs["sides"]) == 2
+    return None
+
+
 def _build(data: Mapping) -> Spec:
-    """``data`` as a :class:`Spec` (validated already)."""
+    """``data`` as a :class:`Spec` (validated already): ``kind`` from the linkage when
+    not given, a walker's ``legs.sides`` written as ``legs.robot`` (:func:`legs_robot`)."""
     lk = data["linkage"]
     legs = data.get("legs") or {}
+    lko = linkage.get(lk["key"])
     fit = dict(data.get("fit") or {})
     if fit.get("sheet_size_mm") is not None:
         fit["sheet_size_mm"] = tuple(float(v) for v in fit["sheet_size_mm"])
     return Spec(
-        kind=data["kind"],
+        kind=data.get("kind") or lko.kind,
         linkage=LinkageSpec(lk["key"], {k: float(v) for k, v in (lk.get("params") or {}).items()}),
         version=str(data.get("version", SPEC_VERSION)),
         legs=LegsSpec(legs.get("module"),
                       None if legs.get("phases_deg") is None
                       else tuple(float(v) for v in legs["phases_deg"]),
-                      None if legs.get("sides") is None else int(legs["sides"])),
+                      None, legs_robot(lko, legs)),
         motion={k: _target(v) for k, v in (data.get("motion") or {}).items()},
         size={k: _target(v) for k, v in (data.get("size") or {}).items()},
         materials=MaterialsSpec(**(data.get("materials") or {})),
-        constructions=ConstructionsSpec(**(data.get("constructions") or {})),
+        constructions=_constructions(data.get("constructions") or {}),
         fit=FitSpec(**fit),
         budget={k: _target(v) for k, v in (data.get("budget") or {}).items()
                 if k != ALLOWANCE},
         outputs=tuple(data.get("outputs") or DEFAULT_OUTPUTS),
         allowance_usd=_opt((data.get("budget") or {}).get(ALLOWANCE)),
+        precision={k: _target(v) for k, v in (data.get("precision") or {}).items()
+                   if k != PAYLOAD},
+        payload_g=_opt((data.get("precision") or {}).get(PAYLOAD)),
+        task=_task_doc(data.get("task")),
     )
+
+
+def _task_doc(doc: Mapping | None) -> dict | None:
+    """A spec's ``task`` as one document (:meth:`spiderpig.task.Task.to_dict`: a bare
+    number written as the target it means), so one task is one id."""
+    if doc is None:
+        return None
+    from spiderpig.task import Task  # (the task module reads this one's vocabulary)
+
+    return Task.from_dict(doc).to_dict()
 
 
 def _target(d: Mapping) -> Target:
@@ -580,16 +712,30 @@ class _Validator:
     def targets(self, v, section: str, kind: str | None,
                 lk: linkage.Linkage | None = None) -> None:
         table = TARGET_FIELDS[section]
-        allowed = [n for n, f in table.items() if kind is None or kind in f.kinds]
+        allowed = [n for n, f in table.items() if (kind is None or kind in f.kinds)
+                   and (lk is None or f.applies(lk))]
+        plain = PLAIN.get(section)
         if not isinstance(v, Mapping):
-            self.obj(v, section, allowed + ([ALLOWANCE] if section == "budget" else []))
+            self.obj(v, section, allowed + ([plain] if plain else []))
             return
         # a mechanism's output measures only some of the output metrics (a line has no
-        # dwell, a rocker no straightness): a target on one it lacks is refused here
-        has = output_metrics(lk) if lk is not None and lk.output is not None else None
+        # dwell, a rocker no straightness): a target on one it lacks is refused here (its
+        # output check is read only then: an arm's tour is a minute's)
+        has = (output_metrics(lk) if lk is not None and lk.output is not None
+               and section == "motion" and any(n in OUTPUT_TARGETS for n in v) else None)
         for name, t in v.items():
-            if section == "budget" and name == ALLOWANCE:
+            if plain is not None and name == plain:
+                if name == PAYLOAD and lk is not None and not CAPABILITIES["ranged"][0](lk):
+                    self.err(f"{section}.{name}", f"{lk.key} {CAPABILITIES['ranged'][2]}: a "
+                             "payload rides an arm's drives (its output's precision targets "
+                             "need none)", allowed)
+                    continue
                 self.number(t, f"{section}.{name}", nonneg=True)
+                continue
+            if name in table and lk is not None and not table[name].applies(lk):
+                need = CAPABILITIES[table[name].needs]       # what it can't have, and why
+                self.err(f"{section}.{name}", f"{lk.key} {need[2]}: {name} needs a linkage "
+                         f"that {need[1]}", allowed)
                 continue
             if name in allowed:
                 if (has is not None and section == "motion" and name in OUTPUT_TARGETS
@@ -618,8 +764,8 @@ class _Validator:
                 if near is not None and not name.split("_")[0].startswith(near.split("_")[0][:3]):
                     near = None
                 self.err(f"{section}.{name}", "unknown metric"
-                         + ("" if section != "budget" else f" (a plain number under budget is "
-                                                           f"{ALLOWANCE} only)"), allowed, near)
+                         + ("" if plain is None else f" (a plain number under {section} is "
+                                                     f"{plain} only)"), allowed, near)
 
 
 def _kind(v) -> str:
@@ -634,16 +780,14 @@ def validate(data: Mapping) -> list[SpecError]:
         return [SpecError("", f"a spec is an object, got {_kind(data)}")]
     # (obj returns a mapping as it is: top is data, its unknown fields reported)
     v.obj(data, "", ("version", "kind", "linkage", "legs", "motion", "size", "materials",
-                     "constructions", "fit", "budget", "outputs"))
+                     "constructions", "fit", "budget", "precision", "outputs", "task"))
     top = data
     version = top.get("version", SPEC_VERSION)
     if str(version) != SPEC_VERSION:
         v.err("version", f"unknown spec version {version!r}; this engine reads version "
                          f"{SPEC_VERSION!r}", (SPEC_VERSION,))
-    kind = None
-    if "kind" not in top:
-        v.err("kind", "required: walker or mechanism", KINDS)
-    else:
+    kind = None             # (not given: the linkage's, read below)
+    if "kind" in top:
         kind = v.string(top["kind"], "kind", KINDS)
 
     # linkage
@@ -674,6 +818,8 @@ def validate(data: Mapping) -> list[SpecError]:
                     if kind is not None and lk.kind != kind:
                         v.err("linkage.key", f"{key} is a {lk.kind}, not a {kind}",
                               linkage.available(kind))
+                    elif "kind" not in top:
+                        kind = lk.kind          # inferred: the linkage says what it is
             params = v.obj(d.get("params"), "linkage.params",
                            list(lk.params) if lk is not None else ())
             if params is not None and lk is not None:
@@ -684,14 +830,14 @@ def validate(data: Mapping) -> list[SpecError]:
                         v.number(val, f"linkage.params.{name}", positive=name not in lk.signed)
 
     # legs
-    legs = v.obj(top.get("legs"), "legs", ("module", "phases_deg", "sides"))
+    legs = v.obj(top.get("legs"), "legs", ("module", "phases_deg", "sides", "robot"))
     if legs is not None:
         modules = list(lk.leg_modules) if lk is not None else module_keys()
         mod = legs.get("module")
         if (isinstance(mod, str) and mod not in modules and lk is not None
                 and mod.strip().lower() not in WILDCARDS):
-            if lk.kind == "mechanism":      # one side, no legs: the walker's words don't apply
-                v.err("legs.module", f"unknown value {mod!r}; {lk.key} is a mechanism: its one "
+            if not lk.walks:                # one side, no legs: the walker's words don't apply
+                v.err("legs.module", f"unknown value {mod!r}; {lk.key} is a {lk.kind}: its one "
                                      f"module is {', '.join(modules)} (one side, no legs; the leg "
                                      f"modules double, decker and quad are a walker's)",
                       modules, nearest(mod, modules))
@@ -720,12 +866,28 @@ def validate(data: Mapping) -> list[SpecError]:
                     if len(phases) != n:
                         v.err("legs.phases_deg", f"{m} has {n} legs per side, got "
                                                  f"{len(phases)} phases")
+        # legs.sides: legs.robot's older name (a stored spec's), still read
         sides = v.number(legs.get("sides"), "legs.sides", integer=True)
         if sides is not None and int(sides) not in (1, 2):
-            v.err("legs.sides", f"must be 1 (one side) or 2 (the robot), got {sides:g}", (1, 2))
-        elif sides == 2 and lk is not None and lk.kind == "mechanism":
-            v.err("legs.sides", f"{lk.key} is a mechanism: one side only (it has no feet to "
-                                "walk on)", (1,))
+            v.err("legs.sides", f"must be 1 (one side) or 2 (the robot), got {sides:g} "
+                                "(legs.sides is legs.robot's older name)", (1, 2))
+            sides = None
+        elif sides == 2 and lk is not None and not lk.walks:
+            v.err("legs.sides", f"{lk.key} is a {lk.kind}: one side only (it has no feet to "
+                                "walk on; legs.robot names its robot)", (1,))
+            sides = None
+        robot = legs.get("robot")
+        if robot is not None and not isinstance(robot, bool):
+            v.err("legs.robot", f"must be true or false, got {_kind(robot)}", (True, False))
+        elif robot and lk is not None and not robot_layout(lk):
+            v.err("legs.robot", f"{lk.key} is a {lk.kind}: no robot is made of it (a "
+                                "walker's two sides, an arm on its turntable), it is one side "
+                                "(robot false, the default)", (False,))
+        elif (robot is not None and sides is not None and lk is not None and lk.walks
+              and robot != (sides == 2)):
+            v.err("legs.sides", f"legs.sides {sides:g} contradicts legs.robot {robot}: sides "
+                                "is robot's older name (2: the robot); give robot alone",
+                  (2 if robot else 1,))
 
     # targets
     for section in SECTIONS:
@@ -750,8 +912,31 @@ def validate(data: Mapping) -> list[SpecError]:
                   "(the acrylic crank was removed on 2026-10-07)", sheet_keys(True), CRANK_SHEET)
         v.number(m.get("thickness_mm"), "materials.thickness_mm", positive=True)
         v.string(m.get("servo"), "materials.servo", servos.available())
-    c = v.obj(top.get("constructions"), "constructions", ("pillar", "pin", "crank", "heads"))
+        for what in ROLE_FIELDS:          # (an arm: no drive servo, no crank sheet)
+            if lk is not None and (why := unused_field(lk, what, m.get(what))) is not None:
+                v.err(f"materials.{what}", why)
+    extra = {r.name: r for r in rolemod.extra()}
+    given = top.get("constructions")
+    slots = [q for q in (given if isinstance(given, Mapping) else ())
+             if isinstance(q, str) and "@" in q
+             and getattr(extra.get(rolemod.split(q)[0]), "per", "design") != "design"]
+    c = v.obj(given, "constructions", (*CONSTRUCTION_FIELDS, *extra, *slots, *REMOVED_ROLES))
     if c is not None:
+        for name in REMOVED_ROLES:
+            if name in c and (why := removed_role(name)) is not None:
+                v.err(f"constructions.{name}", why, [*CONSTRUCTION_FIELDS, *extra])
+        for q in [*extra, *slots]:
+            name = rolemod.split(q)[0]
+            if c.get(q) is None:
+                continue
+            if lk is not None and not rolemod.applies(name, lk.kind):
+                v.err(f"constructions.{q}", f"{lk.key} is a {lk.kind}: it has no "
+                      f"{extra[name].title} role ({name!r} is a "
+                      f"{' or '.join(extra[name].kinds)}'s)")
+            elif gone := removed_construction(name, c.get(q)):    # names the replacement
+                v.err(f"constructions.{q}", gone[0], rolemod.choices(name), gone[1])
+            else:
+                v.string(c.get(q), f"constructions.{q}", rolemod.choices(name))
         v.string(c.get("heads"), "constructions.heads", ["best", "gap", "sink"])
         for what in ("pillar", "pin", "crank"):
             reg = sorted(construction.CRANKS if what == "crank" else construction.AXLES)
@@ -788,7 +973,54 @@ def validate(data: Mapping) -> list[SpecError]:
         else:
             for i, o in enumerate(outs):
                 v.string(o, f"outputs[{i}]", OUTPUTS)
+
+    # task: what the spec was written for, the linkage able to do it
+    if top.get("task") is not None:
+        _validate_task(v, top["task"], lk)
     return v.errors
+
+
+PLACE_AXES = 3
+"""A place task's positional axes: over an area and up off it (``api.tasks`` screens by it)."""
+
+
+def _place_axes(lk: linkage.Linkage) -> int:
+    """The output's positional axes: its inputs in the plane, and a yaw where its robot
+    stands on a turntable (the role ``turntable``)."""
+    from spiderpig import roles as rolemod
+
+    return len(lk.inputs) + int(rolemod.applies("turntable", lk.kind))
+
+
+TASK_CAN = {"walk": (lambda lk: lk.walks, "has no feet"),
+            "place": (lambda lk: CAPABILITIES["output"][0](lk)
+                      and _place_axes(lk) >= PLACE_AXES,
+                      lambda lk: CAPABILITIES["output"][2] if not CAPABILITIES["output"][0](lk)
+                      else f"has {_place_axes(lk)} positional axes for its output, under the "
+                           f"{PLACE_AXES} placing over an area and lifting off it takes"),
+            "trace": (CAPABILITIES["output"][0], CAPABILITIES["output"][2])}
+"""What a task's ``do`` asks of the linkage: its test (feet, an output, a place's three
+positional axes) and what a linkage without it is (the refusal's words, or a function of
+the linkage giving them)."""
+
+
+def _validate_task(v: _Validator, doc, lk: linkage.Linkage | None) -> None:
+    """The spec's ``task`` (:func:`spiderpig.task.validate`, its paths under ``task.``), and
+    a linkage that can do it (a walk needs feet, a place or a trace an output)."""
+    from spiderpig.task import validate as validate_task
+
+    errors = validate_task(doc)
+    for e in errors:
+        v.errors.append(SpecError(f"task.{e.path}" if e.path else "task", e.message,
+                                  e.allowed, e.nearest))
+    if errors or lk is None:
+        return
+    do = doc["do"]
+    can, lacks = TASK_CAN[do]
+    if not can(lk):
+        lacks = lacks(lk) if callable(lacks) else lacks
+        v.err("task.do", f"{lk.key} {lacks}: it can't {do} (candidates ranks the linkages "
+                         f"that can)", [d for d, (c, _) in TASK_CAN.items() if c(lk)])
 
 
 def default_module(lk: linkage.Linkage) -> str:
@@ -840,6 +1072,12 @@ def spec_schema() -> dict:
             "properties": {n: _target_schema(f) for n, f in table.items()}}
         for s, table in TARGET_FIELDS.items()
     }
+    sections["precision"]["properties"][PAYLOAD] = {
+        "type": "number", "minimum": 0,
+        "description": "the load at an arm's output in grams (default 50): what the payload "
+                       "sag, the ISO RP's gravity seating and the strength check's static "
+                       "loads assume",
+    }
     sections["budget"]["properties"][ALLOWANCE] = {
         "type": "number", "minimum": 0,
         "description": "USD allowed, in all, for the items the catalog doesn't price (they are "
@@ -852,10 +1090,12 @@ def spec_schema() -> dict:
         "title": "spiderpig Spec v1",
         "description": (__doc__ or "").split("\n\n")[0],
         "type": "object", "additionalProperties": False,
-        "required": ["kind", "linkage"],
+        "required": ["linkage"],
         "properties": {
             "version": {"const": SPEC_VERSION, "default": SPEC_VERSION},
-            "kind": {"enum": list(KINDS)},
+            "kind": {"enum": list(KINDS),
+                     "description": "the linkage's kind (default: read from the linkage; "
+                                    "checked against it when given)"},
             "linkage": {
                 "type": "object", "additionalProperties": False, "required": ["key"],
                 "properties": {
@@ -877,8 +1117,14 @@ def spec_schema() -> dict:
                     "phases_deg": {"type": "array", "items": {"type": "number"},
                                    "description": "crank phase per leg (default: the "
                                                   "module's)"},
-                    "sides": {"enum": [1, 2], "description": "2: the robot (default for a "
-                                                             "walker); 1: one side"},
+                    "sides": {"enum": [1, 2], "description": "legs.robot's older name, still "
+                                                             "read: a walker's 2 is the robot, "
+                                                             "1 one side"},
+                    "robot": {"type": "boolean", "description": "the whole robot the "
+                              "linkage's kind makes (a walker's two mirrored sides, an arm's "
+                              "side on its turntable with its tool) or its side alone; "
+                              "default: the kind's (a walker's and an arm's robot; a "
+                              "mechanism is one side, false only)"},
                 },
             },
             "motion": sections["motion"],
@@ -911,17 +1157,36 @@ def spec_schema() -> dict:
                     "crank": {"enum": sorted(construction.CRANKS),
                               "default": DEFAULT_CRANKS["walker"],
                               "description": "default: " + ", ".join(
-                                  f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items())},
+                                  f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items() if v)
+                              + "; an arm has none"},
                     "heads": {"enum": ["best", "gap", "sink"], "default": BuildConfig.heads,
                               "description": "fasteners' heads: sunk into a layer, in thin "
                                              "clearance gaps, or best: sunk, and in gaps "
                                              "only when no sunk plan exists (the plan's "
                                              "proof says which was searched)"},
+                    **{r.name: {"enum": rolemod.choices(r.name),
+                                "description": f"{r.title}: {r.help} (a "
+                                               f"{' or '.join(r.kinds)}'s; default: the "
+                                               "design's own)"}
+                       for r in rolemod.extra()},
                 },
             },
             "fit": {"type": "object", "additionalProperties": False, "properties": fit_props},
             "budget": sections["budget"],
+            "precision": sections["precision"],
             "outputs": {"type": "array", "items": {"enum": list(OUTPUTS)}, "uniqueItems": True,
                         "default": list(DEFAULT_OUTPUTS)},
+            "task": _task_schema(),
         },
     }
+
+
+def _task_schema() -> dict:
+    """The ``task`` section's schema: the Task's own (:func:`spiderpig.task.task_schema`)."""
+    from spiderpig.task import task_schema
+
+    doc = {k: v for k, v in task_schema().items() if k not in ("$schema", "$id", "title")}
+    doc["description"] = ("the task this spec was written for (candidates writes it): verify "
+                          "re-checks its geometry on the design (the task.* rows); it enters "
+                          "the design's id")
+    return doc

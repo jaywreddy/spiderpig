@@ -498,7 +498,7 @@ def test_a_clevis_pin_takes_up_its_stack_and_its_clip_a_gap():
     assert f.shims_lo + 13.1 + f.play == pytest.approx(13.5)
     assert rod.outer(13.1) == pytest.approx(13.5 - 13.1 + rod.item()["head_h"])
     assert rod.section().yield_mpa == 241.3
-    assert rod.key_of(13.5) == "rod6061ha_516_305"
+    assert rod.key(13.5) == "rod6061ha_516_305"
     shaft = CLEVIS8.shaft
     f = shaft.take_up(11.2)
     assert (f.length, f.shims_lo) == (15.0, pytest.approx(3.5))

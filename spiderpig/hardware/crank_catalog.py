@@ -185,6 +185,55 @@ def _pillar_shaft_of(key: str) -> Item | None:
     return _pillar_shaft_item(L)
 
 
+def ground_pillar_shaft(length: float) -> str:
+    """The catalog key of a ground 6 mm g6 shaft ``length`` mm long (whole mm), tapped M3
+    both ends (a ball pair pillar's: :class:`construction.pivots.pair.BallPairPillar`)."""
+    key = f"ground_shaft_6_m3_{length:g}"
+    CATALOG.get(key)
+    return key
+
+
+GROUND_PILLAR_USD = 13.0
+"""MISUMI's both-ends-tapped 6 mm linear shaft's price at one off near 50 mm, an estimate
+(its pages refuse a script; the cost loop's round 3, 2026-10-12)."""
+
+
+def _ground_shaft_item(L: float) -> Item:
+    pn = f"SFJW6-{L:g}-M3-N3"
+    return Item(
+        f"ground_shaft_6_m3_{L:g}", f"6 mm ground linear shaft g6, {L:g} mm, tapped M3 both "
+        f"ends (MISUMI {pn})", "shaft",
+        (Offer("MISUMI", "https://my.misumi-ec.com/vona2/detail/110310559889/", pn,
+               price_usd=GROUND_PILLAR_USD,
+               note="MISUMI linear shaft, both ends tapped (the SFJW family, economy E-SFJW; "
+                    "the plain PSFJ has no taps): induction-hardened, ground g6, length in "
+                    "1 mm steps, M3 and N3 the taps; part number and price estimates (the "
+                    "pages refuse a script, 2026-10-12)"),
+         Offer("McMaster-Carr", "https://www.mcmaster.com/4143N12/", "4143N12",
+               note="or 6 mm x 200 mm 303 stainless rod, -0.005 / 0, soft: cut both pillars "
+                    "from one and drill and tap M3 x 6 each end by hand (unpriced: the page "
+                    "needs a login)")),
+        dims={"d": 3.0, "od": 6.0, "length": L, "thread_depth": 6.0, "id": PILLAR_SHAFT_ID,
+              "yield_mpa": 600.0, "tolerance": "g6"},
+        notes="A ball pair pillar's shaft: its bearings' inner rings slide on it, so it must be "
+              "ground (g6: 4-20 um under a MR106's bore). Round 3 of the cost loop found the "
+              "NETRF6 standoff it had been (6 mm 0 / -0.1, not ground) would let the across-"
+              "power-up repeatability reach ~0.14 mm.",
+    )
+
+
+def _ground_shaft_of(key: str) -> Item | None:
+    try:
+        n = round(float(key.removeprefix("ground_shaft_6_m3_")) * 10)
+    except ValueError:
+        return None
+    L = n / 10
+    if not 80 <= n <= 3000 or n % 10 or f"ground_shaft_6_m3_{L:g}" != key:
+        return None
+    return _ground_shaft_item(L)
+
+
+register_factory("ground_shaft_6_m3_", _ground_shaft_of)
 register_factory("pillar_shaft_6_m3_", _pillar_shaft_of)
 register(*(_pillar_shaft_item(L) for L in PILLAR_SHAFT_SEEN))   # the lengths priced
 

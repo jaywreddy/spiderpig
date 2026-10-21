@@ -200,7 +200,8 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
         return now
 
     kit = box_kit(config, mech, store)
-    all_steps = with_box_steps(assembly_steps(mech, design), config, mech, store, kit=kit)
+    all_steps = with_box_steps(assembly_steps(mech, design, config=config), config, mech,
+                               store, kit=kit)
     chosen = all_steps[:max_steps] if max_steps else all_steps
     mesh_path = _meshes(mech, cache)
     t = lap("meshes", t)
@@ -323,8 +324,8 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
             with Image.open(img / f"{h}.png") as im:
                 bubbles(im.convert("RGB"), sorted(best.items()))[0].save(path,
                                                                           compress_level=6)
-        elif st.stage == "wiring":
-            nodes, links, left = wiring_of(mech, tags)
+        elif st.stage == "wiring":     # the design's controller's
+            nodes, links, left = wiring_of(mech, tags, _controller(config))
             draw(nodes, links, left, path, PICTURE)
         else:   # (a step with nothing of its own to draw: the cover's picture)
             shutil.copyfile(img / f"{cover}.png", path)
@@ -344,8 +345,7 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
     parts = [PartEntry(ty.label, ty.kind, ty.name, ty.qty, img / f"{thumbs[ty.label]}.png",
                        ty.file, ty.detail) for ty in types]
     title = (f"{config.linkage} {config.module} {'robot' if config.robot else 'side'}")
-    drive = (f"{config.servo} servo, {config.pin} pins, {config.pillar} pillars, "
-             f"{config.crank} crank")
+    drive = constructions_line(config)
     if config.lk.product:           # a decanting cradle: no servo, both sides
         title = f"{config.lk.name} (decanting cradle)"
         drive = (f"hand crank (NRV050 worm, 30:1), {config.pin} pins, {config.pillar} "
@@ -466,6 +466,37 @@ def with_box_steps(steps: list, config, mech, store, kit: dict | None = None) ->
     return [replace(s, number=i) for i, s in enumerate(got, 1)]
 
 
+def _controller(config):
+    """The design's controller (the role ``controller``), ``None`` for none or one that
+    can't drive it."""
+    from spiderpig.actuators.controllers import of
+
+    try:
+        return of(config)
+    except ValueError:
+        return None
+
+
+def constructions_line(config) -> str:
+    """The cover's line of what the design is built from: every role that applies to it
+    (:mod:`spiderpig.roles`), its key and the role's word ("sts3215 servo, chicago pins,
+    ..., skr_pico_pi_zero controller")."""
+    from spiderpig import roles
+
+    words = {"servo": "servo", "pin": "pins", "pillar": "pillars", "crank": "crank"}
+    out = []
+    for r in roles.ROLES.values():
+        if not roles.applies(r.name, config.lk.kind) or r.name == "pin_stack":
+            continue
+        try:
+            key = config.role(r.name)
+        except (KeyError, ValueError):
+            continue
+        if key:
+            out.append(f"{key} {words.get(r.name, r.name.replace('_', ' '))}")
+    return ", ".join(out)
+
+
 def _batches(jobs_all: list[dict], n: int) -> list[list[dict]]:
     """``jobs_all`` dealt to ``n`` workers, the biggest first (by rows)."""
     order = sorted(jobs_all, key=lambda j: -len(j["rows"]))
@@ -553,11 +584,13 @@ def markdown(title: str, steps, types, counts_of, mech, tools=(), spacers=()) ->
 
 def main(argv=None) -> int:
     from spiderpig.config import add_build_args, add_design_args, config_from_args
+    from spiderpig.stages.resolve import DESIGN_HELP
     from spiderpig.store import Store
 
     p = argparse.ArgumentParser(prog="spiderpig guide", description=(
         "The assembly guide: ASSEMBLY.pdf (numbered steps with pictures, the parts with "
         "their labels, print batches, bag labels) and ASSEMBLY.md, into --out."))
+    p.add_argument("design", nargs="?", metavar="DESIGN", help=DESIGN_HELP)
     add_design_args(p)
     add_build_args(p)
     p.add_argument("--out", type=Path, default=Path("build"), help="the folder (build)")
@@ -569,10 +602,22 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("fontTools").setLevel(logging.WARNING)
-    config = config_from_args(args)
     store = Store.of(args.store) if args.store else Store.default()
+    side = None
+    if args.design:         # a stored design: its config and plan as recorded
+        from spiderpig.stages.planning import plan_stored
+        from spiderpig.stages.resolve import load_stored
+
+        try:
+            design = load_stored(args.design, store)
+            side = plan_stored(design)
+        except (KeyError, ValueError) as e:
+            p.error(str(e))
+        config = design.config
+    else:
+        config = config_from_args(args)
     rep = build_guide(config, store, args.out, jobs=args.jobs, max_steps=args.steps,
-                      force=args.force)
+                      force=args.force, design=side)
     how = "from the cache" if rep.cached else f"{rep.drawn} pictures drawn"
     print(f"wrote {rep.pdf} and ASSEMBLY.md: {rep.pages} pages, {rep.steps} steps ({how}, "
           f"{rep.seconds.get('total', 0):.1f} s)")

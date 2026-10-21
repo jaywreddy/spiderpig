@@ -30,7 +30,7 @@ def test_each_part_gets_the_thinnest_sheet_that_passes():
 def test_mechanisms_default_to_the_bolt_crank():
     """Upgraded from the keyed crank (2026-10-04): the Hoecken pantograph's short crank was
     what blocked it."""
-    assert DEFAULT_CRANKS == {"walker": "bolt", "mechanism": "bolt"}
+    assert DEFAULT_CRANKS == {"walker": "bolt", "mechanism": "bolt", "arm": ""}  # (no crank)
 
 
 def test_an_aluminium_crank_sheet_sets_the_webs_thickness_and_yield():

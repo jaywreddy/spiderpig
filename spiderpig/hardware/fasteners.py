@@ -20,7 +20,7 @@ CLEARANCE = {"2": 2.4, "2p5": 2.9, "3": 3.4,        # ISO 273 medium clearance h
 SHCS_LENGTHS: dict[str, tuple[float, ...]] = {
     "2": (4, 5, 6, 8, 10, 12, 16, 20),
     "2p5": (4, 5, 6, 8, 10, 12, 16, 20),
-    "3": (6, 8, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40),
+    "3": (6, 8, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40, 45, 50, 60, 70),
 }
 BHCS_LENGTHS: dict[str, tuple[float, ...]] = {
     "3": (6, 8, 10, 12, 16, 20, 25, 30),
@@ -36,13 +36,14 @@ SELF_TAP_LENGTHS: dict[str, tuple[float, ...]] = {"2": (4, 5, 6, 8, 10, 12)}
 # a decanting cradle's class 10.9 M6 button heads: its tie rods' ends and the pillar feet
 # ``construction.cradle.STEEL_FEET`` names
 BHCS109_LENGTHS: dict[str, tuple[float, ...]] = {"6": (16,)}
+BUTTON_LENGTHS: dict[str, tuple[float, ...]] = {"2": (3, 4, 5, 6)}
 
 
 @dataclass(frozen=True)
 class Screw:
     """A screw family: head size (mm), stock lengths, and its catalog key per length."""
 
-    kind: str                   # "shcs" | "bhcs" | "bhcs109" (class 10.9) | "self_tap"
+    kind: str                   # "shcs" | "bhcs" | "bhcs109" (class 10.9) | "button" | "self_tap"
     size: str                   # "2", "2p5", "3"
     head_d: float
     head_h: float
@@ -60,6 +61,31 @@ class Screw:
     def key(self, length: float) -> str:
         return f"m{self.size}_{self.kind}_{length:g}"
 
+    def priced(self, length: float) -> bool:
+        """Whether the BOM's first offer for this length shows a price (Bolt Depot has no
+        M3 x 14: its first offer is McMaster's, unpriced)."""
+        from spiderpig.hardware.catalog import get
+
+        try:
+            offer = get(self.key(length)).offer
+        except KeyError:
+            return False
+        return offer is not None and offer.price_usd is not None
+
+    def length_for(self, need: float, *, longest: bool = False) -> float:
+        """The shortest length at least ``need`` mm, a priced one first (:meth:`priced`),
+        else any listed: the one way a part picks a screw's length (2026-10-14: twenty
+        inline picks before). ``longest``: none reaches it, so take the longest instead of
+        raising."""
+        listed = sorted(float(L) for L in self.lengths)
+        for pool in ([L for L in listed if self.priced(L)], listed):
+            for L in pool:
+                if need - 1e-6 <= L:
+                    return L
+        if longest and listed:
+            return listed[-1]
+        raise LookupError(f"no {self.kind} M{self.d:g} reaches {need:.2f} mm "
+                          f"(lengths: {listed})")
 
 SCREWS: dict[tuple[str, str], Screw] = {(s.kind, s.size): s for s in (
     # ISO 4762 socket heads: (head diameter dk, head height k)
@@ -73,6 +99,10 @@ SCREWS: dict[tuple[str, str], Screw] = {(s.kind, s.size): s for s in (
     Screw("bhcs", "10", 17.5, 5.5, BHCS_LENGTHS["10"]),
     # the same head in class 10.9 steel (its own catalog keys: the stainless one's A2-70)
     Screw("bhcs109", "6", 10.5, 3.3, BHCS109_LENGTHS["6"]),
+    # ISO 7380-1 M2 button head (Aspen's drawing: dk 3.5-3.8, k 1.16-1.3; the maxima): the
+    # ball pair's ground pin ends only (construction.pivots.pair.GroundShaft), its own kind
+    # so the horn screws' choice ("bhcs" before "shcs", construction.crank.web) is unchanged
+    Screw("button", "2", 3.8, 1.3, BUTTON_LENGTHS["2"]),
     # PA2.0 pan-head self-tapping screws for plastic; head within ISO 7049 ST2.2's maximum
     Screw("self_tap", "2", 4.0, 1.6, SELF_TAP_LENGTHS["2"]),
 )}
@@ -126,7 +156,7 @@ def bhcs(size: str, length: float) -> str:
     return SCREWS["bhcs", size].key(length)
 
 
-_KEY = re.compile(r"^m(\d+(?:p\d+)?)_(shcs|bhcs109|bhcs|self_tap)_(\d+(?:\.\d+)?)$")
+_KEY = re.compile(r"^m(\d+(?:p\d+)?)_(shcs|bhcs109|bhcs|button|self_tap)_(\d+(?:\.\d+)?)$")
 
 
 def parse(key: str | None) -> tuple[Screw, float] | None:

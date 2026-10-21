@@ -24,7 +24,9 @@ locations and shared sub-shapes kept) and ``mechanism.pickle`` (the rest, every 
   heads, gaps, thicknesses, sunk heads, the planner's spec but its time budget: a store's
   plan adopted from another engine, or one a budget cut short, is a different entry), and
   the servo model in play (:func:`servo_state`: parametric, or which pinned CAD files are
-  in reach: ``SPIDERPIG_SERVO_CAD``, ``SPIDERPIG_OFFLINE``, ``SPIDERPIG_CAD_CACHE``).
+  in reach: ``SPIDERPIG_SERVO_CAD``, ``SPIDERPIG_OFFLINE``, ``SPIDERPIG_CAD_CACHE``), the
+  bought parts' (:func:`parts_cad_state`) and strict vendor CAD (``SPIDERPIG_CAD_STRICT``:
+  an entry made without it may hold a parametric fallback).
 
 Nothing else in the environment shapes a part (``CLAUDE.md``, Environment).
 
@@ -123,11 +125,12 @@ def folder_name() -> str:
     return f"{fab_key()}-{env_tag()}"
 
 
-def servo_state(config) -> tuple:
+def servo_state(config, download: bool | None = None) -> tuple:
     """What decides the servo's model: ``("parametric",)`` when manufacturer models are off
     (``SPIDERPIG_SERVO_CAD=0``) or the servo has none, else each pinned model's hash and
     whether it is in reach (in the download cache, or downloaded now unless
-    ``SPIDERPIG_OFFLINE=1``: what the fabrication itself would do), and
+    ``SPIDERPIG_OFFLINE=1``: what the fabrication itself would do; ``download=False``
+    probes the cache alone, as the viewer's server keys a request), and
     :func:`spiderpig.servos.model.cad_state` (the download's stat and the content of its
     derived strip record, whose own key holds the strip code's key)."""
     from spiderpig import servos
@@ -137,7 +140,8 @@ def servo_state(config) -> tuple:
     spec = servos.get(config.servo)
     if not spec.cads or not cadlib.cad_enabled():
         return ("parametric",)
-    present = tuple((ref.sha256, cadlib.fetch(ref) is not None) for ref in spec.cads)
+    present = tuple((ref.sha256, cadlib.fetch(ref, allow_download=download) is not None)
+                    for ref in spec.cads)
     state = cad_state(spec)
     if any(have for _, have, _ in state) and not any(rec for *_, rec in state):
         # a fresh model cache: derive the strip record now (the fabrication would),
@@ -147,6 +151,27 @@ def servo_state(config) -> tuple:
         servo_part(spec, state=state)
         state = cad_state(spec)
     return ("cad", present, state)
+
+
+def parts_cad_state(config) -> tuple:
+    """What decides the bought parts' models (:data:`hardware.cad.PART_CAD`) the config's
+    constructions draw (their ``cad_keys``): each one's :func:`hardware.cad.state` (the
+    cached file's hash, or parametric), all parametric under ``SPIDERPIG_PART_CAD=0``;
+    ``()`` when they draw none (every default design: its entries keep their names)."""
+    from spiderpig import construction
+    from spiderpig.hardware import cad
+
+    keys: list[str] = []
+    for key in {config.pin, config.pillar}:
+        keys += getattr(construction.AXLES.get(key), "cad_keys", ())
+    if not keys:
+        return ()
+    on = cad.part_cad_enabled()
+    out = []
+    for k in sorted(set(keys)):
+        ref = cad.part_cad(k)
+        out.append((k, cad.state(ref) if on and ref is not None else ("parametric", "")))
+    return tuple(out)
 
 
 def plan_fingerprint(plan) -> str:
@@ -170,12 +195,17 @@ def slug(text: str) -> str:
 
 def entry_name(tmpl, config, design, t: float) -> str:
     """``<config key>_<side|robot>_t<t>_<hash>``: the entry of ``config`` fabricated at
-    ``t`` from ``design`` (module docstring)."""
+    ``t`` from ``design`` (module docstring). Under ``SPIDERPIG_CAD_STRICT=1``
+    (:func:`spiderpig.hardware.cad.strict`) another entry: one fabricated without it may
+    hold a parametric fallback a strict build must refuse."""
     from spiderpig.fabricate import _key
+    from spiderpig.hardware import cad
 
     kind = "robot" if config.robot else "side"
-    doc = repr((_key(tmpl, config), bool(config.robot), float(t),
-                plan_fingerprint(design.plan), servo_state(config)))
+    parts = parts_cad_state(config)
+    doc = repr((_key(tmpl, config), bool(config.robot), config.roles, float(t),
+                plan_fingerprint(design.plan), servo_state(config))
+               + ((parts,) if parts else ()) + (("strict",) if cad.strict() else ()))
     h = hashlib.sha256(doc.encode()).hexdigest()[:16]
     return slug(f"{config.key}_{kind}_t{float(t)!r}_{h}")
 

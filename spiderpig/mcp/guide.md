@@ -1,12 +1,17 @@
 # Designing with spiderpig
 
-spiderpig is a compiler from a **Spec** (what you want: a walking linkage or a
-mechanism, its module, materials, constructions and the numbers it must meet) to
-**verified geometry** (a layer plan proven clash-free over the whole crank cycle,
-every part built inside its planned claims, STEP/STL/DXF/BOM files). You never draw:
-you name a linkage, set targets, and ask the engine to resolve, check, plan, walk,
-build, verify and export. Every stage says exactly what fails and, where it can, what
-would clear it.
+spiderpig is a compiler from a **Spec** (what you want: a walking linkage, a cranked
+mechanism or an arm, its module, materials, constructions and the numbers it must meet)
+to **verified geometry** (a layer plan proven clash-free over the whole cycle (a crank's
+turn, an arm's tour of its inputs' box), every part built inside its planned claims,
+STEP/STL/DXF/BOM files). You never draw: you name a linkage, set targets, and ask the
+engine to resolve, check, plan, walk, build, verify and export. Every stage says exactly
+what fails and, where it can, what would clear it.
+
+You may start before any linkage is named, from a **task**: what the machine must do
+(walk, place or trace, and its numbers). `candidates(task)` answers with the registered
+linkages that can do it, ranked, each with the numbers behind its verdict and a Spec that
+asks for the task's numbers as targets (below, "Tasks").
 
 Across MCP everything is **files and numbers**: a design is its 16-hex-digit id, a
 report is JSON, a part is the path of a STEP file inside the store, a failure is a
@@ -29,13 +34,15 @@ Current store: `<<STORE>>`. Engine: `<<ENGINE>>`.
 
 | pass | tool | proves / measures | cost |
 |---|---|---|---|
+| candidates | `candidates(task, measure?, limit?)` | which registered linkages can do a task, by what they declare (feet, an output and its motion, ranged inputs, a turntable's yaw): each with `checks` (value, need, ok, tier, source), a `spec` to resolve, the `scale` that would meet a missed length; `excluded` says what each other lacks | ms to seconds (the cards, kept in the store); `measure=N` plans the best N (an arm's plan: minutes cold) |
 | resolve | `resolve(spec)` | the spec validates; every omitted value is inferred and written into `resolved`; the id | ms |
 | check | `check(design)` | **program**: every loop closes over the cycle (margins, transmission angles); **output**: a mechanism keeps its promises; **drive**: one servo turns the crank; **static**: every link has a crank point (a crankpin or a detour the body's underside allows); the ground clearance | 0.5 s |
 | plan | `plan(design)` | a layer plan of one side exists: the planner guarantees the claims of different groups never meet over the whole cycle; `optimal` says whether it is proven the thinnest (`proof` says what a budget left open); `warnings` is what the constructions warned about (a printed snap that overstrains) | 0.4 s on the Klann quad; up to the 60 s deadline on a large or scaled-down design (cached: a re-check) |
 | walk | `walk(design)` | the quasi-static walk model's metrics (stride, bob, slip, tipping, speed at the servo's no-load rpm) with the feet at their planned layers; a stride near zero comes with a `note` saying why and which module walks | 0.1 s |
+| precision | `precision(design)` | the error budget at the output (a mechanism's point, an arm's tool; a walker is skipped): `metrics` are the `precision.*` targets measured (the worst-case `repeatability_mm` bound, the `accuracy_mm` that calibrates out; an arm's ISO 9283 `rp_mm` / `rp_powerup_mm`, `out_of_plane_mm`, `payload_sag_mm`), `rows` their verdicts, `budget` every term (each joint's share, each input's lever and the resolution it needs, the drives), `text` the budget in prose | a mechanism's: 1 s; an arm's fabricates its side for the links' tilt (a job, ~40 s cold) |
 | build | `build(design)` | every part fabricated at crank angle `t`, inside its claims; masses, the envelope, one STEP per distinct part in the store | 8 s (a job) |
-| verify | `verify(design, level)` | pass/fail per requirement with an evidence tier: `quick` = check + plan + walk; `standard` adds the build, the contract at two crank angles, OCCT clashes and solids, the plan re-verified on fresh sampling, the DXF pack and the BOM; `full` adds two more contract angles, a second clash angle and a MuJoCo run | 1 s / 30-45 s / 85 s on the Klann quad; `quick` plans first, so its first run on another design can take a minute |
-| export | `export(design, formats)` | the files: `step`, `stl`, `print` (one STL per printed part), `dxf` (kerf-compensated sheets), `bom` (csv/md/json), `glb` (the viewer's animated bake), `mjcf`; always `manifest.json` (not the shopping list `ORDER.md` or the per-part DXFs `laser/parts/`: `spiderpig build` writes those); an export that already wrote these formats (or more) into the folder is returned as is | 5-60 s (a job) |
+| verify | `verify(design, level)` | pass/fail per requirement with an evidence tier: `quick` = check + plan + walk; `standard` adds the build, the contract at two crank angles, OCCT clashes and solids, the plan re-verified on fresh sampling, the DXF pack and the BOM; `full` adds two more contract angles, a second clash angle and a MuJoCo run; every kind's output precision (`quick`: what needs no fabrication, an arm's tilt-dependent rows at `standard`) and, after the build, its joints' strength (a walker's at its sim or family loads, an arm's at its static loads: operating and a crash at the drives' holding torque) | 1 s / 30-45 s / 85 s on the Klann quad; `quick` plans first, so its first run on another design can take a minute |
+| export | `export(design, formats)` | the files: `step`, `stl`, `print` (one STL per printed part), `dxf` (kerf-compensated sheets), `bom` (csv/md/json), `glb` (the viewer's animated bake), `mjcf` (MuJoCo: every kind's, one emitter), `urdf` (an arm's, for ROS); and what a maker reads: `guide` (`ASSEMBLY.pdf` and `ASSEMBLY.md`: numbered steps with pictures, the part labels, the wiring), `control` (`control/`, by what drives the design: a crank's bus servos' `servos.json`, an arm's steppers' Klipper `printer.cfg`, and `HOMING.md`), `order` (`ORDER.md`: a cart per vendor, an upload per cutting service with its per-part DXFs in `laser/parts/`, the prints); always `manifest.json`; an export that already wrote these formats (or more) into the folder is returned as is | 5-60 s (a job); `guide` a minute cold |
 
 **The planner's clock.** A plan search is bounded by a 60 s wall-clock deadline and node
 budgets, never validity: a plan found late is returned with `optimal: false` and a
@@ -51,13 +58,23 @@ a plan exists and re-verifies, parts stay inside their claims, the stack height)
 clearance, clashes, masses, sheets), **estimated** (nominal inputs: the mass before a
 build, the envelope before a build, `speed_mm_s` at the servo's no-load rpm, prices).
 
-## The two loops
+## The loops
+
+**From a task**: `candidates(task) → resolve(candidate.spec)`, then the design loop. The
+`design(task)` prompt walks it for any kind of machine.
 
 **Design**: `resolve → check → plan → verify("quick") → verify("standard") → export`.
 Read `ok` at every step. `resolve` returns the id every other tool takes. Stop at the
 first `ok: false` and read `failures` (below). `verify` scores the soft targets and
 fails on any hard miss; `export` writes the files you asked for into the store's
 `exports/` (or `out_dir`) and returns their paths.
+
+**Make it**: `export(design, ["guide", "control", "order"])`: the assembly guide, the
+controller's files (whichever the design's motors need: you never name its kind) and the
+shopping list, beside the cut and print files. The same design id works from a shell:
+`spiderpig build|guide|precision <id>`, `spiderpig control files <id>`, `spiderpig export
+<id> --formats guide control order`, `spiderpig view <id>`; `spiderpig candidates
+task.json` is `candidates` there, and resolves the best one into the store.
 
 **Diagnose**: `explain → recommend → derive`. `explain` is every stage's verdict in
 prose (a recorded failure is printed, not searched for again). `recommend` is the
@@ -100,6 +117,62 @@ A failure is always the same document under `failures`:
 | walk | linkage_invalid | the walk model can't use the linkage |
 | store | no_such_design, bad_design_id, no_such_stage, gc_needs_arguments | a tool was misused (`isError` is set) |
 
+## Tasks
+
+A task is a JSON object (`spiderpig://schema/task`): `do` (`walk`, `place` or `trace`)
+and its numbers. A bare number is the bound the task means (a stride's least, a
+repeatability's most); a target object `{min, max, value, tol, hard}` says it exactly. The
+numbers that are Spec targets become the candidate's spec targets (`repeatability_mm` is
+ISO 9283 RP, `precision.rp_mm`, what a maker quotes, where the design has one (a
+positioner), else the worst-case `precision.repeatability_mm`, which stays beside RP as
+`numbers.bound_mm`); the task's own geometry (`area_mm`, `points_mm`, `height_mm`,
+`path_mm` (`[x, y]` in the output's plane), `obstacle_mm` (raises a `lift_mm`'s min, the
+rest of it kept)) is read by the checks. Each candidate's spec carries the task whole (its
+`task` section, in the design's id), so `verify` re-checks the task on the design itself,
+hard rows beside its targets: `task.area_mm` (or `task.points_mm`) and `task.height_mm`
+against where the planned robot's tool gets down to the bench and how high it lifts over
+the area (the turret's plan, `estimated`); `task.path_mm` (else an arm's `task.stroke_mm`)
+traced by an arm's inverse kinematics at the design's proportions (`measured`) or against a
+crank's output check; an arm's `task.straightness_mm`, the traced band plus the budget's
+lost motion (`estimated` at `standard`; at `quick`, without the lost motion, a `bound`).
+A bound refutes but never confirms: a met one stays in `unverified`. So candidates ->
+resolve -> verify `standard` can confirm a place or a trace task, not only a walk.
+
+<<TASKS>>
+
+`candidates` reads the linkages by what they declare, never their kind's name, cheapest
+evidence first: (1) the **screen**, every linkage: a walker's card (each module's stride
+in the walk model at nominal feet, a foot's lift; the modules that don't walk are left
+out), a cranked mechanism's output check (stroke, straightness, swing, dwell), an arm's
+output over its inputs' box about its yaw axis (its turntable's range: the role
+`turntable`). A place task needs three axes (two across the bench, one to lift): one input
+traces a path, two in a plane sweep it, an arm's two and its yaw place. The screen's
+reach of an arm is a **bound** (tier `bound`: it refutes, never confirms): where its tool
+gets down to the bench is its turret's plan's. An arm traces under control: the task's
+`path_mm` (else a line of its stroke) is solved point by point by the controller's
+inverse kinematics wherever it fits in the arm's plane, a waypoint every 5 mm as the
+controller moves a line: a `path_mm` check (every point in reach), the stroke measured,
+and the tip's band across the line a bound on the straightness until a precision budget
+adds the lost motion either side; `dwell_deg`, `swing_deg`, `on_line_fraction` and
+`rotation_deg` measure a crank's turn, which an arm doesn't make. (2) the **store**: a
+design of the candidate's spec (whatever its targets) lends its stored reports from this
+engine: the walk with the feet at their layers, the check's ground clearance, the precision
+budget (a metric it left unbounded, a singular pose, is a miss), a verify's cost and mass.
+(3) **measure** (`measure=N`, opt-in): the
+best N that pass are resolved into the store, checked and planned (walked; a cranked
+mechanism's precision budgeted; an arm's bench reach read off its turret's plan). Nothing
+is fabricated: an arm's repeatability needs `precision(design)` (a job).
+
+A check's `ok` is null where this tier didn't measure it; its `source` says what does. A
+candidate's `ok` is false when any check fails, null when none fails but some are
+unmeasured. They rank by verdict, then a missed length that a `scale` of the proportions
+would meet, then score (the mean over the measured checks of `max(0, 1 - miss / need)`),
+then the task's merit (the longest stride, the best repeatability, the straightest line;
+a bound's number is no merit).
+The `scale` is unchecked (the stride, lift, stroke and straightness scale with the
+linkage; an arm's reach band too, its base's keep-out doesn't): `recommend` plans a scale
+before it offers one.
+
 ## The Spec
 
 A JSON object; `spiderpig://schema/spec` is its JSON Schema and `resolve` validates
@@ -110,20 +183,23 @@ design: there is no search in v1.
 | field | values | default |
 |---|---|---|
 | `version` | `"1"` | `"1"` |
-| `kind` | `walker` or `mechanism` | required |
-| `linkage.key` | a registered linkage (below) whose kind matches | required |
+| `kind` | `walker` (feet), `mechanism` (a crank and an output) or `arm` (inputs over ranges, no crank: the palletizer) | the linkage's (checked when given) |
+| `linkage.key` | a registered linkage (below) | required |
 | `linkage.params` | `{name: number}` overrides of that linkage's parameters (`describe` lists them; lengths in mm and > 0, angles in degrees; a coordinate such as a fixed pivot's x or y, marked `signed` on the card, may be zero or negative) | the linkage's defaults |
-| `legs.module` | one of the linkage's modules (legs **per side**, the robot has two; below): `single` (2 legs), `double` (4), `decker` (4), `quad` (8) or its own; there is no three-leg module | the linkage's own default (Strider: `double`), else `quad` (walker), `single` (mechanism) |
+| `legs.module` | one of the linkage's modules (legs **per side**, the robot has two; below): `single` (2 legs), `double` (4), `decker` (4), `quad` (8) or its own; there is no three-leg module | the linkage's own default (Strider: `double`), else `quad` (walker), `single` (mechanism, arm: one side, no legs) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
-| `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism) |
+| `legs.robot` | every kind's: the whole robot (`true`: a walker's two mirrored sides and the chassis; an arm's side on its turntable, its tool, its controller) or its side alone (`false`); a mechanism makes none (`false` only) | the kind's: `true` (walker, arm), `false` (mechanism) |
+| `legs.sides` | `robot`'s older name, still read: a walker's `2` is `robot: true`, `1` `false`; the same id either way | - |
 | `materials.sheet` | a sheet item (sets the layer pitch) | `acrylic_3mm` |
 | `materials.thickness_mm` | a measured sheet thickness | the sheet's nominal |
-| `materials.servo` | a continuous-rotation servo | `sts3215` |
-| `constructions.pillar`, `.pin` | pillar `standoff` (a 6 mm round standoff column screwed through both frame plates, printed rings: a stock goBILDA M4 standoff where one length fills it, else one MISUMI steel standoff made to its length, M3 ends, never spliced); pin `chicago` (an M3 Chicago screw, printed rings and head spacers). The other pivots were removed on 2026-10-07: naming one is a `bad_parameter` failure that names its replacement | pillar `standoff`, pin `chicago` |
+| `materials.servo` | the continuous-rotation servo that turns a crank (a walker's, a mechanism's; an arm's motors are its `actuator` role) | `sts3215` |
+| `constructions.pillar`, `.pin` | the pivots (the catalog's `pillar / pin` rows). A walker's and a mechanism's: pillar `standoff` (a 6 mm round standoff column screwed through both frame plates, printed rings: a stock goBILDA M4 standoff where one length fills it, else one MISUMI steel standoff made to its length, M3 ends, never spliced), pin `chicago` (an M3 Chicago screw, printed rings and head spacers). An arm's: ball bearings at every pivot, `ball` / `ball_pillar` on 6.6 mm links, or the preloaded pairs `ball_pair` / `ball_pair_pillar` (the approved `palletizer_reach`'s). The walkers' other pivots were removed on 2026-10-07: naming one is a `bad_parameter` failure that names its replacement | per kind (`config.DEFAULT_PIVOTS`), per linkage where its own differ (`config.LINKAGE_PIVOTS`) |
+| `constructions.<role>` | every later role a design of its kind fills (`spiderpig.roles`; the catalog's rows by role): an arm's `transmission` (per drive: `transmission@q2`), `actuator`, `angle_sensor`, `homing_reference`, `turntable`, `pin_stack`, `tool`; every robot's `controller` (a walker's `esp32_bus_servo` on its deck, an arm's `skr_pico_pi_zero`; `none`: your own). A role of another kind is refused with the kind it belongs to | the role's default for the design (its linkage's first: `config.LINKAGE_ROLES`) |
 | `constructions.crank` | `bolt` (laser-cut aluminium, one plate per web, each crankpin a steel M3 hex standoff in hex pockets, M3 screws and wide washers retaining it, the riders on a printed sleeve), `bolt_round` (the same on round standoffs clamped by friction; TrotBot's heel and toe default to it). The printed, keyed and acrylic cranks and the hex crank's variants were removed on 2026-10-07 (a `bad_parameter` failure naming `bolt`); `materials.crank_sheet` must be aluminium | the linkage's (`config.default_crank`): `bolt`, `bolt_round` for TrotBot's heel and toe |
 | `fit.*` | part sizes and fits in mm (below), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults |
 | `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf` | `[step, stl, print, dxf, bom]` |
-| `motion.*`, `size.*`, `budget.*` | **targets** (below) | none |
+| `motion.*`, `size.*`, `budget.*`, `precision.*` | **targets** (below) | none |
+| `precision.payload_g` | an arm's load at the tool in grams (a plain number, not a target): what the payload sag, the ISO RP's gravity seating and the strength check's static loads assume | 50 |
 
 **Modules** are legs per side, and the robot has two sides: `single` is one leg (a
 two-legged machine that doesn't walk in the model), `double` two legs as a mirrored
@@ -145,6 +221,11 @@ bound)` over the soft targets). Physical limits are hard by default, gait qualit
 soft; `hard: true|false` on any target flips it.
 
 <<TARGETS>>
+
+A metric's capability, in brackets beside its kinds, is what the linkage must have, and a
+spec asking a linkage without it is refused with the reason: `(output)` an output point
+(a walker's foot is no placement), `(ranged)` inputs that turn over ranges (an arm's
+drives: a cranked mechanism has no ISO pose, no payload on its drives).
 
 What the rows measure, where it isn't obvious: `size.mass_g` before a build is the
 nominal model's total for what the design builds, and its detail says what it is made
@@ -185,6 +266,24 @@ that doesn't fit says it: a standoff pillar's end screw (an M4 button head and w
 layer outside the frame plate) names the least pitch that holds it as a checked
 recommendation.
 
+**Precision** (`precision.*`, from `spiderpig precision`'s model): `repeatability_mm`
+is the worst-case bound (every pin's clearance the same way at the worst pose, the
+drives' backlash and homing, the links' rise out of the plane); a maker's figure is
+ISO 9283's `rp_mm` (30 cycles to each of 5 poses, mean + 3 sigma, gravity seating the
+pins), much smaller. `accuracy_mm` is what calibrates out (holes off their drawing, a
+10 K swing, the turntable's and the drives' systematic errors). All are tier
+`estimated` (a model of nominal clearances). `verify("quick")` reports what needs no
+fabrication (a mechanism's whole budget, an arm's `accuracy_mm`); an arm's
+`repeatability_mm`, RP, out-of-plane and sag stay `unverified` until `standard` (or a
+`precision` run, whose stored report `quick` then reads).
+
+**Strength** rows (`strength.joints`, after a build) rate every pin, pillar, link (and a
+walker's crank): a jam safety factor under 1 at the design's own loads fails `verify`
+(`strength / joint_overload`, with fixes). An arm's loads are its static model's:
+operating (its weight and the payload over the box x 1.5 for the moves) and jammed (a
+crash: the tool blocked while the drives push at their holding torque); a fix may be a
+lower run current. A cranked mechanism is rated at a jam of its output, its servo at its torque limit (`strength.crank_loads`; each mechanism's limit in `config.LINKAGE_TORQUE_LIMITS`, which `export`'s control files write into the servo).
+
 `fit` defaults (mm): <<FIT>>
 
 ### Linkages
@@ -203,7 +302,10 @@ check, and its modules with their default phases.
 
 `view(design)` returns the URL of the viewer for a design: the animated robot (or
 one side), drive mode, and the tune panel seeded with the design's linkage, module,
-phases and proportions. The server starts once per MCP server on a free port and is
+phases and proportions; an arm's joint sliders pose it anywhere in its box. The page's
+view picker lists the modes the design's linkage declares (`/api/modes?linkage=`: a
+walker's robot and each module's side, an arm's robot on its turntable and its side, a
+mechanism's one side), following its one linkage picker (every linkage, grouped by kind). The server starts once per MCP server on a free port and is
 reused; the first load of a design bakes it (seconds) unless `export` wrote its
 `glb`. The same page is `spiderpig view <design>` from a shell, and
 `spiderpig view --linkage klann --module quad --pin bolt` (the build options, as for
@@ -212,7 +314,8 @@ needs no spec to be looked at.
 
 ## Long operations
 
-`build`, `verify` at `standard`/`full` and `export` run in worker processes. Each
+`build`, `verify` at `standard`/`full`, `export` and `precision` run in worker
+processes. Each
 waits `wait_seconds` (default 15) and returns the finished result when the job is
 done; otherwise it returns `{ok: true, failures: [], job: {...}}` with the job's record
 alone, and you follow it with `wait_job(job, seconds)` or `get_job(job)`, passing the
@@ -229,10 +332,12 @@ server process; the store keeps what they produced.
 - Leg modules are named presets (`single`, `double`, `decker`, `quad`, a linkage's own)
   with phases per leg; no explicit leg lists.
 - One machine per spec: no compound machines, no stacking of mechanisms.
-- No `tune` and no `search`: one spec compiles one design; move parameters yourself
-  with `derive` and read `compare` (the card's `sensitivity` says which way each
-  parameter pushes the foot path, or a mechanism's output). The one search the engine
-  does is `recommend`'s scale for a missed stroke, straightness or lift target.
+- No `tune` and no `search`: one spec compiles one design; move parameters
+  yourself with `derive` and read `compare` (the card's `sensitivity` says which way each
+  parameter pushes the foot path, or a mechanism's output). `candidates` ranks the
+  registered linkages for a task at their own proportions (it suggests a `scale`, never
+  checks one); the one search the engine does is `recommend`'s scale for a missed stroke,
+  straightness or lift target.
 - The planner's 60 s deadline is fixed; a design it can't plan in that time is
   reported as such, with what blocked it, not searched longer.
 - `speed_mm_s` is the stride at the servo's no-load rpm, tier `estimated`, until a

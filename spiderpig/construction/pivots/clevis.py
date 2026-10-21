@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from build123d import Cylinder, Location
 
@@ -48,6 +49,7 @@ from spiderpig.construction.pivots.common import (
     PRINT_TOL,
     SLEEVE_COLOR,
     STEEL,
+    Stock,
     column_air,
     host_of,
     stem_of,
@@ -84,7 +86,7 @@ class ClevisPinShaft(ChicagoShaft):
     min_play: float = 0.25
     lock_key: str = ""
 
-    def key_of(self, length: float) -> str:
+    def key(self, length: float) -> str:
         from spiderpig.hardware.cradle_catalog import clevis_pin8
 
         return clevis_pin8(length)
@@ -143,7 +145,7 @@ class ClevisPinShaft(ChicagoShaft):
     def stock_key(self, stack: float) -> str | None:
         """The catalog key of the pin a ``stack`` mm stack takes (``None``: none does)."""
         try:
-            return self.key_of(self.take_up(stack).length)
+            return self.key(self.take_up(stack).length)
         except ConstructionError:
             return None
 
@@ -154,7 +156,7 @@ class ClevisPinShaft(ChicagoShaft):
         return f.length - stack + float(self.item()["head_h"])
 
     def column(self, pillar: bool, links, top: int, anchored: tuple[bool, bool],
-               pitch: float, layout=None, air=None, hi=None) -> None:
+               pitch: float, layout=None, air=None, hi=None, **_) -> None:
         """The planner's rule: a stock pin spans the links (at the plan's z: its head and
         spacer within the two layers outside them). A search's layout is a lower bound of the
         stack: no pin long enough there is none in any plan."""
@@ -210,7 +212,7 @@ class ClevisPinShaft(ChicagoShaft):
         pin = difference(union([disc(xy, head_d / 2, zh - head_h, zh),
                                 disc(xy, r, zh, zh + overall + air)]), cross)
         out.bodies.append(hardware(f"{stem}_pin", pin, host, fab="purchased",
-                                   bom_key=self.key_of(f.length), color=STEEL))
+                                   bom_key=self.key(f.length), color=STEEL))
         if f.shims_lo > EPS:
             out.bodies.append(hardware(f"{stem}_spacer_lo",
                                        ring(xy, head_d, self.d + 0.3, zh, z_lo), host,
@@ -219,7 +221,7 @@ class ClevisPinShaft(ChicagoShaft):
                                    fab="purchased", bom_key=CLIP, color=CLIP_COLOR))
         out.notes.setdefault("clevis_pin", {})[group.name] = {
             "usable_mm": f.length, "stack_mm": round(z_hi - z_lo - air, 3),
-            "spacer_mm": f.shims_lo, "play_mm": f.play, "item": self.key_of(f.length),
+            "spacer_mm": f.shims_lo, "play_mm": f.play, "item": self.key(f.length),
             "clip": CLIP, "past_link_mm": round(f.play + hole + self.tip(), 3)}
         return f
 
@@ -251,6 +253,10 @@ class ClevisPinAxle(ChicagoAxle):
                   "hairpin cotter (R-clip) through its hole from the bay: a decanting cradle's "
                   "quick-release pin (pins only)")
     shaft: ChicagoShaft = field(default_factory=ClevisPinShaft)
+    spacers: ClassVar[Stock | None] = None  # printed rings (no stock tube fits the pin)
+    # a decanting cradle's own (config.PRODUCT_PINS, PRODUCT_PIN_JOINTS): chosen by its
+    # product, never a strength fix's alternative (strength._alt_sections)
+    product_only: ClassVar[bool] = True
 
     def resolve(self, ctx) -> ClevisPinAxle:
         """This construction for the design ``ctx`` builds: its linkage's longest pin

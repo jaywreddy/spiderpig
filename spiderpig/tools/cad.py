@@ -1,0 +1,390 @@
+"""``spiderpig cad``: the bought parts' vendor models (:data:`hardware.cad.PART_CAD`).
+
+Vendor models are never committed: each lives in the CAD cache (``$SPIDERPIG_CAD_CACHE``,
+default ``~/.cache/spiderpig/cad``) and a build uses it when it is there and matches the
+catalog's size (otherwise the part is drawn from its catalog dims). This command fills
+the cache::
+
+    spiderpig cad list                       # every part model: cached or not, from where
+    spiderpig cad import bearing_mr84zz ~/Downloads/57155K....STEP
+    spiderpig cad login                      # McMaster-Carr: log in once in a browser window
+    spiderpig cad fetch [KEY ...]            # ... then fetch the missing models with it
+    spiderpig cad api-fetch KEY --part-number PN   # McMaster's Product Information API
+    spiderpig cad check [KEY ...]            # does every model load, strictly? (exit 1 if not)
+
+**McMaster-Carr** shows its catalog only to a logged-in browser (a scripted session gets a
+login wall), and its pages are the user's to use under its terms. So the fetch is the
+user's: ``login`` opens a real browser window (Playwright's Chromium, headed: it needs a
+display) on mcmaster.com, the user logs in with their own account, and the session is saved
+(``$SPIDERPIG_MCMASTER_STATE``, default ``~/.config/spiderpig/mcmaster-state.json``);
+``fetch`` then opens each missing part's listing with that session, takes the part number
+(the catalog offer's, else the listing's first), opens its product page and downloads
+the "3-D STEP" model, which goes into the cache through :func:`hardware.cad.import_file`.
+A login wall stops it with the advice to log in again; a page it can't read says so and
+how to ``import`` the file by hand. ``api-fetch`` uses McMaster's Product Information API
+instead (an approved customer's client certificate and login: ``$SPIDERPIG_MCMASTER_CERT``
+(a .pfx), ``_CERT_PASSWORD``, ``_USER``, ``_PASSWORD``): subscribe, read the product's
+``"3-D STEP"`` link, download it.
+
+``check`` loads each registered part model and each servo's manufacturer models the way a
+build would, under ``SPIDERPIG_CAD_STRICT=1`` (:func:`hardware.cad.strict`: no parametric
+fallback), and prints why one doesn't draw: what to run before a build that must carry
+the vendors' models (the same switch, set for the build, makes it fail instead).
+
+Neither McMaster path was exercised against the live site from the development box (its
+login wall; no API approval): the import, the cache and the use of a model are tested.
+Each fetched model's part number and hash are printed so they can be pinned in the
+catalog (:mod:`hardware.bearing_catalog`).
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import json
+import os
+import re
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+STATE_ENV = "SPIDERPIG_MCMASTER_STATE"
+PART_NUMBER = re.compile(r"\b(\d{4,5}[A-Z]\d{1,4})\b")
+LOGIN_WALL = "please log in"
+
+
+def state_path() -> Path:
+    env = os.environ.get(STATE_ENV)
+    return Path(env).expanduser() if env else Path.home() / ".config" / "spiderpig" / \
+        "mcmaster-state.json"
+
+
+def _refs() -> dict:
+    from spiderpig.hardware import cad
+    from spiderpig.hardware.catalog import _load
+
+    _load()
+    return dict(sorted(cad.PART_CAD.items()))
+
+
+def _listing(key: str) -> tuple[str, str | None]:
+    """The McMaster offer's page and part number for catalog item ``key``."""
+    from spiderpig.hardware.catalog import get
+
+    for o in get(key).offers:
+        if "mcmaster" in o.vendor.lower():
+            return o.url, o.sku
+    raise SystemExit(f"{key}: no McMaster-Carr offer in the catalog")
+
+
+def _sidecar(path: Path) -> Path:
+    return path.with_suffix(path.suffix + ".json")
+
+
+def cmd_list(_args) -> int:
+    from spiderpig.hardware import cad
+
+    for key, ref in _refs().items():
+        path = cad.fetch(ref, allow_download=False)
+        what = "parametric (not in the cache)"
+        if path is not None:
+            meta = {}
+            with contextlib.suppress(OSError, ValueError):
+                meta = json.loads(_sidecar(path).read_text())
+            pn = meta.get("part_number") or ref.part_number or "?"
+            what = f"cached {cad.sha256_file(path)[:16]} (part {pn}) {path}"
+        print(f"{key:20} {ref.vendor or '-':10} {what}")
+    return 0
+
+
+def _import(key: str, src: Path, part_number: str = "") -> Path:
+    from spiderpig.hardware import cad
+
+    ref = _refs().get(key)
+    if ref is None:
+        raise SystemExit(f"no part model registered for {key!r}; have {sorted(_refs())}")
+    path = cad.import_file(ref, src)
+    side = _sidecar(path)
+    tmp = side.with_name(f".{side.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps({
+        "key": key, "part_number": part_number or ref.part_number,
+        "sha256": cad.sha256_file(path), "source": str(src),
+        "imported": time.strftime("%Y-%m-%dT%H:%M:%S")}, indent=1))
+    os.replace(tmp, side)
+    print(f"{key}: {path} (sha256 {cad.sha256_file(path)}"
+          + (f", McMaster {part_number}" if part_number else "") + ")")
+    return path
+
+
+def cmd_import(args) -> int:
+    _import(args.key, Path(args.file).expanduser(), args.part_number or "")
+    return 0
+
+
+def cmd_login(_args) -> int:
+    """A headed browser on mcmaster.com: the user logs in; the session is saved."""
+    from playwright.sync_api import sync_playwright
+
+    out = state_path()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        ctx = browser.new_context()
+        page = ctx.new_page()
+        page.goto("https://www.mcmaster.com/")
+        input("Log in to McMaster-Carr in the browser window, then press Enter here... ")
+        ctx.storage_state(path=str(out))
+        browser.close()
+    os.chmod(out, 0o600)
+    print(f"session saved to {out}")
+    return 0
+
+
+def _fetch_one(page, key: str, part_number: str = "") -> Path | None:
+    url, pn = _listing(key)
+    pn = part_number or pn
+    if not pn:
+        page.goto(url, wait_until="domcontentloaded")
+        page.wait_for_timeout(3000)
+        if LOGIN_WALL in page.inner_text("body").lower():
+            raise SystemExit("McMaster asks for a login: run `spiderpig cad login` again")
+        found = list(dict.fromkeys(PART_NUMBER.findall(page.inner_text("body"))))
+        if len(found) != 1:
+            # several (sealed, stainless, flanged variants beside it) or none: the user picks
+            print(f"{key}: {len(found)} part numbers on {url} ({', '.join(found[:12]) or '-'}):"
+                  f" pick one, `spiderpig cad fetch {key} --part-number PN`, or download the "
+                  f"STEP by hand and `spiderpig cad import {key} FILE --part-number PN`")
+            return None
+        pn = found[0]
+    page.goto(f"https://www.mcmaster.com/{pn}/", wait_until="domcontentloaded")
+    page.wait_for_timeout(3000)
+    if LOGIN_WALL in page.inner_text("body").lower():
+        raise SystemExit("McMaster asks for a login: run `spiderpig cad login` again")
+    try:
+        page.get_by_text("CAD", exact=True).first.click()
+        page.get_by_text("3-D STEP").first.click()
+        with page.expect_download(timeout=30000) as dl:
+            page.get_by_role("button", name=re.compile("download", re.I)).first.click()
+        with tempfile.TemporaryDirectory(prefix="spiderpig-cad-") as d:
+            tmp = Path(d) / dl.value.suggested_filename
+            dl.value.save_as(str(tmp))
+            return _import(key, tmp, pn)
+    # the page's layout isn't ours: whatever it does, say how to finish by hand
+    except Exception as e:  # noqa: BLE001
+        print(f"{key}: couldn't download the STEP from https://www.mcmaster.com/{pn}/ ({e}); "
+              f"download it by hand and `spiderpig cad import {key} FILE --part-number {pn}`")
+        return None
+
+
+def cmd_download(args) -> int:
+    """Every registered part model with a public URL (pinned by its sha256) into the
+    cache: no account needed (McMaster's need ``fetch``)."""
+    from spiderpig.hardware import cad
+
+    refs = {k: r for k, r in _refs().items() if r.url and r.sha256}
+    bad = 0
+    for key, ref in sorted(refs.items()):
+        path = cad.fetch(ref, allow_download=True)
+        print(f"{key}: {'ok ' + str(path) if path else 'FAILED (download or sha256)'}")
+        bad += path is None
+    return 1 if bad else 0
+
+
+def cmd_check(args) -> int:
+    """Load every registered vendor model (or ``args.keys``: part keys or servo keys) as a
+    build would, strictly (:data:`hardware.cad.STRICT_ENV`): one line each, ``ok`` or why
+    it doesn't draw; 1 when any doesn't."""
+    from spiderpig.hardware import cad
+
+    was = os.environ.get(cad.STRICT_ENV)
+    os.environ[cad.STRICT_ENV] = "1"
+    try:
+        return _check(args.keys)
+    finally:
+        if was is None:
+            os.environ.pop(cad.STRICT_ENV, None)
+        else:
+            os.environ[cad.STRICT_ENV] = was
+
+
+def _check(keys: list[str]) -> int:
+    from spiderpig import servos
+    from spiderpig.hardware import cad
+    from spiderpig.hardware.catalog import get
+    from spiderpig.servos import cad as cadlib
+    from spiderpig.servos.model import cad_servo
+
+    refs = _refs()
+    servo_keys = [k for k in servos.available() if servos.get(k).cads]
+    want = set(keys or [*refs, *servo_keys])
+    unknown = want - set(refs) - set(servo_keys)
+    if unknown:
+        print(f"no vendor model registered for {sorted(unknown)}", file=sys.stderr)
+        return 2
+    bad = 0
+    for key in sorted(want & set(refs)):
+        if not cad.part_cad_enabled():
+            print(f"{key:20} off ({cad.PART_CAD_ENV}=0: drawn from the catalog)")
+            continue
+        ref, dims = refs[key], get(key).dims
+        try:
+            if {"od", "w"} <= set(dims):        # a round part: placed as a build places it
+                cad.load_axisymmetric(ref, float(dims["od"]), float(dims["w"]))
+            else:
+                cad.load(ref, allow_download=False)
+            print(f"{key:20} ok")
+        except cad.CadError as e:
+            bad += 1
+            print(f"{key:20} FAILED: {e}")
+    for key in sorted(want & set(servo_keys)):
+        if not cadlib.cad_enabled():
+            print(f"{key:20} off ({cadlib.USE_CAD_ENV}=0: parametric)")
+            continue
+        try:
+            cad_servo(servos.get(key), None, True)          # (strict: its own memo key)
+            print(f"{key:20} ok (servo)")
+        except cad.CadError as e:
+            bad += 1
+            print(f"{key:20} FAILED: {e}")
+    return 1 if bad else 0
+
+
+def cmd_fetch(args) -> int:
+    from playwright.sync_api import sync_playwright
+
+    from spiderpig.hardware import cad
+
+    state = state_path()
+    if not state.is_file():
+        print("no McMaster session: run `spiderpig cad login` first", file=sys.stderr)
+        return 2
+    keys = args.keys or [k for k, r in _refs().items()
+                         if r.vendor == "mcmaster" and cad.fetch(r, allow_download=False) is None]
+    if args.part_number and len(keys) != 1:
+        print("--part-number names one part: give its key", file=sys.stderr)
+        return 2
+    if not keys:
+        print("every McMaster part model is in the cache")
+        return 0
+    missing = 0
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_context(storage_state=str(state), accept_downloads=True).new_page()
+        for key in keys:
+            missing += _fetch_one(page, key, args.part_number) is None
+        browser.close()
+    return 1 if missing else 0
+
+
+def _api_session():
+    """An ``ssl`` context with the client certificate, and the bearer token (login)."""
+    import secrets
+    import ssl
+    import urllib.request
+
+    from cryptography.hazmat.primitives.serialization import (
+        BestAvailableEncryption,
+        Encoding,
+        PrivateFormat,
+        pkcs12,
+    )
+
+    env = {k: os.environ.get(f"SPIDERPIG_MCMASTER_{k}") for k in
+           ("CERT", "CERT_PASSWORD", "USER", "PASSWORD")}
+    if not all(env.values()):
+        raise SystemExit("api-fetch needs SPIDERPIG_MCMASTER_CERT (.pfx), _CERT_PASSWORD, "
+                         "_USER and _PASSWORD (McMaster's Product Information API: an "
+                         "approved customer's; eCommerce@mcmaster.com)")
+    key, cert, chain = pkcs12.load_key_and_certificates(
+        Path(str(env["CERT"])).expanduser().read_bytes(), str(env["CERT_PASSWORD"]).encode())
+    if key is None or cert is None:
+        raise SystemExit("the .pfx holds no key and certificate")
+    once = secrets.token_hex(16)        # the key never touches the disk in the clear
+    fd, pem = tempfile.mkstemp(suffix=".pem")       # (mkstemp: created 0600)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(cert.public_bytes(Encoding.PEM))
+            for c in chain or ():       # the intermediates the .pfx carries
+                f.write(c.public_bytes(Encoding.PEM))
+            f.write(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8,
+                                      BestAvailableEncryption(once.encode())))
+        ctx = ssl.create_default_context()
+        ctx.load_cert_chain(pem, password=once)
+    finally:
+        os.unlink(pem)
+    req = urllib.request.Request(
+        "https://api.mcmaster.com/v1/login", method="POST",
+        data=json.dumps({"UserName": env["USER"], "Password": env["PASSWORD"]}).encode(),
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, context=ctx, timeout=60) as r:
+        token = json.load(r)["AuthToken"]
+    return ctx, token
+
+
+def cmd_api_fetch(args) -> int:
+    import urllib.request
+
+    ctx, token = _api_session()
+    auth = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    def call(method: str, path: str, body: dict | None = None):
+        req = urllib.request.Request(f"https://api.mcmaster.com{path}", method=method,
+                                     data=None if body is None else json.dumps(body).encode(),
+                                     headers=auth)
+        return urllib.request.urlopen(req, context=ctx, timeout=120)
+
+    pn = args.part_number
+    with call("PUT", "/v1/products", {"URL": f"https://mcmaster.com/{pn}"}) as r:
+        product = json.load(r)
+    links = {link.get("Key"): link.get("Value") for link in product.get("Links", [])}
+    step = links.get("3-D STEP")
+    if not step:
+        print(f"{pn}: no 3-D STEP link ({sorted(links)})", file=sys.stderr)
+        return 1
+    from spiderpig.hardware.cad import MAX_BYTES
+
+    with call("GET", step) as r:
+        data = r.read(MAX_BYTES + 1)
+    if len(data) > MAX_BYTES:
+        print(f"{pn}: the STEP is over {MAX_BYTES} bytes", file=sys.stderr)
+        return 1
+    with tempfile.TemporaryDirectory(prefix="spiderpig-cad-") as d:
+        tmp = Path(d) / Path(step).name
+        tmp.write_bytes(data)
+        _import(args.key, tmp, pn)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="spiderpig cad",
+                                 description="bought parts' vendor models: list, import, "
+                                             "download, fetch (the CAD cache; never "
+                                             "committed)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("list", help="every registered part model and whether it is cached")
+    i = sub.add_parser("import", help="put a downloaded model into the cache")
+    i.add_argument("key", help="the catalog item (spiderpig cad list)")
+    i.add_argument("file", help="the STEP file")
+    i.add_argument("--part-number", default="", help="the vendor's part number (recorded)")
+    sub.add_parser("download", help="the models with a public URL (pinned by their sha256: "
+                                    "no account)")
+    sub.add_parser("login", help="McMaster-Carr: log in once in a browser window")
+    f = sub.add_parser("fetch", help="McMaster-Carr: fetch the missing models with the "
+                                     "saved session")
+    f.add_argument("keys", nargs="*", help="catalog items (default: every missing one)")
+    f.add_argument("--part-number", default="", help="the McMaster part number (one key)")
+    c = sub.add_parser("check", help="load every vendor model strictly "
+                                     "(SPIDERPIG_CAD_STRICT=1): exit 1 if one doesn't draw")
+    c.add_argument("keys", nargs="*", help="part or servo keys (default: every one)")
+    a = sub.add_parser("api-fetch", help="McMaster-Carr's Product Information API")
+    a.add_argument("key")
+    a.add_argument("--part-number", required=True)
+    args = ap.parse_args(argv)
+    return {"list": cmd_list, "import": cmd_import, "download": cmd_download,
+            "login": cmd_login, "fetch": cmd_fetch, "check": cmd_check,
+            "api-fetch": cmd_api_fetch}[args.cmd](args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

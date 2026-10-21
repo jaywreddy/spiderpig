@@ -110,6 +110,12 @@ class StackProblem:
             k = c.keepout
             if k.span and (len(k.members) > 1 or k.anchored):
                 spans.setdefault((k.members, k.anchored), set()).add(c.link)
+        # the pins whose links stack in consecutive layers (StackSpec.adjacent), by link
+        self.adjacent: dict[str, list[tuple[tuple[str, ...], int]]] = {}
+        for members, most in self.spec.adjacent:
+            for n in members:
+                if n in known:
+                    self.adjacent.setdefault(n, []).append((members, most))
         # each axle, by its links and by the links that can't pass it
         self.spans: dict[str, list[tuple[tuple[str, ...], tuple[str, ...], bool]]] = {}
         for (members, anchored), links in spans.items():
@@ -627,6 +633,8 @@ class _Search:
                     return conf | {n}
         if (c := self.spans(n)) is not None:
             return c | {n}
+        if (c := self.together(n)) is not None:
+            return c | {n}
         # (lexed: empty without lex)
         for a, b in self.lex if n in self.lexed else ():  # pyright: ignore[reportOptionalIterable]
             if n not in (a, b):            # layer(a) <= layer(b): one layering of each orbit
@@ -721,6 +729,24 @@ class _Search:
                         if (not d or d & other) and (c := close(
                                 x, other, why | {end})) is not None:
                             return c
+        return None
+
+    def together(self, n: str) -> frozenset[str] | None:
+        """A pin whose links stack in consecutive layers (:attr:`StackSpec.adjacent`): the
+        placed ones span at most its window, and the rest are kept within it."""
+        layers, top = self.layers, self.top
+        for members, most in self.prob.adjacent.get(n, ()):
+            placed = [m for m in members if m in layers]
+            ks = [layers[m] for m in placed]
+            lo, hi = min(ks), max(ks)
+            why = frozenset(placed)
+            if hi - lo + 1 > most:
+                return why
+            window = sum(1 << k for k in range(max(1, hi - most + 1), min(top, lo + most)))
+            outside = ((1 << top) - 1) & ~1 & ~window
+            for m in members:
+                if m not in layers and (c := self.close(m, outside, why)) is not None:
+                    return c
         return None
 
     def close(self, x: str, ks: range | int, why: frozenset[str]) -> frozenset[str] | None:

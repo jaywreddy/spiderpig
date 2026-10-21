@@ -2,8 +2,10 @@
 
 Serves the three.js frontend and one self-contained ``.glb`` per design
 from the project store's ``bakes/`` (:func:`spiderpig.bake.default_bake_dir`),
-baked on first request (and again when a cached file is older than the
-package's Python sources). A background watcher re-runs the glTF bake for
+baked on first request under a name that keys everything that shapes it
+(:func:`bake_key`: the config, the code the bake reaches, the libraries and the vendor
+models in play), so a code or CAD change is a new file, never a stale one. A background
+watcher re-runs the glTF bake for
 every default design it has baked whenever a source ``.py`` file of the
 package changes and pushes a ``reload`` message to every connected browser
 over ``/ws``.
@@ -27,10 +29,15 @@ Design parameters (the walking model's contract, see ``walk.py``):
     The fabricated walker baked with those parameters: ``robot`` (both
     sides, ``module`` legs per side) or ``side`` (one side of ``module``);
     the ids old URLs use (``klann``, ``double``, ``decker``,
-    ``double_double``) are one side of that module (:data:`MODES`;
-    ``/api/modes`` lists the ids the viewer's dropdown offers, with labels).
-    Every design is cached in the store's ``bakes/`` under its config's key (the
-    newest ``CACHE_SIZE`` non-default ones kept). A design the planner or a
+    ``double_double``) are one side of that module (:data:`MODES`).
+``GET /api/modes?linkage=KEY`` (or ``?design=<id>``)
+    The views the linkage declares (:func:`modes_of`), in the viewer's dropdown order,
+    with labels: its robot when it makes one (:func:`spiderpig.config.robot_layout`: a
+    walker's two mirrored sides, an arm on its turntable), then one side of each of its
+    leg modules (a walker's) or its one side (a mechanism's, an arm's).
+    Every design is cached in the store's ``bakes/`` as ``<config key>-<bake key>.glb``
+    (:func:`bake_key`; the newest ``CACHE_SIZE`` non-default ones kept). A design the
+    planner or a
     construction can't build: 422 with the reason. Bakes run one at a time.
 ``?design=<id>`` on ``/api/walk`` and ``/api/glb``
     A design recorded in the store (:func:`configure`; ``spiderpig view``): its
@@ -49,9 +56,10 @@ Design parameters (the walking model's contract, see ``walk.py``):
 ``GET /api/design/{id}``
     The design's card: linkage, module, sides and ``mode`` (``robot`` or ``side``),
     phases, proportions, materials, constructions, and its glb's URL.
-``WS /ws/sim?linkage=...&module=...``
-    The robot of that design driven live in MuJoCo (:mod:`spiderpig.sim.live`): see
-    :func:`ws_sim`.
+``WS /ws/sim?linkage=...&module=...&mode=...``
+    That design driven live in MuJoCo (:mod:`spiderpig.sim.live`), whatever its kind: a
+    walker's robot on the floor by its cranks' speeds, a mechanism's crank turned, an
+    arm's steppers told their joints' angles: see :func:`ws_sim`.
 
 Layer plans go through the store (``api.plan_config``): a design that planned once
 is reused, never searched for again; one whose planner budget ran out answers 422
@@ -78,13 +86,22 @@ import math
 import os
 import threading
 from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import QueryParams
 from starlette.websockets import WebSocketState
 
 from spiderpig import api, linkage, walk, workers
@@ -93,6 +110,7 @@ from spiderpig.config import (
     BuildConfig,
     default_module,
     design_from_query,
+    robot_layout,
 )
 from spiderpig.server.watcher import WatchBroadcaster, is_ignored_dir, is_source
 from spiderpig.store import Store
@@ -213,8 +231,103 @@ _FAILED: dict[Path, tuple[float, str]] = {}
 _BAKED: dict[Path, BuildConfig] = {}
 
 
-def _glb_path(config: BuildConfig) -> Path:
-    return _data_dir() / f"{config.key}.glb"
+BAKE_ROOTS = ("spiderpig.bake:bake_gltf", "spiderpig.stages.planning:plan_config")
+"""What a bake runs beside the fabrication (:data:`spiderpig.keys.FAB_ROOTS`): the plan
+through the store, then the bake (meshes, animation, the glTF)."""
+
+
+def _code_key_job() -> str:
+    """:func:`spiderpig.keys.source_key` of the code a bake reaches (the fabrication's and
+    the bake's roots)."""
+    from spiderpig.keys import FAB_ROOTS, source_key
+
+    return source_key((*FAB_ROOTS, *BAKE_ROOTS), "bake")
+
+
+_CODE_KEYS: dict[float, str] = {}
+
+
+def _code_key() -> str:
+    """:func:`_code_key_job` for the sources as they are now (by their newest mtime): this
+    process's own answer is its import's code, so once the sources changed under it
+    (:func:`_stale_code`) a fresh worker process computes it, as it bakes."""
+    mtime = _sources_mtime()
+    key = _CODE_KEYS.get(mtime)
+    if key is None:
+        key = workers.submit(_code_key_job).result() if _stale_code() else _code_key_job()
+        _CODE_KEYS.clear()
+        _CODE_KEYS[mtime] = key
+    return key
+
+
+_BAKE_KEYS: dict[tuple, str] = {}
+""":func:`bake_key`'s memo: ``(config key, code key, CAD stamp)`` -> the key (cleared past
+``_BAKE_KEYS_MAX``), so a request for a design already keyed doesn't probe the CAD state
+again (a servo's strip record, each model's hash)."""
+_BAKE_KEYS_MAX = 256
+
+
+def _cad_stamp() -> str:
+    """What the CAD state a bake key reads can depend on, cheaply: the switches
+    (``SPIDERPIG_CAD_CACHE``, ``SPIDERPIG_OFFLINE``, ``SPIDERPIG_CAD_STRICT``,
+    ``SPIDERPIG_SERVO_CAD``, ``SPIDERPIG_PART_CAD``) and every file of the CAD cache by its
+    path, size and mtime (a download, an import or a derived record moves it). A hash."""
+    import hashlib
+
+    from spiderpig.hardware import cad
+    from spiderpig.servos import cad as servo_cad
+
+    env = tuple(os.environ.get(k, "") for k in (cad.CACHE_ENV, cad.OFFLINE_ENV,
+                                                cad.STRICT_ENV, servo_cad.USE_CAD_ENV,
+                                                cad.PART_CAD_ENV))
+    root = cad.cache_dir()
+    files = []
+    for dirpath, _dirs, names in os.walk(root):
+        for name in names:
+            full = os.path.join(dirpath, name)
+            try:
+                st = os.stat(full)
+            except OSError:         # (gone between the listing and the stat)
+                continue
+            files.append((os.path.relpath(full, root), st.st_size, st.st_mtime_ns))
+    return hashlib.sha256(repr((env, sorted(files))).encode()).hexdigest()
+
+
+def bake_key(config: BuildConfig, code: str | None = None) -> str:
+    """Everything that shapes ``config``'s baked model, as the fabrication cache keys a
+    fabrication (:mod:`spiderpig.fabcache`): the config (its key), the code the bake
+    reaches (``code``, else :func:`_code_key`: planning, fabrication and the bake, the
+    third-party versions they import), the cache's env tag (Python, build123d, OCP, numpy),
+    the servo's model in play (:func:`spiderpig.fabcache.servo_state`, probed without
+    downloading: parametric, or which pinned files are in the cache), the bought parts'
+    (:func:`spiderpig.fabcache.parts_cad_state`) and strict vendor CAD
+    (``SPIDERPIG_CAD_STRICT``: a parametric fallback baked without it never answers a
+    strict request). The plan comes from the store by the same code (a design's record
+    re-made and verified, never searched for again). Memoised per config, code and
+    :func:`_cad_stamp` (``_BAKE_KEYS``). 16 hex."""
+    import hashlib
+
+    from spiderpig import fabcache
+    from spiderpig.hardware import cad
+
+    code = _code_key() if code is None else code
+    memo = (config.key, code, _cad_stamp())
+    key = _BAKE_KEYS.get(memo)
+    if key is None:
+        doc = repr((config.key, code, fabcache.env_tag(),
+                    fabcache.servo_state(config, download=False),
+                    fabcache.parts_cad_state(config)) + (("strict",) if cad.strict() else ()))
+        key = hashlib.sha256(doc.encode()).hexdigest()[:16]
+        if len(_BAKE_KEYS) >= _BAKE_KEYS_MAX:
+            _BAKE_KEYS.clear()
+        _BAKE_KEYS[memo] = key
+    return key
+
+
+def _glb_path(config: BuildConfig, code: str | None = None) -> Path:
+    """``bakes/<config key>-<bake key>.glb``: another key is another file (:func:`bake_key`),
+    so a file there is the current bake of its design."""
+    return _data_dir() / f"{config.key}-{bake_key(config, code)}.glb"
 
 
 def _sources_mtime() -> float:
@@ -255,14 +368,19 @@ def _bake_job(config: BuildConfig, store_root: str, out: str) -> tuple[int, bool
 
 
 def _bake(config: BuildConfig) -> Path:
-    """Bake ``config`` into its file atomically (a failed bake leaves no file behind). The
-    layer plan goes through the store first (:func:`spiderpig.api.plan_config`, as the
-    bake CLI does): a design that planned once is never searched for again, so a later
-    bake can't run out of the planner's budget on it."""
-    path = _glb_path(config)
-    log.info("baking %s -> %s", config.design_json(), path.name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.stem}.partial{path.suffix}")
+    """Bake ``config`` into its file atomically (a failed bake leaves no file behind) and
+    return that file. The layer plan goes through the store first
+    (:func:`spiderpig.api.plan_config`, as the bake CLI does): a design that planned once is
+    never searched for again, so a later bake can't run out of the planner's budget on it.
+
+    The file is named by the code the bake ran (its key taken as it starts: an edit during
+    the bake names the next one) and the CAD state it left (a servo model the bake
+    downloaded, a strip record it derived): so the next request's key finds it."""
+    code = _code_key()
+    first = _glb_path(config, code)
+    log.info("baking %s -> %s", config.design_json(), first.name)
+    first.parent.mkdir(parents=True, exist_ok=True)
+    tmp = first.with_name(f"{first.stem}.partial{first.suffix}")
     try:
         if _stale_code():       # the sources changed under this process: bake the new code
             layers, optimal, proof = workers.submit(_bake_job, config, str(store().root),
@@ -271,6 +389,7 @@ def _bake(config: BuildConfig) -> Path:
             layers, optimal, proof = _bake_job(config, str(store().root), str(tmp))
         log.info("plan for %s: %d layers, %s", config.key, layers,
                  "proven optimal" if optimal else f"not proven optimal ({proof})")
+        path = _glb_path(config, code)
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
@@ -323,7 +442,8 @@ def _acquire_bake_lock(gone=None) -> None:
 
 
 def _ensure_baked(config: BuildConfig, gone=None) -> Path:
-    """The design's ``.glb``, baked first when missing or older than the sources.
+    """The design's ``.glb``, baked first when missing (its file is named by
+    :func:`bake_key`: a code or CAD change asks for another file).
 
     422 when the linkage can't be assembled (checked first, from the
     kinematics alone), the planner finds no layout or a construction can't
@@ -339,23 +459,25 @@ def _ensure_baked(config: BuildConfig, gone=None) -> Path:
     its file serves the next request. Two requests for one design are one bake: the second
     finds the first's file fresh.
     """
-    if config.robot:
+    if config.mirrored:
         try:
             walk.side_legs(config)
         except walk.LinkageError as e:
             raise HTTPException(status_code=422, detail=f"invalid linkage: {e}") from None
-    path = _glb_path(config)
     _acquire_bake_lock(gone)
     try:
-        _BAKED[path] = config
-        if _is_fresh(path):
+        # keyed under the lock: an edit while this request waited its turn names another
+        # file, and the bake's own (the code it ran, the CAD state it left) is the answer
+        path = _glb_path(config)
+        if path.is_file():          # (its name keys everything that shapes it: current)
+            _BAKED[path] = config
             return path
         mtime = _sources_mtime()
         failed = _FAILED.get(path)
         if failed is not None and failed[0] >= mtime:
             raise HTTPException(status_code=422, detail=failed[1])
         try:
-            _bake(config)
+            path = _bake(config)
         except api.PlanTimeout as e:
             raise HTTPException(status_code=422, detail=(
                 f"can't build this design yet: {e} (the planner's CPU budget ran out, which "
@@ -367,6 +489,7 @@ def _ensure_baked(config: BuildConfig, gone=None) -> Path:
             _FAILED[path] = (mtime, reason)             # the newest last
             _prune()
             raise HTTPException(status_code=422, detail=reason) from None
+        _BAKED[path] = config
         if not config.is_default:
             _prune()
     finally:
@@ -421,7 +544,15 @@ def _rebake_all() -> None:
         _on_loop(_outdate_sims)
         for path, config in list(_BAKED.items()):
             if config.is_default and path.exists():
-                _bake(config)
+                now = _glb_path(config)         # (the edit may not reach the bake)
+                if now != path:
+                    del _BAKED[path]            # the old key's file: pruned as non-default
+                    _BAKED[now] = config
+                if not now.is_file():
+                    written = _bake(config)
+                    if written != now:          # (the CAD state the bake left names it)
+                        del _BAKED[now]
+                        _BAKED[written] = config
 
 
 broadcaster = WatchBroadcaster(PACKAGE_ROOT, rebake=_rebake_all)
@@ -625,6 +756,11 @@ def linkage_info(lk: linkage.Linkage) -> dict:
         "feet": len(lk.feet),
         "kind": lk.kind,
         "output": asdict(lk.output) if lk.output else None,
+        "inputs": list(lk.inputs),
+        "ranges": {k: list(v) for k, v in lk.ranges.items()},     # an arm's (degrees)
+        # what it declares (what the viewer offers by, never the kind's name): feet on a
+        # floor (driven by its sides' cranks), ranged inputs (joint sliders, no crank)
+        "walks": lk.walks, "ranged": lk.ranged,
     }
 
 
@@ -638,11 +774,44 @@ def _walk_json(config: BuildConfig) -> bytes:
     return json.dumps(payload, allow_nan=False, separators=(",", ":")).encode()
 
 
+ROBOT_LABELS = {"mirrored_pair": "robot", "turret": "robot (on its turntable)"}
+"""The dropdown's label of each robot layout's ``robot`` view."""
+
+
+def modes_of(lk: linkage.Linkage) -> dict[str, str]:
+    """The view ids ``lk`` declares, in order, with their labels: ``robot`` when it makes a
+    robot (its layout's label), then one side of each leg module it walks on (a fixed
+    module's id of :data:`MODES`), else, a linkage with no feet (one side, no legs), ``side``
+    alone."""
+    out: dict[str, str] = {}
+    layout = robot_layout(lk)
+    if layout:
+        out["robot"] = ROBOT_LABELS.get(layout, "robot")
+    if lk.walks:
+        for m in lk.leg_modules:
+            mid = next((k for k, md in MODES.items() if md.module == m and md.label), None)
+            if mid is not None:
+                out[mid] = MODES[mid].label or mid
+    else:
+        out["side"] = "the side alone" if layout else "one side"
+    return out
+
+
 @app.get("/api/modes")
-def list_modes() -> dict:
-    """The ids the viewer's dropdown offers (in order) and their labels."""
-    offered = {k: m.label for k, m in MODES.items() if m.label}
-    return {"default": _DEFAULT_MODE, "modes": list(offered), "labels": offered}
+def list_modes(linkage_key: str | None = Query(None, alias="linkage"),
+               design: str | None = None) -> dict:
+    """The views the viewer's dropdown offers for a linkage (the design's, ``design=<id>``;
+    else ``linkage``, default :data:`linkage.DEFAULT`), in order, and their labels
+    (:func:`modes_of`)."""
+    key = _design(design).config.linkage if design else (linkage_key or linkage.DEFAULT)
+    try:
+        lk = linkage.get(key)
+    except KeyError as e:
+        raise HTTPException(status_code=422, detail=str(e).strip("'\"")) from None
+    offered = modes_of(lk)
+    default = _DEFAULT_MODE if _DEFAULT_MODE in offered else next(iter(offered))
+    return {"linkage": lk.key, "kind": lk.kind, "default": default, "modes": list(offered),
+            "labels": offered}
 
 
 @app.get("/api/linkages")
@@ -742,7 +911,7 @@ def get_design(design_id: str) -> dict:
     design = cfg.design_json()
     return {
         "design": d.id, "kind": d.kind, "linkage": design["linkage"], "module": design["module"],
-        "sides": 2 if cfg.robot else 1, "mode": mode, "phases_deg": design["phases_deg"],
+        "sides": cfg.sides, "mode": mode, "phases_deg": design["phases_deg"],
         "product": cfg.lk.product or None,
         "params": design["proportions"],
         "servo": "none (a hand crank)" if cfg.lk.product else cfg.servo, "sheet": cfg.sheet,
@@ -787,6 +956,40 @@ def get_glb(mode_id: str, request: Request) -> Response:
         return Response(status_code=499)            # nobody reads it (nginx's "client closed")
     return FileResponse(path, media_type="model/gltf-binary",
                         headers={**_NO_CACHE, "X-Spiderpig-Glb": source})
+
+
+@app.get("/api/pose/{mode_id}")
+def get_pose(mode_id: str, request: Request) -> Response:
+    """An arm's baked model posed at joint angles (``j.q2=70&j.q1=30``: degrees; the rest of
+    the query names the design, as ``/api/glb``'s): each node's matrix from the clip's first
+    frame (:func:`spiderpig.pose.node_poses`). The glb is baked first when it isn't."""
+    from spiderpig.pose import node_poses
+
+    if mode_id not in MODES:
+        raise HTTPException(status_code=404, detail=f"unknown mode {mode_id!r}")
+    mode = MODES[mode_id]
+    params = request.query_params
+    q: dict[str, float] = {}
+    for k, v in params.items():
+        if k.startswith("j."):
+            try:
+                q[k[2:]] = float(v)
+            except ValueError:
+                raise HTTPException(status_code=422, detail=f"{k}={v!r}: degrees") from None
+    rest = QueryParams([(k, v) for k, v in params.multi_items() if not k.startswith("j.")])
+    try:
+        config, d = _query_design(rest, robot=mode.robot,
+                                  **({"module": mode.module} if mode.module else {}))
+        if not config.lk.ranged:           # before any bake
+            raise ValueError(f"{config.linkage} is a {config.lk.kind}: joint poses are an arm's")
+        path, _ = _design_glb(d, config, gone=_disconnected(request))
+        poses = node_poses(config, path, q)
+    except ClientGone:
+        return Response(status_code=499)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    return Response(json.dumps(poses, separators=(",", ":")), media_type="application/json",
+                    headers=_NO_CACHE)
 
 
 def _disconnected(request: Request):
@@ -834,16 +1037,18 @@ _SIM_GENERATION = 0
 
 
 def _build_mjcf_job(config: BuildConfig) -> tuple[str, dict]:
-    """The MJCF and metadata of ``config`` (:func:`spiderpig.sim.mjcf.build_mjcf`) with the
-    steering check (:func:`spiderpig.sim.run.steering_check`, ``meta["steering"]``: what
-    the hello tells the viewer it may send): what a worker process runs, so one client's
-    model build (OCCT holds the GIL for seconds; the check's recording loop too) doesn't
-    stall every other live session's ticks."""
+    """The MJCF and metadata of ``config`` (:func:`spiderpig.sim.mjcf.build_mjcf`) with, for
+    a model that walks (a free base), the steering check
+    (:func:`spiderpig.sim.run.steering_check`, ``meta["steering"]``: what the hello tells
+    the viewer it may send): what a worker process runs, so one client's model build (OCCT
+    holds the GIL for seconds; the check's recording loop too) doesn't stall every other
+    live session's ticks."""
     from spiderpig.sim.mjcf import build_mjcf
     from spiderpig.sim.run import steering_check
 
     xml, meta = build_mjcf(config)
-    meta["steering"] = steering_check(config, xml=xml, meta=meta)
+    if meta.get("freejoint"):
+        meta["steering"] = steering_check(config, xml=xml, meta=meta)
     return xml, meta
 
 
@@ -855,16 +1060,18 @@ def _build_mjcf_in_process(config: BuildConfig) -> tuple[str, dict]:
 
 
 async def _live_model(config: BuildConfig):
-    """``(MjModel, meta)`` for ``config``, compiled (in a thread: the compile of a 120 KB
-    MJCF takes 25-50 ms, a frame-plus hitch for every other session on the loop) from an
-    MJCF built in a worker process (:mod:`spiderpig.workers`; in a thread when workers are
-    off). Concurrent requests for one design share the build. A build the watcher
-    outdated while it ran (the generation moved: the sources changed) is dropped and the
-    design built again, so a stale model is never adopted or served to the next client."""
+    """``(MjModel, meta)`` for ``config``'s model (:func:`spiderpig.sim.mjcf.model_config`: a
+    walker's whole robot, anything else as it is configured), compiled (in a thread: the
+    compile of a 120 KB MJCF takes 25-50 ms, a frame-plus hitch for every other session on
+    the loop) from an MJCF built in a worker process (:mod:`spiderpig.workers`; in a
+    thread when workers are off). Concurrent requests for one design share the build. A
+    build the watcher outdated while it ran (the generation moved: the sources changed) is
+    dropped and the design built again, so a stale model is never adopted or served to the
+    next client."""
     from spiderpig import workers
     from spiderpig.sim import mjcf, run
 
-    key = replace(config, robot=True)
+    key = mjcf.model_config(config)
     while True:
         have = mjcf.cached_model(key)
         if have is not None:
@@ -888,7 +1095,10 @@ async def _live_model(config: BuildConfig):
             log.info("sim: the sources changed while %s built: building it again", key.key)
             continue
         model, meta = await asyncio.to_thread(mjcf.adopt_mjcf, key, mjcf.SimParams(), xml, meta)
-        if "steering" not in meta:                  # a model this process built for something else
+        if not meta.get("freejoint"):               # fixed: nothing walks, nothing to steer
+            log.info("sim: %s: fixed; drives %s", key.key, list(meta["actuators"]))
+            return model, meta
+        if "steering" not in meta:                 # a model this process built for something else
             meta["steering"] = await asyncio.to_thread(
                 run.steering_check, key, mjcf.SimParams(), xml=xml, meta=meta)
         steer = meta["steering"]
@@ -899,31 +1109,57 @@ async def _live_model(config: BuildConfig):
         return model, meta
 
 
-def _valid_cmd(msg) -> tuple[float, float]:
-    """``[left, right]`` out of a client's message: two finite numbers, else a
-    ``ValueError`` with the reason (a NaN or a string would stall the solver)."""
+def _valid_cmd(msg) -> tuple[float, ...]:
+    """The crank speeds out of a client's message: a list of finite numbers (one per crank:
+    the session checks how many), else a ``ValueError`` with the reason (a NaN or a string
+    would stall the solver)."""
     cmd = msg.get("cmd")
-    if not isinstance(cmd, (list, tuple)) or len(cmd) != 2 \
-            or not all(isinstance(v, (int, float)) and math.isfinite(v) for v in cmd):
-        raise ValueError(f"cmd must be [left, right], two finite numbers; got {cmd!r}")
-    return float(cmd[0]), float(cmd[1])
+    if not isinstance(cmd, (list, tuple)) or not cmd or not all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+            for v in cmd):
+        raise ValueError(f"cmd must be a list of finite numbers, one per crank ([left, right] "
+                         f"for a walker); got {cmd!r}")
+    return tuple(float(v) for v in cmd)
+
+
+def _sim_config(query) -> BuildConfig:
+    """The design a ``/ws/sim`` query asks for: as ``/api/glb``'s (``mode``, the view on
+    screen, :data:`MODES`: the robot or one side), else the design's own robot or side
+    (``BuildConfig.robot``'s default, the linkage's). A walker's model is its whole robot
+    whatever is asked (:func:`spiderpig.sim.mjcf.model_config`)."""
+    mode_id = query.get("mode")
+    fixed: dict = {}
+    if mode_id is not None:
+        if mode_id not in MODES:
+            raise ValueError(f"unknown mode {mode_id!r}; one of {sorted(MODES)}")
+        mode = MODES[mode_id]
+        fixed["robot"] = mode.robot
+        if mode.module:
+            fixed["module"] = mode.module
+    return _config_from_query(query, **fixed)
 
 
 @app.websocket("/ws/sim")
 async def ws_sim(websocket: WebSocket) -> None:
-    """Drive the robot in MuJoCo live (:mod:`spiderpig.sim.live`): the design comes from
-    the query (as ``/api/glb/robot``'s). The server answers with ``{"status":
-    "building", "elapsed": s}`` while the model builds (in a worker process; every
-    second), then a JSON ``hello`` (the bodies, the glb node -> body map, the ``design``
-    it simulates, the steering check's verdict with its straight-run ``forward``) or
+    """Drive a design in MuJoCo live (:mod:`spiderpig.sim.live`), whatever its kind: the
+    design comes from the query (as ``/api/glb``'s; ``mode``, the view on screen, picks the
+    robot or one side, else the design's own: :func:`_sim_config`). The server answers
+    with ``{"status": "building", "elapsed": s}`` while the model builds (in a worker
+    process; every second), then a JSON ``hello`` (the bodies, the glb node -> body map,
+    the ``design`` it simulates, the frame's ``columns``; what drives it: ``drives``, its
+    cranks, and ``joints``, its stepped joints with their ranges; what it has: ``walks``,
+    ``feet``, ``sites``; a walker's steering check with its straight-run ``forward``) or
     ``{"error": ...}`` and a close, then one binary frame per tick at
     :data:`SIM_FPS` in real time (deadline-ticked; the physics steps in a thread). The
-    client sends ``{"cmd": [left, right]}`` (fractions of the servo's speed) and
-    ``{"reset": true}``, from the first message on (one sent while the model builds is
-    applied before the hello); a malformed message gets ``{"error": ...}`` back and the
-    session goes on. When the sources change the session says ``{"status": "stale"}`` and
-    closes (the viewer reconnects to the rebuilt model); a failure inside the physics
-    says ``{"error": ...}`` and closes 1011 (this session only). With
+    client sends ``{"cmd": [...]}`` (each crank's speed, a fraction of its servo's: a
+    walker's ``[left, right]``, a mechanism's ``[speed]``), ``{"joints": {"q2": 40}}``
+    (stepped joints' angles in degrees, as ``/api/pose``'s ``j.``) and ``{"reset":
+    true}``, from the first message on (one sent while the model builds is applied before
+    the hello); a malformed message (a command for a drive the design lacks too) gets
+    ``{"error": ...}`` back and the session goes on. When the sources change the session
+    says ``{"status": "stale"}`` and closes (the viewer reconnects to the rebuilt model); a
+    failure inside the physics says ``{"error": ...}`` and closes 1011 (this session
+    only). With
     :data:`SIM_MAX_SESSIONS` sessions already streaming, ``{"error": "busy: ..."}`` and
     close 1013."""
     global _SIM_SESSIONS
@@ -940,7 +1176,7 @@ async def ws_sim(websocket: WebSocket) -> None:
     _SIM_SESSIONS += 1
     try:
         try:
-            config = _config_from_query(websocket.query_params, robot=True)
+            config = _sim_config(websocket.query_params)
             sim, early_errors = await _build_for(websocket, config, LiveSim)
         except (ValueError, HTTPException) as e:
             log.info("sim: no model: %s", e)
@@ -975,13 +1211,15 @@ async def ws_sim(websocket: WebSocket) -> None:
 
 def _apply(sim, msg: dict) -> None:
     """One client message onto ``sim`` (a reset is asked for, a command validated and
-    stored); ``ValueError`` for a malformed one."""
+    stored: crank speeds, joint angles); ``ValueError`` for a malformed one."""
     if not isinstance(msg, dict):
         raise ValueError("a message is a JSON object")
     if msg.get("reset"):
         sim.request_reset()
     if "cmd" in msg:
         sim.set_command(*_valid_cmd(msg))
+    if "joints" in msg:
+        sim.set_joints(msg["joints"])
 
 
 async def _build_for(websocket: WebSocket, config: BuildConfig, make):

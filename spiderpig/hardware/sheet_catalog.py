@@ -69,9 +69,12 @@ Fetched 2026-10-04:
 The inside-corner radius SendCutSend cuts in aluminium: the walkers' rules keep the joinery
 plan's 0.8 mm, a cradle's parts are judged on the guidelines' kerf
 (:data:`SCS_LASER_CORNER_R`, 2026-10-20); the laser's in acrylic is about its kerf (0.1 mm).
-Prices are estimates (neither service publishes a table: a DXF upload quotes): a walker's
-per 300 x 300 mm of nested parts, a decanting cradle's cutting a fit on live quotes
-(:data:`hardware.bom.CRADLE_CUT_FITS`).
+Neither service publishes a price table (a DXF upload quotes): a sheet SendCutSend cuts is
+priced as its cutting, the material included (``cut_fixed_usd``, ``cut_usd_cm2``,
+``cut_usd_cm``, ``cut_min_usd``, ``cut_qty_factors``: :data:`CUT_RATES`,
+:func:`hardware.bom.cut_estimate`, fitted on its live quotes), a decanting cradle's cutting a
+fit of its own on live quotes (:data:`hardware.bom.CRADLE_CUT_FITS`); an offer's
+``price_usd`` is an estimate per 300 x 300 mm blank.
 
 ``shim_din988_3x6`` / ``shim_din988_6x12`` and ``ptfe_washer_3x6x0p5`` join the 4 mm ones
 (:mod:`hardware.fastener_catalog`) and the 6 mm PTFE washer (:mod:`hardware.crank_catalog`)
@@ -167,16 +170,31 @@ carry it yet: their crank plates are under 1 x 3 in, and the warning would chang
 audits (the identity gate's baseline): a decision for a walker change of its own."""
 
 
+CUT_RATES = {
+    "5052": {"cut_fixed_usd": 0.0, "cut_usd_cm2": 0.076, "cut_usd_cm": 0.104,
+             "cut_min_usd": 2.70,
+             "cut_qty_factors": ((1, 1.0), (2, 0.78), (10, 0.57), (50, 0.44))},
+    "6061": {"cut_fixed_usd": 3.20, "cut_usd_cm2": 0.138, "cut_usd_cm": 0.0,
+             "cut_min_usd": 3.20,
+             "cut_qty_factors": ((1, 1.0), (2, 0.79), (10, 0.67), (50, 0.48))},
+}
+"""SendCutSend's cutting of an aluminium part, the material included, by alloy (the thickness
+hardly matters: 5052 0.080 and 0.125 in quoted within 4 % on the same part): per part at one
+off a fixed charge, a rate per cm^2 of the part and one per cm of its cut length (every
+contour, holes included: :func:`hardware.bom.cut_length_cm`), fitted by
+:func:`hardware.bom.cut_estimate`'s docstring (2026-10-14: 5052 pays for its cut length;
+6061's eight prices don't support a cut rate, so it keeps its area fit of 2026-10-12)."""
+
+
 ALLOYS = {
-    # alloy: (temper, its page, density g/cm^3, yield MPa (typical), the walkers' cut rate
-    # USD/cm^2)
-    "5052": ("H32", SCS_AL, 2.68, 193.0, 0.20),
-    "6061": ("T6", SCS_6061, 2.70, 276.0, 0.40),
+    # alloy: (temper, its page, density g/cm^3, yield MPa (typical))
+    "5052": ("H32", SCS_AL, 2.68, 193.0),
+    "6061": ("T6", SCS_6061, 2.70, 276.0),
     # SendCutSend's datasheet (materials?sku=ALU7075-190, fetched 2026-10-13): .125, .190,
     # .250 in; yield 69 ksi, 81 ksi ultimate, 7.9 % elongation, 176.26 lb/ft^3; no walker
-    # cut rate (a cradle's 7075 is priced by hardware.bom.CRADLE_CUT_FITS: live quotes of
-    # 2026-10-14)
-    "7075": ("T6", "https://sendcutsend.com/materials/7075-aluminum/", 2.82, 476.0, None),
+    # cut rate in CUT_RATES (a cradle's 7075 is priced by hardware.bom.CRADLE_CUT_FITS: live
+    # quotes of 2026-10-14)
+    "7075": ("T6", "https://sendcutsend.com/materials/7075-aluminum/", 2.82, 476.0),
 }
 """Each alloy's temper, page, density and **typical** yield: the walkers' strength rules and
 audits were set on these (``yield_mpa``; the identity gate holds them)."""
@@ -213,7 +231,7 @@ def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None,
         sheet_mm: tuple[float, float] = (300.0, 300.0)) -> Item:
     t = round(inch * IN, 3)
     name = f"{alloy} aluminium sheet {inch:.3f} in ({t:g} mm), laser cut"
-    temper, url, density, yield_mpa, rate = ALLOYS[alloy]
+    temper, url, density, yield_mpa = ALLOYS[alloy]
     spec = SCS_TABLE[(alloy, inch)]
     small = (spec["min_part"][0] * IN, spec["min_part"][1] * IN)
     over, under = (round(v * IN, 3) for v in spec["tol"])
@@ -227,9 +245,11 @@ def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None,
               "min_hole": t, "sheet_mm": sheet_mm, **SCS_RULES_AL, "min_part": small,
               "thickness_tol": (over, under), "sku": spec["sku"],
               **({"deburr_mm": SCS_DEBURR_MM} if key in DEBURR_CHECKED else {}),
-              # the cutting, material included (hardware.bom.cut_estimate, calibrated on
-              # SendCutSend's live quotes of 2026-10-08): per cm^2 of part, least per part
-              **({"cut_usd_cm2": rate, "cut_min_usd": 2.20} if rate is not None else {})},
+              # the cutting, material included (hardware.bom.cut_estimate, fitted on
+              # SendCutSend's live quotes of 2026-10-08 and 2026-10-12): per part at one off
+              # fixed + per cm^2 of part + per cm of cut, at least the least; the
+              # quantity breaks (a cradle's: hardware.bom.CRADLE_CUT_FITS)
+              **CUT_RATES.get(alloy, {})},
         notes=f"{alloy}-{temper}: yield {yield_mpa:g} MPa typical "
               f"({'SendCutSend' if alloy == '7075' else 'ASM'}), "
               f"{min_yield(alloy, inch) or yield_mpa:g} MPa minimum (ASTM B209); "

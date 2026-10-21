@@ -3,13 +3,16 @@
     spiderpig export 1a2b3c4d5e6f7a8b                       # the spec's outputs, into the store
     spiderpig export 1a2b3c4d5e6f7a8b --formats glb mjcf --out out/heel
     spiderpig export --linkage trotbot_heel --formats step stl print dxf bom glb mjcf
+    spiderpig export 1a2b3c4d5e6f7a8b --formats guide control order   # to make it
 
 The API's :func:`spiderpig.api.export` on the command line: a stored design by its id,
 or the design the build options describe (``--linkage``, ``--module``, ``--pin``, ...:
 the same options as ``spiderpig build``; a mechanism is its one module and one side),
 resolved into the store first as ``spiderpig view`` does. ``--formats`` is any of
-``step``, ``stl``, ``print``, ``dxf``, ``bom``, ``glb``, ``mjcf`` (default: the spec's
-``outputs``; a CLI design's are step, stl, print, dxf and bom); the files go into
+``step``, ``stl``, ``print``, ``dxf``, ``bom``, ``glb``, ``mjcf``, ``urdf`` (default: the
+spec's ``outputs``; a CLI design's are step, stl, print, dxf and bom) and the maker's
+``guide`` (ASSEMBLY.pdf/.md), ``control`` (``control/``: servos.json or printer.cfg, and
+HOMING.md, by what drives the design) and ``order`` (ORDER.md with its uploads); the files go into
 ``--out`` (default: the design's ``exports/`` in the store) with ``manifest.json``. An
 export the store already holds for these formats and folder is returned as is
 (``--force`` rewrites). The MJCF (and its ``.json`` beside it) is what ``spiderpig sim
@@ -24,13 +27,14 @@ from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
+    from spiderpig.api.exports import formats_all
     from spiderpig.config import add_build_args, add_design_args
-    from spiderpig.spec import OUTPUTS
 
     ap = argparse.ArgumentParser(
         prog="spiderpig export",
         description="write a stored design's files (or those of the design the build "
-                    "options describe): STEP, STL, print STLs, DXF sheets, BOM, glb, MJCF")
+                    "options describe): STEP, STL, print STLs, DXF sheets, BOM, glb, MJCF, "
+                    "URDF, the assembly guide, the controller's files, ORDER.md")
     ap.add_argument("design", nargs="?", metavar="DESIGN",
                     help="a design id (16 hex digits, from resolve); or give the build "
                          "options below and the design is resolved into the store first")
@@ -40,8 +44,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="with the build options: one side (no second side, no chassis)")
     ap.set_defaults(linkage=None, module=None, servo=None, pillar=None, pin=None, crank=None,
                     sheet=None, frame_sheet=None, heads=None)
-    ap.add_argument("--formats", nargs="+", choices=OUTPUTS, metavar="FORMAT",
-                    help=f"what to write: {', '.join(OUTPUTS)} (default: the spec's outputs)")
+    have = formats_all()
+    ap.add_argument("--formats", nargs="+", choices=have, metavar="FORMAT",
+                    help=f"what to write: {', '.join(have)} (default: the spec's outputs)")
     ap.add_argument("--out", type=Path, default=None,
                     help="output directory (default: the design's exports/ in the store)")
     ap.add_argument("--store", metavar="PATH",

@@ -166,6 +166,54 @@ def pills(specs: Iterable[tuple[XY, XY, float, float, float]]) -> Shape3D:
     return prisms[0] if len(prisms) == 1 else Compound(children=prisms)
 
 
+def hull(circles: Sequence[tuple[XY, float]], z0: float, z1: float) -> Shape3D:
+    """The convex hull of circles ``(xy, r)``, given in counter-clockwise order round it
+    (each on the hull), extruded ``z0..z1``: one prism of the circles' arcs and their outer
+    tangents (no boolean, the outline a cutter reads as arcs). Circles inside the first
+    one are dropped."""
+    c0 = np.asarray(circles[0][0], dtype=float)[:2]
+    r0 = float(circles[0][1])
+    cs = [(c0, r0)] + [(np.asarray(xy, dtype=float)[:2], float(r)) for xy, r in circles[1:]
+                       if float(np.hypot(*(np.asarray(xy, dtype=float)[:2] - c0))) + r > r0]
+    if len(cs) == 1:
+        return disc(c0, r0, z0, z1)
+    n_ = len(cs)
+    if n_ > 2:                          # the centres counter-clockwise (shoelace)
+        xs = [c[0] for c, _ in cs]
+        ys = [c[1] for c, _ in cs]
+        area = sum(xs[i] * ys[(i + 1) % n_] - xs[(i + 1) % n_] * ys[i] for i in range(n_))
+        if area <= 0.0:
+            raise ValueError("hull: give the circles counter-clockwise round it")
+    tangents = []                       # the outward normal of the tangent from i to i + 1
+    for i in range(n_):
+        (p, rp), (q, rq) = cs[i], cs[(i + 1) % n_]
+        d = q - p
+        dist = float(np.hypot(*d))
+        if dist - abs(rp - rq) <= 1e-9:
+            raise ValueError("hull: one circle inside its neighbour (or on its centre)")
+        u = d / dist
+        w = np.array([u[1], -u[0]])     # right of the way round: outward
+        k = (rp - rq) / dist
+        tangents.append(k * u + math.sqrt(1.0 - k * k) * w)
+
+    def v(xy):
+        return Vector(float(xy[0]), float(xy[1]), z0)
+
+    edges = []
+    for i in range(n_):
+        (p, rp), (q, rq) = cs[i], cs[(i + 1) % n_]
+        n_in, n_out = tangents[i - 1], tangents[i]
+        a0 = math.atan2(n_in[1], n_in[0])
+        sweep = (math.atan2(n_out[1], n_out[0]) - a0) % (2 * math.pi)
+        mid = a0 + sweep / 2
+        if sweep > 1e-9:
+            edges.append(Edge.make_three_point_arc(
+                v(p + rp * n_in), v(p + rp * np.array([math.cos(mid), math.sin(mid)])),
+                v(p + rp * n_out)))
+        edges.append(Edge.make_line(v(p + rp * n_out), v(q + rq * n_out)))
+    return Solid.extrude(Face(Wire(edges)), Vector(0, 0, z1 - z0))
+
+
 def union(parts: Iterable[Shape3D]) -> Shape3D:
     """Fuse parts in one boolean (``a + b`` on two disjoint Solids returns a list)."""
     parts = [p for p in parts if p is not None]
