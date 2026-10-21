@@ -262,6 +262,46 @@ def test_the_jobs_in_worker_processes_give_the_answer_they_give_here():
         assert _answer(_two_legs(workers=n).solve()) == _answer(here)
 
 
+def test_a_worker_forked_from_a_parent_that_catches_sigterm_still_stops():
+    """``stack_pool._worker`` puts the signals' handlers back to the defaults: a planner in a
+    process that catches SIGTERM (the viewer's server: uvicorn's graceful shutdown) can still
+    terminate a worker it cancels (a bake hung joining one, 2026-10-21)."""
+    import multiprocessing
+    import os
+    import signal
+    import time
+
+    from spiderpig.stack_pool import _worker
+
+    def caught(pid: int) -> bool:          # SIGTERM in the process's caught set (/proc)
+        with open(f"/proc/{pid}/status") as f:
+            mask = next(int(ln.split()[1], 16) for ln in f if ln.startswith("SigCgt:"))
+        return bool(mask >> (signal.SIGTERM - 1) & 1)
+
+    ctx = multiprocessing.get_context("fork")
+    old = signal.signal(signal.SIGTERM, lambda *_: None)
+    try:
+        a, b = ctx.Pipe()
+        p = ctx.Process(target=_worker, args=({}, b, 1.0), daemon=True)
+        p.start()
+        b.close()
+        end = time.monotonic() + 10.0
+        while p.pid and caught(p.pid) and time.monotonic() < end:
+            time.sleep(0.02)                 # (until the worker has reset its handlers)
+        p.terminate()
+        p.join(5.0)
+        alive = p.is_alive()
+        if alive:
+            p.kill()
+            p.join()
+        a.close()
+    finally:
+        signal.signal(signal.SIGTERM, old)
+    assert not alive
+    assert p.exitcode == -signal.SIGTERM
+    assert os.getpid()                       # (the test's own process untouched)
+
+
 def test_no_workers_with_spiderpig_workers_off(monkeypatch):
     """``SPIDERPIG_WORKERS=0``: the jobs run in this process, whatever ``workers`` asks;
     else ``workers``, ``SPIDERPIG_PLAN_WORKERS``, or ``MAX_WORKERS``."""

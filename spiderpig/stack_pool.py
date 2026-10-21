@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import multiprocessing
 import os
+import signal
 import traceback
 from multiprocessing.connection import Connection, wait
 from multiprocessing.process import BaseProcess
@@ -35,7 +36,12 @@ if TYPE_CHECKING:
 def _worker(subs: Mapping[str, StackProblem], conn: Connection, seconds: float) -> None:
     """A forked worker: job after job, each with ``seconds`` of this thread's CPU time, until
     told to stop (``None``) or its planner is gone (killed: its siblings keep the pipe open,
-    so the worker watches its parent)."""
+    so the worker watches its parent). The signals' handlers are the defaults again: a fork
+    keeps its parent's, and a parent that catches SIGTERM (the viewer's server: uvicorn's
+    graceful shutdown) left a worker that :meth:`Pool._stop`'s terminate couldn't stop, its
+    planner joining it for ever (a bake hung, 2026-10-21)."""
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, signal.SIG_DFL)
     parent = os.getppid()
     try:
         while True:
@@ -122,7 +128,10 @@ class Pool(Here):
             job = self.busy.get(conn)
             if job is not None and stop(job):
                 p.terminate()
-                p.join()
+                p.join(5.0)
+                if p.is_alive():            # (a worker deaf to SIGTERM: _worker's note)
+                    p.kill()
+                    p.join()
                 conn.close()
                 del self.busy[conn]
                 self.sent.discard(job)
