@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import itertools
+import math
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
@@ -11,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from spiderpig.mechanism import body_class
 from spiderpig.stack.geometry import Disc, Layout, log, made
-from spiderpig.stack.plan import Deadline, StackSpec
+from spiderpig.stack.plan import LAYERS_FIRST, Deadline, StackSpec
 from spiderpig.stack.plan_z import (
     EPS_Z,
     GAP_GROUPS,
@@ -91,6 +92,8 @@ class StackProblem:
             if not c.deps <= known:
                 unknown = sorted(c.deps - known)
                 raise ValueError(f"claim {c.owner} depends on unknown links {unknown}")
+        # each axle's links, two or more (objective "layers_height" ranks their spans: key)
+        self.axle_links = tuple(tuple(ax.members) for ax in topo.axes if len(ax.members) > 1)
         self.partners: dict[str, set[str]] = {n: set() for n in self.links}
         for ax in topo.axes:
             for a, b in itertools.combinations(ax.members, 2):
@@ -223,13 +226,44 @@ class StackProblem:
         2026-10-14, kept for designs whose crank router prunes on its cost: the walkers):
         the fewest layers, then the route's cost; plans equal in those rank by the height
         and the rest, but the search stops at the first plan with no route cost (it doesn't
-        search such a size on for a lower one: :class:`_Search`)."""
+        search such a size on for a lower one: :class:`_Search`). "layers_height" (an arm's:
+        no crank, nothing for a route's cost to prune): the fewest layers, then the lowest
+        stack in them (the size searched to the end, branch and bound on the height), the
+        route's cost, then the axles' spans, longest first (:meth:`axle_spans`: at one height
+        the links' order is free, and a pin bends under its load by its span: an arm's
+        crash, the elbow pin its weakest joint), then the stock parts and the prints."""
         tie = (self.heads_rank, plan.top, tuple(sorted(plan.layers.items())),
                repr(sorted((k, repr(v)) for k, v in plan.choices.items())))
         height = round(plan.height + plan.hold, 4)
         if self.spec.objective == "layers":
             return (plan.top, plan.cost, height, round(plan.usd, 2), plan.printed, *tie)
+        if self.spec.objective == "layers_height":
+            return (plan.top, height, plan.cost, self.axle_spans(plan), round(plan.usd, 2),
+                    plan.printed, *tie)
         return (height, plan.cost, round(plan.usd, 2), plan.printed, *tie)
+
+    def key_height(self, key: tuple, top: int) -> float | None:
+        """The height a plan of ``top + 1`` layers must not exceed to beat the plan whose
+        key is ``key`` (:meth:`key`): its height; on a layer count first
+        (:data:`stack.plan.LAYERS_FIRST`) only a plan of as many layers bounds one (one with
+        fewer beats every plan here: -inf; one with more, none: ``None``)."""
+        if self.spec.objective not in LAYERS_FIRST:
+            return key[0]
+        if key[0] != top:
+            return -math.inf if key[0] < top else None
+        return key[1] if self.spec.objective == "layers_height" else key[2]
+
+    def axle_spans(self, plan: StackPlan) -> tuple[float, ...]:
+        """Each axle's span in ``plan`` (mm, mid-plane to mid-plane of its outermost links'
+        layers, as the strength check measures a pin's: :mod:`construction.wobble`), longest
+        first."""
+        lay, out = plan.layout, []
+        for members in self.axle_links:
+            ks = [plan.layers[m] for m in members if m in plan.layers]
+            if len(ks) > 1:
+                lo, hi = min(ks), max(ks)
+                out.append(round((sum(lay.z(hi)) - sum(lay.z(lo))) / 2, 3))
+        return tuple(sorted(out, reverse=True))
 
     def size_lb(self, top: int) -> float:
         """The least height any plan of ``top + 1`` layers can have: every layer at least its
@@ -322,7 +356,8 @@ class _Search:
         self.best_key: tuple | None = None
         self.key_bound: tuple | None = None   # a plan to beat from elsewhere (its key)
         self.lb_bad = 0                       # leaves under their own least height (a bug)
-        self.height_first = prob.spec.objective == "height"
+        # (branch and bound on the height: objectives "height" and "layers_height")
+        self.height_first = prob.spec.objective != "layers"
         self.lt = {n: t for n, t in prob.spec.link_t if t > prob.spec.pitch + EPS_Z}
         base = prob.bound_layout({}, top)
         self.t0 = [base.t(k) for k in range(top + 1)]     # each layer's least, no link placed
@@ -443,9 +478,10 @@ class _Search:
 
     def bound_h(self) -> float | None:
         """The height a plan below this node must not exceed (the best plan's, here or
-        given): ``None`` before any."""
-        keys = [k for k in (self.key_bound, self.best_key) if k is not None]
-        return min(keys)[0] if keys else None
+        given: :meth:`StackProblem.key_height`): ``None`` before any."""
+        hs = [h for k in (self.key_bound, self.best_key) if k is not None
+              and (h := self.prob.key_height(k, self.top)) is not None]
+        return min(hs) if hs else None
 
     def effects(self, p: Placed) -> tuple[tuple[int, ...], tuple[tuple[str, int], ...]]:
         """(the router pieces ``p`` blocks, the (link, layer) choices it rules out)."""

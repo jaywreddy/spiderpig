@@ -33,11 +33,14 @@ machine (``tests/test_stage_checks.py`` does that)."""
 class StackSpec:
     """Stack dimensions (mm): ``pitch`` = sheet thickness; ``margin`` = clearance.
 
-    ``objective`` (:meth:`StackProblem.key`): "height", the lowest stack (frame plate to
-    frame plate), then the crank route's cost, what the stock parts cost and the parts
-    printed; "layers", the fewest layers, then the route's cost, the search stopping at
-    the first plan with no route cost (equal ones then rank by the height and the rest; a
-    walker's: ``config.plan_objective``). The search runs as jobs (:mod:`stack.drive`): a
+    ``objective`` (:meth:`StackProblem.key`, :data:`OBJECTIVES`): "height", the lowest
+    stack (frame plate to frame plate), then the crank route's cost, what the stock parts
+    cost and the parts printed; "layers", the fewest layers, then the route's cost, the
+    search stopping at the first plan with no route cost (equal ones then rank by the height
+    and the rest; a walker's: ``config.plan_objective``); "layers_height", the fewest
+    layers, then the lowest stack in them, proven, then the route's cost, the axles' spans
+    (longest first), the stock parts' cost and the prints (an arm's). The search runs as
+    jobs (:mod:`stack.drive`): a
     stack size and a head placement each, ``workers`` at once in forked processes
     (:mod:`stack_pool`; ``None``: ``SPIDERPIG_PLAN_WORKERS``, else up to
     :data:`stack.drive.MAX_WORKERS`; one, or ``SPIDERPIG_WORKERS=0``: in this process), each
@@ -46,8 +49,9 @@ class StackSpec:
     Effort, in nodes per job: ``quick_nodes`` for each size's short job while the first
     plan is looked for (``max_total_nodes`` of them in all), then the proof: ``max_nodes``
     for each size the objective needs searched to the end (objective "height": every size
-    whose least height isn't over the best plan's, ``proof_nodes`` when set; "layers": the
-    plan's own size, and ``max_nodes // 2`` each thinner one); and ``max_seconds`` of CPU per
+    whose least height isn't over the best plan's, ``proof_nodes`` when set; "layers" and
+    "layers_height": the plan's own size, and ``max_nodes // 2`` each thinner one); and
+    ``max_seconds`` of CPU per
     job, the safety net. A plan found is always valid; only the proof depends on them: when
     they run out, the plan is returned unproven (``StackPlan.optimal`` false, ``proof``
     naming the sizes left open) and none found raises :class:`PlanError` with the tally.
@@ -102,6 +106,23 @@ class StackSpec:
     # :data:`PIN_STACKS`): each a pin's links and the most layers its column may span (its
     # links and the hubs its thin riders take beside them); empty: no such rule
     adjacent: tuple[tuple[tuple[str, ...], int], ...] = ()
+
+
+OBJECTIVES: dict[str, str] = {
+    "height": "the lowest stack (frame plate to frame plate, mm), then the crank route's "
+              "cost, the stock parts' cost, the parts printed (a product's)",
+    "layers": "the fewest layers, then the crank route's cost, a size's search stopping at "
+              "its first plan with no route cost (a walker's and a mechanism's: their crank "
+              "router prunes on its cost, which bounds nothing on the height)",
+    "layers_height": "the fewest layers, then the lowest stack in them (branch and bound on "
+                     "the height, proven), then the route's cost, the axles' spans (longest "
+                     "first), the stock parts' cost, the parts printed (an arm's)",
+}
+"""The planner's objectives (:attr:`StackSpec.objective`, :meth:`StackProblem.key`)."""
+
+LAYERS_FIRST = ("layers", "layers_height")
+"""The objectives whose first term is the layer count: their proof searches every thinner
+size, and a plan in one beats every plan in a thicker one (:mod:`stack.drive`)."""
 
 
 @dataclass(frozen=True)
@@ -163,7 +184,8 @@ class StackPlan:
     """A solved stack: every link's layer, the stack size and every claimed shape.
 
     ``optimal``: no plan is better under the objective (:meth:`StackProblem.key`: the
-    lowest stack, or for objective "layers" the thinnest and its cheapest crank route),
+    lowest stack, or for objective "layers" the thinnest and its cheapest crank route, for
+    "layers_height" the thinnest and the lowest in it),
     with either head placement searched; ``proof`` says how that was established, or why
     not. ``usd`` and ``printed``: what its stock parts cost and the parts it prints (the
     claims' ``tally``: the objective's later terms).

@@ -28,7 +28,9 @@ cheapest route whose pieces clear everything else in their layers.
 
 :meth:`StackProblem.solve` finds the lowest stack (:meth:`StackProblem.key`: its
 height in mm, then the crank route's cost, the stock parts' cost and the parts printed;
-a walker's objective "layers": the fewest layers, then the route), as jobs of one stack
+a walker's objective "layers": the fewest layers, then the route; an arm's
+"layers_height": the fewest layers, then the lowest in them, then the axles' spans), as
+jobs of one stack
 size and one head placement each (:mod:`.drive`), here or in forked workers
 (:mod:`stack_pool`), with the same answer. A job searches link layers (the assembly
 tree from the crank outwards, fewest open layers first) with forward checking: every

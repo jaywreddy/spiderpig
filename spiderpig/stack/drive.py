@@ -23,7 +23,8 @@ none with ``SPIDERPIG_WORKERS=0``) and whenever it runs.
    workers run the size the search likely asks next (a job asked twice runs once).
 2. **The proof**: the best of those plans bounds every other. Every size and placement the
    objective needs (on the height: each whose least height, :meth:`StackProblem.size_lb`,
-   isn't over the plan's; on "layers": the plan's size and every thinner one) and whose
+   isn't over the plan's; on the layers, "layers" and an arm's "layers_height": the plan's
+   size and every thinner one) and whose
    short job didn't search it to the end gets a full job (``max_nodes``; a placement's
    together no more than what its first step left of ``max_total_nodes``) with the best plan
    so far to beat, split into parts (``Job.at``: they cover the size once each, its budget
@@ -49,7 +50,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from spiderpig.stack.geometry import log
-from spiderpig.stack.plan import Deadline
+from spiderpig.stack.plan import LAYERS_FIRST, Deadline
 from spiderpig.stack.plan_z import GIVE_UP, HEADS_ORDER
 from spiderpig.stack.search import HEIGHT_TOL, StackProblem, _Search
 from spiderpig.stack.topology import PlanError
@@ -392,9 +393,9 @@ class _Drive:
             else:
                 top, jump = min(top + (1 << jump), spec.max_top), jump + 1
         if found is not None:
-            if spec.prove and spec.objective == "layers":
+            if spec.prove and spec.objective in LAYERS_FIRST:
                 # (the proof searches every thinner size anyway, thinnest first, and on
-                # "layers" any plan there beats this one whatever its bound)
+                # the layers any plan there beats this one whatever its bound)
                 return found
             for top in range(found - 1, spec.min_top - 1, -1):
                 if any(top in self.tried[m] for m in self.modes) or \
@@ -482,10 +483,10 @@ class _Drive:
 
     def _needed(self, best: tuple) -> list[int]:
         """The stack sizes the objective needs searched to prove ``best`` (its key first):
-        on "layers" every size up to its own; on the height every size whose least height
-        isn't over its height."""
+        on the layers ("layers", "layers_height") every size up to its own; on the height
+        every size whose least height isn't over its height."""
         spec, prob = self.spec, self.prob
-        if spec.objective == "layers":
+        if spec.objective in LAYERS_FIRST:
             return list(range(spec.min_top, best[2] + 1))
         out = []
         for top in range(spec.min_top, spec.max_top + 1):
@@ -518,8 +519,9 @@ class _Drive:
                 for t in wave:
                     if t not in left:
                         continue
-                    if spec.objective == "layers":
-                        # (the thinner sizes: any plan; the plan's own: a cheaper route)
+                    if spec.objective in LAYERS_FIRST:
+                        # (the thinner sizes: any plan; the plan's own: a cheaper route, or
+                        # on "layers_height" a lower stack)
                         nominal = spec.max_nodes if t == best[2] else spec.max_nodes // 2
                         job = Job(m, t, min(nominal, share), bound if t == best[2] else None)
                     else:
@@ -538,7 +540,7 @@ class _Drive:
             got = self._best(self.order)
             assert got is not None          # (the first plans are among them)
             best = got
-            if spec.objective == "layers":
+            if spec.objective in LAYERS_FIRST:
                 if any(r["key"] is not None for _, _, r in full[-len(jobs):]):
                     break
                 todo = [t for t in todo if t <= best[2]]
@@ -567,8 +569,8 @@ class _Drive:
                found: int | None) -> tuple[bool, str]:
         """(optimal, how it was established), deterministic in the jobs' answers: every
         (placement, size) the objective needs searched (objective "height": each size whose
-        least height isn't over the plan's; "layers": each size up to the plan's) has a
-        job that ran to the end, and no placement gave up."""
+        least height isn't over the plan's; "layers", "layers_height": each size up to the
+        plan's) has a job that ran to the end, and no placement gave up."""
         spec, prob = self.spec, self.prob
         closed = {(mm, t) for mm, t, r in self.order if r["done"]}
         planned = [t for _, t, r in self.order if r["key"] is not None]
@@ -583,7 +585,7 @@ class _Drive:
         if not spec.prove:
             out.append("the search stopped at the first plan: no proof asked")
             return False, "; ".join(out)
-        if spec.objective == "layers":
+        if spec.objective in LAYERS_FIRST:
             need = range(spec.min_top, plan.top + 1)
         else:
             need = [t for t in range(spec.min_top, spec.max_top + 1)
@@ -597,10 +599,12 @@ class _Drive:
             out.append("not ruled out: " + ", ".join(f"{t + 1} layers (heads {mm})"
                                                      for t, mm in open_)
                        + (f" ({' and '.join(why)} ran out)" if why else ""))
-        elif spec.objective == "layers":
+        elif spec.objective in LAYERS_FIRST:
             n = sum(r["nodes"] for _, t, r in self.order if t == plan.top)
-            out.append(f"{plan.top + 1} layers searched to the end for the cheapest crank "
-                       f"route with heads {heads} ({n} nodes)")
+            what = ("the lowest stack" if spec.objective == "layers_height"
+                    else "the cheapest crank route")
+            out.append(f"{plan.top + 1} layers searched to the end for {what} with heads "
+                       f"{heads} ({n} nodes)")
         else:
             n = sum(r["nodes"] for _, t, r in full)
             last = max(need, default=plan.top)

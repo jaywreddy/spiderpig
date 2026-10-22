@@ -364,16 +364,22 @@ LINKAGE_OBJECTIVES: dict[str, str] = {
 
 
 def plan_objective(lk: linkage.Linkage) -> str:
-    """The planner's objective (:attr:`stack.StackSpec.objective`) for ``lk``: its own
-    (:data:`LINKAGE_OBJECTIVES`), else a product's (a decanting cradle's) "height", the
-    lowest stack (then the route, the stock parts' cost, the prints), proven in seconds;
-    else a walker's "layers", the fewest layers, then the cheapest crank route (equal
-    plans found rank by their height; 2026-10-14: on "height" a walker's crank router can't
-    prune on its route's cost, and its taller sizes, which may be lower, are searched without
-    end)."""
+    """The planner's objective (:attr:`stack.StackSpec.objective`,
+    :data:`stack.plan.OBJECTIVES`) for ``lk``: its own (:data:`LINKAGE_OBJECTIVES`), else a
+    product's (a decanting cradle's) "height", the lowest stack (then the route, the stock
+    parts' cost, the prints), proven in seconds; else an arm's "layers_height", the fewest
+    layers, then the lowest stack in them, then the shortest axle spans (2026-10-21: an arm
+    has no crank, so "layers" kept the first plan its search found: the merged search's was
+    taller than master's and its elbow pin's span longer; on "height" the turret's proof
+    doesn't end in its budget); else a walker's or a mechanism's "layers", the fewest
+    layers, then the cheapest crank route (equal plans found rank by their height;
+    2026-10-14: on "height" a walker's crank router can't prune on its route's cost, and its
+    taller sizes, which may be lower, are searched without end)."""
     if lk.key in LINKAGE_OBJECTIVES:
         return LINKAGE_OBJECTIVES[lk.key]
-    return "height" if lk.product else "layers"
+    if lk.product:
+        return "height"
+    return "layers_height" if lk.kind == "arm" else "layers"
 
 
 def default_crank(lk: linkage.Linkage, module: str = "") -> str:
