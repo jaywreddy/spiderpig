@@ -339,12 +339,16 @@ def test_a_fixed_designs_turn_is_bounded_by_its_servos_torque_limit():
 @pytest.mark.slow     # (fabricates every one-input mechanism's side: ~2 min)
 def test_every_mechanisms_default_holds_its_jam():
     """Each mechanism's default at its own torque limit: every joint and link at jam SF 2
-    or more (the limits' rule)."""
+    or more (the limits' rule). Not a product's: a decanting cradle is hand-cranked, no
+    servo limit to rate it at; its own statics rate it (``cradle_report``, DECANTER.md),
+    A's box left open at the jam by the user's call (DECISIONS.md 2026-10-21)."""
     from tests import cache
 
     for key in linkage.available("mechanism"):
         if len(linkage.get(key).inputs) > 1:
             continue                                  # (five_bar: no drive for t2 yet)
+        if linkage.get(key).product:
+            continue
         cfg = BuildConfig(linkage=key, robot=False)
         mech = cache.cached_side(cfg)
         st = strength.check(mech.meta.get("wobble") or {}, mech.meta, cfg,
