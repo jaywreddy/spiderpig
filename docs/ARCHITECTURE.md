@@ -926,8 +926,8 @@ else, here is what each does:
   and remembers small conflicting combinations (up to eight links) so it never tries them
   again.
 - **Branch and bound.** Once a plan exists, branches that can't beat it are cut: on the
-  height, a node whose least height is over the plan's; on `"layers"`, a branch whose crank
-  route can't be cheaper.
+  height (and on an arm's `"layers_height"`, within the plan's size), a node whose least
+  height is over the plan's; on `"layers"`, a branch whose crank route can't be cheaper.
 
 Every complete plan is re-checked from scratch before it is accepted (`verify_plan`: every
 claim re-made, every pair of shapes in every layer tested). A failure there is a bug and
@@ -954,6 +954,12 @@ with no route cost, as it always did, so the height there is the first such plan
 height a walker's crank router can't prune on its route's cost, and the taller sizes, which
 may be lower, have to be searched too: the Strider double's proof
 doesn't end in minutes (the 2026-10-14 entry of `docs/agentlib/DECISIONS.md` has the numbers).
+An arm, which has no crank and so no route cost to stop on, plans on `"layers_height"`
+(2026-10-21): the fewest layers, then the lowest stack in them (its size searched to the end,
+branch and bound on the height), then the route's cost, then the axles' spans, longest first
+(`StackProblem.axle_spans`: at one height the links' order is free, and a pin bends under its
+load by its span), then the stock parts and the prints. On `"layers"` it kept the first plan
+found; on the height alone the turret's proof doesn't end in its budget.
 
 **A sound search.** The search may refuse a partial layering only on a bound valid for every
 plan it can become. Its z is such a bound (`stack.bound_layout`, `Layout`): every layer at

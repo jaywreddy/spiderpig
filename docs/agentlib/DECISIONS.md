@@ -5114,3 +5114,159 @@ On the old fit 0d9449b was B 1,007.55 and A 847.47.
   `spiderpig/construction/cradle.py`, `spiderpig/hardware/shipping.py`, `spiderpig/build.py`,
   `spiderpig/guide/make.py`, `spiderpig/tools/pack_inspect.py`, `tests/test_cradle.py`,
   `docs/agentlib/DECANTER.md`.
+
+### 2026-10-21: the decanting cradles merged onto the platform (master `40f18c7`; the user's "merge it onto main")
+
+- **What:** the `decanting-cradle` branch (the hand-cranked cradles B `decanter_rcm` and A
+  `decanter_hinge`, a product: `Linkage.product`, `config.PRODUCT_*`) merged with master's
+  engine (one engine for every kind, a design carrying its task, one spec vocabulary, the
+  roles and fab-method registries, the palletizer arm). Master's design is the frame: the
+  cradle follows its renamed and reshaped APIs; every feature of both sides is kept.
+- **The planner:** the cradle branch's (the lowest stack, both head placements, the
+  search's z a bound, `plan_z._descend` / `_take_up`, the sleeve rule; DECISIONS
+  2026-10-14) plans every design now, with master's `pin_stack` rule checked on the plan's
+  final gaps (`plan_z.finalize`), and the column rules take both sides' arguments
+  (`hi`, the cradle's bound; `members`, `room`, `spacer`, master's ball pairs':
+  `construction.pivots.pair` passes `hi` on).
+- **Adapted to fit both:**
+  - one kind of link-fixed point, `stack.LinkPoint`: master's hub bolts (mm along and
+    across, `Topology.add_link_point`) and the cradle's plate outlines (fractions of a
+    chord, `add_link_points`, `scaled`), one dict `Topology.link_points`, one placement
+    (`Build.xy`);
+  - the stock spacers (master's `spacers`, `common.Stock`: tubes and DIN 988 shims) serve
+    every walker and arm; a product keeps its printed rings and sleeves
+    (`AxleGroup.realize` skips the stock where `axle.full_rings`: a cradle's keepers are its
+    TPU sleeves), and the cradle's pins (`pivot8`, `clevis8`, the rod pins, `chicago6` as
+    `PrintedChicagoAxle`) declare none (no stock tube fits an 8-9.5 mm pin);
+  - master's `BallAxle` builds its rings by the sleeve rule as the Chicago pin now does
+    (`common.gap_washers` is gone): the ball pivots' printed rings become stock tubes and
+    shims either way;
+  - a cradle's pins are `product_only`: chosen by its product (`config.PRODUCT_PINS`, now
+    through `config.default_pin`), never a strength fix's alternative
+    (`strength._alt_sections`, master's every-registered-axle search, would have offered
+    the steel `pivot8` against the user's materials rule) nor a walker's;
+  - a hand crank has no motor (`controllers.motors_of` is `""`): its controller role is
+    `none`, `control.files.write` writes nothing for it, and no drive group is made
+    (`construction._drive_groups`); a product is no task's candidate (`api.tasks`);
+  - the cradle's drawn-only bodies are a fab method of the registry, `display`
+    (`fabmethods.DISPLAY`: no mass, no BOM line, glass in the bake);
+  - its strength loads (`cradle_report.loads`, source `statics`) come before master's
+    static model of a cranked mechanism (`strength.crank_loads`); `PER_JOINT` holds `sim`,
+    `static` and `statics`; verify calls the cradle's statics measured, master's static
+    model estimated;
+  - its assembly order is a layout of the guide's (`assembly.CRADLE_LAYOUT`,
+    `layout_hooks`), beside master's mirrored pair and turret; its box steps and print
+    list (`guide.make.with_box_steps`) after master's controller wiring;
+  - one cutting estimate (`bom.cut_estimate`): master's per-alloy rates with the cut
+    length (`sheet_catalog.CUT_RATES`) for every sheet, a cradle's fitted files
+    (`bom.CRADLE_CUT_FITS`) where it has them; a cradle's BOM now lists the cut length too
+    (master's `cut_cm`), its prices unchanged;
+  - the Chicago shaft's catalog key is `key(length)` (master's name; the cradle's
+    `key_of`), family-aware (the M6);
+  - the walk model's pin mass refitted (`walk._PIN_PER_JOINT_G` 5.1 g: master's 3.8 on the
+    old stacks with tubes, the cradle's 4.5 on the lowest stacks with printed sleeves):
+    the Strider double -0.1 %, `klann_lego` +1.4 %, the Klann quad -1.6 % of their built
+    robots;
+  - a column whose spacers become stock (a walker's, an arm's: `common.stock_spaced`)
+    keeps one printed piece a slot, a ring a layer and a washer a gap, for
+    `common.stock_tubes` to take whole (`common.build_sleeves`); a cradle keeps the sleeve
+    rule;
+  - the deburring rule is a cradle's audit's only (`manufacture.check`: the arm's 1/8 in
+    5052 `b4` shares a cradle's sheet, `sheet_catalog.DEBURR_CHECKED`);
+  - a bearing pair's hub never stands in a thick layer nor is skipped for another axle's
+    link in its rider's layer (`pivots.pair.hub_layers`, `_thick_layers`,
+    `_inside_layers`); an arm's drive claims its hub bolts through the gap between its
+    link and its hub (`transmissions.base.JointDrive`); a size an arm's short jobs leave
+    open gets a full job before the search moves on (`StackSpec.escalate`, from
+    `Linkage.ranged`), and any design whose short jobs find no plan gets full jobs on the
+    sizes they left open (`stack.drive._Drive._fallback`);
+  - `m3_bhcs_12` once in Bolt Depot's list (both sides had read it, the same price).
+- **The arms plan their fewest layers at the lowest stack, then the shortest axle spans**
+  (objective `"layers_height"`: `config.plan_objective`, `stack.plan.OBJECTIVES`).
+  - **The problem.** On `"layers"` an arm kept the first plan its search found. An arm has
+    no crank, so there is no route cost to prune on. Master's plans were first-found too.
+    The merged search found taller ones: `palletizer_reach` went from 60.46 to 60.64 mm,
+    its elbow pin E from a 19.2 to a 32.5 mm span (jam SF 1.67 to 1.10), and
+    `palletizer_turret` from 61.74 to 64.64 mm.
+  - **The search.** With no crank (a capability, not the kind's name),
+    `plan_objective` gives `"layers_height"`. The plan's size is searched to the end with
+    branch and bound on the height, so the result is proven (`stack.drive`,
+    `_Search.bound_h`, `StackProblem.key_height`).
+  - **The tie-break.** Among plans of one height, the axles' spans rank, longest first
+    (`StackProblem.axle_spans`, measured mid-plane to mid-plane as `construction.wobble`
+    measures a pin). At their lowest height the links' order is free. The reach has 78
+    plans at 55.84 mm, pin E spanning about 17 to 37 mm among them. The height alone took
+    one at 27.1 mm (jam SF 1.02). A pin bends under its crash load in proportion to its span, and
+    the planner knows the spans but not the loads. The spans rank before the stock parts'
+    cost and the prints: the reach's lowest plans all cost the same, and the one with the
+    fewest prints has pin E at about 26 mm. Strength stays downstream (`strength.check`).
+  - **The reach:** 55.84 mm in 16 layers, proven, 4 s with the planner's workers (master
+    60.46). Pin E spans
+    15.7 mm, jam SF 2.73 against 1.67, and its warning is gone. Every other pin and pillar
+    is as strong or stronger, except pin C: 8.4 to 11.6 mm, jam SF 13.35 to 9.78. The audit
+    has 3 warnings against 4, and no problem.
+  - **The turret:** 56.26 mm in 16 layers, proven, 19 s with workers (master 61.74). Pillar O, its
+    weakest joint, goes from jam SF 1.24 to 1.30, and pins R, T, U and V are stronger.
+    - Pin E spans 17.4 mm against 19.2, but its jam SF goes from 1.76 to 1.67. In every
+      56.26 mm plan its links sit in layers 5, 6 and 9, the middle one nearer an end.
+    - Pin W goes from 10.8 to 17.4 mm, jam SF 3.98 to 2.49.
+    - The audit has the same 8 warnings and no problem.
+  - **No lower plan keeps every pin's span** (every 16-layer plan enumerated: 3696 for the
+    reach, 912 for the turret). The reach has four layerings that keep or shorten every
+    span: all at 60.46 mm, master's height. The turret has only master's own,
+    which is 61.84 mm at the merged plan's z (its gap over layer 6 is 3.6 mm, not 3.5).
+    Seeding master's layerings would have given no lower stack, and for the turret a
+    taller one.
+  - **Why not the height alone** (the products' objective): the reach plans the same, but
+    the turret's proof doesn't end within its budget (it found 59.44 mm in 17 layers and
+    left 16 layers open).
+  - The walkers, the mechanisms and the cradles keep their objectives, and their code
+    paths are unchanged.
+- **The cradles, unchanged** (each at `9540649` against the merged head `03123ee`):
+  - both `cradle_report.report` documents identical;
+  - `spiderpig build`: every DXF identical as entities, every STL identical, ORDER.md
+    identical (but for the output folder in its paths), the BOM's lines and prices
+    identical (B USD 969.62, A 797.67) with master's cut-length column added, the STEP
+    files' geometry identical (their colour styles in another order);
+  - `pack-inspect --plan default`: both packs identical (B 744 x 366 x 601 mm, 164.0 L;
+    A 700 x 252 x 607 mm, 106.9 L).
+- **Master's designs** (the identity gate, snapshot `merge-03123ee`, against master's
+  `platform-814096d` and the cradle branch's `planner-f667d6b`):
+  - **The six walkers and mechanisms** plan as `planner-f667d6b` did, layer for layer. Their
+    plans' diffs against master's are the cradle branch's planner's, each with its source
+    in [PLANNER-gate-diffs.md](PLANNER-gate-diffs.md). The parts on those plans are
+    master's: its stock tubes and DIN 988 shims, its cutting estimate.
+  - **The BOMs against master's:**
+    - the Strider double and quad are the same to the cent;
+    - the Hoecken pantograph is USD 0.36 more (the 15 mm hex standoff, priced since);
+    - the dwell rocker is 7.22 less, and the `klann_lego` quad 7.96 less (their heads
+      sunk, the cradle branch's plans);
+    - the Klann quad is 32.95 more (a pillar made to length: the height comes first, as
+      on the cradle branch).
+  - **The audits:** every design passes but the Klann quad's known failure (5 problems
+    before and after). The warnings are as many as master's, but for the Klann quad's 16 -> 13
+    and the reach's 4 -> 3.
+  - **The arms:** the section above. Purchases match master's to the cent (the reach USD
+    512.79, the turret 485.16). The cutting estimate is 1.52 and 1.81 less (smaller
+    plates). Shaft and shim lines move with the new spans.
+  - **Against the merge's earlier snapshots** (`merge-4f26b63`, `merge-b52b88c`): the
+    Strider double and quad, the `klann_lego` quad, the Hoecken pantograph and the dwell
+    rocker are identical. The Klann quad's two pillar B gap spacers are one piece a slot
+    now, as master's (stock-spaced columns, above).
+- **Tests** (at `b7a1368`-`8c6c66f`, test-only commits over the gate's `03123ee`):
+  - the quick tier, in 8 chunks: 2138 tests, all passing. One wall-clock check
+    (`test_ws_sim_streams_at_the_promised_cadence`, 54.6 fps against 55 at load 8) passed
+    alone;
+  - `mise run test-cradle`: 88 passed;
+  - the cradle's slow chunks (TESTING.md's "Chunks"): CRADLE_SLOW;
+  - master's slow tests of the arms and the mechanisms (`-m slow` with their names), in
+    chunks: 23 + 17 + 11 + 16 + 12 (one strict `xfail`: the `klann_lego` pillars' play,
+    0.3 mm, its reason brought up to date);
+  - the viewer: `tsc` clean, vitest 77 passed, `npm run build` ok;
+  - `mise run lint` clean; pyright 19 errors in the package and 673 in the tests, the
+    baseline's; `mise run doc-check -- --strict` clean.
+  - Fixed on the way:
+    - a `servos.mount`-first import cycle through `construction.handcrank`;
+    - two master tests that took a cradle for a servo-driven mechanism (the first
+      mechanism with an output, and every mechanism's jam at its torque limit);
+    - the reach's and the Klann single's recorded MJCFs, re-recorded.

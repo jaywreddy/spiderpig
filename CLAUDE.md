@@ -26,7 +26,7 @@ mise run test-cradle    # the decanting cradles' fast tests (~15 s); the slow on
 mise run test-quick # the quick tier: -m 'not slow and not e2e', xdist -n 4
 mise run test-fixtures  # rewrite the recorded fixtures (after an engine edit: they warn stale)
 mise run test       # pytest, serial (runs viewer-build first; -m e2e for browser tests)
-mise run gate -- compare ~/.cache/spiderpig/gate/merge-b52b88c   # parts/plans/BOM/DXF identity
+mise run gate -- compare ~/.cache/spiderpig/gate/merge-03123ee   # parts/plans/BOM/DXF identity
 mise run gate -- doc ~/.cache/spiderpig/gate/<baseline>        # regenerate DESIGNS.md
 mise run remote-test               # the full suite on the remote runner (may be down: AGENTS.md)
 mise run remote-audit              # the Strider's modules audited at once there
@@ -280,8 +280,9 @@ a **linkage**, a module in `spiderpig/linkages/` (`tests/test_linkage.py` checks
 
 `stack.StackProblem.solve()` finds the best plan under `StackProblem.key`: the lowest stack in
 mm, then the crank route's cost, the stock parts' cost, the parts printed (a walker's
-objective is "layers": fewest layers, then the route, ties to the lower plan found;
-`config.plan_objective`).
+objective is "layers": fewest layers, then the route, ties to the lower plan found; an arm's,
+with no crank, "layers_height": fewest layers, then the lowest in them, proven, then the
+shortest axle spans; `config.plan_objective`, `stack.plan.OBJECTIVES`).
 Static facts first (keep-outs, the crank's facts); then jobs (`stack/drive.py`), one stack size
 and one head placement each (both placements, side by side), in forked workers
 (`stack_pool.py`) or here with the same answer: a short job per size until one plans, then the
@@ -311,7 +312,7 @@ both sides.
   a new construction adds one or gets generic steps. The hooks stay out of the fab key.
 - A group builds only inside its own claims; keep `check_side` at `[]`.
 - A change that alters parts: run the identity gate before and after (baseline
-  `merge-b52b88c`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
+  `merge-03123ee`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
   audit` green, and regenerate `docs/agentlib/DESIGNS.md` with a new baseline.
 - Docs: no layer counts or heights outside DESIGNS.md; a dated decision goes to
   DECISIONS.md, not here; `mise run doc-check -- --strict` must pass.
