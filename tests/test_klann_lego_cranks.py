@@ -165,8 +165,10 @@ def test_the_pillar_rings_close_the_columns_air():
 @pytest.mark.slow
 @pytest.mark.xfail(strict=True, reason=(
     "a known regression (docs/agentlib/PLANNER-gate-diffs.md): at the planner's lowest plan "
-    "(2026-10-14) every gap is at its heads' need, the pillars' columns stand 0.7 mm over "
-    "their 52 mm standoffs, and the take-up comes in 0.5 mm washers: 0.2 mm of play"))
+    "(2026-10-14) every gap is at its heads' need and the pillars' columns stand over their "
+    "standoffs; since the merge (2026-10-21) their stock tubes and DIN 988 shims stand "
+    "0.20 mm off their gaps, as the 0.5 mm washers did: 0.3 mm of play with the 0.1 mm "
+    "assumed, worst tilt 1.85 deg as before"))
 def test_the_klann_lego_quads_pillars_keep_only_the_assumed_play():
     """The pillars keep only the 0.1 mm assumed play (0.61 deg, the Strider double's)."""
     mech = _klann_lego_quad_side()
