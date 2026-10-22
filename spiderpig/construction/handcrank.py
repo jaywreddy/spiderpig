@@ -87,7 +87,6 @@ from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get
 from spiderpig.hardware.cradle_catalog import NETRF12_THREAD
 from spiderpig.hardware.fasteners import screw, screw_solid
-from spiderpig.servos.mount import to_location
 from spiderpig.shapes import (
     Cut,
     Rect,
@@ -1738,6 +1737,10 @@ class HandCrank(Group):
         spigot = Cylinder(b.spigot_d / 2, b.spigot_h).moved(Location((0.0, 0.0, b.spigot_h / 2)))
         hub = Cylinder(b.hub_d / 2, b.width + 2 * b.hub_out).moved(
             Location((0.0, 0.0, -b.width / 2)))
+        # (here, not at the module's top: construction's package imports this module, and
+        # servos.mount imports construction.base, so importing servos.mount first was a cycle)
+        from spiderpig.servos.mount import to_location
+
         local = union([body, worm, shaft, spigot, hub])
         part = moved(local, to_location(self._frame_of(o, z_face)))
         cut = [disc(tuple(o), b.shaft_d / 2 + 0.1, z_face - b.width - 10, z_face + 10)]
