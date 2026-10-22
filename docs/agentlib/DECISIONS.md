@@ -5253,12 +5253,14 @@ On the old fit 0d9449b was B 1,007.55 and A 847.47.
     Strider double and quad, the `klann_lego` quad, the Hoecken pantograph and the dwell
     rocker are identical. The Klann quad's two pillar B gap spacers are one piece a slot
     now, as master's (stock-spaced columns, above).
-- **Tests** (at `b7a1368`-`8c6c66f`, test-only commits over the gate's `03123ee`):
-  - the quick tier, in 8 chunks: 2138 tests, all passing. One wall-clock check
-    (`test_ws_sim_streams_at_the_promised_cadence`, 54.6 fps against 55 at load 8) passed
-    alone;
+- **Tests** (at the gate's `03123ee` and the test-only commits after it):
+  - the quick tier, in 8 chunks: 2138 tests pass, but for a wall-clock check
+    (`test_ws_sim_streams_at_the_promised_cadence`, 54.6 fps against 55 at load 8) that
+    passed alone;
   - `mise run test-cradle`: 88 passed;
-  - the cradle's slow chunks (TESTING.md's "Chunks"): CRADLE_SLOW;
+  - the cradle's slow chunks (TESTING.md's "Chunks"), one at a time but for the fifth and
+    sixth: 8, 8, 2 (and 2 `xfail`: the user's calls, open at the clutch's cap), 9, 1, 11,
+    1 and 1 passed, each chunk 116-199 s at load 3-16;
   - master's slow tests of the arms and the mechanisms (`-m slow` with their names), in
     chunks: 23 + 17 + 11 + 16 + 12 (one strict `xfail`: the `klann_lego` pillars' play,
     0.3 mm, its reason brought up to date);
