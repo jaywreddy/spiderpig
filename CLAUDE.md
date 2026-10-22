@@ -73,8 +73,10 @@ robot; a mechanism's `single`, one side).
   aluminium web plates on steel hex-standoff crankpins (`construction/crank/`); `bolt_round`
   is the round friction-clamped standoff. Nothing else exists (`config.REMOVED_CONSTRUCTIONS`,
   `config.REMOVED_PARAMS`: a removed key fails with its replacement), but a decanting
-  cradle's own (`hand` crank, `chicago6` pins: products, `Linkage.product`,
-  `config.PRODUCT_*`; the design record `docs/agentlib/DECANTER.md`).
+  cradle's own (the `hand` crank, its `rod516` pins and the rest of `config.PRODUCT_PINS`,
+  its printed rings kept, `construction.axle.full_rings`: products, `Linkage.product`,
+  `config.PRODUCT_*`; no motor, `controllers.motors_of`; the design record
+  `docs/agentlib/DECANTER.md`).
 - Sheets: links, rings and deck acrylic 3 mm (`BuildConfig.sheet`); frame 0.080 in 5052
   (`frame_sheet`); crank 0.100 in 6061-T6 (`crank_sheet`, `materials.thinnest_sheet`);
   centre plates by `chassis.centre_sheet`; aluminium links per `materials.LINK_SHEETS`.

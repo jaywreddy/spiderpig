@@ -375,7 +375,10 @@ _CRANK_PLATES_BASE_G, _CRANK_PLATES_PER_PIN_G = 3.78, 5.07   # the bolt crank's 
 _CRANK_HW_BASE_G, _CRANK_HW_PER_PIN_G = 9.6, 8.28             # ... its bolts, nuts, stub
 _PILLAR_PER_PIVOT_G = 7.0            # a standoff pillar (segments, rings, screws, washers)
 _PILLAR_PER_PIVOT_LEG_G = 0.0
-_PIN_PER_JOINT_G = 5.0               # a Chicago pin (screw, tubes, washer, shims): MERGE-REFIT
+_PIN_PER_JOINT_G = 5.1               # a Chicago pin (screw, tubes, washer, shims): the stock
+#                                      tubes and shims of 2026-10-14 on the planner's lowest
+#                                      stacks, refitted 2026-10-21 (the merge): the Strider
+#                                      double -0.1 %, klann_lego +1.4 %, the Klann quad -1.6 %
 
 
 def _sheet_scale(config: BuildConfig, key: str) -> float:
