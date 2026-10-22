@@ -116,7 +116,7 @@
     "qty": 8,
     "sheet": "acrylic_3mm",
     "size_mm": "65 x 78 x 3.0 mm",
-    "volume_cm3": 3.2876054649737116
+    "volume_cm3": 3.287605464973711
    },
    {
     "cut_cm": 19.377,
@@ -137,7 +137,7 @@
     "qty": 8,
     "sheet": "acrylic_3mm",
     "size_mm": "14 x 77 x 3.0 mm",
-    "volume_cm3": 2.5981328873730227
+    "volume_cm3": 2.598132887373023
    },
    {
     "cut_cm": 36.365,
@@ -215,7 +215,7 @@
     "qty": 2,
     "sheet": "al6061_2p5mm",
     "size_mm": "29 x 37 x 2.5 mm",
-    "volume_cm3": 1.2152329394704555
+    "volume_cm3": 1.215232939470453
    },
    {
     "cut_cm": 19.349,
@@ -245,7 +245,7 @@
     "qty": 2,
     "sheet": "al6061_2p5mm",
     "size_mm": "29 x 37 x 2.5 mm",
-    "volume_cm3": 1.2917339841147168
+    "volume_cm3": 1.291733984114717
    },
    {
     "cut_cm": 21.318,
@@ -260,7 +260,7 @@
     "qty": 2,
     "sheet": "al6061_2p5mm",
     "size_mm": "43 x 35 x 2.5 mm",
-    "volume_cm3": 2.0273963735007374
+    "volume_cm3": 2.027396373500727
    },
    {
     "cut_cm": 24.549,
@@ -277,7 +277,7 @@
     "qty": 4,
     "sheet": "al6061_2p5mm",
     "size_mm": "43 x 59 x 2.5 mm",
-    "volume_cm3": 2.1926249394704596
+    "volume_cm3": 2.1926249394704516
    },
    {
     "cut_cm": 61.892,
@@ -307,7 +307,7 @@
     "qty": 2,
     "sheet": "al5052_2mm",
     "size_mm": "157 x 100 x 2.0 mm",
-    "volume_cm3": 10.515317206073425
+    "volume_cm3": 10.515317206073421
    },
    {
     "cut_cm": 33.453,
@@ -395,7 +395,7 @@
     "qty": 16,
     "sheet": "",
     "size_mm": "15 x 14 x 3.0 mm",
-    "volume_cm3": 0.12716287700695814
+    "volume_cm3": 0.1271628770069581
    },
    {
     "cut_cm": 0.0,
@@ -405,27 +405,14 @@
     "name": "L.crank_pin_collar_hi_J1_leg0",
     "names": [
      "L.crank_pin_collar_hi_J1_leg0",
-     "R.crank_pin_collar_hi_J1_leg0"
-    ],
-    "qty": 2,
-    "sheet": "",
-    "size_mm": "9 x 9 x 1.2 mm",
-    "volume_cm3": 0.039693952727283946
-   },
-   {
-    "cut_cm": 0.0,
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.crank_pin_collar_hi_J1_leg1",
-    "names": [
      "L.crank_pin_collar_hi_J1_leg1",
+     "R.crank_pin_collar_hi_J1_leg0",
      "R.crank_pin_collar_hi_J1_leg1"
     ],
-    "qty": 2,
+    "qty": 4,
     "sheet": "",
-    "size_mm": "9 x 9 x 1.1 mm",
-    "volume_cm3": 0.03671690627273769
+    "size_mm": "9 x 9 x 1.2 mm",
+    "volume_cm3": 0.03969395272728426
    },
    {
     "cut_cm": 0.0,
@@ -450,27 +437,14 @@
     "name": "L.crank_pin_collar_lo_J1_leg0",
     "names": [
      "L.crank_pin_collar_lo_J1_leg0",
-     "R.crank_pin_collar_lo_J1_leg0"
+     "L.crank_pin_collar_lo_J1_leg1",
+     "R.crank_pin_collar_lo_J1_leg0",
+     "R.crank_pin_collar_lo_J1_leg1"
     ],
-    "qty": 2,
+    "qty": 4,
     "sheet": "",
     "size_mm": "9 x 9 x 1.2 mm",
     "volume_cm3": 0.038370820969707856
-   },
-   {
-    "cut_cm": 0.0,
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.crank_pin_collar_lo_J1_leg1",
-    "names": [
-     "L.crank_pin_collar_lo_J1_leg1",
-     "R.crank_pin_collar_lo_J1_leg1"
-    ],
-    "qty": 2,
-    "sheet": "",
-    "size_mm": "9 x 9 x 0.7 mm",
-    "volume_cm3": 0.021500891060612197
    },
    {
     "cut_cm": 0.0,
@@ -485,7 +459,22 @@
     "qty": 2,
     "sheet": "",
     "size_mm": "9 x 9 x 1.0 mm",
-    "volume_cm3": 0.031755162181827015
+    "volume_cm3": 0.031755162181827
+   },
+   {
+    "cut_cm": 0.0,
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_pin_collar_lo_J1_leg3",
+    "names": [
+     "L.crank_pin_collar_lo_J1_leg3",
+     "R.crank_pin_collar_lo_J1_leg3"
+    ],
+    "qty": 2,
+    "sheet": "",
+    "size_mm": "9 x 9 x 0.4 mm",
+    "volume_cm3": 0.013231317575761516
    },
    {
     "cut_cm": 0.0,
@@ -495,27 +484,14 @@
     "name": "L.crank_pin_sleeve_J1_leg0",
     "names": [
      "L.crank_pin_sleeve_J1_leg0",
-     "R.crank_pin_sleeve_J1_leg0"
-    ],
-    "qty": 2,
-    "sheet": "",
-    "size_mm": "8 x 8 x 22.4 mm",
-    "volume_cm3": 0.6174025920674328
-   },
-   {
-    "cut_cm": 0.0,
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.crank_pin_sleeve_J1_leg1",
-    "names": [
      "L.crank_pin_sleeve_J1_leg1",
+     "R.crank_pin_sleeve_J1_leg0",
      "R.crank_pin_sleeve_J1_leg1"
     ],
-    "qty": 2,
+    "qty": 4,
     "sheet": "",
-    "size_mm": "8 x 8 x 23.0 mm",
-    "volume_cm3": 0.6339697457007267
+    "size_mm": "8 x 8 x 22.4 mm",
+    "volume_cm3": 0.6174025920674325
    },
    {
     "cut_cm": 0.0,
@@ -544,8 +520,8 @@
     ],
     "qty": 2,
     "sheet": "",
-    "size_mm": "8 x 8 x 24.4 mm",
-    "volume_cm3": 0.741314932481451
+    "size_mm": "8 x 8 x 24.3 mm",
+    "volume_cm3": 0.7382792447972517
    },
    {
     "cut_cm": 0.0,
@@ -555,13 +531,11 @@
     "name": "L.crank_ring_J1_leg0_3",
     "names": [
      "L.crank_ring_J1_leg0_3",
-     "L.crank_ring_J1_leg1_7",
      "L.crank_ring_J1_leg2_13",
      "R.crank_ring_J1_leg0_3",
-     "R.crank_ring_J1_leg1_7",
      "R.crank_ring_J1_leg2_13"
     ],
-    "qty": 6,
+    "qty": 4,
     "sheet": "",
     "size_mm": "12 x 12 x 2.6 mm",
     "volume_cm3": 0.13103740037755687
@@ -576,15 +550,13 @@
      "L.crank_ring_J1_leg0_4",
      "L.crank_ring_J1_leg1_8",
      "L.crank_ring_J1_leg2_14",
-     "L.crank_ring_J1_leg3_18",
      "L.crank_ring_J1_leg3_20",
      "R.crank_ring_J1_leg0_4",
      "R.crank_ring_J1_leg1_8",
      "R.crank_ring_J1_leg2_14",
-     "R.crank_ring_J1_leg3_18",
      "R.crank_ring_J1_leg3_20"
     ],
-    "qty": 10,
+    "qty": 8,
     "sheet": "",
     "size_mm": "12 x 12 x 2.9 mm",
     "volume_cm3": 0.14615710042112134
@@ -607,6 +579,21 @@
     "sheet": "",
     "size_mm": "12 x 12 x 3.9 mm",
     "volume_cm3": 0.19655610056633582
+   },
+   {
+    "cut_cm": 0.0,
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_ring_J1_leg1_7",
+    "names": [
+     "L.crank_ring_J1_leg1_7",
+     "R.crank_ring_J1_leg1_7"
+    ],
+    "qty": 2,
+    "sheet": "",
+    "size_mm": "12 x 12 x 2.5 mm",
+    "volume_cm3": 0.12599750036303617
    },
    {
     "cut_cm": 0.0,
@@ -637,6 +624,21 @@
     "sheet": "",
     "size_mm": "12 x 12 x 2.1 mm",
     "volume_cm3": 0.10583790030495042
+   },
+   {
+    "cut_cm": 0.0,
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_ring_J1_leg3_18",
+    "names": [
+     "L.crank_ring_J1_leg3_18",
+     "R.crank_ring_J1_leg3_18"
+    ],
+    "qty": 2,
+    "sheet": "",
+    "size_mm": "12 x 12 x 2.8 mm",
+    "volume_cm3": 0.1411172004066006
    },
    {
     "cut_cm": 0.0,
@@ -681,7 +683,7 @@
     "qty": 2,
     "sheet": "",
     "size_mm": "20 x 20 x 1.8 mm",
-    "volume_cm3": 0.44902534041143477
+    "volume_cm3": 0.4490253404114318
    },
    {
     "cut_cm": 0.0,
@@ -701,10 +703,10 @@
   "notes": [
    "Horn screw shims (under each head): screws L.0, L.1, L.2, L.3, R.0, R.1, R.2, R.3: 1 mm (2 x M3 flat washer (DIN 125-A, 3.2 x 7 x 0.5)).",
    "Horn screws: a drop of low-strength threadlocker (Loctite 222) each (8), steel into the metal horn; none in a plastic horn.",
-   "Chicago pins bonded off the barrel head (no printed spacer under it, thinner than a print): pin:J3_leg3 0.2 mm, pin:J7_leg3 0.2 mm; set the gap with a feeler gauge while the epoxy cures.",
+   "Chicago pins bonded off the barrel head (no printed spacer under it, thinner than a print): pin:J10_leg1 0.1 mm, pin:J3_leg3 0.3 mm, pin:J7_leg3 0.3 mm, pin:J8_leg1 0.1 mm; set the gap with a feeler gauge while the epoxy cures.",
    "Printed parts need about 29 g of filament at 100 % infill (25 g of PLA filament (1.24 g/cm3); 2 g of PETG filament (1.27 g/cm3); 2 g of TPU 95A flexible filament (1.22 g/cm3)); less with sparse infill."
   ],
-  "printed_g": 29.24222280995423,
+  "printed_g": 29.250461887123492,
   "purchased": [
    {
     "alternatives": [
@@ -1088,29 +1090,33 @@
     "pack_price_usd": 16.99,
     "pack_qty": 17,
     "packs": 2,
-    "qty": 16.0,
+    "qty": 20.0,
     "same_pack_as": "",
     "sku": "B0GQ3JGHPZ",
     "url": "https://www.amazon.com/dp/B0GQ3JGHPZ",
     "vendor": "Amazon",
     "verified": false,
     "where": [
+     "L.pin_J10_leg3_spacer_hi (1 + 0.1 mm)",
+     "L.pin_J10_leg3_spacer_lo (0.5 + 0.1 mm)",
      "L.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J11_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "L.pin_J11_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J4_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "L.pin_J4_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J8_leg3_spacer_hi (1 + 0.1 mm)",
+     "L.pin_J8_leg3_spacer_lo (0.5 + 0.1 mm)",
+     "R.pin_J10_leg3_spacer_hi (1 + 0.1 mm)",
+     "R.pin_J10_leg3_spacer_lo (0.5 + 0.1 mm)",
      "R.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J11_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "R.pin_J11_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J4_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "R.pin_J4_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)"
+     "R.pin_J8_leg3_spacer_hi (1 + 0.1 mm)",
+     "R.pin_J8_leg3_spacer_lo (0.5 + 0.1 mm)"
     ]
    },
    {
@@ -1128,7 +1134,7 @@
     "pack_price_usd": 16.99,
     "pack_qty": 17,
     "packs": 2,
-    "qty": 28.0,
+    "qty": 20.0,
     "same_pack_as": "DIN 988 shim ring 4 x 8 x 0.1 mm",
     "sku": "B0GQ3JGHPZ",
     "url": "https://www.amazon.com/dp/B0GQ3JGHPZ",
@@ -1138,31 +1144,23 @@
      "L.pin_J10_leg0_spacer_hi (1 + 0.2 mm)",
      "L.pin_J10_leg1_spacer_hi (1 + 0.2 mm)",
      "L.pin_J10_leg2_spacer_hi (1 + 0.2 mm)",
-     "L.pin_J10_leg3_spacer_hi (1 + 0.2 mm)",
      "L.pin_J3_leg0_spacer_hi (1 + 0.2 mm)",
-     "L.pin_J3_leg1_spacer_hi (1 + 0.2 mm)",
      "L.pin_J3_leg2_spacer_hi (1 + 0.2 mm)",
      "L.pin_J7_leg0_spacer_hi (1 + 0.2 mm)",
-     "L.pin_J7_leg1_spacer_hi (1 + 0.2 mm)",
      "L.pin_J7_leg2_spacer_hi (1 + 0.2 mm)",
      "L.pin_J8_leg0_spacer_hi (1 + 0.2 mm)",
      "L.pin_J8_leg1_spacer_hi (1 + 0.2 mm)",
      "L.pin_J8_leg2_spacer_hi (1 + 0.2 mm)",
-     "L.pin_J8_leg3_spacer_hi (1 + 0.2 mm)",
      "R.pin_J10_leg0_spacer_hi (1 + 0.2 mm)",
      "R.pin_J10_leg1_spacer_hi (1 + 0.2 mm)",
      "R.pin_J10_leg2_spacer_hi (1 + 0.2 mm)",
-     "R.pin_J10_leg3_spacer_hi (1 + 0.2 mm)",
      "R.pin_J3_leg0_spacer_hi (1 + 0.2 mm)",
-     "R.pin_J3_leg1_spacer_hi (1 + 0.2 mm)",
      "R.pin_J3_leg2_spacer_hi (1 + 0.2 mm)",
      "R.pin_J7_leg0_spacer_hi (1 + 0.2 mm)",
-     "R.pin_J7_leg1_spacer_hi (1 + 0.2 mm)",
      "R.pin_J7_leg2_spacer_hi (1 + 0.2 mm)",
      "R.pin_J8_leg0_spacer_hi (1 + 0.2 mm)",
      "R.pin_J8_leg1_spacer_hi (1 + 0.2 mm)",
-     "R.pin_J8_leg2_spacer_hi (1 + 0.2 mm)",
-     "R.pin_J8_leg3_spacer_hi (1 + 0.2 mm)"
+     "R.pin_J8_leg2_spacer_hi (1 + 0.2 mm)"
     ]
    },
    {
@@ -1190,19 +1188,19 @@
      "L.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J11_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "L.pin_J11_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J3_leg1_spacer_hi (1 + 0.3 mm)",
      "L.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J4_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "L.pin_J4_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J7_leg1_spacer_hi (1 + 0.3 mm)",
      "R.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J11_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "R.pin_J11_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J3_leg1_spacer_hi (1 + 0.3 mm)",
      "R.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J4_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "R.pin_J4_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)"
+     "R.pin_J7_leg1_spacer_hi (1 + 0.3 mm)"
     ]
    },
    {
@@ -1314,7 +1312,7 @@
     "pack_price_usd": 6.0,
     "pack_qty": 100,
     "packs": 1,
-    "qty": 88.0,
+    "qty": 92.0,
     "same_pack_as": "",
     "sku": "HRDW-M4-A2",
     "url": "https://accu-components.com/us/metric-flat-washers/404898-HRDW-M4-A2",
@@ -1324,59 +1322,59 @@
      "L.pin_J10_leg0_spacer_hi (1 + 0.2 mm)",
      "L.pin_J10_leg1_spacer_hi (1 + 0.2 mm)",
      "L.pin_J10_leg2_spacer_hi (1 + 0.2 mm)",
-     "L.pin_J10_leg3_spacer_hi (1 + 0.2 mm)",
-     "L.pin_J10_leg3_spacer_lo (0.5 mm)",
+     "L.pin_J10_leg3_spacer_hi (1 + 0.1 mm)",
+     "L.pin_J10_leg3_spacer_lo (0.5 + 0.1 mm)",
      "L.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J11_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "L.pin_J11_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J11_leg3_spacer_hi (1 mm)",
      "L.pin_J3_leg0_spacer_hi (1 + 0.2 mm)",
-     "L.pin_J3_leg1_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J3_leg1_spacer_hi (1 + 0.3 mm)",
      "L.pin_J3_leg2_spacer_hi (1 + 0.2 mm)",
      "L.pin_J3_leg3_spacer_hi (1 + 0.5 mm)",
      "L.pin_J3_leg3_spacer_hi (1 + 0.5 mm)",
      "L.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "L.pin_J4_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "L.pin_J4_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J4_leg3_spacer_hi (1 mm)",
      "L.pin_J7_leg0_spacer_hi (1 + 0.2 mm)",
-     "L.pin_J7_leg1_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J7_leg1_spacer_hi (1 + 0.3 mm)",
      "L.pin_J7_leg2_spacer_hi (1 + 0.2 mm)",
      "L.pin_J7_leg3_spacer_hi (1 + 0.5 mm)",
      "L.pin_J7_leg3_spacer_hi (1 + 0.5 mm)",
      "L.pin_J8_leg0_spacer_hi (1 + 0.2 mm)",
      "L.pin_J8_leg1_spacer_hi (1 + 0.2 mm)",
      "L.pin_J8_leg2_spacer_hi (1 + 0.2 mm)",
-     "L.pin_J8_leg3_spacer_hi (1 + 0.2 mm)",
-     "L.pin_J8_leg3_spacer_lo (0.5 mm)",
+     "L.pin_J8_leg3_spacer_hi (1 + 0.1 mm)",
+     "L.pin_J8_leg3_spacer_lo (0.5 + 0.1 mm)",
      "R.pin_J10_leg0_spacer_hi (1 + 0.2 mm)",
      "R.pin_J10_leg1_spacer_hi (1 + 0.2 mm)",
      "R.pin_J10_leg2_spacer_hi (1 + 0.2 mm)",
-     "R.pin_J10_leg3_spacer_hi (1 + 0.2 mm)",
-     "R.pin_J10_leg3_spacer_lo (0.5 mm)",
+     "R.pin_J10_leg3_spacer_hi (1 + 0.1 mm)",
+     "R.pin_J10_leg3_spacer_lo (0.5 + 0.1 mm)",
      "R.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J11_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "R.pin_J11_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J11_leg3_spacer_hi (1 mm)",
      "R.pin_J3_leg0_spacer_hi (1 + 0.2 mm)",
-     "R.pin_J3_leg1_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J3_leg1_spacer_hi (1 + 0.3 mm)",
      "R.pin_J3_leg2_spacer_hi (1 + 0.2 mm)",
      "R.pin_J3_leg3_spacer_hi (1 + 0.5 mm)",
      "R.pin_J3_leg3_spacer_hi (1 + 0.5 mm)",
      "R.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
      "R.pin_J4_leg2_spacer_hi (0.5 + 0.3 + 0.1 mm)",
-     "R.pin_J4_leg3_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J4_leg3_spacer_hi (1 mm)",
      "R.pin_J7_leg0_spacer_hi (1 + 0.2 mm)",
-     "R.pin_J7_leg1_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J7_leg1_spacer_hi (1 + 0.3 mm)",
      "R.pin_J7_leg2_spacer_hi (1 + 0.2 mm)",
      "R.pin_J7_leg3_spacer_hi (1 + 0.5 mm)",
      "R.pin_J7_leg3_spacer_hi (1 + 0.5 mm)",
      "R.pin_J8_leg0_spacer_hi (1 + 0.2 mm)",
      "R.pin_J8_leg1_spacer_hi (1 + 0.2 mm)",
      "R.pin_J8_leg2_spacer_hi (1 + 0.2 mm)",
-     "R.pin_J8_leg3_spacer_hi (1 + 0.2 mm)",
-     "R.pin_J8_leg3_spacer_lo (0.5 mm)"
+     "R.pin_J8_leg3_spacer_hi (1 + 0.1 mm)",
+     "R.pin_J8_leg3_spacer_lo (0.5 + 0.1 mm)"
     ]
    },
    {
@@ -1384,16 +1382,16 @@
     "category": "standoff",
     "cost_usd": 55.599999999999994,
     "cut_by": "",
-    "key": "pillar_shaft_6_m3_129.1",
-    "name": "6 mm round steel standoff, 129.1 mm, tapped M3 both ends (MISUMI NETRF6-129.1)",
+    "key": "pillar_shaft_6_m3_128.4",
+    "name": "6 mm round steel standoff, 128.4 mm, tapped M3 both ends (MISUMI NETRF6-128.4)",
     "on_hand": false,
     "pack_price_usd": 11.12,
     "pack_qty": 1,
     "packs": 5,
     "qty": 4.0,
     "same_pack_as": "",
-    "sku": "NETRF6-129.1",
-    "url": "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode=NETRF6-129.1",
+    "sku": "NETRF6-128.4",
+    "url": "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode=NETRF6-128.4",
     "vendor": "MISUMI",
     "verified": false,
     "where": [
@@ -2218,11 +2216,11 @@
   "purchases_usd": 363.31,
   "title": ""
  },
- "engine_version": "0.1.0+e2cf649bc7a2",
+ "engine_version": "0.1.0+a5f3a622f0cf",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-729bc36dcbe253f7"
+ "source_key": "gen-fd4f03e18fe76283"
 }
