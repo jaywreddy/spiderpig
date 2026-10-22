@@ -24,7 +24,8 @@ def test_fab_methods_keep_the_output_order():
     # (display: a decanting cradle's drawn-only bottle and decanter, made by no one)
     assert fabmethods.kinds() == ("printed", "laser", "purchased", "display")
     assert fabmethods.folders() == ("laser", "print")
-    assert not fabmethods.get("display").made and not fabmethods.stock("display")
+    assert not fabmethods.get("display").made
+    assert not fabmethods.stock("display")
     assert fabmethods.flat("laser")
     assert not fabmethods.flat("printed")
     assert not fabmethods.flat(None)

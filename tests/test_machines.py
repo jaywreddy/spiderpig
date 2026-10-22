@@ -35,7 +35,9 @@ def test_the_motor_role_is_chosen_from_the_inputs_once():
         assert roles.applies(role, lk.kind), key
         (other,) = [r for r in roles.MOTOR_ROLES if r != role]
         assert not roles.applies(other, lk.kind), key
-        assert controllers.motors_of(BuildConfig(linkage=key, robot=False)) == role
+        # (a product's hand crank, a decanting cradle's: no motor at all)
+        want = "" if lk.product else role
+        assert controllers.motors_of(BuildConfig(linkage=key, robot=False)) == want, key
 
 
 @pytest.mark.no_fabricate
@@ -279,6 +281,9 @@ def test_every_crank_servos_bom_names_its_torque_limit():
     for key in linkage.available("mechanism"):
         cfg = BuildConfig(linkage=key, robot=False)
         note = torque_limit_note(cfg)
+        if linkage.get(key).product:    # a hand on a worm box: no servo, no firmware limit
+            assert note is None, key
+            continue
         assert note is not None, key
         assert f"to {torque_limit_nm(cfg):g} N·m" in note, key
         assert "a blocked output" in note, key

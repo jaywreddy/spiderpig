@@ -17,12 +17,14 @@ from spiderpig.config import is_cradle
 from spiderpig.construction.base import Build, ConstructionError
 from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
 from spiderpig.construction.envelope import claimed_solid
+from spiderpig.construction.robot import assemble_robot, robot_groups
 from spiderpig.design import (
     Design,
     Part,
     jsonable,
 )
 from spiderpig.fabricate import (
+    fabricate_side,
     product,
 )
 from spiderpig.failure import Failure
@@ -88,8 +90,11 @@ def fabricate_at(design: Design, t: float) -> Mechanism:
         raise ValueError("plan(design) first")
 
     def make():
-        # one side, the robot (its layout's groups), or a cradle (both sides and its box)
-        return product(d, tmpl, t, cfg)
+        if is_cradle(cfg):                                  # both sides and the cradle box
+            return product(d, tmpl, t, cfg)
+        extra = robot_groups(d, cfg) if cfg.robot else []
+        side = fabricate_side(d, tmpl.freeze_at(t), extra)
+        return assemble_robot(side, d, cfg) if cfg.robot else side
 
     return fabcache.fabricated(design.store, tmpl, cfg, d, t, make)
 
