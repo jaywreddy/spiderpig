@@ -31,6 +31,12 @@ const ENV_INTENSITY: Record<string, number> = {
   metal: 1.0,
   servo: 0.5,
   electronics: 0.4,
+  aluminium: 1.0,         // a decanting cradle's plates
+  aluminium_frame: 0.8,
+  gearbox: 0.5,
+  glass_bottle: 1.0,
+  glass_clear: 1.0,
+  led: 0.2,
 };
 
 /** Foot trail in model coordinates (the linkage plane is XY at ``z``). */

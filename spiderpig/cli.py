@@ -50,6 +50,9 @@ COMMANDS: dict[str, tuple[str, str]] = {      # command -> (module, one line)
                "write a design's files: step, stl, print, dxf, bom, glb, mjcf, urdf, guide, "
                "control, order"),
     "report": ("spiderpig.tools.report", "compare every registered linkage"),
+    "pack-inspect": ("spiderpig.tools.pack_inspect",
+                     "judge and draw a decanting cradle's packing (contact sheets, metrics; "
+                     "--search)"),
     "mcp": ("spiderpig.mcp", "serve the agent-facing API over MCP (stdio; --store PATH)"),
     "view": ("spiderpig.view",
              "serve the viewer for a stored design, no Node needed (prints the URL; --open)"),

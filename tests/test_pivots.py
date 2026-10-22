@@ -21,7 +21,10 @@ from spiderpig.construction import ConstructionError
 from spiderpig.construction.axle import AxleGroup
 from spiderpig.construction.base import FRAME_INNER, FRAME_OUTER, Build, Params, Realized
 from spiderpig.construction.contract import check_side
-from spiderpig.construction.pivots.common import Column
+from spiderpig.construction.pivots.common import (
+    Column,
+    column_air,
+)
 from spiderpig.fabricate import fabricate
 from spiderpig.hardware.bom import bom_from_mechanism
 from spiderpig.hardware.catalog import get
@@ -30,7 +33,8 @@ from spiderpig.stack import verify_plan
 from tests import cache
 from tests._construction import overlapping_pairs
 
-KEYS = ("chicago", "standoff", "ball", "ball_pillar", "ball_pair", "ball_pair_pillar")
+KEYS = ("chicago", "standoff", "ball", "ball_pillar", "ball_pair", "ball_pair_pillar",
+        "chicago6", "pivot8", "clevis8", "rod516", "rod38", "rodclip516")
 T = 1.0
 
 
@@ -201,7 +205,8 @@ def test_holes_cut_for_each_construction(side):
                 assert [x.d for x in got.cuts[m]] == [pytest.approx(p.hole(6.0))]
             col = Column.of(build, g)
             lo, hi = c.faces(col.links, build.top, (0 in anchors, build.top in anchors))
-            axle = c.column_axle(set(col.links), hi, build.ctx.pitch, lo)
+            axle = c.column_axle(set(col.links), hi, build.ctx.pitch, lo, build.plan.layout,
+                                 lambda a, b, g=g: column_air(build, g, a, b))
             for k in anchors:
                 assert [x.d for x in got.cuts[plates[k]]] == [pytest.approx(axle.end_hole)]
         else:
@@ -269,6 +274,9 @@ def test_nothing_on_a_cantilever_pillar_can_slide(side):
 
 
 def test_spacers_and_retainers_are_what_the_key_says(side):
+    """A walker's axle declares stock spacers (``spacers``): between its links stock tubes
+    cut to length, the rest shims or cut rings, nothing printed. (A product's printed
+    sleeves, the sleeve rule's: ``tests/test_cradle.py``.)"""
     _, _design, build, fab, axles = side
     for g in axles:
         bodies = {b.name.split("_", 2)[2]: b for b in _group_bodies(fab, g)}

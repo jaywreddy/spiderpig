@@ -140,7 +140,7 @@ def test_a_missed_stroke_is_met_by_the_least_practical_scale_checked():
     assert note is None
     assert rec.changes == (("unit", 16.0, 19.5),)
     assert rec.why == "stroke_mm scales with unit: x1.22 meets the target"
-    assert rec.verified == "checked: stroke_mm 81.53; it plans in 7 layers (27.864 mm)"
+    assert rec.verified == "checked: stroke_mm 81.53; it plans in 7 layers (28.064 mm)"
     rec, note = target_scale(cfg, [("motion.stroke_mm", stroke, Target(value=50.0, tol=1.0))],
                              measure_config)
     assert rec.changes == (("unit", 16.0, 12.0),)

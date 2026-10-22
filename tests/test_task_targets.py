@@ -27,9 +27,11 @@ G = 9.81
 
 
 def _mechanism() -> str:
-    """A cranked mechanism with an output (no ranged inputs)."""
+    """A cranked mechanism with an output (no ranged inputs), not a product (a decanting
+    cradle, hand-cranked: no task's candidate, rated on its own statics)."""
     return next(k for k in linkage.available("mechanism")
-                if linkage.get(k).output is not None and not linkage.get(k).ranged)
+                if linkage.get(k).output is not None and not linkage.get(k).ranged
+                and not linkage.get(k).product)
 
 
 @pytest.fixture(scope="module")

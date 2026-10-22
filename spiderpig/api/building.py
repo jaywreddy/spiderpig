@@ -13,6 +13,7 @@ import numpy as np
 from spiderpig import servos
 from spiderpig.api.reports import BuildReport, RecheckReport
 from spiderpig.api.store_ops import _drop_stored, _forget, design_lock
+from spiderpig.config import is_cradle
 from spiderpig.construction.base import Build, ConstructionError
 from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
 from spiderpig.construction.envelope import claimed_solid
@@ -24,6 +25,7 @@ from spiderpig.design import (
 )
 from spiderpig.fabricate import (
     fabricate_side,
+    product,
 )
 from spiderpig.failure import Failure
 from spiderpig.hardware.mass import material_of, part_props
@@ -79,8 +81,8 @@ def _build(design: Design, t: float, force: bool) -> BuildReport:
 def fabricate_at(design: Design, t: float) -> Mechanism:
     """The design fabricated at crank angle ``t`` from its own side (what
     :func:`fabricate.fabricate` does, without planning again): one side, or the robot
-    with its frame ties and chassis. From the store's fabrication cache when it holds it
-    (:mod:`spiderpig.fabcache`)."""
+    with its frame ties and chassis, or a decanting cradle. From the store's fabrication
+    cache when it holds it (:mod:`spiderpig.fabcache`)."""
     from spiderpig import fabcache
 
     tmpl, cfg, d = _template(design), design.config, design.side
@@ -88,6 +90,8 @@ def fabricate_at(design: Design, t: float) -> Mechanism:
         raise ValueError("plan(design) first")
 
     def make():
+        if is_cradle(cfg):                                  # both sides and the cradle box
+            return product(d, tmpl, t, cfg)
         extra = robot_groups(d, cfg) if cfg.robot else []
         side = fabricate_side(d, tmpl.freeze_at(t), extra)
         return assemble_robot(side, d, cfg) if cfg.robot else side
@@ -168,7 +172,8 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
                                                                                   bb.max.Z])
         z_side = side_z(tag, z_mid, (bb.min.Z, bb.max.Z))
         parts[b.name] = Part(
-            name=b.name, solid=b.part, group=group_of(base, side.plan), side=tag, fab=b.fab,
+            name=b.name, solid=b.part, group=group_of(base, side.plan, is_cradle(cfg)),
+            side=tag, fab=b.fab,
             material=material, dims_mm=(bb.size.X, bb.size.Y, bb.size.Z),
             layers=side_layers(side.plan, z_side), density=density, fixed_mass_g=fixed,
             bom_key=b.bom_key, rigid_with=b.rigid_with, pose=b.pose.matrix.tolist(),
@@ -195,7 +200,8 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
         t=t, n_parts=len(parts), counts=counts,
         mass_g=round(sum(p.mass_g for p in parts.values()), 2),
         envelope_mm=_xyz(hi - lo) if parts else None,
-        meta=jsonable({k: v for k, v in mech.meta.items() if k != "fastened"}),
+        meta=jsonable({k: v for k, v in mech.meta.items()
+                       if k not in ("fastened", "print_shapes")}),
         parts=[p.to_dict() for p in parts.values()],
         warnings=list(warnings or []),
         cut_rules=cut_rules_of(mech, cfg.sheet),
@@ -278,11 +284,18 @@ def side_layers(plan, z: tuple[float, float], eps: float = 1e-6) -> tuple[int, .
     return tuple(plan.layout.layers_between(z[0] + eps, z[1] - eps))
 
 
-def group_of(name: str, plan) -> str:
+def group_of(name: str, plan, cradle: bool = False) -> str:
     """The construction group that built a side body, from its name: a link (``links``),
     the plates (``frame``), the servo and its screws (``drive``), the crank's segments and
     screws (``crank``), an axle's segments and caps (``pillar:<axis>`` / ``pin:<axis>``),
-    the robot's chassis (``chassis``)."""
+    the robot's chassis (``chassis``); a decanting cradle's own (``cradle``:
+    :data:`construction.cradle.GROUPS`)."""
+    if cradle:
+        from spiderpig.construction.cradle import group_of as cradle_group
+
+        own = cradle_group(name)
+        if own:
+            return own
     if name in plan.layers:
         return "links"
     if name in plan.topo.frame_bodies or name.startswith("frame"):

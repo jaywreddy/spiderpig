@@ -88,6 +88,17 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("spiderpig.store")
 
+
+def _product_of(key: str | None) -> str | None:
+    """The product a linkage builds (a decanting cradle's ``cradle``), or None."""
+    from spiderpig import linkage
+
+    try:
+        return linkage.get(key).product or None if key else None
+    except KeyError:
+        return None
+
+
 STORE_ENV = "SPIDERPIG_STORE"
 DEFAULT_ROOT = ".spiderpig"
 STAGES = ("check", "plan", "walk", "precision", "build", "recheck", "verify", "export")
@@ -437,8 +448,10 @@ class Store:
         if mech is not None:
             parts_dir.mkdir(parents=True)
             for name, part in design.parts.items():
-                entry = {**part.to_dict(), "pose": part.pose, "color": mech.body(name).color,
-                         "file": None, "same_as": None, "mirror": False}
+                body = mech.body(name)
+                entry = {**part.to_dict(), "pose": part.pose, "color": body.color,
+                         "file": None, "same_as": None, "mirror": False,
+                         **({"turn": turn} if (turn := getattr(body, "turn", "")) else {})}
                 twin = mirror_twin(name)
                 if twin in design.parts and is_mirror(design.parts[twin], part):
                     entry.update(same_as=twin, mirror=True)
@@ -491,7 +504,8 @@ class Store:
                 solids[e["name"]] = src.mirror(Plane.XY) if e.get("mirror") else src
         bodies = [Body(name=e["name"], part=solids[e["name"]], color=e.get("color"),
                        pose=Pose(np.array(e["pose"], dtype=float)), rigid_with=e.get("rigid_with"),
-                       fab=e.get("fab"), bom_key=e.get("bom_key"), sheet=e.get("sheet"))
+                       fab=e.get("fab"), bom_key=e.get("bom_key"), sheet=e.get("sheet"),
+                       turn=e.get("turn", ""))
                   for e in entries]
         meta = dict(manifest.get("meta", {}))
         meta["fastened"] = [tuple(p) for p in manifest.get("fastened", [])]
@@ -548,11 +562,14 @@ class Store:
         res = rec.get("resolved") or {}
         materials = res.get("materials") or {}
         spec = self.read_spec(id) or {}
+        product = _product_of(rec.get("linkage"))
         return {
             "id": id, "kind": rec.get("kind"), "linkage": rec.get("linkage"),
-            "module": rec.get("module"), "sides": rec.get("sides"),
+            "module": rec.get("module"), "sides": rec.get("sides"), "product": product,
             "params": dict((spec.get("linkage") or {}).get("params") or {}),
-            "servo": materials.get("servo"), "sheet": materials.get("sheet"),
+            # (a product, a decanting cradle, is turned by hand: no servo)
+            "servo": "none (a hand crank)" if product else materials.get("servo"),
+            "sheet": materials.get("sheet"),
             "thickness_mm": materials.get("thickness_mm"),
             "constructions": dict(res.get("constructions") or {}),
             "targets": {s: sorted(res[s]) for s in ("motion", "size", "budget") if res.get(s)},

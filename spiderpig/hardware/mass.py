@@ -154,6 +154,8 @@ def material_of(body, sheet: str, filament: str | None, servo) -> tuple[str, flo
         return "sheet", sheet_density(getattr(body, "sheet", None) or sheet), None
     if made_of == "filament":
         return "printed", filament_density(filament), None
+    if body.fab == fabmethods.DISPLAY:   # drawn only (a cradle's bottle and decanter): no mass
+        return "display", 0.0, 0.0
     if body.fab != fabmethods.PURCHASED:
         raise ValueError(f"body {body.name!r} has a part but no known fabrication ({body.fab!r})")
     if category == "servo" or cls == "servo":

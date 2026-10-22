@@ -21,6 +21,7 @@ from build123d import (
     Cylinder,
     Edge,
     Face,
+    Plane,
     Pos,
     Solid,
     Vector,
@@ -89,6 +90,22 @@ class Rect:
     angle: float = 0.0
 
 
+@dataclass(frozen=True)
+class Socket:
+    """A toothed round cut-out (a decanting cradle's racking brace's socket: a tube's end
+    keyed into a link): a hole ``r_out`` round centred on ``xy`` with ``teeth`` straight-sided
+    teeth ``tooth`` wide standing in from its edge to ``r_tip``, the first at ``angle``
+    (radians, world XY), their roots rounded ``root_r`` (the laser's corner)."""
+
+    xy: tuple[float, float]
+    r_out: float
+    r_tip: float
+    teeth: int
+    tooth: float
+    angle: float = 0.0
+    root_r: float = 1.0
+
+
 def disc(xy: XY, radius: float, z0: float, z1: float) -> Shape3D:
     """Solid cylinder at ``xy`` spanning ``z0..z1``."""
     return Cylinder(radius=radius, height=z1 - z0).move(
@@ -99,24 +116,54 @@ def disc(xy: XY, radius: float, z0: float, z1: float) -> Shape3D:
 def pill(p: XY, q: XY, radius: float, z0: float, z1: float) -> Shape3D:
     """Stadium between two points (segment ⊕ disc), extruded ``z0..z1``: one prism of two
     lines and two arcs (no boolean)."""
+    face = stadium(p, q, radius, z0)
+    if face is None:
+        return disc(p, radius, z0, z1)
+    return Solid.extrude(face, Vector(0, 0, z1 - z0))
+
+
+def stadium(p: XY, q: XY, radius: float, z: float) -> Face | None:
+    """:func:`pill`'s section: the stadium between two points (segment ⊕ disc) as a face in
+    the plane at ``z``, two lines and two arcs (``None`` when the points meet)."""
     p = np.asarray(p, dtype=float)[:2]
     q = np.asarray(q, dtype=float)[:2]
     d = q - p
     length = float(np.hypot(*d))
     if length <= 1e-9:
-        return disc(p, radius, z0, z1)
+        return None
     u = d / length
     n = np.array([-u[1], u[0]])
     r = radius
 
     def v(xy):
-        return Vector(float(xy[0]), float(xy[1]), z0)
+        return Vector(float(xy[0]), float(xy[1]), z)
 
     wire = Wire([Edge.make_line(v(p - r * n), v(q - r * n)),
                  Edge.make_three_point_arc(v(q - r * n), v(q + r * u), v(q + r * n)),
                  Edge.make_line(v(q + r * n), v(p + r * n)),
                  Edge.make_three_point_arc(v(p + r * n), v(p - r * u), v(p - r * n))])
-    return Solid.extrude(Face(wire), Vector(0, 0, z1 - z0))
+    return Face(wire)
+
+
+def pills(specs: Iterable[tuple[XY, XY, float, float, float]]) -> Shape3D:
+    """The union of :func:`pill` s ``(p, q, radius, z0, z1)``, the same point set as
+    :func:`union` of them, built in 2D: the sections of the pills of each z extent fused as
+    one planar region (a boolean of faces), its faces extruded once (the extents', if more
+    than one, then fused). Several hundred overlapping pills (a cradle's keep-outs) fuse in
+    a few seconds this way, against about a minute as prisms."""
+    by_z: dict[tuple[float, float], list[Face]] = {}
+    for p, q, r, z0, z1 in specs:
+        face = stadium(p, q, r, z0)
+        if face is None:            # a point: its disc's section
+            face = Face(Wire([Edge.make_circle(r, Plane((float(p[0]), float(p[1]), z0)))]))
+        by_z.setdefault((float(z0), float(z1)), []).append(face)
+    prisms: list[Shape3D] = []
+    for (z0, z1), faces in by_z.items():
+        region = faces[0].fuse(*faces[1:]) if len(faces) > 1 else faces[0]
+        prisms += [Solid.extrude(f, Vector(0, 0, z1 - z0)) for f in region.faces()]
+    if len(by_z) > 1:
+        return union(prisms)
+    return prisms[0] if len(prisms) == 1 else Compound(children=prisms)
 
 
 def hull(circles: Sequence[tuple[XY, float]], z0: float, z1: float) -> Shape3D:
@@ -210,7 +257,41 @@ def _unwrap(shape):
     return solids[0] if len(solids) == 1 else shape
 
 
-def _cutter(cut: Cut | Rect, z0: float, z1: float) -> Shape3D:
+def _socket_cutter(cut: Socket, z0: float, z1: float) -> Shape3D:
+    """:class:`Socket`'s cutter: the disc less its teeth, the roots rounded."""
+    x, y = float(cut.xy[0]), float(cut.xy[1])
+    body = disc(cut.xy, cut.r_out, z0, z1)
+    depth = cut.r_out - cut.r_tip + 2.0
+    teeth = []
+    for k in range(cut.teeth):
+        a = cut.angle + 2.0 * math.pi * k / cut.teeth
+        r = cut.r_tip + depth / 2.0
+        teeth.append(box((x + r * math.cos(a), y + r * math.sin(a)),
+                         (depth, cut.tooth, z1 - z0 + 2.0), z0 - 1.0, a))
+    out = difference(body, union(teeth))
+    if cut.root_r > 0:              # the roots: where each tooth's sides meet the edge
+        half = math.asin(min(cut.tooth / 2.0 / cut.r_out, 1.0))
+        want = [cut.angle + 2.0 * math.pi * k / cut.teeth + s * half
+                for k in range(cut.teeth) for s in (-1.0, 1.0)]
+
+        def root(e) -> bool:
+            p, q = e.start_point(), e.end_point()
+            if abs(q.Z - p.Z) < 0.5 * (z1 - z0) or abs(math.hypot(p.X - x, p.Y - y)
+                                                       - cut.r_out) > 1e-3:
+                return False
+            a = math.atan2(p.Y - y, p.X - x)
+            return any(abs((a - w + math.pi) % (2.0 * math.pi) - math.pi) < 1e-3
+                       for w in want)
+
+        roots = [e for e in out.edges() if root(e)]
+        if roots:
+            out = out.fillet(cut.root_r, roots)
+    return out
+
+
+def _cutter(cut: Cut | Rect | Socket, z0: float, z1: float) -> Shape3D:
+    if isinstance(cut, Socket):
+        return _socket_cutter(cut, z0, z1)
     if isinstance(cut, Rect):
         return box(cut.xy, (cut.size[0], cut.size[1], z1 - z0), z0, cut.angle)
     body = disc(cut.xy, cut.d / 2, z0, z1)
@@ -226,7 +307,8 @@ def _cutter(cut: Cut | Rect, z0: float, z1: float) -> Shape3D:
     return difference(body, slab.move(Pos(cx, cy, (z0 + z1) / 2)))
 
 
-def cut_holes(part: Shape3D, cuts: Iterable[Cut | Rect], z0: float, z1: float) -> Shape3D:
+def cut_holes(part: Shape3D, cuts: Iterable[Cut | Rect | Socket], z0: float, z1: float
+              ) -> Shape3D:
     """Cut through-holes (round, D or rectangular) spanning ``z0..z1`` (with overshoot)."""
     cutters = [_cutter(c, z0 - 1.0, z1 + 1.0) for c in cuts]
     if not cutters:
@@ -239,7 +321,7 @@ def plate(
     pills: Iterable[tuple[XY, XY, float]],
     z0: float,
     z1: float,
-    cuts: Iterable[Cut | Rect] = (),
+    cuts: Iterable[Cut | Rect | Socket] = (),
     discs: Iterable[tuple[XY, float]] = (),
 ) -> Shape3D:
     """A laser-cut plate: union of pills ``(p, q, r)`` and discs ``(xy, r)``, minus cuts."""

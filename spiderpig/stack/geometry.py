@@ -4,11 +4,16 @@
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from spiderpig.stack.plan import StackPlan
 
 log = logging.getLogger("stack")
 
@@ -218,8 +223,21 @@ class Layout:
 
     Z: layer ``k`` is ``thick[k]`` thick (``pitch`` when absent: the default sheet), and
     the clearance gap above it ``gaps[k]`` (none when absent); layer 0's bottom face is
-    z 0. While the planner searches, a layout has neither (every layer ``pitch``, no gaps:
-    the nominal stack); the plan's (``final``) has both, sized from what it holds."""
+    z 0. The plan's layout (``final``) has both, sized from what it holds.
+
+    While the planner searches, a layout is a **bound** of every plan the layering can
+    still become: its ``thick`` is the least each layer can be (the frame plates' sheet, a
+    placed link's, a fixed part's, else the pitch) and it has no gaps, so :meth:`z`,
+    :meth:`t` and every span are lower bounds; ``thick_hi`` (else ``open_t``, the thickest
+    sheet a layer may yet hold) and ``gap_hi`` (the thickest a clearance gap may be) bound
+    them from above (:meth:`t_hi`, :meth:`span_hi`, :meth:`z_hi`). A claim may refuse a
+    search's layout (:class:`Unbuildable`) only on a bound valid for every completion: a
+    part too long for the lower bound is too long in every plan, a part too short only when
+    even the upper bound is short; a rule that holds neither way waits for the plan's own z
+    (``final``). A layout made without bounds (``open_t`` and ``gap_hi`` infinite) refuses
+    nothing on a minimum. ``estimate``: the plan's z guessed at such a bound before its gaps
+    are known (:func:`stack.finalize`'s first pass): a claim sizes its parts as at a plan's z
+    (a pin's heads with the shims that z gives them) and refuses only as on a search's."""
 
     layers: Mapping[str, int]
     top: int
@@ -228,14 +246,45 @@ class Layout:
     gaps: Mapping[int, float] = field(default_factory=dict)
     thick: Mapping[int, float] = field(default_factory=dict)
     final: bool = False
+    thick_hi: Mapping[int, float] = field(default_factory=dict)
+    open_t: float = math.inf
+    gap_hi: float = math.inf
+    estimate: bool = False
 
     def t(self, layer: int) -> float:
-        """Layer ``layer``'s thickness."""
+        """Layer ``layer``'s thickness (a search's layout: the least it can be)."""
         return self.thick.get(layer, self.pitch)
 
     def gap(self, layer: int) -> float:
         """The clearance gap above layer ``layer`` (0: none)."""
         return self.gaps.get(layer, 0.0)
+
+    def t_hi(self, layer: int) -> float:
+        """The most layer ``layer`` can be thick in any plan of this layout (the plan's own:
+        :meth:`t`)."""
+        if self.final or not 0 < layer < self.top:
+            return self.t(layer)
+        return max(self.t(layer), self.thick_hi.get(layer, self.open_t))
+
+    def span(self, a: int, b: int) -> float:
+        """Layers ``a``..``b`` with the gaps among them, bottom to top (a search's layout: the
+        least it can be)."""
+        return self.z(b)[1] - self.z(a)[0]
+
+    def span_hi(self, a: int, b: int) -> float:
+        """The most layers ``a``..``b`` and the gaps among them can be in any plan of this
+        layout (the plan's own: :meth:`span`)."""
+        if self.final:
+            return self.span(a, b)
+        gaps = sum(1 for k in range(a, b) if 0 <= k < self.top)
+        return sum(self.t_hi(k) for k in range(a, b + 1)) + gaps * self.gap_hi
+
+    def z_hi(self, layer: int) -> float:
+        """The highest layer ``layer``'s bottom face can be in any plan of this layout (layer
+        0's bottom at z 0)."""
+        if self.final or layer <= 0:
+            return self.z(layer)[0]
+        return self.span_hi(0, layer - 1) + self.gap_hi
 
     def _z0(self, layer: int) -> float:
         cache = self.__dict__.setdefault("_zcache", {})
@@ -331,6 +380,19 @@ class Claim:
     layers: the least the group will claim whatever the other links do (every
     shape of it lies inside one ``make`` returns later). The search checks it
     early; the plan is built from ``make``.
+
+    ``tally`` (optional): what the group buys and prints in a plan, ``(usd, parts)``:
+    the unit price of each stock part it chooses there (a pin made to its stack, a standoff
+    of a stock length) and the parts it prints (one sleeve per run between what it retains:
+    :func:`construction.pivots.common.sleeve_runs`). The objective's terms after the height
+    and the route (:meth:`StackProblem.key`); only what can differ between plans of one
+    design need be counted.
+
+    ``hold`` (optional): at a plan's z (a final layout), how far the group's stock parts
+    hold its faces apart beyond that z, in mm (a standoff pillar longer than its column: the
+    plates stand on it, its links loose by as much). The plan's z is lowered only while no
+    claim's hold grows (:func:`stack.plan_z._descend`): a z under what the parts stand on
+    isn't a lower stack.
     """
 
     owner: str
@@ -340,3 +402,5 @@ class Claim:
     choice: str | None = None
     early: Callable[[Layout], Iterable[Placed] | None] | None = None
     early_deps: frozenset[str] = frozenset()
+    tally: Callable[[StackPlan], tuple[float, int]] | None = None
+    hold: Callable[[Layout], float] | None = None

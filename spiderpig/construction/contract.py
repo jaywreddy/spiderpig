@@ -207,8 +207,11 @@ def _check_group(build: Build, g, got: Realized, envelope: _Envelopes,
                 problems.append(f"{b.name}: frame plate outside its layer")
         return problems
     below = _slab(-1e3, build.z(build.top)[1])
+    inside = _slab(build.z(0)[0], build.z(build.top)[1])
     for b, shapes, clip in _items(build, g, got):
         part = (b.part & below if b.part is not None else None) if clip else b.part
+        if getattr(g, "stack_only", False) and part is not None:
+            part = part & inside    # (a hand crank's gearbox and handle stand outboard)
         vol = _outside_claims(build, part, shapes, envelope)
         if measured is not None:
             measured.append((part, vol))

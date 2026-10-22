@@ -21,8 +21,11 @@ pytestmark = pytest.mark.no_fabricate
 
 def test_fab_methods_keep_the_output_order():
     assert fabmethods.made() == ("laser", "printed")
-    assert fabmethods.kinds() == ("printed", "laser", "purchased")
+    # (display: a decanting cradle's drawn-only bottle and decanter, made by no one)
+    assert fabmethods.kinds() == ("printed", "laser", "purchased", "display")
     assert fabmethods.folders() == ("laser", "print")
+    assert not fabmethods.get("display").made
+    assert not fabmethods.stock("display")
     assert fabmethods.flat("laser")
     assert not fabmethods.flat("printed")
     assert not fabmethods.flat(None)
@@ -37,7 +40,7 @@ def test_a_registered_fab_method_reaches_every_listing(monkeypatch):
                              stock="sheet", folder="etch")
     monkeypatch.setitem(fabmethods.METHODS, "etched", m)
     assert fabmethods.made() == ("laser", "printed", "etched")
-    assert fabmethods.kinds() == ("printed", "laser", "etched", "purchased")
+    assert fabmethods.kinds() == ("printed", "laser", "etched", "purchased", "display")
     assert fabmethods.folders() == ("laser", "print", "etch")
     assert fabmethods.flat("etched")
 
@@ -179,7 +182,9 @@ def test_a_role_is_refused_where_it_does_not_apply(toy_role, monkeypatch):
 
 
 def test_choices_keep_the_constructions_that_serve_the_role():
-    assert rolemod.choices("pin") == ["ball", "ball_pair", "chicago"]   # (no pillars)
+    # (no pillars; a decanting cradle's pins too, its product's: config.PRODUCT_PINS)
+    assert rolemod.choices("pin") == ["ball", "ball_pair", "chicago", "chicago6", "clevis8",
+                                      "pivot8", "rod38", "rod516", "rodclip516"]
     assert rolemod.choices("pillar") == ["ball_pair_pillar", "ball_pillar", "standoff"]
 
 

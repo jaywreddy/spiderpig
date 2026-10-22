@@ -127,10 +127,11 @@ from spiderpig.construction.pivots.common import (
     Column,
     Stock,
     bored,
+    build_sleeves,
     column_air,
-    gap_washers,
+    column_slots,
     host_of,
-    ring_z,
+    sleeve_count,
     stem_of,
     xy_of,
 )
@@ -186,16 +187,21 @@ class ChicagoShaft:
     lengths: tuple[float, ...] = CHICAGO_LENGTHS   # the barrels stocked (per linkage,
     #                                  BARRELS: ChicagoAxle.resolve), shortest first
     model_gap: float = 0.01
+    bonded: bool = True             # the lowest link bonded to the barrel (False: every
+    #                                  link runs on it, the barrel's head held to drive the
+    #                                  screw, where it is in reach: a cradle's, CHICAGO_M6)
     glue_fit: float = 0.15          # the lowest link's hole over the barrel (bonded)
     glue_per_pin: float = 0.005
     lock_per_pin: float = 0.01
-
-    def item(self, length: float = CHICAGO_LENGTHS[0]) -> dict:
-        return get(self.key(length)).dims
+    family: str = "m3"              # the catalog's size: chicago_<family>_<length> (the M6:
+    #                                  a decanting cradle's, CHICAGO_M6)
 
     def key(self, length: float) -> str:
-        """The catalog key of the shaft ``length`` long."""
-        return chicago(length)
+        """The catalog key of this size's barrel ``length`` mm long."""
+        return chicago(length) if self.family == "m3" else f"chicago_{self.family}_{length:g}"
+
+    def item(self, length: float | None = None) -> dict:
+        return get(self.key(self.lengths[0] if length is None else length)).dims
 
     @property
     def d(self) -> float:
@@ -237,7 +243,9 @@ class ChicagoShaft:
         # the catalog's steps, not this design's stock (``lengths``, BARRELS): a stock with
         # wider steps (the Strider's 6 mm, 10 to 16) is checked where a stack meets it, at
         # the plan's z (column) and as built (fit), so the planner keeps the stacks it fits
-        # (the BOM study's relaxed rule, 2026-10-08)
+        # (the BOM study's relaxed rule, 2026-10-08); another size is checked that way only
+        if self.family != "m3":
+            return
         steps = [b - a for a, b in itertools.pairwise(CHICAGO_LENGTHS)
                  if b <= 22]      # (longer stacks: fit() says if the shims fit)
         room = (ctx.pitch - top) + (ctx.pitch - float(it["head_h"]))
@@ -246,14 +254,17 @@ class ChicagoShaft:
                                     f"more shims than two {ctx.pitch:g} mm end layers hold")
 
     def column(self, pillar: bool, links, top: int, anchored: tuple[bool, bool],
-               pitch: float, layout=None, air=None, **_) -> None:
+               pitch: float, layout=None, air=None, hi=None, **_) -> None:
         """The planner's rule: a stock barrel must span the pin's links (their layers, the
         washer and the least play; at the plan's own z, its gaps and thicker plates
-        included): :class:`stack.Unbuildable` otherwise."""
+        included): :class:`stack.Unbuildable` otherwise. A search's layout is a lower bound
+        of the stack (:class:`stack.Layout`): too long for the longest barrel there is too
+        long in every plan; the shims' rule (a maximum on what is left over, which a taller
+        plan may meet) waits for the plan's own z."""
         if pillar or not links:
             return
         stack = (max(links) - min(links) + 1) * pitch
-        if layout is not None and layout.final:
+        if layout is not None:
             stack = layout.z(max(links))[1] - layout.z(min(links))[0]
             if air is not None:         # its own parts' stack: the barrel closes the air
                 stack -= air(min(links), max(links))
@@ -331,6 +342,11 @@ class ChicagoShaft:
         from spiderpig.construction.pivots.common import HEAD_CLEARANCE
 
         it = self.item()
+        if not L.final and not L.estimate:
+            # a search's layout (a lower bound of the plan's z): the least each end needs in
+            # every plan, its head and washer (the shims and the play are the plan's)
+            return (float(it["head_h"]) + extra[0],
+                    float(it["screw_head_h"]) + self.washer_t + extra[1])
         stack = L.z(k1)[1] - L.z(k0)[0] + extra[0] + extra[1] - air
         gap_hi, gap_lo = L.gap(k1), L.gap(k0 - 1)
         try:
@@ -351,6 +367,12 @@ class ChicagoShaft:
         return (h_lo + (HEAD_CLEARANCE if gap_lo else 0.0),
                 h_hi + (HEAD_CLEARANCE if gap_hi else 0.0))
 
+    def stock_key(self, stack: float) -> str | None:
+        """The catalog key of the barrel a ``stack`` mm stack takes (``None``: none does)."""
+        need = stack + self.washer_t + self.min_play
+        length = next((L for L in self.lengths if need - EPS <= L), None)
+        return None if length is None else self.key(length)
+
     def shim_count(self, total: float) -> int:
         """Shim rings for ``total`` mm, thickest first."""
         from spiderpig.hardware.bom import stack
@@ -358,12 +380,14 @@ class ChicagoShaft:
         return len(stack(total, self.shim_steps)[0])
 
     def host_hole(self) -> float:
+        """The bonded lowest link's hole (:attr:`bonded`; unbonded, it runs like the rest)."""
         return self.d + self.glue_fit
 
     def realize(self, build: Build, group: AxleGroup, col: Column, out: Realized, *,
                 faces: dict[str, float] | None = None) -> Fit:
-        """The Chicago screw, its printed head spacers, and the bonded lowest link's hole. An
-        end in a clearance gap keeps :data:`common.HEAD_CLEARANCE` under the next layer."""
+        """The Chicago screw, its printed head spacers, and the bonded lowest link's hole
+        (:attr:`bonded`). An end in a clearance gap keeps :data:`common.HEAD_CLEARANCE` under
+        the next layer."""
         from spiderpig.construction.pivots.common import HEAD_CLEARANCE
 
         faces = faces or {}
@@ -403,24 +427,29 @@ class ChicagoShaft:
         # the PTFE washer and the take-up shims as one printed spacer per end (unclamped:
         # the screw bottoms on the barrel, so they only set the column's axial play). A lower
         # one thinner than PRINT_MIN isn't printed: the lowest link is bonded to the barrel,
-        # so that gap is set with a feeler gauge as the epoxy cures (``bond_gap_mm``)
+        # so that gap is set with a feeler gauge as the epoxy cures (``bond_gap_mm``);
+        # unbonded, it is the column's play
         from spiderpig.construction.pivots.common import PRINT_MIN
 
-        bond_gap = f.shims_lo if EPS < f.shims_lo < PRINT_MIN - EPS else 0.0
+        thin = f.shims_lo if EPS < f.shims_lo < PRINT_MIN - EPS else 0.0
+        bond_gap = thin if self.bonded else 0.0
+        if thin and not self.bonded:
+            f = replace(f, play=f.play + thin)
         # the upper spacer holds the washer's thickness at least (0.5 mm), always a print
         hi_t = self.washer_t + f.shims_hi
         for tag, z0, t in (("hi", z, hi_t), ("lo", zb, f.shims_lo)):
-            if t <= EPS or (tag == "lo" and bond_gap):
+            if t <= EPS or (tag == "lo" and thin):
                 continue
             sp = bored(disc(xy, float(get(self.shim_key).dims["od"]) / 2, z0, z0 + t), xy,
                        d + 0.2, z0, z0 + t)
             out.bodies.append(hardware(f"{stem}_spacer_{tag}", sp, host, fab="printed",
                                        color=SLEEVE_COLOR))
-        out.extras.append(BomLine("epoxy_2part", self.glue_per_pin,
-                                  f"{group.name}: barrel into {host} (slow epoxy: CA "
-                                  "crazes acrylic)"))
+        if self.bonded:
+            out.extras.append(BomLine("epoxy_2part", self.glue_per_pin,
+                                      f"{group.name}: barrel into {host} (slow epoxy: CA "
+                                      "crazes acrylic)"))
+            out.cut(host, Cut(xy, self.host_hole()))
         out.extras.append(BomLine(self.lock_key, self.lock_per_pin, group.name))
-        out.cut(host, Cut(xy, self.host_hole()))
         out.notes.setdefault("chicago", {})[group.name] = {
             "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
             "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
@@ -431,12 +460,15 @@ class ChicagoShaft:
 
 
 def chicago_section(shaft: ChicagoShaft) -> Section:
-    """The barrel as a 304 tube, 4 mm over the M3 thread's 3 mm major diameter (the screw's
-    core inside it ignored: conservative); a shaft that says its own (``section``), that."""
+    """The barrel as a 304 tube, its OD over its thread's major diameter (4 x 3 for the M3;
+    the screw's core inside it ignored: conservative); a shaft with its own ``section`` (a
+    solid steel pin, :mod:`construction.pivots.pivot_pin`), that."""
     own = getattr(shaft, "section", None)
     if own is not None:
         return own()
-    return Section.tube(shaft.d, 3.0, 215.0, name="chicago barrel 4 x 3 tube")
+    thread = float(shaft.item().get("thread", 3.0))
+    return Section.tube(shaft.d, thread, 215.0,
+                        name=f"chicago barrel {shaft.d:g} x {thread:g} tube")
 
 
 BARRELS: dict[tuple[str, str], tuple[float, ...]] = {
@@ -453,7 +485,9 @@ crank: on the Klann quads the same list finds no plan in 60 s (their 9 mm pins a
 routes need the catalog's 1 mm steps), nor on the Strider's ``bolt_round`` crank (7, 10,
 16, 22; with 23; with 9: its routes put J7 on the lengths between)."""
 
-MAX_BARREL: dict[str, float] = {"strider": 23.0}
+MAX_BARREL: dict[str, float] = {"strider": 23.0,
+                                 # a decanting cradle's pins carry a bottle: short spans
+                                 "decanter_hinge": 25.0, "decanter_rcm": 20.0}
 """The longest barrel a linkage's pins may take (a planner rule, :meth:`ChicagoAxle.resolve`):
 a long barrel is a long span, and a pin bends as its span. The Strider (2026-10-05): the quad's
 J7 on a 30 mm barrel, its links 26 mm apart at the plan's z, was jam SF 1.8; capped at 23 mm
@@ -513,6 +547,23 @@ class ChicagoAxle:
                     ) -> tuple[float, float]:
         return self.shaft.end_heights(L, k0, k1, air=air)
 
+    def sleeve_skip(self, col: Column) -> tuple[int, ...]:
+        """The clearance gaps of the column no sleeve fills (another part of the pin's
+        does): none."""
+        return ()
+
+    def prints(self, group: AxleGroup, view: Build, col: Column) -> int:
+        """The sleeves this pin prints at the plan's z (:func:`common.sleeve_count`; its
+        head spacers, a part a pin always has where it has one, aren't counted)."""
+        return sleeve_count(column_slots(view, group, col, skip=self.sleeve_skip(col)))
+
+    def stock_keys(self, group: AxleGroup, view: Build, col: Column) -> list[str]:
+        """The stock part this pin buys at the plan's z (its barrel, or the pin of the
+        length its stack takes)."""
+        air = column_air(view, group, col.k0, col.k1)
+        key = self.shaft.stock_key(view.z(col.k1)[1] - view.z(col.k0)[0] - air)
+        return [] if key is None else [key]
+
     def dims(self, ctx: Context, pillar: bool) -> AxleDims:
         p = ctx.params
         self.shaft.check(ctx, pillar)
@@ -555,15 +606,28 @@ class ChicagoAxle:
         top = whole(*view.named(rf"{re.escape(stem)}_(land|spacer)_hi"))
         land = view.named(rf"{re.escape(stem)}_land_hi")
         k_hi = view.slot(cut)
+        if self.shaft.bonded:
+            stock = self.spacers is not None        # (its spacers shims: AxleGroup.realize)
+            head_sp, top_sp = (("head spacer (shims)", "top spacer (shims)") if stock else
+                               ("printed head spacer", "printed top spacer"))
+            on = ("Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its "
+                  f"head under the link and its {head_sp} under that; set the gap "
+                  "with a feeler gauge as it cures.")
+            drive = ("Each Chicago screw into its barrel from the cap side once the links "
+                     f"above are on (threadlocker), its {top_sp} under the head.")
+        else:
+            on = ("Each Chicago barrel up through its link, its head under the link (and its "
+                  "printed head spacer under that, where it has one); it runs free, unglued.")
+            drive = ("Each Chicago screw into its barrel from the cap side once the links "
+                     "above are on (medium threadlocker, 243: the low-strength 222 cures "
+                     "poorly between two stainless parts), its printed top spacer under the "
+                     "head: hold the barrel's head from below (pliers, tape on the jaws) and "
+                     "snug it until it bottoms; the joint must turn without binding (the "
+                     "worm can't be turned from the links: turn the gearbox's input shaft).")
         return [
-            Op(STACK, (k_lo, 0, 1), lo, "",
-               "Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its "
-               "head under the link and its head spacer (shims) under that; set the gap "
-               "with a feeler gauge as it cures.", "layer"),
+            Op(STACK, (k_lo, 0, 1), lo, "", on, "layer"),
             # the screw is the barrel's (counted with it); its head spacer is a part of its own
-            Op(STACK, (k_hi, 2), (Piece(pin, "screw", (cut, z1)),), "",
-               "Each Chicago screw into its barrel from the cap side once the links above "
-               "are on (threadlocker), its top spacer (shims) under the head.", "layer",
+            Op(STACK, (k_hi, 2), (Piece(pin, "screw", (cut, z1)),), "", drive, "layer",
                count=False),
             Op(STACK, (k_hi, 2), top, "",
                "The land washer on the top link's bearing, on its inner ring only, then the "
@@ -575,21 +639,53 @@ class ChicagoAxle:
         col = Column.of(build, group)
         xy, host, stem = xy_of(build, group), host_of(build, group), stem_of(group)
         for k in col.between:
-            role, r = col.roles[k]
-            if role == "neck":
+            if col.roles[k][0] == "neck":
                 raise ConstructionError(f"{group.name}: a barrel can't neck down (layer {k})")
-            z0, z1 = ring_z(build, k)
-            out.bodies.append(hardware(f"{stem}_ring{k}", ring(xy, 2 * r, self.hole(), z0, z1),
-                                       host, fab="printed", color=SLEEVE_COLOR))
+        build_sleeves(build, group, column_slots(build, group, col, skip=self.sleeve_skip(col)),
+                      out, self.hole(), host, stem, shaft_d=self.shaft.d)
         f = self.shaft.realize(build, group, col, out)
-        gap_washers(build, group, col, out, self.shaft.d, host, stem)
+        bonded = self.shaft.bonded
         for m in group.axis.members:
-            if m != host:
+            if m != host or not bonded:
                 out.cut(m, Cut(xy, self.hole()))
         out.notes["wobble"] = {group.name: column_wobble(
             build, group, col,
-            clearance=lambda m: 0.0 if m == host else self.running_fit,
+            clearance=lambda m: 0.0 if m == host and bonded else self.running_fit,
             length=build.ctx.pitch, play=f.play + _hw_tol(),
             play_basis=f"barrel length less stack, washer and shims ({f.length:g} mm barrel)",
             section=chicago_section(self.shaft))}
         return out
+
+
+def _m6_lengths() -> tuple[float, ...]:
+    from spiderpig.hardware.cradle_catalog import CHICAGO_M6_LENGTHS
+
+    return CHICAGO_M6_LENGTHS
+
+
+@dataclass(frozen=True)
+class PrintedChicagoAxle(ChicagoAxle):
+    """A Chicago pin whose rings and head spacers stay printed (no stock tube or shim fits
+    its barrel: :data:`CHICAGO_M6`'s 8 mm)."""
+
+    spacers: ClassVar[Stock | None] = None
+    # a decanting cradle's own (config.PRODUCT_PINS, PRODUCT_PIN_JOINTS): chosen by its
+    # product, never a strength fix's alternative (strength._alt_sections)
+    product_only: ClassVar[bool] = True
+
+
+CHICAGO_M6 = PrintedChicagoAxle(
+    key="chicago6",
+    label=("M6 Chicago screw (8 mm barrel) through the stack, printed rings and head spacers; "
+           "nothing bonded (pins only): a decanting cradle's"),
+    shaft=ChicagoShaft(family="m6", washer_key="ptfe_washer_8x14x0p5",
+                       shim_key="shim_din988_8x14", lengths=_m6_lengths(), bonded=False,
+                       min_play=0.25, lock_key="threadlocker_243"),
+)
+"""The M6 size (Harfington's 18-8, 8 mm barrel, 13.5 mm heads: :mod:`hardware.cradle_catalog`):
+a decanting cradle's pins (``config.PRODUCT_PINS``), 8 times the M3 barrel's bending section
+for a bottle's loads (:mod:`spiderpig.cradle_report`). Not bonded: a cradle's pin stands in
+the open, its barrel's head in reach below the rod to hold while the screw goes in, and a
+joint turned a few times a pour needs no glued link (nor the epoxy on the order). Its
+column keeps 0.25 mm of axial play at least (a printed 0.5 mm spacer prints 0.4-0.6 mm: the
+links must turn)."""

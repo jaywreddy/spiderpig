@@ -362,7 +362,10 @@ def anchor_of(body, by_name: Mapping) -> str | None:
 # (:func:`hardware.mass.item_material`: the ties' and the stub's aluminium standoffs,
 # -9.6 and -1.3 g a side; a pillar -1 g, between the Strider's steel one-piece columns and
 # klann_lego's goBILDA ones): the Strider double -1.5 %, the demo Klann quad -0.7 %,
-# klann_lego +1.5 %.
+# klann_lego +1.5 %. Refitted 2026-10-14 (the planner's lowest stacks: shorter pillars and
+# barrels; one printed sleeve per run): a pillar 12.0 -> 7.0 g, a pin 3.3 -> 4.5 g; the
+# Strider double 0.0 %, the demo Klann quad -0.5 %, klann_lego +1.2 % (at 12.0 and 3.3:
+# -1.2, +0.7 and +2.4 %).
 _ACRYLIC = 1.19                      # g/cm^3 the plate constants are per (3 mm thick)
 _FRAME_BASE_G, _FRAME_PER_PIVOT_G = 16.2, 2.85    # the frame plates (per 3 mm acrylic)
 _CENTRE_PLATES_G = 11.05             # half the centre plates (the robot's chassis)
@@ -370,12 +373,12 @@ _CHASSIS_REST_G = 17.65              # half the ties and rear screws: aluminium,
 _DRIVE_EXTRA_G = 3.6                 # the servo's screws and horn
 _CRANK_PLATES_BASE_G, _CRANK_PLATES_PER_PIN_G = 3.78, 5.07   # the bolt crank's plates
 _CRANK_HW_BASE_G, _CRANK_HW_PER_PIN_G = 9.6, 8.28             # ... its bolts, nuts, stub
-_PILLAR_PER_PIVOT_G = 12.0           # a standoff pillar (segments, rings, screws, washers)
+_PILLAR_PER_PIVOT_G = 7.0            # a standoff pillar (segments, rings, screws, washers)
 _PILLAR_PER_PIVOT_LEG_G = 0.0
-_PIN_PER_JOINT_G = 3.8               # a Chicago pin (screw, tubes, washer, shims): 3.3 with
-#                                      printed rings; the stock tubes and shims of 2026-10-14
-#                                      +0.44 g a pin on the Strider double, +0.30 on klann_lego
-#                                      (refitted between them: -1.6 % and +1.4 %)
+_PIN_PER_JOINT_G = 5.1               # a Chicago pin (screw, tubes, washer, shims): the stock
+#                                      tubes and shims of 2026-10-14 on the planner's lowest
+#                                      stacks, refitted 2026-10-21 (the merge): the Strider
+#                                      double -0.1 %, klann_lego +1.4 %, the Klann quad -1.6 %
 
 
 def _sheet_scale(config: BuildConfig, key: str) -> float:

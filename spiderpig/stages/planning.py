@@ -267,10 +267,13 @@ def _reuse_plan(design: Design) -> PlanReport | None:
     the newest plan of the same resolved spec under another engine version, or of the same
     side under other robot-only roles (:data:`design.SIDE_FREE_ROLES`: another turntable),
     verified on fresh sampling, then written as this design's, without the optimality
-    proof."""
+    proof. A product's (a decanting cradle's: its engine changes are its parts', and it
+    plans in seconds) only from the running engine: it is re-planned, proven, rather than
+    served a valid but thicker stack."""
     store = design.store
     if store is None:
         return None
+    product = bool(design.config.lk.product)
     t0 = time.time()
     own = store.read_report(design.id, "plan")
     if own is not None:
@@ -280,7 +283,7 @@ def _reuse_plan(design: Design) -> PlanReport | None:
             if same and not timed_out(stored):   # (one for want of CPU time: search again)
                 return _commit(design, "plan", stored, cached=True)
             return None
-        side = _remake_plan(design, own, same)
+        side = None if product and not same else _remake_plan(design, own, same)
         if side is not None:
             design.side = side
             rep = _recorded_budget(_plan_report(side), own)
@@ -289,6 +292,8 @@ def _reuse_plan(design: Design) -> PlanReport | None:
         if same:
             log.warning("%s: the stored plan no longer holds under this engine: re-solving",
                         design.id)
+    if product:
+        return None
     others = store.find_plans(spec_hash(design.resolved), exclude=(design.id,))[:3]
     tried = {design.id, *(i for i, _ in others)}
     others += store.find_plans(side_hash(design.resolved), exclude=tried, side=True)[:3]

@@ -64,10 +64,11 @@ servo bay, each to ``tighten_nm``.
 
 from __future__ import annotations
 
+import bisect
 import functools
 import itertools
 from dataclasses import dataclass, replace
-from typing import ClassVar
+from typing import ClassVar, cast
 
 from spiderpig.construction.axle import AxleDims, AxleGroup, End
 from spiderpig.construction.base import (
@@ -82,25 +83,43 @@ from spiderpig.construction.base import (
 from spiderpig.construction.joints import ErrorTerms, plain_hole
 from spiderpig.construction.pivots.common import (
     EPS,
-    SLEEVE_COLOR,
     STEEL,
     Column,
     Stock,
     bored,
+    build_sleeves,
     column_air,
-    gap_washers,
+    column_slots,
     ring_z,
+    sleeve_count,
     xy_of,
 )
 from spiderpig.construction.wobble import Section, column_wobble
 from spiderpig.hardware.bom import SHIM_STEP, BomLine
 from spiderpig.hardware.catalog import get
 from spiderpig.hardware.mass import MODULUS_GPA
-from spiderpig.shapes import Cut, disc, ring, union
+from spiderpig.shapes import Cut, Shape3D, disc, ring, union
 from spiderpig.stack import Unbuildable
+
+
+@functools.cache
+def _stock(axle: StandoffAxle) -> tuple[tuple[float, ...], ...]:
+    """(:meth:`StandoffAxle.admissible`) The stock lengths of ``axle`` and of its one-piece
+    shaft, each sorted, from its shortest segment up."""
+    return tuple(tuple(sorted(L for L in c.lengths() if c.min_segment - EPS <= L))
+                 for c in (axle, axle.one_piece()))
+
 
 ALU = "#c8ccd0"
 COLUMN_TOL = 0.25    # the column within this of its gap (half the step)
+RUN_PLAY = 0.3       # a cradle's column: its links' axial running play on the standoff
+NECK_WALL = 0.85     # a cradle's printed neck at its thinnest (mm): two 0.4 mm perimeters, a
+#                      sleeve that only locates its links (the standoff carries the clamp), so
+#                      a pillar passes a layer a link sweeps 7.4 mm from its axis (B's O1 under
+#                      b6, design review round 3's B1: with the rings' 1.5 mm wall it ended
+#                      under b6, a cantilever; 1.2, three perimeters, on the 12 mm steel post
+#                      until the simplification round 1, 2026-10-21: the 1/2 in rod's 13.05 mm
+#                      bore keeps the neck's 7.375 mm radius at 0.85)
 
 
 @dataclass(frozen=True)
@@ -126,30 +145,55 @@ class StandoffAxle:
     tighten_nm: float = 0.8          # the end screws
     shim_key: str = "shim_din988_4x8"   # the end shims (bought as stock 0.5 mm washers)
     set_play: float = 0.1            # axial play of the column (plates touch; assumed)
-    washer_key: str = "m4_washer"
+    washer_key: str | None = "m4_washer"   # None: the head bears on the plate
+    washer_ends: tuple[str, ...] = ("foot", "end")   # the ends a washer goes under the head at
+    #                                  ("foot": on the outer plate; a cradle's pillar keeps one
+    #                                  only there since simplification round 2)
     lock_key: str | None = "threadlocker_222"
     lock_per_screw: float = 0.01
     size: str = "M4"                 # "M3": the one-piece shaft's M3 ends (one_piece)
     ground: bool = False             # the shaft ground (g6): a ball pair's pillar
     stock: str = ""                  # "": goBILDA M4 stock lengths; "shaft": a 6 mm round
     #                                  steel standoff tapped M3 both ends, made to length
-    #                                  (MISUMI NETRF6, one_piece)
+    #                                  (MISUMI NETRF6, one_piece); "shaft12": a cradle's
+    #                                  1/2 in 6061-T6511 rod, tapped M6 (cradle_shaft)
+    outside: float | None = None     # the head room outside a frame plate (None: a layer,
+    #                                  the pitch; a cradle's: its side is open there)
+    face_washer: str | None = None   # a washer between each end and its plate's face (its
+    #                                  catalog key; a cradle's: cradle.FACE_WASHER): on the
+    #                                  outer plate in the layer over it, under the inner one
+    #                                  in the clearance gap there
+    neck_wall: float | None = None   # a printed neck's thinnest wall where a passing link
+    #                                  leaves a layer less room than a ring (None: the
+    #                                  rings' ``Params.min_wall``; a cradle's: NECK_WALL)
+    foot: str = "bhcs"               # the foot's screw family (on the outer plate): "bhcs109"
+    #                                  a class 10.9 button head (a cradle's pillar in
+    #                                  cradle.STEEL_FEET: :meth:`steel_foot`)
+    foot_nm: float | None = None     # its tightening torque (None: ``tighten_nm``)
 
     @property
     def screw_d(self) -> float:
-        return 3.0 if self.size == "M3" else 4.0
+        return float(self.size[1:])
 
     @property
     def thread_max(self) -> float:
-        """The deepest thread a standoff's end has (goBILDA M4: 8; the shaft's M3 taps, 2 x M
-        deep: 6)."""
-        return 6.0 if self.size == "M3" else 8.0
+        """The deepest thread a standoff's end has (goBILDA M4: 8; a shaft's taps, 2 x M
+        deep: M3 6, M5 10)."""
+        return 8.0 if self.size == "M4" else 2.0 * self.screw_d
 
     def segment_key(self, length: float) -> str:
         if self.stock == "shaft":
             from spiderpig.hardware.crank_catalog import ground_pillar_shaft, pillar_shaft
 
             return ground_pillar_shaft(length) if self.ground else pillar_shaft(length)
+        if self.stock == "shaft10":
+            from spiderpig.hardware.cradle_catalog import netrf10
+
+            return netrf10(length)
+        if self.stock == "shaft12":     # (a cradle's pivot post: a link turns on its hard coat)
+            from spiderpig.hardware.cradle_catalog import al_rod_hard
+
+            return al_rod_hard(length)
         from spiderpig.hardware.crank_catalog import gobilda_1501
 
         return gobilda_1501(length)
@@ -162,6 +206,14 @@ class StandoffAxle:
         if self.stock == "shaft":     # a ground shaft in whole mm (the end shims the rest)
             return (tuple(float(L) for L in range(8, 301)) if self.ground
                     else PILLAR_SHAFT_LENGTHS)
+        if self.stock == "shaft10":
+            from spiderpig.hardware.cradle_catalog import NETRF10_LENGTHS
+
+            return NETRF10_LENGTHS
+        if self.stock == "shaft12":
+            from spiderpig.hardware.cradle_catalog import ROD_LENGTHS
+
+            return ROD_LENGTHS
         return GOBILDA_LENGTHS
 
     @property
@@ -182,30 +234,117 @@ class StandoffAxle:
                        stud_hole=3.2, min_engage=3.0, min_segment=12.0,
                        washer_key="m3_washer_9021", shim_key="shim_din988_3x6")
 
+    def cradle_shaft(self) -> StandoffAxle:
+        """A decanting cradle's pillar (``construction._axle_groups``): one 1/2 in (12.7 mm)
+        6061-T6511 round made to the column's length (``hardware.cradle_catalog.al_rod``: cut
+        to length, faced and tapped M6 at home; the simplification round 1, 2026-10-21, the
+        materials rule: MISUMI's 12 mm NETRF12 steel before), an M6 x 16 button head (A2-70)
+        through each plate's 6.4 mm hole, a DIN 125 washer under it at its foot only
+        (simplification round 2, 2026-10-21: :data:`construction.cradle.HEAD_WASHED`; at both
+        ends since design review round 2's m2, 2026-10-15, when the 10.5 mm heads had borne on
+        the bare 5052 through 6.6 mm holes, on 18-8 screws of no stated class). Its bottle's
+        load bends a 6 mm column between plates too far (B's O1 at the 3 L's jam: SF 0.4,
+        ``cradle_report``), a 10 mm steel one at the
+        6 L's (0.78); 1/2 in 6061 is 1.6 x as stiff as the 10 mm steel and stronger at its
+        tapped ends (ASTM B221's 241 MPa minimum against the steel's 235). Its links turn on
+        it in 13.05 mm bores (its running fit). Its heads and washers, 4.9 mm, stand outside
+        the plates, where a cradle's side is open (the bay; the outside, its gearbox at O)."""
+        from spiderpig.construction.cradle import FACE_WASHER, HEAD_WASHED
+        from spiderpig.hardware.cradle_catalog import ROD_HALF, ROD_ROOT, ROD_YIELD
+        from spiderpig.hardware.fasteners import BUTTON_A2_70_NM
+
+        return replace(self.one_piece(), stock="shaft12", size="M6", od=ROD_HALF, id_=ROD_ROOT,
+                       yield_mpa=ROD_YIELD, end_hole=6.4, stud_hole=6.4,
+                       min_engage=6.0, min_segment=24.0, washer_key="m6_washer",
+                       washer_ends=HEAD_WASHED["pillar"],
+                       shim_key="m6_washer", tighten_nm=BUTTON_A2_70_NM["6"],
+                       outside=5.0, neck_wall=NECK_WALL, face_washer=FACE_WASHER)
+
+    def steel_foot(self) -> StandoffAxle:
+        """A cradle's pillar whose foot joint needs more preload than an A2-70 button head
+        takes at ISO 7380's 4 N·m (``construction.cradle.STEEL_FEET``): its foot screw the tie
+        rods' class 10.9 button head at their torque (``construction.cradle.TIE_TIGHTEN_NM``;
+        the same head), its inner end's the A2-70 one."""
+        from spiderpig.construction.cradle import TIE_TIGHTEN_NM
+
+        return replace(self, foot="bhcs109", foot_nm=TIE_TIGHTEN_NM)
+
+    def _running_play(self, build: Build, group: AxleGroup, out: Realized,
+                      length: float) -> float:
+        """A decanting cradle's column (its printed rings fill their layers,
+        :func:`construction.axle.full_rings`): its printed parts and its links stop
+        :data:`RUN_PLAY` short of its standoff, which its screws clamp between the plates,
+        so the links turn on it (the 2026-10-10 review: the parts' nominal 53.075 mm on a
+        53.0 standoff clamped the cradle link). The topmost printed parts are shortened at
+        their tops, none under :data:`common.PRINT_MIN`. Returns the play it adds."""
+        from spiderpig.construction.axle import full_rings
+        from spiderpig.construction.pivots.common import PRINT_MIN
+
+        if not full_rings(build.ctx):
+            return 0.0
+        stem = group.name.replace(":", "_") + "_"
+        printed = []
+        for i, b in enumerate(out.bodies):
+            if b.fab == "printed" and b.name.startswith(stem) and b.part is not None:
+                bb = cast(Shape3D, b.part).bounding_box()
+                printed.append((bb.max.Z, bb.min.Z, i))
+        links = sum(build.ctx.sheet_t("link", m) for m in group.axis.members)
+        stack = links + sum(hi - lo for hi, lo, _ in printed)
+        excess = stack - (length - RUN_PLAY)
+        got = 0.0
+        for hi, lo, i in sorted(printed, reverse=True):     # from the top down
+            cut = min(excess - got, (hi - lo) - PRINT_MIN)
+            if cut <= 1e-6:
+                continue
+            b = out.bodies[i]
+            bb = b.part.bounding_box()
+            r = max(bb.max.X - bb.min.X, bb.max.Y - bb.min.Y)
+            out.bodies[i] = replace(b, part=b.part - disc(xy_of(build, group), r, hi - cut,
+                                                            hi + 1.0))
+            got += cut
+            if got >= excess - 1e-6:
+                break
+        return got
+
+    @property
+    def face_t(self) -> float:
+        """The foot washer's thickness (:attr:`face_washer`; 0 without one)."""
+        return 0.0 if self.face_washer is None else float(get(self.face_washer).dims["t"])
+
+    @property
+    def face_r(self) -> float:
+        """The foot washer's radius (0 without one): what it claims in the layer over the
+        outer plate."""
+        return 0.0 if self.face_washer is None else float(get(self.face_washer).dims["od"]) / 2
+
     def washer(self) -> tuple[float, float, float]:
+        if self.washer_key is None:
+            return 0.0, 0.0, 0.0
         w = get(self.washer_key).dims
         return float(w["od"]), float(w["id"]), float(w["t"])
 
-    def end_screw(self, pitch: float, plate: bool = True
-                  ) -> tuple[str, float, float, float] | None:
+    def end_screw(self, pitch: float, plate: bool = True, kind: str = "bhcs",
+                  washer: bool = True) -> tuple[str, float, float, float] | None:
         """(key, length, head diameter, head height) of the button head (M4, or M3 for an
-        M3 column) through a frame plate (``plate``; else straight into the column's free
-        end, over the last link) and its washer into the standoff's end: the most thread up
-        to its depth (taken as the shortest standoff's)."""
+        M3 column; ``kind`` "bhcs109": a cradle's class 10.9 foot, :meth:`steel_foot`) through a
+        frame plate (``plate``; else straight into the column's free end, over the last link)
+        and its washer (``washer``; none at an end :attr:`washer_ends` leaves bare) into the
+        standoff's end: the most thread up to its depth (taken as the shortest standoff's)."""
         from spiderpig.hardware.crank_catalog import M4_BHCS_LENGTHS, m4_bhcs
         from spiderpig.hardware.fasteners import SCREWS
 
-        _, _, wt = self.washer()
+        wt = self.washer()[2] if washer else 0.0
         depth = min(self.thread_max, self.min_segment / 2)
         best = None
-        lengths = SCREWS["bhcs", "3"].lengths if self.size == "M3" else M4_BHCS_LENGTHS
+        family = SCREWS.get((kind, self.size[1:])) if self.size != "M4" else None
+        lengths = family.lengths if family is not None else M4_BHCS_LENGTHS
         for L in lengths:
             e = L - (pitch if plate else 0.0) - wt
             if self.min_engage - EPS <= e <= depth + EPS and (best is None or e > best[1]):
                 best = (L, e)
         if best is None:
             return None
-        key = SCREWS["bhcs", "3"].key(best[0]) if self.size == "M3" else m4_bhcs(best[0])
+        key = family.key(best[0]) if family is not None else m4_bhcs(best[0])
         d = get(key).dims
         return key, best[0], float(d["head_d"]), float(d["head_h"])
 
@@ -232,11 +371,13 @@ class StandoffAxle:
             raise ConstructionError("an M4 pillar screw doesn't fit the frame plate arms")
         ring_min = (self.od + self.ring_fit) / 2 + p.min_wall   # the narrowest ring to cut
         screw = self.end_screw(ctx.sheet_t("frame"))
-        if screw is None or self.end_screw(ctx.pitch, False) is None:
+        if screw is None or self.end_screw(ctx.pitch, False) is None or (
+                self.foot != "bhcs" and self.end_screw(ctx.sheet_t("frame"), True,
+                                                       self.foot) is None):
             raise ConstructionError(f"no stock M4 screw fits a standoff pillar's ends in "
                                     f"{ctx.pitch:g} mm layers")
         w_od, _, w_t = self.washer()
-        if screw[3] + w_t > ctx.pitch + EPS:
+        if screw[3] + w_t > (self.outside or ctx.pitch) + EPS:
             from spiderpig.hardware.catalog import sheet_thickness
 
             need = screw[3] + w_t
@@ -252,16 +393,21 @@ class StandoffAxle:
         head = max(w_od, screw[2]) / 2
         from spiderpig.materials import washer_od
 
+        neck = ring_min if self.neck_wall is None else min(
+            ring_min, (self.od + self.ring_fit) / 2 + self.neck_wall)
         return AxleDims(axle=self.od / 2, spacer=max(p.spacer_d / 2, ring_min), head=head,
-                        neck=ring_min, washer=washer_od(self.od) / 2)
+                        neck=neck, washer=washer_od(self.od) / 2)
 
     def ends(self, d: AxleDims, pillar: bool, anchored: tuple[bool, bool], n_layers: int,
              pitch: float, span: float | None = None
              ) -> tuple[tuple[End, ...], tuple[End, ...]]:
         """A button head and washer outside each frame plate it reaches (over the inner
         plate: in the chassis' space between the robot's two inner plates), or over its last
-        link at a free end (a cantilever from the other plate)."""
-        return (("head", d.head),), (("head", d.head),)
+        link at a free end (a cantilever from the other plate); a head taller than a layer
+        (a cradle's M6, :attr:`outside`) claims two."""
+        n = 2 if self.outside is not None and self.outside > pitch + EPS else 1
+        head = (("head", d.head),) * n
+        return head, head
 
     @staticmethod
     def faces(links, top: int, anchored: tuple[bool, bool]) -> tuple[int, int]:
@@ -310,7 +456,9 @@ class StandoffAxle:
         """The stock length for a ``gap`` mm between two faces (``max_short`` under it to
         ``max_long`` over, the nearest; with ``shims``, up to ``max_shims`` under it, steel
         shims (stock 0.5 mm washers) taking the rest up at its upper end), ``None`` when none is."""
-        if self.size == "M3":
+        if self.stock == "shaft12":     # (a cradle's: its posts one length whatever the
+            gap = round(gap, 2)         # float noise in their gaps, 0.01 mm)
+        if self.stock.startswith("shaft"):
             # (the shaft: its lengths, end shims in SHIM_STEP steps only (stock 0.5 mm washers,
             # two to a 1 mm shim), the column within COLUMN_TOL of its gap; goBILDA M4 keeps
             # its rule below, its take-up rounded to the step in shims(): at most half a step
@@ -357,24 +505,89 @@ class StandoffAxle:
 
         return any(fits(sp) for n in range(1, 4) for sp in itertools.combinations(cand, n))
 
+    def hold(self, links, top: int, anchored: tuple[bool, bool], layout, air) -> float:
+        """How far the column's stock standoff (at the plan's z, ``layout``) is longer than
+        its stack between its faces, mm (0: it fits, or is shorter, its shims taking the rest
+        up): the plates stand on it that far apart (:attr:`stack.Claim.hold`; the printed
+        rings :meth:`ring_fill` makes taller take some of it up, the plates still apart)."""
+        a, b = self.faces(links, top, anchored)
+        axle = self.column_axle(set(links), b, layout.pitch, a, layout, air)
+        if axle is None:
+            return 0.0
+        span = layout.z(b)[0] - layout.z(a)[1] - air(a + 1, b - 1) - self.face_t * (
+            anchored[0] + anchored[1])
+        length = axle.segment(span, b - 1 > a and b - 1 not in links)
+        return 0.0 if length is None else max(0.0, length - span)
+
+    def admissible(self, lo: float, hi: float) -> bool:
+        """Whether a column whose stack between its faces is ``lo`` to ``hi`` mm in the plans
+        a search's layout can become may be filled: some stock length of this construction or
+        its one-piece shaft lies within what :meth:`segment` takes over that range (its
+        shims under it, its ``max_long`` over). A window, not a bound: the rule itself (a
+        length within the window, the short odd column refused) waits for the plan's z."""
+        short = max(self.max_shims, self.max_short)
+        long = max(self.max_long, 0.1)
+        for lengths in _stock(self):
+            i = bisect.bisect_left(lengths, lo - short - EPS)
+            if i < len(lengths) and lengths[i] <= hi + long + EPS:
+                return True
+        return False
+
     def column(self, pillar: bool, links: list[int], top: int,
                anchored: tuple[bool, bool], pitch: float, layout=None, air=None,
-               **_) -> None:
+               hi=None, **_) -> None:
         """The planner's rule: a standoff must fill the column (at the plan's own z when
-        ``layout`` is final)."""
-        lo, hi = self.faces(links, top, anchored)
+        ``layout`` is final). A search's layout bounds the column's stack between its faces
+        (its span less ``air``, at least; ``hi``, at most, the gaps over and under the faces
+        included): it is refused only where no stock length could fill any stack in between
+        (:meth:`admissible`)."""
+        lo, hi_face = self.faces(links, top, anchored)
+        if (pillar and layout is not None and not layout.final and air is not None
+                and hi is not None):
+            least = layout.z(hi_face)[0] - layout.z(lo)[1] - air(lo + 1, hi_face - 1)
+            most = hi(lo + 1, hi_face - 1, lo, hi_face)   # (the gaps over and under its faces)
+            if not self.admissible(least, most):
+                raise Unbuildable(
+                    f"no stock standoff ({self.min_segment:g}-{self.max_segment:g} mm) nor a "
+                    f"shaft made to length fills its column ({least:.1f}-{most:.1f} mm)")
+            return
         final = layout if layout is not None and layout.final else None
-        if pillar and self.column_axle(links, hi, pitch, lo, final, air) is None:
+        if pillar and self.column_axle(links, hi_face, pitch, lo, final, air) is None:
             raise Unbuildable(
                 f"no stock standoff ({self.min_segment:g}-{self.max_segment:g} mm) nor a "
-                f"shaft made to length fills its {(hi - lo - 1) * pitch:g} mm column")
+                f"shaft made to length fills its {(hi_face - lo - 1) * pitch:g} mm column")
+
+    def prints(self, group: AxleGroup, view: Build, col: Column) -> int:
+        """The sleeves this pillar prints at the plan's z (:func:`common.sleeve_count`; the
+        rings' fill and the end shims' trim, which only move a sleeve's ends, aren't
+        modelled)."""
+        return sleeve_count(column_slots(view, group, col))
+
+    def stock_keys(self, group: AxleGroup, view: Build, col: Column) -> list[str]:
+        """The standoff this pillar buys at the plan's z."""
+        top = view.top
+        anchored = (0 in col.anchors, top in col.anchors)
+        a, b = self.faces(col.links, top, anchored)
+        axle = self.column_axle(set(col.links), b, view.ctx.pitch, a, view.plan.layout,
+                                lambda x, y: column_air(view, group, x, y))
+        if axle is None:
+            return []
+        span = view.z(b)[0] - view.z(a)[1] - column_air(view, group, a + 1, b - 1) - (
+            self.face_t * (anchored[0] + anchored[1]))
+        length = axle.segment(span, b - 1 > a and b - 1 not in col.links)
+        return [] if length is None else [axle.segment_key(length)]
 
     # -- strength ---------------------------------------------------------------------------
 
     def section(self) -> Section:
-        if self.stock == "shaft":
+        if self.stock == "shaft12":
             return Section.tube(self.od, self.id_, self.yield_mpa,
-                                name=f"6 mm 1018 steel standoff (as a 6 x {self.id_:g} tube)")
+                                name=f"{self.od:g} mm 6061-T6511 rod post (as a {self.od:g} x "
+                                     f"{self.id_:g} tube)")
+        if self.stock.startswith("shaft"):
+            return Section.tube(self.od, self.id_, self.yield_mpa,
+                                name=f"{self.od:g} mm 1018 steel standoff (as a {self.od:g} x "
+                                     f"{self.id_:g} tube)")
         return Section.tube(self.od, self.id_, self.yield_mpa,
                             name=f"6 mm Al standoff (6061, as a 6 x {self.id_:g} tube)",
                             modulus_mpa=MODULUS_GPA["aluminium"] * 1000)
@@ -437,24 +650,39 @@ class StandoffAxle:
 
         stem = re.escape(stem_of(group))
         bottom, top = view.layers[0][0], view.layers[view.top][1]
-        column = view.named(rf"{stem}_standoff\d+")
+        column = view.named(rf"{stem}_standoff\d+") + view.named(rf"{stem}_face\d+")
         ends = view.named(rf"{stem}_(screw|washer)\d+")
         column += [n for n in ends if view.z[n][0] < bottom - 1e-3]
         inner = [n for n in ends if n not in column and view.z[n][1] > top + 1e-3]
         ops = []
+        cradle = self.stock == "shaft12"        # (a cradle's: its sides open, no servo bay)
+        foot = (f"its M{self.size[1:]} steel button head (class 10.9, from its own bag: not a "
+                f"stainless one; to {self.foot_nm:g} N·m) and washer from outside"
+                if self.foot == "bhcs109" else "its button head and washer from outside")
         if column:
             ops.append(Op(STACK, (-1, 1), whole(*column), "",
                           "Screw each pillar's standoff column (one piece) to the outer plate: "
-                          "its button head and washer from outside, threadlocker, to "
-                          f"{self.tighten_nm:g} N·m while the column is bare to hold.",
-                          "columns"))
+                          + foot
+                          + (", an 18 mm fender washer on the plate's inner face under the "
+                             "column's foot and another on its top end for the inner plate "
+                             "(matched to the columns' by caliper, within 0.05 mm)"
+                             if self.face_washer is not None else "")
+                          + (", threadlocker" if self.foot == "bhcs109" else
+                             f", threadlocker, to {self.tighten_nm:g} N·m")
+                          + " while the column is bare to hold.", "columns"))
         if inner:
             lk = getattr(getattr(view.ctx, "config", None), "lk", None)
             where = ("from outside the inner plate" if lk is not None and lk.ranged
                      else "from the servo bay (a ball-end key)")
             ops.append(Op(JOIN, (1,), whole(*inner), "",
-                          f"Each pillar's inner screw and washer {where}, threadlocker, to "
-                          f"{self.tighten_nm:g} N·m.", "pillar_screws"))
+                          ("Each pillar's inner button head "
+                           + ("and washer " if "end" in self.washer_ends else
+                              "(straight on the deburred plate: no washer) ")
+                           + f"from the bay side, threadlocker, to {self.tighten_nm:g} N·m."
+                           if cradle else
+                           f"Each pillar's inner screw and washer {where}, threadlocker, to "
+                           f"{self.tighten_nm:g} N·m."),
+                          "pillar_screws"))
         ops.extend(Op(STACK, (view.slot(view.z[n][0]), 3), whole(n), "",
                       "The take-up shims on their column's top.", "layer")
                    for n in view.named(rf"{stem}_shims\d+"))
@@ -487,18 +715,35 @@ class StandoffAxle:
         a, b = faces
         fill = self.ring_fill(build, group, col, [a, b])
         for k in col.between:
-            role, r = col.roles[k]
-            if role == "neck":
+            if col.roles[k][0] == "neck":
                 raise ConstructionError(f"{group.name}: a standoff can't neck down (layer {k})")
-            z0, z1 = ring_z(build, k)
-            z1 += fill.get(k, 0.0)
-            out.bodies.append(hardware(f"{stem}_ring{k}",
-                                       ring(xy, 2 * r, self.od + self.ring_fit, z0, z1), host,
-                                       fab="printed", color=SLEEVE_COLOR))
         shimmed: dict[int, float] = {}      # face -> the shims' thickness under it
-        trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
         long = 0.0          # how far the stock standoff (and take-up) is off its gap
         z0, z1 = build.z(a)[1], build.z(b)[0]
+        trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
+        if self.face_washer is not None:    # each anchored end on a washer on its plate
+            wd = get(self.face_washer).dims
+            tw = float(wd["t"])
+            for k, plate in ((a, anchored[0]), (b, anchored[1])):
+                if not plate:
+                    continue
+                if k == b:          # under the inner plate: in the clearance gap there
+                    g = build.plan.gaps.get(b - 1, 0.0) if b - 1 in col.washers else 0.0
+                    if g < tw - EPS:
+                        raise ConstructionError(
+                            f"{group.name}: no {tw:g} mm clearance gap under the inner plate "
+                            f"for its end's washer (layer {b - 1}'s gap {g:g} mm)")
+                    trim[b - 1] = tw
+                lo = z0 if k == a else z1 - tw
+                out.bodies.append(hardware(f"{stem}_face{k}",
+                                           bored(disc(xy, float(wd["od"]) / 2, lo, lo + tw),
+                                                 xy, float(wd["id"]), lo, lo + tw),
+                                           host, fab="purchased", bom_key=self.face_washer,
+                                           color=STEEL))
+                if k == a:
+                    z0 += tw
+                else:
+                    z1 -= tw
         span = z1 - z0 - column_air(build, group, a + 1, b - 1)
         length = self.segment(span, _shim_room(col, a, b))
         if length is None:
@@ -519,7 +764,7 @@ class StandoffAxle:
                 zs0 = z1 - t
                 g = build.plan.gaps.get(b - 1, 0.0) if b - 1 in col.washers else 0.0
                 if g > 0:
-                    trim[b - 1] = min(t, g)
+                    trim[b - 1] = min(t + trim.get(b - 1, 0.0), g)
                 out.bodies.append(hardware(f"{stem}_shims{b}", ring(xy, self.shim_od(),
                                                                     self.stud_hole, zs0, z1),
                                            host, fab="purchased", bom_key=self.shim_key,
@@ -527,27 +772,29 @@ class StandoffAxle:
                 if len(sh) > 1:
                     out.extras.append(BomLine(self.shim_key, len(sh) - 1,
                                               f"{group.name}: {t:.1f} mm under layer {b}"))
-                sleeve = f"{stem}_ring{b - 1}"
-                for i, body in enumerate(out.bodies):
-                    if body.name == sleeve:
-                        bb = body.part.bounding_box()
-                        if zs0 + EPS < bb.max.Z:
-                            r = (bb.max.X - bb.min.X) / 2
-                            out.bodies[i] = hardware(
-                                sleeve, ring(xy, 2 * r, self.od + self.ring_fit, bb.min.Z,
-                                             zs0), host, fab="printed", color=SLEEVE_COLOR)
                 shimmed[b] = t
                 z1 = zs0
-        seg = disc(xy, self.od / 2 - 0.01, z0, z1) - disc(xy, 2.0, z0 - 1, z1 + 1)
+        # the printed sleeves (common.sleeve_runs), stopped under the shims where they reach
+        # down into the spacer layer under the face
+        slots = [replace(sl, z0=max(sl.z0, z0), z1=min(sl.z1, z1)) for sl in
+                 column_slots(build, group, col, fill=fill, trim=trim)
+                 if sl.z0 < z1 - EPS and sl.z1 > z0 + EPS]
+        long += build_sleeves(build, group, slots, out, self.od + self.ring_fit, host, stem,
+                              shaft_d=self.od)[0]
+        bore = max(2.0, self.screw_d / 2)       # (its tapped ends, drawn through)
+        seg = disc(xy, self.od / 2 - 0.01, z0, z1) - disc(xy, bore, z0 - 1, z1 + 1)
         out.bodies.append(hardware(f"{stem}_standoff{a}", seg, host, fab="purchased",
                                    bom_key=self.segment_key(length), color=ALU))
-        long += gap_washers(build, group, col, out, self.od, host, stem, trim=trim)
+        long += self._running_play(build, group, out, length)
         w_od, w_id, w_t = self.washer()
         ends = [(a, -1.0, anchored[0]), (b, 1.0, anchored[1])]
         for k, sign, plate in ends:
             # through the plate (and any shims under it) into the standoff's end
             grip = (build.plan.t(k) if plate else pitch) + shimmed.get(k, 0.0)
-            got = self.end_screw(grip, plate)
+            washed = (self.washer_key is not None
+                      and ("foot" if sign < 0 else "end") in self.washer_ends)
+            got = self.end_screw(grip, plate, self.foot if sign < 0 and plate else "bhcs",
+                                 washer=washed)
             if got is None:
                 raise ConstructionError(f"{group.name}: no stock M4 screw takes a {grip:.2f} mm "
                                         f"grip at layer {k}")
@@ -556,16 +803,17 @@ class StandoffAxle:
                 face = build.z(k)[0] if sign < 0 else build.z(k)[1]
             else:                # in the end layer, on the column's free end
                 face = build.z(k)[1] if sign < 0 else build.z(k)[0]
-            washer = bored(disc(xy, w_od / 2, *sorted((face, face + sign * w_t))), xy, w_id,
-                           *sorted((face, face + sign * w_t)))
-            bear = face + sign * w_t
+            if washed:
+                washer = bored(disc(xy, w_od / 2, *sorted((face, face + sign * w_t))), xy,
+                               w_id, *sorted((face, face + sign * w_t)))
+                out.bodies.append(hardware(f"{stem}_washer{k}", washer, host,
+                                           fab="purchased", bom_key=self.washer_key,
+                                           color=STEEL))
+            bear = face + sign * (w_t if washed else 0.0)
             head = disc(xy, hd / 2, *sorted((bear, bear + sign * hh)))
             shank = disc(xy, 0.97 * self.screw_d / 2, *sorted((bear, bear - sign * L)))
-            out.bodies += [
-                hardware(f"{stem}_washer{k}", washer, host, fab="purchased",
-                         bom_key=self.washer_key, color=STEEL),
-                hardware(f"{stem}_screw{k}", union([head, shank]), host, fab="purchased",
-                         bom_key=key, color=STEEL)]
+            out.bodies.append(hardware(f"{stem}_screw{k}", union([head, shank]), host,
+                                       fab="purchased", bom_key=key, color=STEEL))
         if self.lock_key is not None:
             out.extras.append(BomLine(self.lock_key, self.lock_per_screw * len(ends),
                                       f"{group.name} end screws"))

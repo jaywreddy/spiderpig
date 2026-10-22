@@ -204,10 +204,9 @@ def _dilate(m, r):
     return out
 
 
-def render(items: list[Item], view: View, ss: int = SS
-           ) -> tuple[Image.Image, dict[str, Mark]]:
-    """The picture of ``items`` from ``view`` (an RGB image of ``view.size``), and where
-    each marked item shows."""
+def _frame(items: list[Item], view: View, ss: int):
+    """The view's basis, each item's points in it, and the map from view coordinates to
+    the (supersampled) picture's pixels that frames them all (the arrows' ends too)."""
     basis = _basis(view)
     W, H = view.size[0] * ss, view.size[1] * ss
     pos = [(it.pos + np.asarray(it.offset)) @ basis.T for it in items]
@@ -225,6 +224,24 @@ def render(items: list[Item], view: View, ss: int = SS
         x = (p[..., 0] - centre[0]) * scale + W / 2
         y = H / 2 - (p[..., 1] - centre[1]) * scale
         return x, y
+
+    return basis, pos, to_px, scale
+
+
+def projector(items: list[Item], view: View):
+    """Where :func:`render` of ``items`` from ``view`` draws a point: a function of points
+    ``(..., 3)`` (the items' frame) to the picture's pixels ``(x, y)``, and the picture's
+    pixels per unit (an item with points but no triangles frames the picture unseen)."""
+    basis, _, to_px, scale = _frame(items, view, 1)
+    return (lambda p: to_px(np.asarray(p, float) @ basis.T)), scale
+
+
+def render(items: list[Item], view: View, ss: int = SS
+           ) -> tuple[Image.Image, dict[str, Mark]]:
+    """The picture of ``items`` from ``view`` (an RGB image of ``view.size``), and where
+    each marked item shows."""
+    basis, pos, to_px, _ = _frame(items, view, ss)
+    W, H = view.size[0] * ss, view.size[1] * ss
 
     tris, owner_of_tri, base = [], [], 0
     for i, (it, p) in enumerate(zip(items, pos, strict=True)):
@@ -397,12 +414,17 @@ def _clipped(pos: np.ndarray, tri: np.ndarray, z: tuple[float, float] | None):
 
 
 def items_of(mesh, rows: list) -> list[Item]:
-    """Items from rows ``(piece id, fill, offset, mark, clip)`` over ``mesh`` (body name ->
-    ``(pos, tri)``)."""
+    """Items from rows ``(piece id, fill, offset, mark, clip[, matrix])`` over ``mesh`` (body
+    name -> ``(pos, tri)``); a ``matrix`` (4 x 4, nested lists) poses the body first (a
+    scene's: ``guide.scenes``)."""
     out = []
-    for pid, fill, off, mark, clip in rows:
+    for row in rows:
+        pid, fill, off, mark, clip = row[:5]
         pos, tri = mesh[pid.split("#", 1)[0]]
         pos, tri = _clipped(pos, tri, None if clip is None else tuple(clip))
+        if len(row) > 5 and row[5] is not None:
+            m = np.asarray(row[5], float)
+            pos = pos @ m[:3, :3].T + m[:3, 3]
         out.append(Item(pid, pos, tri, fill=tuple(fill), offset=tuple(off), mark=mark))
     return out
 
@@ -424,13 +446,18 @@ def choose(items: list[Item], options: list[str], want: set[str]) -> str:
 def render_jobs(mesh_path: str, jobs: list[dict]) -> list[dict]:
     """Draw ``jobs`` (each: ``out`` its PNG, ``rows`` its items as :func:`items_of`
     takes, ``views`` the cameras to choose among, ``size``, ``explode`` the lift along
-    the camera's up of the marked items with an arrow, ``margin``): what each chose and
+    the camera's up of the marked items with an arrow, ``margin``; ``extra``, an ``.npz``
+    of more meshes, ``name|p`` and ``name|i``, that no body has): what each chose and
     where its marked items show."""
     data = np.load(mesh_path)
     names = sorted({k.rsplit("|", 1)[0] for k in data.files})
     mesh = {n: (data[n + "|p"], data[n + "|i"]) for n in names}
     out = []
     for job in jobs:
+        if job.get("extra"):            # (meshes of no body: a pack's spacers, its carton)
+            more = np.load(job["extra"])
+            mesh = {**mesh, **{n: (more[n + "|p"], more[n + "|i"]) for n in
+                               sorted({k.rsplit("|", 1)[0] for k in more.files})}}
         items = items_of(mesh, job["rows"])
         want = {it.name for it in items if it.mark}
         cam = choose(items, job["views"], want)

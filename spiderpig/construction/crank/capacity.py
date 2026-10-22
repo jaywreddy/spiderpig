@@ -104,6 +104,7 @@ def crank_capacity(meta: dict, config: BuildConfig) -> dict[str, float] | None:
     built crank's notes (``meta``: ``crank_bolt``), else the construction's nominal (no
     build needed: the sim's metrics); ``None`` for a crank this doesn't model."""
     from spiderpig.construction import CRANKS
+    from spiderpig.construction.handcrank import HandCrankConstruction
 
     construction = CRANKS.get(config.crank)
     if construction is None:
@@ -115,4 +116,8 @@ def crank_capacity(meta: dict, config: BuildConfig) -> dict[str, float] | None:
             for k, v in ch["capacity_nm"].items():
                 caps[k] = min(caps.get(k, math.inf), v)
         return caps
-    return construction.for_sheet(config.crank_sheet).capacity()
+    hand = meta.get("hand_crank") or {}
+    built = construction.for_sheet(config.crank_sheet)
+    if isinstance(built, HandCrankConstruction) and "throw_mm" in hand:
+        return built.capacity(float(hand["throw_mm"]))   # a cradle's hand crank: its throw
+    return built.capacity()

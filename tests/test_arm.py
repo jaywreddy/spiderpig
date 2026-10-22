@@ -136,6 +136,44 @@ def test_the_palletizer_plans_and_verifies():
     assert design.plan.topo.center is None                   # no crank
 
 
+APPROVED_REACH = {"b1": 6, "b2": 9, "b3": 7, "b4": 9, "b5": 2, "b6": 5, "b7": 7, "b8": 11}
+"""The approved arm's layering as master's planner made it (2026-10-14, heads sunk, 16
+layers): 60.46 mm, the elbow pin E (b6, b1, b4) spanning 19.2 mm."""
+
+
+@pytest.mark.no_fabricate
+def test_an_arm_plans_its_fewest_layers_at_their_lowest():
+    """An arm plans on "layers_height" (``config.plan_objective``): its fewest layers, then
+    the lowest stack in them, proven, then the shortest axle spans (2026-10-21: on "layers"
+    it kept the first plan its search found, the merged search's taller than master's and
+    its elbow pin's span longer). The approved layering is still a plan of its size; the
+    planner's is lower and its longest span (pin E's) shorter."""
+    from spiderpig import config
+    from spiderpig.config import BuildConfig
+    from spiderpig.fabricate import side_problem
+    from tests import cache
+
+    cfg = BuildConfig(linkage="palletizer_reach", robot=False)
+    assert config.plan_objective(cfg.lk) == "layers_height"
+    assert config.plan_objective(linkage.get("strider")) == "layers"
+    tmpl, design = cache.cached_design(cfg)
+    plan = design.plan
+    assert plan.optimal
+    assert "16 layers searched to the end for the lowest stack" in plan.proof
+    _, _, prob = side_problem(tmpl, cfg.side_config())
+    approved = prob.plan(APPROVED_REACH, plan.top, heads="sink")
+    assert approved.height == pytest.approx(60.464, abs=1e-3)
+    assert plan.height < approved.height - 4.0
+    spans, before = prob.axle_spans(plan), prob.axle_spans(approved)
+    assert spans[0] < before[0] == pytest.approx(19.2)
+    # the key: the layers, the height, the route, then the spans, longest first
+    key = prob.key(plan)
+    assert key[:4] == (plan.top, round(plan.height + plan.hold, 4), 0, spans)
+    assert prob.key_height(key, plan.top) == key[1]
+    assert prob.key_height(key, plan.top + 1) == -math.inf     # (a thinner plan beats all)
+    assert prob.key_height(key, plan.top - 1) is None
+
+
 @pytest.mark.slow
 def test_the_palletizer_side_fabricates_inside_its_claims():
     from spiderpig.config import BuildConfig

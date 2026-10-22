@@ -49,7 +49,7 @@ import numpy as np
 from spiderpig.fit import Params as Params
 from spiderpig.hardware.bom import BomLine
 from spiderpig.mechanism import Body
-from spiderpig.shapes import Cut, Rect
+from spiderpig.shapes import Cut, Rect, Socket
 from spiderpig.stack import Claim, Keepout, Placed, StackPlan, Topology
 
 if TYPE_CHECKING:
@@ -173,25 +173,23 @@ class Build:
         """World XY of a topology point at this ``t``.
 
         A point a group added to the geometry (not a joint) is where the
-        geometry says if it's fixed (e.g. a servo mounting screw); if it moves, it's
-        fixed to a link (``Topology.link_points``: an arm's hub bolts) or to the crank
-        (:meth:`stack.Topology.add_crank_point`) and has turned with it.
+        geometry says if it's fixed (e.g. a servo mounting screw); one fixed to a link
+        (``Topology.link_points``: an arm's hub bolts, a cradle plate's outline) rides the two
+        points it is drawn from; any other that moves is fixed to the crank
+        (:meth:`stack.Topology.add_crank_point`) and has turned with it about O.
         """
         node = self._node(point)
         if node is not None:
             body, joint = node
             b = self.mech.body(body)
             return (b.pose @ b.joint(joint).pose).matrix[:2, 3].copy()
+        on_link = self.plan.topo.link_points.get(point)
+        if on_link is not None:             # fixed to a link: where its two points say
+            return on_link.at(self.xy(on_link.about), self.xy(on_link.toward))
         g = self.plan.topo.geometry.points
         p = np.asarray(g[point][0], dtype=float)
         if not np.ptp(g[point], axis=0).any():
             return p.copy()
-        fixed = self.plan.topo.link_points.get(point)
-        if fixed is not None:               # fixed to a link: where its two points say
-            about, toward, (along, across), _ = fixed
-            o, q = self.xy(about), self.xy(toward)
-            u = (q - o) / np.linalg.norm(q - o)
-            return o + along * u + across * np.array([-u[1], u[0]])
         pin = self.plan.topo.axes_of("crankpin")[0].name
         v, w = p - g["O"][0], g[pin][0] - g["O"][0]
         turn = self.angle("O", pin) - math.atan2(w[1], w[0])
@@ -218,7 +216,7 @@ class Realized:
     """A group's contribution to the fabricated side."""
 
     bodies: list[Body] = field(default_factory=list)
-    cuts: dict[str, list[Cut | Rect]] = field(default_factory=dict)   # plate -> holes
+    cuts: dict[str, list[Cut | Rect | Socket]] = field(default_factory=dict)  # plate -> holes
     # frame plate -> pills to add to its outline
     pads: dict[str, list[tuple[tuple[float, ...], tuple[float, ...], float]]] = field(
         default_factory=dict)
@@ -227,7 +225,7 @@ class Realized:
     # the crank's ("crank_bolt"), the pivots' tilt ("wobble")
     notes: dict[str, dict] = field(default_factory=dict)
 
-    def cut(self, plate: str, cut: Cut | Rect) -> None:
+    def cut(self, plate: str, cut: Cut | Rect | Socket) -> None:
         self.cuts.setdefault(plate, []).append(cut)
 
     def pad(self, plate: str, p: XY | np.ndarray, q: XY | np.ndarray, r: float) -> None:

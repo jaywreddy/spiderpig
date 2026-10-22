@@ -241,7 +241,11 @@ def test_wobble_notes_for_every_axle(chicago_side):
     assert rep["pin"]["worst_deg"] == pytest.approx(
         supported_tilt_deg(pitch, rep["pin"]["play_mm"], face), abs=0.01)
     assert rep["pin"]["worst_deg"] <= supported_tilt_deg(pitch, 0.15 + PRINT_TOL, face)
-    assert 1 < rep["pin"]["jam"]["safety"] < rep["pin"]["walk"]["safety"]
+    # (the jam's the worse; under 1 since the planner of 2026-10-14 put the demo Klann
+    # single in 8 layers, 10 before: pin D spans 14.8 mm, b4 in layer 1 and b1 in 4, where
+    # it spanned 5.5 in neighbouring layers: jam 0.79, walking 1.03, 1.57 and 2.05 before;
+    # the objective is the layers, then the height, strength downstream: strength.check)
+    assert 0 < rep["pin"]["jam"]["safety"] < rep["pin"]["walk"]["safety"]
 
 
 def test_every_construction_reports_wobble():

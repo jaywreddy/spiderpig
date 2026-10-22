@@ -62,3 +62,4 @@ class Doc:
     steps: list[StepEntry]
     footer: str
     supplies: list[str] = field(default_factory=list)   # shop supplies, no step's part
+    tools: list[str] = field(default_factory=list)      # the tools the steps name, grouped

@@ -273,7 +273,9 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     if prog or any(f.stage == "output" for f in cr.failures):
         return _done(design, rep, t0)
     drive = [f for f in cr.failures if f.stage == "drive"]
-    rows.append(_stage_row("drive.one_servo", "check", drive, cr.drive.get("servo", "")))
+    # (a decanting cradle's drive is a hand on its gearbox: :mod:`construction.handcrank`)
+    driver = "hand crank (no servo)" if cfg.lk.product else cr.drive.get("servo", "")
+    rows.append(_stage_row("drive.one_servo", "check", drive, driver))
     if drive:
         return _done(design, rep, t0)
     built = [f for f in cr.failures if f.stage == "construction"]
@@ -503,8 +505,10 @@ def _strength_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
         return [Row("strength.joints", "strength", None, None, True, "estimated", False,
                     f"no loads: {e}")]
     st = strength.check(mech.meta.get("wobble") or {}, mech.meta, design.config, loads)
-    tier = "measured" if loads.get("source") == "sim" else "estimated"
-    own = loads.get("source") in ("sim", "override", "static")
+    # a design's own loads: MuJoCo's, or a decanting cradle's planar statics, "measured"; an
+    # arm's or a mechanism's static model "estimated", as the fallbacks
+    tier = "measured" if loads.get("source") in ("sim", "statics") else "estimated"
+    own = loads.get("source") in ("sim", "override", "static", "statics")
     sfs = [r["jam"]["safety"] for r in st["rows"]
            if r.get("jam") and r["jam"].get("safety") is not None]
     errors = [f for f in st["findings"] if f["level"] == "error"]
@@ -796,6 +800,8 @@ def _mass_estimate(design: Design, wr) -> Row | None:
     from spiderpig import walk as walk_model
 
     cfg = design.config
+    if cfg.lk.product:      # the walk model weighs servos and legs: a build measures a cradle
+        return None
     f = target_field("size", "mass_g")
     try:
         b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg), robot=cfg.mirrored)
@@ -920,8 +926,8 @@ def cost_row(design: Design, bom) -> Row | None:
 
 
 LOCKED_PILLARS = ("standoff",)     # threadlocker on its end screws
-EPOXY_PINS = ("chicago",)          # the barrel bonded in its lowest link
-LOCKED_PINS = ("chicago",)         # threadlocker on each screw
+EPOXY_PINS = ("chicago",)          # the barrel bonded in its lowest link (not the M6: chicago6)
+LOCKED_PINS = ("chicago", "chicago6")   # threadlocker on each screw
 FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws and the pivots' hardware are "
                     "counted after a build (verify standard), and the cut parts beyond one "
                     "per sheet")
@@ -936,11 +942,14 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     :func:`hardware.bom.cut_estimate`), and what
     the constructions buy whatever the parts' sizes: the Chicago pins' epoxy, and a bottle
     of each threadlocker the crank's screws, a Chicago screw pin or a standoff pillar's
-    screws take. ``(total, priced
-    lines, unpriced names)``: a lower bound on the BOM's total; :data:`FLOOR_LEAVES_OUT`
-    says what a build adds."""
+    screws take. A decanting cradle (a product) buys its gearbox and output shaft instead
+    of servos, its cutting at its own fit (:data:`hardware.bom.CRADLE_CUT_FITS`).
+    ``(total, priced lines, unpriced names)``: a lower bound on the BOM's total;
+    :data:`FLOOR_LEAVES_OUT` says what a build adds."""
     from spiderpig import construction
     from spiderpig import roles as rolemod
+    from spiderpig.construction.handcrank import HandCrankConstruction
+    from spiderpig.hardware.bom import CRADLE_CUT_FITS
 
     cfg = design.config
     sides = cfg.sides
@@ -950,23 +959,28 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
 
     named: list[str] = [cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values()]
     sheets = dict.fromkeys(named + ([cfg.crank_sheet] if cranked else []))
-    if cranked:
-        motors = [servos.get(cfg.servo).bom_key] * sides
-    else:                                           # each input's, and the turntable's
-        from spiderpig import actuators
+    drive = construction.crank(cfg.crank) if cranked else None
+    product = isinstance(drive, HandCrankConstruction)
+    if isinstance(drive, HandCrankConstruction):    # a hand on a worm box, no servo
+        lines = [(drive.gearbox, 1), (drive.output_shaft, 1), ("pla_filament", 1)]
+    else:
+        if cranked:
+            motors = [servos.get(cfg.servo).bom_key] * sides
+        else:                                       # each input's, and the turntable's
+            from spiderpig import actuators
 
-        motors = [actuators.get(cfg.role("actuator", n)).bom_key for n in cfg.lk.inputs]
-        if cfg.robot and rolemod.applies("turntable", kind) and cfg.role("turntable"):
-            from spiderpig.construction.rotary import PRESETS
+            motors = [actuators.get(cfg.role("actuator", n)).bom_key for n in cfg.lk.inputs]
+            if cfg.robot and rolemod.applies("turntable", kind) and cfg.role("turntable"):
+                from spiderpig.construction.rotary import PRESETS
 
-            motors.append(PRESETS[cfg.role("turntable")].parts[2].bom_key)
-    lines = [(k, motors.count(k)) for k in dict.fromkeys(motors)] + [("pla_filament", 1)]
+                motors.append(PRESETS[cfg.role("turntable")].parts[2].bom_key)
+        lines = [(k, motors.count(k)) for k in dict.fromkeys(motors)] + [("pla_filament", 1)]
     lines += [(k, 1) for k in sheets]             # one blank of each sheet at least
     # (not the deck's captive nuts: a robot whose deck doesn't fit buys none, and a
     # floor is what every build of the design buys)
     if cfg.pin in EPOXY_PINS:
         lines.append(("epoxy_2part", 1))
-    locks = {construction.crank(cfg.crank).lock_key} if cranked else set()
+    locks = {drive.lock_key} if drive is not None else set()
     if cfg.pin in LOCKED_PINS or cfg.pillar in LOCKED_PILLARS:
         locks.add("threadlocker_222")
     lines += [(k, 1) for k in sorted(k for k in locks if k)]
@@ -990,7 +1004,7 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     from spiderpig.hardware.bom import cut_by, cut_estimate
 
     for key in (k for k in sheets if cut_by(k)):     # at least one part cut on each
-        least = cut_estimate(key, [(0.0, 1)])
+        least = cut_estimate(key, [(0.0, 1)], CRADLE_CUT_FITS.get(key) if product else None)
         name = f"{cut_by(key)} cutting, {catalog_item(key).name}"
         if least is None:
             unpriced.append(name)
@@ -1038,6 +1052,8 @@ def _envelope_estimate(design: Design) -> list[Row]:
     from spiderpig.construction.robot import mid_plane
 
     side, cfg = design.side, design.config
+    if cfg.lk.product:      # its stand and base plate are outside the plan: a build measures it
+        return []
     assert side is not None  # called once the plan passed (pr.ok)
     plan = side.plan
     pts = plan.topo.geometry.points

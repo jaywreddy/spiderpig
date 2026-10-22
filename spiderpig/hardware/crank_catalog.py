@@ -308,11 +308,14 @@ The 45, 50 and 60 mm parts are Accu's or Vital Parts' (A1 stainless). McMaster s
 standoffs only 5 and 6 mm across flats; Accu's series has no 22 mm."""
 
 
-WURTH_HEX_PRICES: dict[int, float] = {16: 0.51, 18: 0.63, 20: 0.48, 22: 0.49, 25: 0.57,
-                                      30: 0.53}
+WURTH_HEX_PRICES: dict[int, float] = {15: 0.36, 16: 0.51, 18: 0.63, 20: 0.48, 22: 0.49,
+                                      25: 0.57, 30: 0.53}
 """USD each at Mouser (one piece), the lengths the default designs use: 22, 30 from Octopart;
 16, 20, 18, 25 from Findchips' Mouser rows (rendered 2026-10-05; Wurth's datasheets: M3,
-5.5 AF, steel gloss zinc, status Valid)."""
+5.5 AF, steel gloss zinc, status Valid); 15 (the `klann_lego` quad's journal since the
+planner of 2026-10-14) from Octopart's listing in a web search's snippet of 2026-10-14
+(Mouser USD 0.36 at one, DigiKey the same): Mouser, DigiKey, Octopart, RS and TME refused a
+scripted fetch and a headless render that day."""
 LONG_HEX_PAGES: dict[int, tuple[Offer, ...]] = {
     50: (Offer("Vital Parts", "https://www.vital-parts.co.uk/threaded-hex-standoffs-female-"
                "female/7886-hff-m3-50-s55-a1", "HFF-M3-50-S55-A1", verified=True,

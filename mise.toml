@@ -59,6 +59,10 @@ run         = "uv run python -m spiderpig.cli sim"
 description = "Compare every registered linkage -> build/linkages.json"
 run         = "uv run python -m spiderpig.cli report"
 
+[tasks."pack-inspect"]
+description = "Judge and draw a decanting cradle's packing: contact sheets, metrics, layouts -> build/pack/<linkage>/ (pass -- decanter_rcm, --plan, --layout, --search --seconds N, --split)"
+run         = "uv run python -m spiderpig.cli pack-inspect"
+
 [tasks.test]
 description = "pytest (unit; pass -m e2e for browser tests)"
 depends     = ["viewer-build"]
@@ -67,6 +71,10 @@ run         = "uv run pytest"
 [tasks."test-quick"]
 description = "The quick tier for iteration: pytest -m 'not slow' on local cores (pass more pytest args after --)"
 run         = "uv run pytest -p no:warnings -m 'not slow and not e2e' -n 4 --dist worksteal"
+
+[tasks."test-cradle"]
+description = "The decanting cradles' fast tests (tests/test_cradle.py -m 'not slow', about a minute); the slow ones by id, each under 5 min (docs/agentlib/TESTING.md, Chunks)"
+run         = "uv run pytest tests/test_cradle.py -p no:warnings -m 'not slow and not e2e' -n 4 --dist worksteal"
 
 # The module tiers (docs/agentlib/TESTING.md): -m "<module> and not slow and not e2e" -n 4,
 # on the fabrication cache (tests/cache.py); pass pytest args after --.

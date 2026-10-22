@@ -22,10 +22,11 @@ mise run build      # STEP/STL/DXF/BOM -> build/ (-- --profile: stage timings; a
 mise run test-<module>  # one module's fast tier, seconds: linkage, planner, construction,
                         # hardware, strength, api, sim, server. Iterate with these
 mise run test-viewer    # the viewer's tsc + vitest
+mise run test-cradle    # the decanting cradles' fast tests (~15 s); the slow ones in chunks
 mise run test-quick # the quick tier: -m 'not slow and not e2e', xdist -n 4
 mise run test-fixtures  # rewrite the recorded fixtures (after an engine edit: they warn stale)
 mise run test       # pytest, serial (runs viewer-build first; -m e2e for browser tests)
-mise run gate -- compare ~/.cache/spiderpig/gate/platform-814096d   # parts/plans/BOM/DXF identity
+mise run gate -- compare ~/.cache/spiderpig/gate/merge-03123ee   # parts/plans/BOM/DXF identity
 mise run gate -- doc ~/.cache/spiderpig/gate/<baseline>        # regenerate DESIGNS.md
 mise run remote-test               # the full suite on the remote runner (may be down: AGENTS.md)
 mise run remote-audit              # the Strider's modules audited at once there
@@ -71,7 +72,11 @@ robot; a mechanism's `single`, one side).
   cad`); the single bearings `--pin ball` / `--pillar ball_pillar` stay selectable. The `bolt` crank is single
   aluminium web plates on steel hex-standoff crankpins (`construction/crank/`); `bolt_round`
   is the round friction-clamped standoff. Nothing else exists (`config.REMOVED_CONSTRUCTIONS`,
-  `config.REMOVED_PARAMS`: a removed key fails with its replacement).
+  `config.REMOVED_PARAMS`: a removed key fails with its replacement), but a decanting
+  cradle's own (the `hand` crank, its `rod516` pins and the rest of `config.PRODUCT_PINS`,
+  its printed rings kept, `construction.axle.full_rings`: products, `Linkage.product`,
+  `config.PRODUCT_*`; no motor, `controllers.motors_of`; the design record
+  `docs/agentlib/DECANTER.md`).
 - Sheets: links, rings and deck acrylic 3 mm (`BuildConfig.sheet`); frame 0.080 in 5052
   (`frame_sheet`); crank 0.100 in 6061-T6 (`crank_sheet`, `materials.thinnest_sheet`);
   centre plates by `chassis.centre_sheet`; aluminium links per `materials.LINK_SHEETS`.
@@ -88,20 +93,25 @@ robot; a mechanism's `single`, one side).
   sheets the plain `palletizer`'s too, `materials.PALLETIZER_LINKS`). The
   Chicago barrels a linkage stocks on a crank: `chicago.BARRELS` (the Strider's bolt crank),
   beside `MAX_BARREL`.
-- Heads: `StackSpec.heads` "best" (sunk first); a single-plate crank plans "gap_sink".
+- Heads: `StackSpec.heads` "best": both placements searched, sunk first on a tie
+  (`stack.plan_z.HEADS_ORDER`); a single-plate crank plans "gap_sink".
 - Controllers (the role `controller`): what drives the design, then its servo's protocol
   (`controllers.BUS_DEFAULTS`): an STS3215 walker the deck's ESP32 kit, an XL330 / XL430
   walker `u2d2_dynamixel`, an arm `skr_pico_pi_zero`; a mechanism `none` unless named (a
-  task's candidate names the board that speaks its servo: `api.tasks`). An arm's `servo` and `crank_sheet`
-  stay at their defaults, any other refused (`config.ROLE_FIELDS`).
+  task's candidate names the board that speaks its servo: `api.tasks`), a hand-cranked
+  cradle none. An arm's `servo` and `crank_sheet` stay at their defaults, any other refused
+  (`config.ROLE_FIELDS`).
 - Numbers (layers, height, parts, cost, audit verdict): `docs/agentlib/DESIGNS.md`.
 
 ## Environment
 
 - `SPIDERPIG_STORE`: the project store (default `./.spiderpig`).
-- `SPIDERPIG_PLAN_SECONDS`: the planner's CPU budget (60; outside `engine_version`'s hash; a
-  stored plan records the one its search had, `PlanReport.budget_s`; CI and the gate pin 3600).
-- `SPIDERPIG_WORKERS=0`: no worker processes (`spiderpig/workers.py`).
+- `SPIDERPIG_PLAN_SECONDS`: the planner's CPU deadline, a job's, a head placement's jobs
+  1.5 times it together (60; outside `engine_version`'s hash; a stored plan records the one
+  its search had, `PlanReport.budget_s`; CI and the gate pin 3600).
+- `SPIDERPIG_WORKERS=0`: no worker processes (`spiderpig/workers.py`; the planner's too).
+- `SPIDERPIG_PLAN_WORKERS`: the planner's forked workers (`stack.drive.workers_for`; unset: up
+  to `stack.drive.MAX_WORKERS`; one under xdist). The plan is the same with any number.
 - `SPIDERPIG_FAB_CACHE=off`: no product fabrication cache (`spiderpig/fabcache.py`,
   `<store>/fab/`, keyed by `spiderpig/keys.py`'s code closure, the plan and the servo model).
 - `SPIDERPIG_OCCT_THREADS`: OCCT's pool per process (`workers.occt_threads`; unset: every
@@ -157,6 +167,10 @@ and CAD state as the fab cache keys them, so nothing stale is served; a design w
 `p.unit=7`, answers 422), `/api/pose/{mode}?...&j.q2=` (an arm's baked model posed at joint
 angles, the viewer's joint sliders), `/api/walk`, `/api/linkages`, `/api/modes`, `/api/design/{id}`,
 and `/ws/sim?linkage=&module=` (the design live in MuJoCo, `spiderpig/sim/live.py`).
+`/decant.html` is the decanting cradles' page (`viewer/src/decant/`: a design picker, the 3D
+cradle, its mechanism in SVG, the wine and a vessel, the flat pack), on `/api/cradles`,
+`/api/cradle/{key}` (`cradle_report.motion`) and its `/room` and `/pack`
+(`cradle_report.room`, `cradle_pack.flat_pack`).
 
 ## Baking the glTF — performance profiler
 
@@ -205,6 +219,7 @@ sit under the pipeline, as the part registries do (`actuators`, `roles`, `fabmet
 | `spiderpig/stack_pool.py`, `stack_symmetry.py` | the planner's opt-in workers and mirrored-leg symmetry |
 | `spiderpig/construction/` | one group per functional part (`base.py` the contract): `axle.py`, `crank/` (`BoltCrank`: `bolt.py`, `hex.py`, `web.py`, `capacity.py`, `plates.py`), `route.py` (the crank's router), `pivots/` (`standoff.py`, `chicago.py`, `ball.py`, `pair.py`), `transmissions/` (an arm's drives: `belt.py`), `rotary/` (an arm's turntable: the `mt4_compact` preset, `turret.py` its plan, `base_pair.py` its parts), `tools.py` (an arm's tool), `plates.py`, `chassis.py`, `deck.py`, `robot.py` (`LAYOUTS`: a walker's two sides, an arm's turret), `assembly.py` (`ROBOT_ORDER`, the hooks' records), `underside.py`, `wobble.py`, `contract.py`, `envelope.py`, `joints.py` (`ErrorTerms`) |
 | `spiderpig/servos/` | `ServoSpec`, the drive group (`mount.py`), models and CAD cache |
+| `spiderpig/linkages/decanters.py`, `construction/cradle.py`, `construction/handcrank.py`, `cradle_report.py`, `cradle_structure.py`, `hardware/cradle_catalog.py` | the decanting cradles (a product: `docs/agentlib/DECANTER.md`): the linkages, the cradle box, stand and base plate, the hand-cranked worm drive, the report (swing, loads, stand, strength), the structure from the statics' force vectors (links chord by chord, posts on the box, frame members), the bought parts |
 | `spiderpig/actuators/` | stepper motors for an arm's inputs (`StepperSpec`: holding stiffness, microsteps); `controllers.py` (the role `controller`: a robot's electronics, matched to its motors); `sensors.py` (`SENSORS`: every joint's homing sensor, the turntable's included) |
 | `spiderpig/hardware/` | catalog, sources, the one screw table (`fasteners.py`), mass and material constants (`mass.py`), BOM (`bom.py`, `shims.py`), `order.py` (`ORDER.md`), vendor CAD (`cad.py`) |
 | `spiderpig/config.py` | `BuildConfig`, defaults per linkage, removed keys, CLI args, query parsing |
@@ -263,17 +278,25 @@ a **linkage**, a module in `spiderpig/linkages/` (`tests/test_linkage.py` checks
 
 ## The planner
 
-`stack.StackProblem.solve()` finds the thinnest stack and the cheapest crank route in it:
-static facts first (keep-outs, the crank's facts); then a search per stack size, fewest
-layers first (`_Search`: forward checking, the router as a sub-check at every node,
-backjumping, learned nogoods, branch and bound); the exact route of a complete layering
-(`CrankRouter.route`: chains along a point, a stock standoff each, `JointRules`); then
-`verify_plan`. Effort: a short search per size until one plans; if none did, the sizes
-left open get `max_nodes`; then each thinner size gets `max_nodes // 2` to prove it out,
-then a cheaper route. Budgets (`StackSpec.quick_nodes`, `max_nodes`, `max_total_nodes`,
-`max_seconds`) bound effort, never validity: a plan found unproven says so
-(`StackPlan.optimal`, `proof`). Sizes up to `StackSpec.max_top`. `tests/brute.py` is the
-independent brute force. Details: `docs/ARCHITECTURE.md` §5, `spiderpig/stack/search.py`.
+`stack.StackProblem.solve()` finds the best plan under `StackProblem.key`: the lowest stack in
+mm, then the crank route's cost, the stock parts' cost, the parts printed (a walker's
+objective is "layers": fewest layers, then the route, ties to the lower plan found; an arm's,
+with no crank, "layers_height": fewest layers, then the lowest in them, proven, then the
+shortest axle spans; `config.plan_objective`, `stack.plan.OBJECTIVES`).
+Static facts first (keep-outs, the crank's facts); then jobs (`stack/drive.py`), one stack size
+and one head placement each (both placements, side by side), in forked workers
+(`stack_pool.py`) or here with the same answer: a short job per size until one plans, then the
+proof, a full job for every size the objective needs (on the height, each whose least height,
+`StackProblem.size_lb`, isn't over the best). A job is `_Search`: forward checking, the router
+as a sub-check, backjumping, learned nogoods, branch and bound (`_Search.lb_height`). The
+search's z is a bound of every plan (`stack.bound_layout`): a claim refuses a search's layout
+only on a bound valid for every completion (`Layout.t_hi`, `span_hi`). Then the exact route
+(`CrankRouter.route`, `JointRules`), the plan's z (`finalize`: its gaps as low as it builds,
+not under what a standoff holds it at, `Claim.hold`) and `verify_plan`. Budgets
+(`StackSpec.quick_nodes`, `max_nodes`, `max_total_nodes`, `max_seconds`) bound effort,
+never validity: a plan found unproven says so (`StackPlan.optimal`, `proof`). Sizes up to
+`StackSpec.max_top`. `tests/brute.py` is the independent brute force (`brute.lowest`).
+Details: `docs/ARCHITECTURE.md` §5, `spiderpig/stack/drive.py`, `spiderpig/stack/search.py`.
 
 Physical rules the claims encode: a crank crosses a rider's layer only along its crankpin
 (a built-up crankshaft, webs either side of each rider); layers 0 and `top` hold only the
@@ -289,7 +312,7 @@ both sides.
   a new construction adds one or gets generic steps. The hooks stay out of the fab key.
 - A group builds only inside its own claims; keep `check_side` at `[]`.
 - A change that alters parts: run the identity gate before and after (baseline
-  `platform-814096d`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
+  `merge-03123ee`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
   audit` green, and regenerate `docs/agentlib/DESIGNS.md` with a new baseline.
 - Docs: no layer counts or heights outside DESIGNS.md; a dated decision goes to
   DECISIONS.md, not here; `mise run doc-check -- --strict` must pass.
@@ -305,3 +328,10 @@ both sides.
   write under `tmp_path`, free ports only.
 - Iterate with the module tiers; before handing back run the gate on product edits and the
   full suite (`mise run remote-test`, or locally `pytest -m 'not e2e' -n 12`).
+- An agent's step stays under 5 min (a longer one outlives the prompt cache): no
+  foreground wait loops; a longer job runs in the background in chunks of a few minutes
+  (the slow cradle tests by `docs/agentlib/TESTING.md`'s Chunks, never the whole file; the
+  gate per design, `--designs`); a step that goes over is reported and its cause found.
+  A helper agent runs in the background (`run_in_background: true`) while its caller
+  works on (a foreground helper blocks its caller for its whole run), and its brief
+  carries these rules: no sleep-waits, steps under 5 min.

@@ -120,6 +120,10 @@ class Body:
     fab: str | None = None
     bom_key: str | None = None
     sheet: str | None = None     # a laser-cut part's sheet (catalog key; None: the default)
+    # how a laser-cut part's file lies (layout._long_axis_degrees): "" along its long axis
+    # (a link's first outline segment), "least" turned to its least-area box (a decanting
+    # cradle's, simplification round 2: SendCutSend prices a part by its box)
+    turn: str = ""
 
     def __post_init__(self) -> None:
         if self.fab is not None and not fabmethods.known(self.fab):

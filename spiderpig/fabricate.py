@@ -24,7 +24,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
 
 from spiderpig import construction, fabmethods, linkage, servos
-from spiderpig.config import BuildConfig, robot_layout
+from spiderpig.config import BuildConfig, is_cradle, plan_objective, robot_layout
 from spiderpig.construction.base import Build, Context, Realized
 from spiderpig.construction.robot import assemble_robot, controller_lines, robot_groups
 from spiderpig.construction.underside import underside
@@ -113,6 +113,7 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
         # else the pivots' heads sunk with the crank's in gaps (stack.HEADS_ORDER)
         heads = "gap_sink"
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin, heads=heads,
+                     objective=plan_objective(config.lk), escalate=config.lk.ranged,
                      adjacent=adjacent_pins(groups, config), **plate_z(ctx))
     if deadline is not None:
         spec = replace(spec, max_seconds=min(spec.max_seconds, deadline.remaining))
@@ -159,16 +160,31 @@ def plate_z(ctx: Context) -> dict:
     return {"frame_t": ctx.sheet_t("frame"), "link_t": link_t, "gaps": gap_options()}
 
 
+_HINTS: dict[tuple, dict[str, int] | None] = {}
+
+
 def _leg_hint(config: BuildConfig, deadline: Deadline | None = None) -> dict[str, int] | None:
-    """One leg's plan (the single module's), for the planner to try each leg of a bigger
-    module at (a hint for the order it tries layers in, nothing more)."""
+    """One leg's plan (the single module's, as the planner makes it: its fewest layers on a
+    walker's objective, "layers", proven), for the planner to try each leg of a bigger module
+    at (a hint for the order it tries layers in, nothing more). Its first plan alone is no
+    guide: the Strider's on the XL330 takes a layer more than its thinnest, and the double's
+    legs found no plan at it (2026-10-14). Remembered per single module."""
     if config.module == "single":
         return None
     one = replace(config.side_config(), module="single", phases=None)
+    tmpl = template_for(one)
+    key = _key(tmpl, one)
+    if key in _HINTS and deadline is None:
+        return _HINTS[key]
     try:
-        return design_side(template_for(one), one, advise=False, deadline=deadline).plan.layers
+        _, _, problem = side_problem(tmpl, one, deadline, hint=False)
+        static_stage(tmpl, problem)
+        got: dict[str, int] | None = dict(problem.solve().layers)
     except ValueError:
-        return None
+        got = None
+    if deadline is None:
+        _HINTS[key] = got
+    return got
 
 
 def ground_clearance(tmpl, ctx: Context) -> float | None:
@@ -346,12 +362,24 @@ def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0, *,
     design = design_side(tmpl, config)
 
     def build() -> Mechanism:
-        extra = robot_groups(design, config) if config.robot else []
-        side = fabricate_side(design, tmpl.freeze_at(t), extra)
-        return assemble_robot(side, design, config) if config.robot else side
+        return product(design, tmpl, t, config)
 
     store = store if store is not None else fabcache.current()
     return fabcache.fabricated(store, tmpl, config, design, t, build)
+
+
+def product(design: SideDesign, tmpl, t: float, config: BuildConfig) -> Mechanism:
+    """What a planned side ``design`` makes at crank angle ``t`` for ``config``: the side on
+    its own, the robot (``config.robot``: its layout's groups and parts,
+    :func:`construction.robot.robot_groups`, :func:`construction.robot.assemble_robot`), or
+    a decanting cradle (both sides and the cradle box: :mod:`construction.cradle`)."""
+    extra = robot_groups(design, config) if config.robot else []
+    side = fabricate_side(design, tmpl.freeze_at(t), extra)
+    if is_cradle(design.config):
+        from spiderpig.construction.cradle import assemble_cradle
+
+        return assemble_cradle(side, design)
+    return assemble_robot(side, design, config) if config.robot else side
 
 
 # the fabrications the design makes itself (fabmethods.made()): each part one solid (a

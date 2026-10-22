@@ -102,6 +102,56 @@ def test_the_bom_total_leaves_out_a_sheet_a_service_cuts():
     assert "Purchases: **$5.49**" in md
 
 
+def test_a_cradles_order_prices_each_file_marks_the_parts_as_cut_and_the_pins_to_measure():
+    """A cradle's ORDER.md (design review round 2's B1, M3, M5): each upload with its fitted
+    estimate and whether SendCutSend deburrs it (a 24 mm link doesn't: "as cut"); the
+    made-to-length pivot pins ordered once the cut parts are measured; the BOM's JSON
+    carries the cutting features a cradle's rows have and a walker's rows don't."""
+    from spiderpig.hardware.bom import (
+        CRADLE_CUT_FITS,
+        CRADLE_CUT_SOURCE,
+        MadeRow,
+        cutting_rows,
+        deburr_note,
+        hand_deburred,
+    )
+
+    b3 = MadeRow("L.b3", "laser", "7075", "308.0 x 24.0 x 4.826 mm", 70.4 * 0.4826, 2,
+                 ["L.b3", "R.b3"], sheet="al7075_4p8mm", cut_mm=734.0, pierces=4,
+                 blank_mm=(308.0, 24.0))
+    b6 = MadeRow("L.b6", "laser", "5052", "475.6 x 216.8 x 4.75 mm", 252.7 * 0.475, 2,
+                 ["L.b6", "R.b6"], sheet="al5052_4p8mm", cut_mm=1626.0, pierces=8,
+                 blank_mm=(475.6, 216.8))
+    cleat = MadeRow("base_cleat_L0", "laser", "birch", "452.0 x 26.0 x 9 mm", 117.5 * 0.9, 2,
+                    ["base_cleat_L0", "base_cleat_R0"], sheet="birch_9mm", cut_mm=956.0,
+                    pierces=1, blank_mm=(452.0, 26.0))
+    made = [b3, b6, cleat]
+    assert hand_deburred(made) == [b3]                  # (the wood: never deburred)
+    pin = _row("pivot_pin8_13", "8 mm pivot pin, 13 mm", "MISUMI", 2, price=24.05)
+    pin.sku = "CCGH8-13-NC2.4"
+    cutting = cutting_rows(made, CRADLE_CUT_FITS)
+    bom = Bom(purchased=[pin], made=made, cutting=cutting, cut_source=CRADLE_CUT_SOURCE,
+              cut_ranges={}, notes=[deburr_note(hand_deburred(made))])
+    assert [c.usd for c in cutting] == pytest.approx([77.46, 38.86, 26.40], abs=0.02)
+    laser = [{"service": "SendCutSend", "sheet": m.sheet, "material": m.material,
+              "thickness_mm": 4.8, "file": f"SendCutSend_{m.sheet}/{m.name}_x2.dxf",
+              "qty": 2, "size_mm": m.size_mm, "parts": " ".join(m.names)} for m in made]
+    md = order_markdown(bom, laser, [])
+    assert "| est. | deburred |" in md
+    assert "| $38.86 | as cut: by hand | L.b3 R.b3 |" in md
+    assert "| $77.46 | yes | L.b6 R.b6 |" in md
+    assert "| $26.40 | — | base_cleat_L0 base_cleat_R0 |" in md
+    assert "order once the cut parts are measured" in md
+    assert "Order the made-to-length pivot pins (CCGH8-13-NC2.4) last" in md
+    assert "L.b3 x 2 (24.0 mm wide)" in md
+    doc = bom.as_dict()["made"][0]
+    assert doc["cut_mm"] == 734.0
+    assert doc["blank_mm"] == (308.0, 24.0)
+    walker = MadeRow("L.b1", "laser", "acrylic", "57 x 28 x 3.0 mm", 1.9, 2,
+                     sheet="acrylic_3mm")
+    assert "cut_mm" not in Bom([], [walker]).as_dict()["made"][0]
+
+
 # -- the user's three order designs: their BOM (recorded) and its order list ---------------
 
 

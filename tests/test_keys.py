@@ -54,8 +54,8 @@ EDITS = [
      "RAIL_SCREW_R = 5.7 / 2 + 0.3", "RAIL_SCREW_R = 5.7 / 2 + 0.4", True, True),
     ("planner constant", "spiderpig.stack.plan_z", "GIVE_UP = 200", "GIVE_UP = 201", True, True),
     ("planner docstring only", "spiderpig.stack.plan_z",
-     "(``gap_sink``) The first gap search gives up",
-     "(``gap_sink``) The first gap search stops", False, False),
+     "(``gap_sink``) A job of the gap search gives up",
+     "(``gap_sink``) A job of the gap search stops", False, False),
     ("a comment", "spiderpig.stack.plan_z", "GIVE_UP = 200", "GIVE_UP = 200  # a comment",
      False, False),
     ("materials, read through a lazy import", "spiderpig.materials",
@@ -235,6 +235,13 @@ PATCH_ALLOWED = {
     ("spiderpig/tools/build_profile.py", "instrumented"):
         "the profiler wraps the build's calls in timers for the run, puts them back after; "
         "the results are the calls' own",
+    ("spiderpig/construction/cradle.py", "<module>"):
+        "sets its own module's class to _Module once at import (sys.modules[__name__]), "
+        "which counts stores into the namespace from outside for the part memo's key; "
+        "nothing the module computes changes",
+    ("spiderpig/construction/cradle.py", "_Module"):
+        "_Module's __setattr__ / __delattr__ count the store, then hand it to the "
+        "module's own (super()): the value stored is the caller's, unchanged",
 }
 """Every store into another object's namespace by name in the package, reviewed: none
 patches an engine module in a way that changes what it computes."""

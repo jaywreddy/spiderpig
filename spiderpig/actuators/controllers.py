@@ -53,7 +53,8 @@ DRIVES = ("servo", "actuator")
 serial-bus servos, or ranged inputs' steppers on step/dir drivers. One vocabulary with the
 drive groups (:data:`construction.DRIVES`) and the roles (2026-10-14: ``"bus_servo"`` /
 ``"stepper"`` before)."""
-DRIVE_WORDS = {"servo": "serial-bus servos", "actuator": "steppers"}
+DRIVE_WORDS = {"servo": "serial-bus servos", "actuator": "steppers",
+               "": "a hand crank (no motor)"}
 """How a message names each drive's motors."""
 
 PROTOCOLS = ("feetech_sts", "dynamixel_2")
@@ -289,9 +290,12 @@ def get(key: str) -> Controller:
 
 def motors_of(config) -> str:
     """The motor role of ``config``'s design (:data:`DRIVES`, :func:`roles.motor_role`): a
-    crank's servo, or ranged inputs' actuators."""
+    crank's servo, or ranged inputs' actuators; ``""``: none, a hand turns its crank (a
+    decanting cradle's, ``construction.handcrank``)."""
     from spiderpig import roles
 
+    if getattr(config, "crank", "") == "hand":
+        return ""
     return roles.motor_role(config.lk)
 
 
@@ -301,6 +305,10 @@ def default_key(config) -> str:
     (:data:`BUS_DEFAULTS`). (A kind whose stored designs carried none keeps
     :data:`roles.NONE` before this is asked: :func:`roles.default_key`, a mechanism's.)"""
     need = motors_of(config)
+    if not need:                    # (a hand crank: nothing to drive)
+        from spiderpig import roles
+
+        return roles.NONE
     if need == "servo":
         from spiderpig import servos
 

@@ -13,6 +13,7 @@ the module packages (PLAN P1-P6) build on; `tests/cache.py`, `tests/_modules.py`
 |---|---|---|
 | `mise run test-<module>` | `-m "<module> and not slow and not e2e" -n 4 --dist worksteal` | iterating on one area |
 | `mise run test-quick` | `-m "not slow and not e2e" -n 4` (every module's fast tier) | before handing back |
+| `mise run test-cradle` | `tests/test_cradle.py -m "not slow and not e2e" -n 4` (about 20 s) | iterating on the cradles; the slow ones in chunks (below) |
 | full: `mise run remote-test`, or locally `pytest -p no:warnings -m 'not e2e' -n 12 --dist worksteal` | everything but the browser tests | before a merge |
 | `mise run test-fixtures` | the currency tests (`-m fixture_regen`) with `--regen` | after an intended engine change |
 | `mise run test-viewer` | `npm run typecheck && npm test` (vitest) | viewer edits |
@@ -25,6 +26,46 @@ the module packages (PLAN P1-P6) build on; `tests/cache.py`, `tests/_modules.py`
 `sim`, `server`. Pytest args go after `--` (`mise run test-planner -- -k route -x`);
 `SPIDERPIG_TIER_WORKERS` changes `-n`. A module with no fast test yet passes and says so
 (`tests/tiers.py`'s runner turns pytest's "no tests" into success).
+
+### Chunks
+
+An agent's step (a foreground command, or the wait for a background one) should end within
+5 minutes: past that the model's prompt cache expires, and the next call re-reads the
+whole context uncached. A job longer than that runs in the background and in chunks, each
+one's end a notification. `tests/test_cradle.py`'s slow tests (each a fabrication of a
+whole cradle or more: 25-35 s fresh, 4-6 s at another crank angle in the same worker, from
+`cached_product` when it holds this code's) in eight chunks, at `-n 4` but the three pack
+and build ones, one test each. Measured 2026-10-20
+at load 1.5-4, the cache cold for the code but both cradles' t = 1.0 entries: 96, 87, 60,
+86 and 84 s (they were 165-260 s before the inner plate's keep-out was fused in 2D and the
+cradle box's parts memoized); every test under 65 s. What still fabricates afresh: every
+pose, the room, the packs (meshed) and the whole side's claims (20 s each):
+
+```bash
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "clash_free and decanter_rcm"
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "clash_free and decanter_hinge"
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "verify_rates or stands_turns"
+R="not clash_free and not verify_rates and not stands_turns"
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "$R and decanter_rcm and not packs_in_one_box"
+pytest tests/test_cradle.py -m slow -k "packs_in_one_box and decanter_rcm"
+pytest tests/test_cradle.py -m slow -n 4 --dist worksteal -k "$R and not decanter_rcm and not packs_in_one_box and not builds_an_order"
+pytest tests/test_cradle.py -m slow -k "packs_in_one_box and decanter_hinge"
+pytest tests/test_cradle.py -m slow -k "builds_an_order"
+```
+
+(Pack turn 3, 2026-10-21: the fifth had grown past 4 minutes, A's pack test 2 minutes and
+A's `build` test, which packs A too (its pack pose fabricated afresh), over 3: each is a
+chunk of its own. Pack turn 4, the same day: the fourth ran out at 4 minutes with B's pack
+test last, 130 s on its own: that one is a chunk of its own too.)
+
+The clash test is one test per crank angle and the verify test one per cradle (each under
+5 min, the checks as before). The identity gate likewise: `snapshot DIR --designs
+strider_quad`, then the other seven a few at a time (`palletizer_turret` alone), then `diff
+BASELINE DIR`.
+
+A scratch script that fabricates a cradle: `SPIDERPIG_OCCT_THREADS=2` (B's first
+fabrication 29 s at 1.4 cores, against 28 s at 1.7 on 3 and 33 s on 1; a second one in the
+process 4 s on any; measured 2026-10-20 at load 1.5-3), 1 when several run at once.
 
 ## The scorecard, CI, the doc check
 
@@ -141,6 +182,8 @@ cache.CACHE_DIR         # CACHE_ROOT / "<engine_version>-<env tag>"
 cache.cached_design(cfg) -> (tmpl, SideDesign)               # design_side, plan seeded from disk
 cache.cached_side(cfg, t=1.0, *, fresh=False) -> Mechanism   # fabricate_side, BREP-cached
 cache.cached_robot(cfg, t=1.0, *, fresh=False) -> Mechanism  # fabricate (robot=True), BREP-cached
+cache.cached_product(cfg, t=1.0, *, fresh=False) -> Mechanism  # fabricate (robot=False): a cradle
+cache.own_product(cfg, t=1.0) -> Mechanism   # cached_product's entry read again: the caller's own
 cache.seed_plan(cfg) -> bool       # seed fabricate._LAYOUTS only (a later design_side re-makes it)
 cache.prebuilt_store(cfg, tmp_path, t=1.0) -> Store          # a copy of a resolved+planned+built store
 cache.recorded(module, name, make) -> data                   # tests/fixtures/<module>/<name>.json
@@ -149,7 +192,15 @@ cache.assert_current(module, name, make) -> data             # that fixture's cu
 
 - `cfg` is a `spiderpig.config.BuildConfig`; `robot` is ignored by `cached_design` /
   `cached_side` (always the side) and forced by `cached_robot` (a mechanism has no robot:
-  `ParamError`). The template is `fabricate.template_for(cfg)`.
+  `ParamError`). The template is `fabricate.template_for(cfg)`. `cached_product` is what
+  `fabricate` makes with `robot` off: a decanting cradle whole (both sides, the box, the
+  stand), 25-35 s fresh (4-6 s at another crank angle in the same process: the box's
+  parts and the plates are memoized there), a tenth of a second loaded;
+  `tests/test_cradle.py` takes its fabrications there but the one it meshes (the flat
+  pack). The verify and build tests take theirs through `cached_cradle_fabrications` (the
+  api's `fabricate_at`, `spiderpig build`'s and `cradle_report`'s `fabricate`), each from
+  `own_product`: a mechanism of the caller's own, as the store's fabrication cache hands
+  one out (`spiderpig build` adds its sheet lines to `bom_extras`).
 - The conftest factories are wrappers with their old signatures: `design(module, servo,
   linkage="klann", **build)`, `side(module, t, servo, **build)`, `robot(module, t,
   **build)`. Every existing test uses the cache through them.
@@ -280,6 +331,85 @@ returns its `Store`; its one design is `store.ids()[0]`. `api.load(id, store)` +
 jobs find a finished build. The copy is the test's own. `SPIDERPIG_STORE` stays a fresh
 per-session folder (tests asserting on the project store expect it empty).
 
+## Judging a cradle's packing (`spiderpig pack-inspect`)
+
+`mise run pack-inspect -- decanter_rcm` (`spiderpig/tools/pack_inspect.py`) packs a
+decanting cradle by its plan (`cradle_pack.PACK_PLANS`) and with none (`--plan default
+auto`, the default), or judges a saved layout (`--layout pack.json`: a
+`/api/cradle/{key}/pack` body, or a `*.layout.json` it wrote), and writes per candidate a
+contact sheet (`build/pack/<linkage>/<name>.png`: four views, three slices, the legend, the
+pads' cut list), the metrics (`<name>.json`: `voxpack.metrics`) and the layout. The first
+run fabricates and tessellates the cradle (B 47 s, A 37 s; the whole default run 70 s cold,
+measured 2026-10-20); the input is then kept in the store's `pack/`
+(`cradle_pack.cached_input`), and a run is seconds.
+
+Read the metrics, not only the picture:
+
+- `missing`, `missing_parts`, `warnings`: a plan's step with no room (an `into` or `on`
+  that doesn't fit) stops the packer with the pieces placed so far (`voxpack.Layout`'s
+  `missing`). The sheet's status line is then red, naming the missing pieces and why, and
+  the command exits 1 (`pack_inspect.complete`). Exit 0 means every candidate holds every
+  piece and part; a red line with exit 0 is a verdict (unsupported, overlaps, order faults,
+  a pad with no room), not a broken pack.
+- `spacers` (since pack turn 2, 2026-10-20): the spacers the payload carries
+  (`voxpack.spacers`, the layout's `spacers`, each judged as a piece of its own at its
+  place in the order: `cradle_pack.in_order`; one `taped` to the piece it stands on is
+  judged with that piece, `cradle_pack.judged_pieces`). Each is a block of the judge's
+  empty 3 mm cells, one run a column, never within a cell of a part nothing bears on
+  (`cradle_pack.KEEP_CLEAR`: a gauge, a clip, a pin, the gearbox, a screw head; pack turn
+  3): a *support* where a piece's pads were (from what is under it to the piece's
+  underside, its lips round both), a *restraint* beside a piece that would still slide (in
+  the gap that way, standing on what is under it), a *cap* on one that would lift
+  (`restraint +y`), a corrugated *filler* at the board's ends (`filler -x` ..: cut from a
+  spare carton, not printed), each grown until it doesn't slide itself; two of one piece
+  that face each other are joined, and one that still slides is taped to what it stands
+  on; `count`, `volume_cm3` (the solid) and `grams` (as printed, PETG:
+  `cradle_pack.spacer_grams`, walls and 15 % gyroid; a filler's corrugated), and per
+  spacer its `key` ("spacer_01" .., in the order they go in), `label`, `size_mm`, `why`,
+  what it stands `on`, `taped` and its `words`. The build prints the printed ones
+  (`print/pack_spacer_*.stl`, PETG, each laid with the least overhang, its number and an
+  arrow engraved in its top: `cradle_pack.spacer_print`), the BOM lists them, and the
+  guide places them (B's "Into its box" steps, a picture of the pack each).
+- `pads`: what the spacers replace, on a layout judged without them (a payload's modules
+  carry them). `voxpack.support` puts a pad at each corner of what a piece rests on where a
+  gap of up to `PAD_MAX` needs one; `voxpack.measure_pads` measures each on the real
+  meshes: a rectangular block, its footprint cut to the piece over it, `height_mm` the real
+  gap over that footprint (`voxel_mm` the voxels' word beside it), what it is `under` and
+  `on`, an id by the piece's number in the order (`4a`), `fits` false where no block has
+  room. `count`, `volume_cm3` and `tallest_mm` total them; the sheet draws them black. With
+  the spacers in, a piece rests on them and has none.
+- `restraint`, and per piece `free_mm`, `meets`, `slide_mm`: how far each piece slides
+  along x and z and lifts before it meets a neighbour or the box's wall or lid
+  (`voxpack.free_travel`, on the 3 mm cells: the real travel is up to two cells more, a
+  spacer's one; up counts since pack turn 3). `loose` lists the pieces (and spacers) that
+  move more than `CLEAR` (3 mm, one cell) any way. B's is empty.
+- per piece `rests` and `on`, judged with `bearless` (`cradle_pack.keep_clear_cells`):
+  a piece doesn't rest where its bottom, or what is under it, is a part nothing bears on
+  (pack turn 3, packing review 2's B1: the drive panel had rested 78 % on its gearbox).
+- `search` (with `--search`): `--seeds N` anneals N seeds (`--workers` at a time, each
+  `--seconds`: 60 by default, less when the seeds' rounds would take the search past
+  `pack_inspect.SEARCH_BUDGET_S` in all), keeps the best and reports every run and the
+  spread across them (`voxpack.spread`: the best, median and worst score and box litres,
+  how many seeds came within half a litre of the best). One seed's box is a sample: quote
+  the spread with it.
+
+The search's score (`voxpack.score`) charges a layout's pads by count, volume and the
+tallest (`voxpack.pad_cost`), so of two layouts in one box the one on fewer, smaller pads
+wins. `--split KEY=GLOB` packs a what-if (parts off their piece as a piece of their own):
+every piece keeps the orientation it had whole, the new one its parent's (the piece most
+of its mass came from), so a plan's `down` names the same face; `--relevel KEY` levels a
+piece afresh.
+
+Its tests are the synthetic ones in `tests/test_cradle.py` (voxels, the drop, support and
+pads, the pads' blocks, the spacers in their place, the guide's box steps, the free
+travel, the score, the search and its seeds, a split, a plan that stops, the sheet: no
+fabrication) and the slow `test_the_cradle_packs_in_one_box`, which judges each cradle's
+flat pack on its real shapes with its spacers (every piece placed, every pad a block that
+fits and a spacer's, nothing past `PACK_SLIDE`, up too). Its packing (`pack_input`, warm)
+is about 27 s (B) and 32 s (A) with its spacers (20 and 35 s before pack turn 3's
+keep-clear, caps, bridges and taping; 46 and 63 s with them before `voxpack._gap_field`);
+A's test about 2 minutes in all.
+
 ## The identity gate (`tests/gate/identity_gate.py`)
 
 A script, not a test: run it before and after any change under `spiderpig/` that must
@@ -341,10 +471,25 @@ table to lose it); with an identity difference too, `compare` exits 4 (order dif
 5 (DIFFERENT), so neither verdict hides the other (`identity_gate.exit_status`); `mise run gate -- audit DIR` checks a snapshot alone, and the slow
 `tests/test_gate_audits.py` runs the eight audits (a known failure a strict `xfail`).
 
-**Current baseline** (the merged walkers-mechanisms-and-arm engine after review round 2,
-2026-10-14): `~/.cache/spiderpig/gate/platform-814096d/`, from which DESIGNS.md is
-generated; compare against it: `mise run gate -- compare
-~/.cache/spiderpig/gate/platform-814096d`. It differs from `platform-9aae3e3` (kept) by the
+**Current baseline** (the decanting cradles merged onto the platform, 2026-10-21):
+`~/.cache/spiderpig/gate/merge-03123ee/`, from which DESIGNS.md is generated; compare against
+it: `mise run gate -- compare ~/.cache/spiderpig/gate/merge-03123ee`. Its walkers and
+mechanisms are the platform's (`platform-814096d`, below) planned by the cradle branch's
+planner of 2026-10-14: each plan the cradle branch's (`planner-f667d6b`) layer for layer,
+the parts master's on it (every such diff's source in `PLANNER-gate-diffs.md`); its two
+arms on their own objective, `"layers_height"` (their fewest layers, then the lowest stack
+in them, then the shortest axle spans: both lower than master's), their hubs' and drives'
+rules made whole on the way (DECISIONS.md 2026-10-21, with each pin's change against
+master's); the cradles the cradle branch's.
+
+**The cradle branch's baseline before the merge** (`planner-f667d6b`, 2026-10-14: the
+planner's lowest stack merged with the cradles' design review round 1): its walkers differ
+from the integration branch's `next-320384d` (2026-10-08) by the planner's changes of
+2026-10-14 alone, every diff with its source in `PLANNER-gate-diffs.md` (the planner's
+first, `planner-9da0548`, by the price of the 15 mm hex standoff alone).
+
+**Master's baseline before the merge** (the merged walkers-mechanisms-and-arm engine after
+review round 2, 2026-10-14): `~/.cache/spiderpig/gate/platform-814096d/`. It differs from `platform-9aae3e3` (kept) by the
 two mechanisms' BOMs alone (their controller unnamed is `none`: the kit's lines gone, the
 torque-limit note added). `platform-9aae3e3` differs from `platform-78e35e8` (kept) in BOMs
 and audits only, no part, plan or DXF moved: the cutting model's cut-length term (every

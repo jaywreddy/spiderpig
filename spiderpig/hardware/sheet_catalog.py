@@ -16,13 +16,42 @@ rules: ``min_hole`` (mm), ``edge_t`` (least hole-to-edge distance in thicknesses
 ``min_part`` (mm, the smaller and the larger side of the smallest part it cuts),
 ``edge_mm`` (the least web anywhere: Ponoko's minimum feature), ``corner_r`` (mm, how
 round it cuts an inside corner), ``kerf_mm`` (the kerf the DXF compensates for:
-:func:`layout.sheet_kerf`) and ``sheet_mm`` (the blank the DXF sheets are packed on).
+:func:`layout.sheet_kerf`) and ``sheet_mm`` (the blank the DXF sheets are packed on); a
+SendCutSend sheet also ``thickness_tol`` (mm, ``(over, under)`` the nominal: the sheet as it
+arrives, which the pins' take-up must swallow: ``cradle_report.take_up``) and, where the
+service's deburring is checked, ``deburr_mm`` (the smallest part it deburrs: a smaller one
+arrives as cut, :func:`manufacture.part_issues`' ``deburr`` warning).
+
+**SendCutSend's spec tables, fetched 2026-10-15** (:data:`SCS_TABLE`): each material page
+(https://sendcutsend.com/materials/5052-aluminum/, ``/6061-aluminum/``, ``/7075-aluminum/``,
+``/baltic-birch-plywood/``) loads its per-thickness table from
+``https://app.sendcutsend.com/materials?sku=<SKU>&include_datasheet=true`` (ALU-187,
+ALU7075-190, ALU6061-125, PLYWOODBIRCH-354, ...). Per thickness: its thickness tolerance,
+cut tolerance +/- .005 in (laser and router alike), flatness +/- .030 in per foot before
+cutting, the min and max part (min .25 x .375 in up to .125 in, **.50 x .75 in for 5052
+at .187 and .250 in** and 6061 at .250 in, .50 x .50 in for 7075 .190 and 6061 .187 in; max
+44 x 30 in),
+"Min deburring part size 1 x 3 in", "Max deburring part size 36 x 46 in", anodizing 1 x 3
+to 23 x 23 in, tumbling .5 x 1.5 to 4 x 7 in. Its deburring page
+(https://sendcutsend.com/services/deburring-services/, the old ``/services/deburring/``
+redirects there; fetched 2026-10-15): "Min part size 1 x 3 in", "Max part size 24 x 46 in
+or 36 x 46 in (varies per material)", min thickness .048 in, "precision linear deburring",
+"Some edges will be sharp", and "Selecting Unfinished at order delivers parts in their
+as-cut state". The 5052 page: "Thicker gauges (.250-.500 in): some dross may appear"; the
+7075 page: "Edge clearance: at least 2x material thickness to prevent microcracks. Avoid
+tight internal corners". The radius a laser leaves in an inside corner: none on those
+pages (re-checked 2026-10-15), but its sheet-cutting guidelines (fetched 2026-10-20) say
+"Approximately the kerf width (very small)" (:data:`SCS_LASER_CORNER_R`: a cradle's parts;
+:data:`SCS_RULES_AL`'s 0.8 mm, the joinery plan's figure, stays the walkers').
+
 Fetched 2026-10-04:
 
 * SendCutSend 5052-H32 aluminium (sendcutsend.com/materials/5052-aluminum): .040, .063,
   .080, .090, .100, .125 in (and thicker); "Minimum hole size: Equal to material
   thickness"; "leave at least 2x thickness between a hole and an edge"; min part .25 x
   .375 in; max 30 x 44 in. 6061-T6: the same rules (its page lists .125 in for laser).
+  (The page's .25 x .375 in is its thin sheets': the spec tables above say .50 x .75 in
+  from .187 in, 2026-10-15.)
 * SendCutSend acrylic (sendcutsend.com/materials/acrylic): .063, .118 (3.0 mm) in and up;
   min part .187 x .375 in; "at least 1.5x the material thickness between a hole and the
   nearest edge"; cutting tolerance +/- .009 in. Its .118 in spec table (rendered
@@ -37,18 +66,21 @@ Fetched 2026-10-04:
   in my design?": no, draw the part at size; a compensated file comes back off size), so
   its sheets' ``kerf_mm`` is 0.
 
-The inside-corner radius SendCutSend cuts in aluminium (0.8 mm) is the joinery plan's
-figure, not from a page; the laser's in acrylic is about its kerf (0.1 mm). Neither
-service publishes a price table (a DXF upload quotes): a sheet SendCutSend cuts is priced
-as its cutting, the material included (``cut_fixed_usd``, ``cut_usd_cm2``, ``cut_usd_cm``,
-``cut_min_usd``, ``cut_qty_factors``: :data:`CUT_RATES`, :func:`hardware.bom.cut_estimate`,
-fitted on its live quotes); an offer's ``price_usd`` is an estimate per 300 x 300 mm blank.
+The inside-corner radius SendCutSend cuts in aluminium: the walkers' rules keep the joinery
+plan's 0.8 mm, a cradle's parts are judged on the guidelines' kerf
+(:data:`SCS_LASER_CORNER_R`, 2026-10-20); the laser's in acrylic is about its kerf (0.1 mm).
+Neither service publishes a price table (a DXF upload quotes): a sheet SendCutSend cuts is
+priced as its cutting, the material included (``cut_fixed_usd``, ``cut_usd_cm2``,
+``cut_usd_cm``, ``cut_min_usd``, ``cut_qty_factors``: :data:`CUT_RATES`,
+:func:`hardware.bom.cut_estimate`, fitted on its live quotes), a decanting cradle's cutting a
+fit of its own on live quotes (:data:`hardware.bom.CRADLE_CUT_FITS`); an offer's
+``price_usd`` is an estimate per 300 x 300 mm blank.
 
 ``shim_din988_3x6`` / ``shim_din988_6x12`` and ``ptfe_washer_3x6x0p5`` join the 4 mm ones
 (:mod:`hardware.fastener_catalog`) and the 6 mm PTFE washer (:mod:`hardware.crank_catalog`)
 as the washer families of :data:`materials.WASHERS`: their ODs size what an axle carries
 through a clearance gap (a printed ring on the pivots and the hex crank:
-:func:`construction.pivots.common.gap_washers`; bought washers and shims only on the round
+:func:`construction.pivots.common.build_sleeves`; bought washers and shims only on the round
 or M6 crankpins, :func:`materials.washer_stack`) and the clamped shims are bought per
 thickness (:mod:`hardware.shims`).
 """
@@ -71,6 +103,73 @@ PONOKO_RULES_ACRYLIC = {"service": "Ponoko", "min_hole": 1.0, "min_part": (6.0, 
                         "kerf_mm": 0.2}
 
 
+SCS_MAX_MM = (44.0 * IN, 30.0 * IN)
+"""SendCutSend's largest part (44 x 30 in): a decanting cradle's frame plates and links are
+bigger than the 300 x 300 mm the walkers' sheets are drawn on; SendCutSend prices per part,
+so the sheet a layout draws is only a page."""
+
+SCS_SPEC_URL = "https://app.sendcutsend.com/materials?sku={sku}&include_datasheet=true"
+SCS_DEBURR_URL = "https://sendcutsend.com/services/deburring-services/"
+SCS_DEBURR_MM = (0.995 * IN, 3.0 * IN)
+"""SendCutSend deburrs (by default, at USD 1.47 a part: its live quotes of 2026-10-21 with and
+without it, :data:`hardware.bom.CRADLE_CUT_FITS`) only a part at least 0.995 x 3 in: its quoting
+app's limit (the spec API's ``deburring`` operation, ``min_length`` 0.995 and
+``min_length_max`` 3.0 in on every aluminium SKU, fetched 2026-10-20 by design review round
+3's laser-cut parts review), which its spec tables and deburring page round to "1 x 3 in"
+(fetched 2026-10-15). A narrower or shorter part arrives as cut, its exit face's dross on
+it."""
+SCS_LASER_CORNER_R = 0.3
+"""The radius SendCutSend's laser leaves in an inside corner: "Approximately the kerf width
+(very small)" (its sheet-cutting guidelines, https://sendcutsend.com/guidelines/sheet-cutting/,
+fetched 2026-10-20: the router's ".063 in", the waterjet's ".032 in"), the kerf there being
+the gap common-nested parts get, ".006 to .012 in depending on material": 0.3 mm, the larger.
+A decanting cradle's laser-cut parts are judged on it, every tangent break of a cut-out read
+as a corner (:func:`manufacture.inside_corners`: a keyway's square end on its round bore had
+passed on the bore's arc); the walkers' aluminium keeps :data:`SCS_RULES_AL`'s 0.8 mm and the
+arcs-only reading until a walker change of its own (their audits are the identity gate's
+baseline, as :data:`DEBURR_CHECKED`)."""
+SCS_DEBURR_MAX_MM = (36.0 * IN, 46.0 * IN)
+"""... and at most 36 x 46 in in aluminium (the tables; the page: "24 x 46 in or 36 x 46 in
+(varies per material)")."""
+SCS_ANODIZE_MM = ((1.0 * IN, 3.0 * IN), (23.0 * IN, 23.0 * IN))
+"""Its anodizing, the smallest and the largest part (the tables, 2026-10-15). Nothing here is
+anodized (the cradles' scope)."""
+SCS_FLATNESS_IN_FT = 0.030
+"""Its sheets' flatness before cutting, +/- in per foot (every table, 2026-10-15): about
++/- 1.7 mm over a cradle's 682 mm base board."""
+
+SCS_TABLE: dict[tuple[str, float], dict] = {
+    # (alloy, inch): its spec table (SCS_SPEC_URL, fetched 2026-10-15): the SKU, thickness
+    # over and under (in), the smallest part (in)
+    ("5052", 0.040): {"sku": "ALU-040", "tol": (0.004, 0.004), "min_part": (0.25, 0.375)},
+    ("5052", 0.063): {"sku": "ALU-063", "tol": (0.004, 0.004), "min_part": (0.25, 0.375)},
+    ("5052", 0.080): {"sku": "ALU-080", "tol": (0.005, 0.005), "min_part": (0.25, 0.375)},
+    ("5052", 0.090): {"sku": "ALU-090", "tol": (0.0, 0.005), "min_part": (0.25, 0.375)},
+    ("5052", 0.100): {"sku": "ALU-100", "tol": (0.006, 0.006), "min_part": (0.25, 0.375)},
+    ("5052", 0.125): {"sku": "ALU-125", "tol": (0.006, 0.006), "min_part": (0.25, 0.375)},
+    ("5052", 0.187): {"sku": "ALU-187", "tol": (0.009, 0.009), "min_part": (0.50, 0.75)},
+    ("5052", 0.250): {"sku": "ALU-250", "tol": (0.027, 0.027), "min_part": (0.50, 0.75)},
+    ("6061", 0.063): {"sku": "ALU6061-063", "tol": (0.004, 0.004), "min_part": (0.25, 0.375)},
+    ("6061", 0.080): {"sku": "ALU6061-080", "tol": (0.004, 0.004), "min_part": (0.25, 0.375)},
+    ("6061", 0.100): {"sku": "ALU6061-100", "tol": (0.006, 0.006), "min_part": (0.25, 0.375)},
+    ("6061", 0.125): {"sku": "ALU6061-125", "tol": (0.006, 0.005), "min_part": (0.25, 0.375)},
+    ("6061", 0.187): {"sku": "ALU6061-187", "tol": (0.009, 0.009), "min_part": (0.50, 0.50)},
+    ("6061", 0.250): {"sku": "ALU6061-250", "tol": (0.027, 0.027), "min_part": (0.50, 0.75)},
+    ("7075", 0.190): {"sku": "ALU7075-190", "tol": (0.007, 0.007), "min_part": (0.50, 0.50)},
+}
+"""SendCutSend's per-thickness spec tables (the module docstring) for the aluminium in the
+catalog. Each sheet's ``thickness_tol`` and ``min_part`` are its row's (the thin sheets' .25 x
+.375 in is the value they had); 0.040 in 5052 has no deburring row (it is under .048 in)."""
+
+DEBURR_CHECKED = frozenset({"al5052_3p2mm", "al5052_4p8mm", "al5052_6p35mm", "al6061_4p8mm",
+                            "al6061_6p35mm", "al7075_4p8mm"})
+"""The sheets whose parts :func:`manufacture.part_issues` checks against the deburring
+minimum (``deburr_mm``): a decanting cradle's. Every SendCutSend aluminium from .048 in
+has it (the tables), but the walkers' sheets (``al5052_1p6mm`` ... ``al6061_3p2mm``) don't
+carry it yet: their crank plates are under 1 x 3 in, and the warning would change their
+audits (the identity gate's baseline): a decision for a walker change of its own."""
+
+
 CUT_RATES = {
     "5052": {"cut_fixed_usd": 0.0, "cut_usd_cm2": 0.076, "cut_usd_cm": 0.104,
              "cut_min_usd": 2.70,
@@ -87,27 +186,77 @@ contour, holes included: :func:`hardware.bom.cut_length_cm`), fitted by
 6061's eight prices don't support a cut rate, so it keeps its area fit of 2026-10-12)."""
 
 
-def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None) -> Item:
+ALLOYS = {
+    # alloy: (temper, its page, density g/cm^3, yield MPa (typical))
+    "5052": ("H32", SCS_AL, 2.68, 193.0),
+    "6061": ("T6", SCS_6061, 2.70, 276.0),
+    # SendCutSend's datasheet (materials?sku=ALU7075-190, fetched 2026-10-13): .125, .190,
+    # .250 in; yield 69 ksi, 81 ksi ultimate, 7.9 % elongation, 176.26 lb/ft^3; no walker
+    # cut rate in CUT_RATES (a cradle's 7075 is priced by hardware.bom.CRADLE_CUT_FITS: live
+    # quotes of 2026-10-14)
+    "7075": ("T6", "https://sendcutsend.com/materials/7075-aluminum/", 2.82, 476.0),
+}
+"""Each alloy's temper, page, density and **typical** yield: the walkers' strength rules and
+audits were set on these (``yield_mpa``; the identity gate holds them)."""
+
+KSI = 6.894757
+B209 = "https://jahanayegh.com/home/images/standard/B-209.pdf"
+MIN_YIELD: dict[str, tuple[tuple[float, float, float], ...]] = {
+    # alloy: (from in, to in, the specified minimum yield in that band, MPa)
+    "5052": ((0.017, 2.000, 23.0 * KSI),),          # H32: 0.114-0.249 and 0.250-0.499, 23.0
+    "6061": ((0.010, 2.000, 35.0 * KSI),),          # T6 0.065-0.249, T651 0.250-0.499: 35.0
+    "7075": ((0.126, 0.249, 69.0 * KSI), (0.250, 0.499, 67.0 * KSI)),   # T6; T651 plate
+}
+"""Each alloy's **specified minimum** yield by gauge (ASTM B209-14 Tables 2 and 3, the inch
+edition, :data:`B209`, fetched 2026-10-20; long transverse for the heat-treatable ones):
+5052-H32 "0.114-0.249 31.0 38.0 23.0" and "0.250-0.499 31.0 38.0 23.0" ksi (tensile min, max,
+yield min); 6061-T6 "0.065-0.128 ... 42.0 ... 35.0", "0.129-0.249 ... 35.0", T651 "0.250-0.499
+... 35.0"; 7075-T6 "0.188-0.249 ... 80.0 ... 69.0", "0.126-0.187 ... 69.0", T651 "0.250-0.499
+... 78.0 ... 67.0". The metric edition (B209M-14) says 160, 240 and 475 MPa. MIL-HDBK-5J's
+S-basis gives 5052-H32 22 ksi across the grain (23 along it): B209's single 23.0 is the bar,
+a laser-cut part's grain unknown (``docs/agentlib/DECISIONS.md``, 2026-10-20). A product (a
+decanting cradle) is rated on these (:func:`materials.allowable_mpa`; design review round 3's
+M1: 5052's typical 193 MPa had been taken)."""
+
+
+def min_yield(alloy: str, inch: float) -> float | None:
+    """The specified minimum yield (MPa) of ``alloy`` at ``inch`` (:data:`MIN_YIELD`)."""
+    for lo, hi, mpa in MIN_YIELD.get(alloy, ()):
+        if lo - 1e-9 <= inch <= hi + 1e-9:
+            return round(mpa, 1)
+    return None
+
+
+def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None,
+        sheet_mm: tuple[float, float] = (300.0, 300.0)) -> Item:
     t = round(inch * IN, 3)
     name = f"{alloy} aluminium sheet {inch:.3f} in ({t:g} mm), laser cut"
-    url = SCS_AL if alloy == "5052" else SCS_6061
-    temper = "H32" if alloy == "5052" else "T6"
+    temper, url, density, yield_mpa = ALLOYS[alloy]
+    spec = SCS_TABLE[(alloy, inch)]
+    small = (spec["min_part"][0] * IN, spec["min_part"][1] * IN)
+    over, under = (round(v * IN, 3) for v in spec["tol"])
     return Item(
         key, name, "sheet",
         (Offer("SendCutSend", url, note=f"{alloy}-{temper} {inch:.3f} in; {FETCHED}",
                price_usd=price),),
         dims={"thickness": t, "material": "aluminium", "alloy": f"{alloy}-{temper}",
-              "density": 2.68 if alloy == "5052" else 2.70,
-              "yield_mpa": 193.0 if alloy == "5052" else 276.0,
-              "min_hole": t, "sheet_mm": (300.0, 300.0), **SCS_RULES_AL,
+              "density": density, "yield_mpa": yield_mpa,
+              "yield_min_mpa": min_yield(alloy, inch),
+              "min_hole": t, "sheet_mm": sheet_mm, **SCS_RULES_AL, "min_part": small,
+              "thickness_tol": (over, under), "sku": spec["sku"],
+              **({"deburr_mm": SCS_DEBURR_MM} if key in DEBURR_CHECKED else {}),
               # the cutting, material included (hardware.bom.cut_estimate, fitted on
               # SendCutSend's live quotes of 2026-10-08 and 2026-10-12): per part at one off
               # fixed + per cm^2 of part + per cm of cut, at least the least; the
-              # quantity breaks
-              **CUT_RATES[alloy]},
-        notes=f"{alloy}-{temper}: yield {193 if alloy == '5052' else 276} MPa (ASM); "
-              "minimum hole = thickness, 2 t hole-to-edge, min part 6.35 x 9.5 mm "
-              "(SendCutSend).",
+              # quantity breaks (a cradle's: hardware.bom.CRADLE_CUT_FITS)
+              **CUT_RATES.get(alloy, {})},
+        notes=f"{alloy}-{temper}: yield {yield_mpa:g} MPa typical "
+              f"({'SendCutSend' if alloy == '7075' else 'ASM'}), "
+              f"{min_yield(alloy, inch) or yield_mpa:g} MPa minimum (ASTM B209); "
+              "minimum hole = thickness, "
+              f"2 t hole-to-edge, min part {small[0]:g} x {small[1]:g} mm, thickness "
+              f"+{over:g}/-{under:g} mm, deburred from 1 x 3 in (SendCutSend's {spec['sku']} "
+              "spec table, 2026-10-15).",
     )
 
 
@@ -122,6 +271,72 @@ def _acrylic(key: str, t: float, price: float | None = None) -> Item:
     )
 
 
+SCS_PLY = "https://sendcutsend.com/materials/baltic-birch-plywood/"
+
+
+def _plywood(key: str, inch: float, mm: float) -> Item:
+    """SendCutSend's Baltic birch plywood, CNC routed (its 9.0 and 12.0 mm; the 3.2 and 6.3
+    mm are lasered). Its routed rules from the material's spec table (the page's
+    ``materials?sku=`` data, PLYWOODBIRCH-354; fetched 2026-10-10, unchanged 2026-10-15):
+    cut tolerance +-.005 in (the page's header says "CNC routed +/- .009 in"), thickness
+    +.016/-.024 in (9 mm), flatness +/-.030 in per foot before cutting, min hole .125 in (the
+    bit), hole to edge .106 in, min bridge .354 in, min part 1 x 2 in, max 44 x 44 in (the
+    routing guideline says 44 x 30: drawn on that); a routed inside corner is the bit's
+    .063 in radius (no figure is published: half the least hole; the page: "Add fillets to
+    internal corners"). Grade B/BB, identical faces; 43.2 lb/ft^3. No price is published (a
+    DXF upload quotes): the cradles' cutting fit prices it (:data:`hardware.bom.CRADLE_CUT_FITS`,
+    live quotes of 2026-10-14)."""
+    return Item(
+        key, f"Baltic birch plywood {mm:g} mm ({inch:.3f} in), CNC routed", "sheet",
+        (Offer("SendCutSend", SCS_PLY,
+               note=f"Baltic birch, grade B/BB, {inch:.3f} in routed; rules fetched "
+                    "2026-10-10; no published price: quote at upload"),),
+        dims={"thickness": mm, "material": "plywood", "density": 0.692,
+              # (its strength isn't checked: a base board on the table, no link)
+              "yield_mpa": 30.0, "service": "SendCutSend", "process": "CNC router",
+              "min_hole": 0.125 * IN, "edge_t": 0.106 * IN / mm, "edge_mm": 0.354 * IN,
+              "corner_r": 0.063 * IN, "min_part": (1.0 * IN, 2.0 * IN), "metal": False,
+              "kerf_mm": 0.0, "sheet_mm": SCS_MAX_MM, "sku": f"PLYWOODBIRCH-{round(inch * 1000)}",
+              # (its table's +.016/-.024 in is the .354 in's: the one registered)
+              "thickness_tol": (round(0.016 * IN, 3), round(0.024 * IN, 3))},
+        notes="Baltic birch plywood (SendCutSend: 'not weather-proof'; routed edges may show "
+              "witness marks and light burning: sand and oil it).",
+    )
+
+
+WOODCRAFT_BB = ("https://www.woodcraft.com/products/woodcraft-woodshop-baltic-birch-plywood"
+                "?variant=44190127980682")
+CARVERA_BED = (360.0, 240.0)
+"""The Makera Carvera's work area (mm, x by y: 360 x 240 x 140, the user's machine)."""
+CARVERA_PANEL = (300.0, 235.0)
+"""What a 12 x 12 in panel nests parts on, on the Carvera (mm): the panel (Woodcraft: 305 mm
++-1/8 in) sawn to about 238 mm wide to go under the bed's 240, taped down over its whole face
+(no clamp at its edges); the packer keeps every part 3 mm in from the nest's edges
+(``layout.pack``'s margin)."""
+
+
+def _carvera_panel() -> Item:
+    """Woodcraft's 3/8 in (9 mm) Baltic birch, 12 x 12 in, for the parts cut at home on the
+    Carvera (simplification round 1, 2026-10-21, the user's choice: a decanting cradle's cleats
+    and riser locator, off SendCutSend's routed birch): no service cuts it, so its panels are
+    bought like any part (``hardware.bom.cut_by``) and its files are the Carvera's
+    (``dims["home"]``)."""
+    return Item(
+        "birch_3_8_panel", "Baltic birch plywood 3/8 in (9 mm), 12 x 12 in panel (cut at home "
+        "on the Carvera)", "sheet",
+        (Offer("Woodcraft", WOODCRAFT_BB, "131140", price_usd=3.97, verified=True,
+               note="Woodcraft Woodshop Baltic Birch Plywood, item #131140, 3/8 in (9 mm) x 12 "
+                    "x 12 in, 7 plies, USD 3.97 (was 6.99; the page rendered 2026-10-21); "
+                    "dimensions nominal, +-1/8 in, \"may be slightly undersized\"; standard "
+                    "shipping USD 13.99 to 94103 for one panel (its cart's rates, 2026-10-21)"),),
+        dims={"thickness": 9.0, "material": "plywood", "density": 0.692, "yield_mpa": 30.0,
+              "home": "Carvera", "process": "Makera Carvera, a 1/8 in single-flute end mill",
+              "min_hole": 0.125 * IN, "corner_r": 0.0625 * IN, "metal": False,
+              "kerf_mm": 0.0, "sheet_mm": CARVERA_PANEL, "edge_mm": 0.354 * IN},
+        notes="Cut at home on the Carvera (its CAM offsets the bit: the files are nominal "
+              "size); a saw cut first takes each panel under the bed's 240 mm.")
+
+
 AL_THIN: dict[str, float] = {"al5052_1mm": 0.040, "al5052_1p6mm": 0.063,
                              "al5052_2mm": 0.080, "al5052_2p3mm": 0.090,
                              "al5052_2p5mm": 0.100}
@@ -132,8 +347,21 @@ AL6061_THIN: dict[str, float] = {"al6061_1p6mm": 0.063, "al6061_2mm": 0.080,
 no .090), for the crank's hex-pocket plates (2026-10-04); price an estimate."""
 
 register(
-    _al("al5052_3p2mm", 0.125, price=28.0),
+    # a decanting cradle's frame and links, and its connecting rod (its buckling): parts
+    # up to SendCutSend's largest
+    _al("al5052_3p2mm", 0.125, price=28.0, sheet_mm=SCS_MAX_MM),
+    _al("al5052_4p8mm", 0.187, price=40.0, sheet_mm=SCS_MAX_MM),
+    # its gearbox's riser discs, and its keyed crank arm
+    _al("al5052_6p35mm", 0.250, price=55.0, sheet_mm=SCS_MAX_MM),
+    _al("al6061_6p35mm", 0.250, alloy="6061", price=60.0, sheet_mm=SCS_MAX_MM),
+    # the B cradle's most loaded levers
+    _al("al6061_4p8mm", 0.187, alloy="6061", price=45.0, sheet_mm=SCS_MAX_MM),
+    _al("al7075_4p8mm", 0.190, alloy="7075", sheet_mm=SCS_MAX_MM),
     _al("al6061_3p2mm", 0.125, alloy="6061", price=32.0),
+    # a decanting cradle's base board (2026-10-13, the user's "the bottom board in wood")
+    _plywood("birch_9mm", 0.354, 9.0),
+    # its cleats and riser locator, cut at home (simplification round 1, the user's choice)
+    _carvera_panel(),
     *(_al(k, v, price=18.0) for k, v in AL_THIN.items()),
     *(_al(k, v, alloy="6061", price=21.0) for k, v in AL6061_THIN.items()),
     *(_acrylic(k, v, price=9.0) for k, v in ACRYLIC_THIN.items()),

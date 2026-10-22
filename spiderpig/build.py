@@ -47,6 +47,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
+from typing import cast
 
 from spiderpig import construction, fabmethods, linkage, servos, uptodate
 from spiderpig.config import (
@@ -54,6 +55,7 @@ from spiderpig.config import (
     add_build_args,
     add_design_args,
     config_from_args,
+    is_cradle,
     torque_limit_note,
 )
 from spiderpig.fabricate import design_side, fabricate, split_parts, template_for
@@ -66,6 +68,7 @@ from spiderpig.hardware.bom import (
 from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import DEFAULT_KERF, save_parts, save_sheets, sheet_lines
+from spiderpig.shapes import Shape3D
 from spiderpig.uptodate import GENERATED  # api.export's clear_generated reads it here
 
 
@@ -165,14 +168,46 @@ def _on_plate(part):
                                  -bb.min.Z)))
 
 
+def bom_title(config) -> str:
+    """The BOM's and ORDER.md's title for ``config`` (a decanting cradle's says so, and a
+    design study's that it is one: :data:`construction.cradle.STUDIES`)."""
+    if is_cradle(config):
+        from spiderpig.construction.cradle import STUDIES
+
+        study = STUDIES.get(config.linkage)
+        return (f"decanting cradle ({config.lk.name}), hand crank (NRV050 30:1), "
+                f"{config.pillar} pillars, {config.pin} pins, {config.frame_sheet} frame"
+                + (f" -- {study}" if study else ""))
+    return (f"{config.module} {'robot' if config.robot else 'side'}, {config.servo}, "
+            f"{config.pillar} pillars, {config.pin} pins, {config.crank} crank, {config.sheet}")
+
+
+def print_pose(part, turns):
+    """``part`` turned into its print pose: ``turns``, ``(axis, degrees)`` about the global
+    X, Y or Z in order (a part the design doesn't build lying in its layer: a decanting
+    cradle's, ``mech.meta["print_poses"]``)."""
+    from build123d import Axis
+
+    for axis, deg in turns or ():
+        part = part.rotate({"X": Axis.X, "Y": Axis.Y, "Z": Axis.Z}[axis], float(deg))
+    return part
+
+
 def export_prints(groups, out_dir: Path, density: float = 1.24,
                   filaments: dict[str, str | None] | None = None,
-                  stems: dict[str, str] | None = None) -> list[dict]:
+                  stems: dict[str, str] | None = None,
+                  poses: dict | None = None, shapes: dict | None = None) -> list[dict]:
     """One STL per different printed part (and its mirror image where needed).
 
     ``stems``: each printed body's file stem (:func:`spiderpig.labels.print_stems`: the
     part label first, ``P13_top_spacer_0.7mm``, as the assembly guide's bag labels say);
     without it a file is named after its first part.
+
+    ``poses``: a body's turns into its print pose (:func:`print_pose`), where it isn't
+    printed as it lies (every walker part is).
+
+    ``shapes``: a body's shape as it prints, where the design draws less (a decanting
+    cradle's printed lead screw and nut, ``mech.meta["print_shapes"]``: their threads).
 
     ``filaments``: each printed body's filament (catalog key, by name:
     :func:`hardware.bom.printed_filaments`): a group whose parts take two filaments is
@@ -195,22 +230,27 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
         own = g.ref.name if g.ref.name in g.names or not g.names else g.names[0]
         plain = [n for n in g.names if n not in g.mirrored] or [own]
         stem = (stems or {}).get(plain[0]) or _file_stem(own, taken)
-        part = _on_plate(g.ref.part)
+        turns = (poses or {}).get(g.ref.name)
+        shape = (shapes or {}).get(g.ref.name, g.ref.part)
+        part = _on_plate(print_pose(shape, turns))
         export_stl(part, str(out_dir / f"{stem}.stl"))
         same = g.qty - len(g.mirrored)
         todo = f"print {same}"
         files = [f"{stem}.stl"]
-        if g.mirrored:
-            export_stl(_on_plate(g.ref.part.mirror(Plane.YZ)),
+        if g.mirrored:      # posed, then mirrored across the bed (mirrored first, a pose
+            #                 with a turn about Z had stood a cradle's rail liner 170 mm
+            #                 up, tilted; simplification round 1)
+            export_stl(_on_plate(print_pose(shape, turns).mirror(Plane.YZ)),
                        str(out_dir / f"{stem}_mirrored.stl"))
             files.append(f"{stem}_mirrored.stl")
             todo += f", and {len(g.mirrored)} mirrored ({stem}_mirrored.stl)"
-        bb = g.ref.part.bounding_box()
+        bb = cast(Shape3D, print_pose(g.ref.part, turns)).bounding_box()   # (no turns: as
+        #                                                                     it lies)
         rows.append({
             "file": files[0], "qty": g.qty, "mirrored": len(g.mirrored), "print": todo,
             "size_mm": f"{bb.size.X:.1f} x {bb.size.Y:.1f} x {bb.size.Z:.1f}",
             "filament": _filament_name(fil) if fil else "",
-            "grams_each_100pct": round(g.ref.part.volume / 1000
+            "grams_each_100pct": round(shape.volume / 1000
                                        * (filament_density(fil) if fil else density), 1),
             "parts": " ".join(g.names),
         })
@@ -534,7 +574,17 @@ def main(argv=None) -> int:
 
     types = part_types(mech, assembly_order(mech, design), groups, filament)
     rows = export_prints(groups["printed"], out / "print", density=filament_density(filament),
-                         filaments=printed_filaments(mech, filament), stems=print_stems(types))
+                         filaments=printed_filaments(mech, filament), stems=print_stems(types),
+                         poses=mech.meta.get("print_poses"),
+                         shapes=mech.meta.get("print_shapes"))
+    pack = None
+    if is_cradle(config):
+        from spiderpig.cradle_pack import pack_kit
+
+        pack = pack_kit(config, store)
+    kit = _pack_spacers(pack, out / "print", rows) if pack else []
+    if is_cradle(config):
+        kit += _cradle_tools(out / "print", rows)
     n_print = sum(r["qty"] for r in rows)
     print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
     for r in rows:
@@ -568,28 +618,105 @@ def main(argv=None) -> int:
         print(f"wrote {len(order)} per-part DXFs ({sum(r['qty'] for r in order)} parts) and "
               f"order.csv to {out / 'laser' / 'parts'}")
 
-    title = (f"{config.module} {'robot' if config.robot else 'side'}, {config.servo}, "
-             f"{config.pillar} pillars, {config.pin} pins, {config.crank} crank, {config.sheet}")
-    bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
+    title = bom_title(config)
+    bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups, extra=kit)
     if args.no_dxf:
         bom.notes.append("Sheet stock not counted (--no-dxf).")
     if note := torque_limit_note(config):       # every crank servo's (its motor role)
         bom.notes.append(note)
     if custom or config.linkage != linkage.DEFAULT:
         bom.notes.append(f"Design: {design_note}.")
+    if is_cradle(config) and not design.plan.optimal:     # (a product plans in seconds)
+        bom.notes.append(f"The layer plan is valid but not proven the thinnest "
+                         f"({design.plan.proof}): its parts may be longer than a fresh plan's; "
+                         "re-plan before ordering (an empty store, or --store elsewhere).")
     paths = bom.write(out)
     print(f"wrote {', '.join(str(p) for p in paths)}: {len(bom.purchased)} items to buy, "
           f"est. ${bom.cost_usd:.2f} ({len(bom.unpriced)} without a listed price)")
     from spiderpig.hardware.order import order_markdown
 
+    shipping = None
+    if pack and pack.get("mass_kg"):
+        from spiderpig.cradle_pack import CARTON_WHY, kept_words
+        from spiderpig.hardware.shipping import ship_lines
+
+        shipping = ship_lines(config.lk.name, pack, float(pack["mass_kg"]),
+                              CARTON_WHY.get(config.linkage, ""), kept_words(pack))
     (out / "ORDER.md").write_text(order_markdown(bom, order, rows, title=title,
-                                                 build_dir=str(out)))
+                                                 build_dir=str(out), shipping=shipping))
     print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, prints)")
     _write_manifest(out, config, args)
     if opts is not None and key is not None and read is not None:   # (all set, or none)
         # what makes the same build again a no-op (the store keeps it)
         uptodate.record(opts, key, read)
     return 0
+
+
+def _pack_spacers(kit: dict, folder: Path, rows: list[dict]) -> list:
+    """A decanting cradle's pack spacers (its pack payload ``kit``, ``cradle_pack.pack_kit``:
+    printed in PETG, each shaped to the pack, its number engraved): an STL each in
+    ``folder`` (``pack_spacer_*.stl``, laid as it prints: ``cradle_pack.spacer_print``), a
+    row each in ``rows`` and ``parts.csv``, and their BOM rows, each with its filament
+    (``bom_from_mechanism``'s ``extra``)."""
+    from spiderpig.cradle_pack import SPACER_FILAMENT, is_filler, spacer_stl
+    from spiderpig.hardware.bom import MadeRow, _filament_name
+
+    if not kit or not kit.get("spacers"):
+        return []
+    fil = _filament_name(SPACER_FILAMENT)
+    out = []
+    for d in kit["spacers"]:
+        if is_filler(d):                # (corrugated, cut from a spare carton: no print)
+            continue
+        name = f"pack_{d['key']}"
+        info = spacer_stl(d, folder / f"{name}.stl")
+        if info["bodies"] != 1:         # (a slicer refuses it: packing review 3's M2)
+            raise RuntimeError(f"{name}.stl is {info['bodies']} bodies, not one print")
+        size = " x ".join(f"{v:.1f}" for v in info["size_mm"])
+        rows.append({"file": f"{name}.stl", "qty": 1, "mirrored": 0,
+                     "print": "print 1 (the pack: 15 % gyroid, two walls, as laid"
+                              + (", supports on" if info["supports"] else "") + ")",
+                     "size_mm": size,
+                     "filament": fil,
+                     "grams_each_100pct": round(d["volume_cm3"]
+                                                * filament_density(SPACER_FILAMENT), 1),
+                     "parts": name})
+        out.append((MadeRow(name=name, method="printed", material=fil, size_mm=size,
+                            volume_cm3=float(d["volume_cm3"]), names=[name]),
+                    SPACER_FILAMENT))
+    with open(folder / "parts.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    return out
+
+
+def _cradle_tools(folder: Path, rows: list[dict]) -> list:
+    """A decanting cradle's printed tools, no body of the mechanism: the clutch's check stub
+    (``construction.handcrank.check_stub``, PETG; design review round 3's m12): its STL in
+    ``folder``, a row in ``rows`` and ``parts.csv``, and its BOM row with its filament
+    (``bom_from_mechanism``'s ``extra``)."""
+    from spiderpig.construction.handcrank import check_stub
+    from spiderpig.hardware.bom import MadeRow, _filament_name
+    from spiderpig.mesh import export_stl
+
+    fil = "petg_filament"
+    name = "clutch_check_stub"
+    part = check_stub()
+    export_stl(part, folder / f"{name}.stl")
+    bb = part.bounding_box()
+    size = " x ".join(f"{v:.1f}" for v in (bb.size.X, bb.size.Y, bb.size.Z))
+    vol = part.volume / 1000.0
+    rows.append({"file": f"{name}.stl", "qty": 1, "mirrored": 0,
+                 "print": "print 1 (the clutch's check: its bar on the bed, 40 % infill)",
+                 "size_mm": size, "filament": _filament_name(fil),
+                 "grams_each_100pct": round(vol * filament_density(fil), 1), "parts": name})
+    with open(folder / "parts.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    return [(MadeRow(name=name, method="printed", material=_filament_name(fil), size_mm=size,
+                     volume_cm3=round(vol, 3), names=[name]), fil)]
 
 
 def _write_manifest(out: Path, config, args=None) -> None:

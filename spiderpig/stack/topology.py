@@ -161,6 +161,32 @@ class Axis:
     joints: tuple[tuple[str, str], ...]      # every (body, joint) on it
 
 
+@dataclass(frozen=True)
+class LinkPoint:
+    """A point fixed to a link, drawn from two of its points: from ``about`` toward
+    ``toward``, ``along`` that direction and ``across`` it (turned 90° counter-clockwise), in
+    mm (an arm's hub bolts: :meth:`Topology.add_link_point`) or, ``scaled``, in units of the
+    two points' distance (an affine combination of the link's points: a cradle plate's
+    outline, :meth:`Topology.add_link_points`). ``lateral``: its move between an arm's tour
+    rows (:class:`Geometry`)."""
+
+    about: str
+    toward: str
+    along: float
+    across: float
+    lateral: float = 0.0
+    scaled: bool = False
+
+    def at(self, o: np.ndarray, q: np.ndarray) -> np.ndarray:
+        """Where it is with ``about`` at ``o`` and ``toward`` at ``q`` (``(2,)`` or
+        ``(..., 2)``)."""
+        d = q - o
+        if not self.scaled:
+            d = d / (np.linalg.norm(d) if d.ndim == 1 else
+                     np.linalg.norm(d, axis=-1, keepdims=True))
+        return o + self.along * d + self.across * np.stack([-d[..., 1], d[..., 0]], axis=-1)
+
+
 @dataclass
 class Topology:
     """The planner's view of one side: link outlines and axles as named points."""
@@ -173,14 +199,33 @@ class Topology:
     frame_bodies: tuple[str, ...] = ()
     crank_bodies: tuple[str, ...] = ()
     crank_points: dict[str, tuple[float, float]] = field(default_factory=dict)
-    # points a group fixed to a link (an arm's hub bolts): name -> (the point it turns
-    # about, the point that sets its direction, its (along, across) offset there, its
-    # lateral bound)
-    link_points: dict[str, tuple[str, str, tuple[float, float], float]] = field(
-        default_factory=dict)
+    # points a group fixed to a link (an arm's hub bolts, a cradle plate's outline): name ->
+    # how it is drawn from two of the link's points (:class:`LinkPoint`)
+    link_points: dict[str, LinkPoint] = field(default_factory=dict)
 
     def axes_of(self, kind: AxisKind) -> list[Axis]:
         return [a for a in self.axes if a.kind == kind]
+
+    def add_link_points(self, points: Mapping[str, LinkPoint | tuple[str, str, float, float]]
+                        ) -> None:
+        """Points fixed to a link (:class:`LinkPoint`, or ``(a, b, u, v)``: ``a + u (b - a) +
+        v (b - a)`` turned 90° counter-clockwise, ``a`` and ``b`` two of the link's points, an
+        affine combination of points of one rigid body riding it), added to the geometry (and
+        remembered, so a re-sampled topology gets them too: :func:`stack.verify_plan`;
+        :meth:`construction.base.Build.xy` places them)."""
+        new: dict[str, LinkPoint] = {}
+        for n, v in points.items():
+            lp = v if isinstance(v, LinkPoint) else LinkPoint(*v, scaled=True)
+            if self.link_points.get(n) != lp:
+                new[n] = lp
+        if not new:
+            return
+        g = self.geometry.points
+        xy = {n: lp.at(np.asarray(g[lp.about], dtype=float), np.asarray(g[lp.toward], dtype=float))
+              for n, lp in new.items()}
+        lateral = {n: lp.lateral for n, lp in new.items() if not lp.scaled}
+        self.geometry = self.geometry.extend(xy, lateral=lateral or None)
+        self.link_points.update(new)
 
     def add_crank_point(self, name: str, r: float, angle_deg: float) -> str:
         """A point fixed to the crank, ``r`` from O and ``angle_deg`` counter-clockwise from
@@ -196,18 +241,11 @@ class Topology:
 
     def add_link_point(self, name: str, about: str, toward: str,
                        offset: tuple[float, float], lateral: float = 0.0) -> str:
-        """A point fixed to a link, ``offset`` (along, across) from the point ``about`` in
+        """A point fixed to a link, ``offset`` (along, across) mm from the point ``about`` in
         the direction of ``toward``, added to the geometry with its ``lateral`` bound (an
         arm's tour) and remembered (a re-sampled topology gets it too: ``verify_plan``)."""
-        g = self.geometry.points
-        o = np.asarray(g[about], dtype=float)
-        d = np.asarray(g[toward], dtype=float) - o
-        u = d / np.linalg.norm(d, axis=-1, keepdims=True)
-        v = np.stack([-u[..., 1], u[..., 0]], axis=-1)
-        xy = o + offset[0] * u + offset[1] * v
-        self.geometry = self.geometry.extend({name: xy}, lateral={name: lateral})
-        self.link_points[name] = (about, toward, (float(offset[0]), float(offset[1])),
-                                  float(lateral))
+        self.add_link_points({name: LinkPoint(about, toward, float(offset[0]),
+                                              float(offset[1]), float(lateral))})
         return name
 
     @property

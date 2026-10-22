@@ -35,7 +35,9 @@ def test_the_motor_role_is_chosen_from_the_inputs_once():
         assert roles.applies(role, lk.kind), key
         (other,) = [r for r in roles.MOTOR_ROLES if r != role]
         assert not roles.applies(other, lk.kind), key
-        assert controllers.motors_of(BuildConfig(linkage=key, robot=False)) == role
+        # (a product's hand crank, a decanting cradle's: no motor at all)
+        want = "" if lk.product else role
+        assert controllers.motors_of(BuildConfig(linkage=key, robot=False)) == want, key
 
 
 @pytest.mark.no_fabricate
@@ -279,6 +281,9 @@ def test_every_crank_servos_bom_names_its_torque_limit():
     for key in linkage.available("mechanism"):
         cfg = BuildConfig(linkage=key, robot=False)
         note = torque_limit_note(cfg)
+        if linkage.get(key).product:    # a hand on a worm box: no servo, no firmware limit
+            assert note is None, key
+            continue
         assert note is not None, key
         assert f"to {torque_limit_nm(cfg):g} N·m" in note, key
         assert "a blocked output" in note, key
@@ -334,12 +339,16 @@ def test_a_fixed_designs_turn_is_bounded_by_its_servos_torque_limit():
 @pytest.mark.slow     # (fabricates every one-input mechanism's side: ~2 min)
 def test_every_mechanisms_default_holds_its_jam():
     """Each mechanism's default at its own torque limit: every joint and link at jam SF 2
-    or more (the limits' rule)."""
+    or more (the limits' rule). Not a product's: a decanting cradle is hand-cranked, no
+    servo limit to rate it at; its own statics rate it (``cradle_report``, DECANTER.md),
+    A's box left open at the jam by the user's call (DECISIONS.md 2026-10-21)."""
     from tests import cache
 
     for key in linkage.available("mechanism"):
         if len(linkage.get(key).inputs) > 1:
             continue                                  # (five_bar: no drive for t2 yet)
+        if linkage.get(key).product:
+            continue
         cfg = BuildConfig(linkage=key, robot=False)
         mech = cache.cached_side(cfg)
         st = strength.check(mech.meta.get("wobble") or {}, mech.meta, cfg,

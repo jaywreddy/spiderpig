@@ -47,9 +47,16 @@ _ROUND = {"HS", "SP", "RR", "RG", "CL", "FS"}      # across - high
 _LONG = {"SL", "TS"}                               # across x long
 _LASER = ((r"b\d+(_leg\d+)?$", "LK", "link"), (r"(frame_outer|torso)$", "FR", "frame plate"),
           (r"crank_plate\d+$", "CW", "crank web"), (r"centre_plate\d+$", "CP", "centre plate"),
-          (r"deck_plate$", "DK", "deck plate"))
+          (r"deck_plate$", "DK", "deck plate"),
+          # a decanting cradle's (their family stays LC, its files' names with it: design
+          # review round 3, laser-cut parts minor 6, the guide's table named them none)
+          (r"conn(_plate\d+)?$", "LC", "crank block plate"),
+          (r"handle_seat_ring$", "LC", "clutch seat ring"), (r"base_plate$", "LC", "base board"),
+          (r"riser_locator_\d+$", "LC", "riser locator layer"),
+          (r"base_cleat_\w+$", "LC", "base board cleat"))
 _PHRASES = (("heat_set_insert", "ins"), ("self_tap", "st"), ("set_screw", "set"),
-            ("pillar_shaft", "shaft"), ("servo_driver", "drv"), ("shim_din988", "shim"))
+            ("pillar_shaft", "shaft"), ("servo_driver", "drv"), ("shim_din988", "shim"),
+            ("pivot_pin8", "pp8"))
 _TOKENS = {"bhcs": "bh", "washer": "w", "chicago": "chi", "nut": "n", "standoff": "so",
            "round": "r", "hex": "hx", "nylon": "ny", "screw": "s", "m25": "m2.5"}
 CONSUMABLE = re.compile(r"threadlocker|epoxy|glue|cement|filament")
@@ -181,10 +188,12 @@ def part_types(mech, order: list[str] | None = None, groups: dict | None = None,
         sheet = ref.sheet or default_sheet
         w, h = outline_size(ref, default_sheet)
         t_mm = catalog.sheet_thickness(sheet)
+        how = ("CNC-routed" if catalog.get(sheet).dims.get("process") == "CNC router"
+               else "laser-cut")        # (SendCutSend routes its 9 mm birch)
         fam, role = next(((f, r) for pat, f, r in _LASER if re.match(pat, _bare(ref.name))),
-                         ("LC", "laser-cut part"))
+                         ("LC", f"{how} part"))
         found.append(PartType(f"{fam}{_half(w)}x{_half(h)}", "laser",
-                              f"{role}, laser-cut, {_half(w)} x {_half(h)} mm, "
+                              f"{role}, {how}, {_half(w)} x {_half(h)} mm, "
                               f"{catalog.sheet_name(sheet).split(',')[0]}", ref.name,
                               list(g.names),
                               extra={"geo": _geo(ref.part), "role": role, "body": ref,

@@ -13,7 +13,7 @@ their own z.
 
 A **clearance gap** (:attr:`stack.Placed.gap`) is one of the thin sheets' thicknesses
 (:func:`gap_options`): an axle that crosses it carries a printed ring to that thickness
-(:func:`construction.pivots.common.gap_washers`; the round crankpin a stack of washers and
+(:func:`construction.pivots.common.build_sleeves`; the round crankpin a stack of washers and
 shims, :func:`washer_stack`).
 """
 
@@ -54,6 +54,9 @@ class Sheet:
     sheet_mm: tuple[float, float]
     modulus_gpa: float     # Young's modulus, GPa (the item's, else the material's)
     cte_um_per_m_k: float  # linear thermal expansion, um/m/K (the item's, else the material's)
+    yield_min_mpa: float | None = None  # its alloy and temper's specified minimum yield in
+    #                                     this gauge (None: none known): a product is rated
+    #                                     on it (:func:`allowable_mpa`)
 
     @property
     def min_edge(self) -> float:
@@ -63,9 +66,11 @@ class Sheet:
     @property
     def label(self) -> str:
         """``"5052-H32 aluminium 3.175 mm (SendCutSend)"``."""
-        alloy = get(self.key).dims.get("alloy")
+        d = get(self.key).dims
+        alloy = d.get("alloy")
         what = f"{alloy} aluminium" if alloy else self.material
-        return f"{what} {self.thickness:g} mm ({self.service})"
+        by = self.service or (f"{d['home']}, at home" if d.get("home") else "")
+        return f"{what} {self.thickness:g} mm ({by})"
 
 
 def _pair(values) -> tuple[float, float]:
@@ -92,7 +97,21 @@ def sheet(key: str) -> Sheet:
         corner_r=float(d.get("corner_r", 0.0)), metal=bool(d.get("metal", False)),
         sheet_mm=_pair(d.get("sheet_mm", (300.0, 300.0))),
         modulus_gpa=_constant(d, "modulus_gpa", MODULUS_GPA, material, key),
-        cte_um_per_m_k=_constant(d, "cte_um_per_m_k", CTE_UM_PER_M_K, material, key))
+        cte_um_per_m_k=_constant(d, "cte_um_per_m_k", CTE_UM_PER_M_K, material, key),
+        yield_min_mpa=(float(d["yield_min_mpa"]) if d.get("yield_min_mpa") else None))
+
+
+def allowable_mpa(config, key: str) -> float:
+    """The yield a strength check rates sheet ``key`` at in ``config``'s build: a product's
+    (a decanting cradle, parts ordered to carry a bottle) at its alloy's specified minimum in
+    that gauge (``Sheet.yield_min_mpa``: design review round 3's M1, the cradles had been
+    rated on 5052-H32's typical 193 MPa against ASTM B209's 159), a walker's at the typical
+    value its rules and audits were set on (``Sheet.yield_mpa``)."""
+    sh = sheet(key)
+    lk = getattr(config, "lk", None)
+    if getattr(lk, "product", "") and sh.yield_min_mpa:
+        return sh.yield_min_mpa
+    return sh.yield_mpa
 
 
 def _constant(dims: dict, name: str, table: dict, material: str, key: str) -> float:
@@ -118,6 +137,29 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # (0.125 in, the user's allowance); its end grows round the hex crank's 8.8 mm bore to
     # 1 x t of web (plates.rider_bosses), the rest of it keeps Params.link_radius
     "klann_lego": {"b1": FOOT_SHEET},
+    # the B cradle (2026-10-10, refined, slimmed; 2026-10-13, a 6 L's jam): the links sharing
+    # a layer (b2 with b3, b4 with b5) both 0.187-0.190 in, so neither rides in a layer the
+    # other made taller (a thin link there would slide on its pin); the arms b2, b3 and the
+    # bar b4 in 7075 (cradle_report's jam: 6061 held 0.83); the 336 mm rod 0.250 in, alone
+    # in its layer (Euler, at the cradle's 24 mm links: 1.6 x its jam force); the cradle
+    # link b6, alone under the inner plate, 0.187 in 5052 (design review round 1,
+    # 2026-10-14: rated in bending, its rear arm a cantilever off X, the 0.125 in held the
+    # jam at SF 0.3; config.PRODUCT_CHORD_R widens that arm)
+    # the A cradle's cradle link b2 0.187 in (2026-10-13: its 12 mm pillar G's hole leaves a
+    # 0.125 in 5052 link at jam SF 1.13 under a 6 L's 69.3 N.m; the frame plates' sheet)
+    "decanter_hinge": {"b2": "al5052_4p8mm"},
+    # (design review round 3, 2026-10-20: b2 back to 0.187 in 5052, its worst stress at the
+    # clutch's cap 36 MPa, SF 4.4 on 5052's minimum; its 8.2 mm holes at 1.66 t, under 7075's
+    # 2 t "to prevent microcracks", the 2 t only guidance in 5052)
+    # (simplification round 1, 2026-10-21: b4 in 0.187 in 5052, its chord X-K 28 mm wide,
+    # config.PRODUCT_CHORD_R, inside the 335 x 28 blank its bosses already made: its jam is
+    # the chord's buckling out of its plane, E t^3 x its width, not the alloy; b3 stayed
+    # 7075, its bending at O1: wider in 5052 it meets b2 or K in their layer, no plan)
+    # (simplification round 2, 2026-10-21: b3 in 6061-T6 0.187 in, its chords O1-J and
+    # O1-J2 25 mm wide, config.PRODUCT_CHORD_R: cap SF 1.37 on 6061's minimum, walking 12.6;
+    # SendCutSend quotes the pair USD 32.18 against 7075's 45.86, and 7075 leaves the order)
+    "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al5052_4p8mm", "b3": "al6061_4p8mm",
+                     "b4": "al5052_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_4p8mm"},
     # the user's arm (2026-10-13): every link 5.4 mm acrylic (stiff across the plane, its
     # bearings' seats inside it) but b4, the elbow's long lever, in 1/8 in 5052; the plain
     # palletizer's too since 2026-10-14 (the same links: its acrylic b4 broke at a crash at
@@ -133,8 +175,20 @@ def default_link_sheets(lk) -> dict[str, str]:
     """A linkage's links that aren't cut from the default sheet: a Klann variant's foot
     links (aluminium 6061-T6, the joinery plan of 2026-10-03) and :data:`LINK_SHEETS`."""
     out = {link: FOOT_SHEET for link, _ in lk.feet} if lk.family == "klann" else {}
+    if getattr(lk, "product", "") == "cradle":      # every link aluminium: 6 kg on them
+        out.update(dict.fromkeys(lk.links, CRADLE_LINK_SHEET))
+        rod = [k for k, (js, _) in lk.links.items() if lk.crank[1] in js]
+        out.update(dict.fromkeys(rod, CRADLE_ROD_SHEET))
     out.update(LINK_SHEETS.get(lk.key, {}))
     return out
+
+
+CRADLE_LINK_SHEET = "al5052_3p2mm"
+"""A decanting cradle's links (the user, 2026-10-09: aluminium first): 0.125 in 5052."""
+CRADLE_ROD_SHEET = "al5052_6p35mm"
+"""A decanting cradle's connecting rod (the link on the crankpin): 0.250 in 5052, so it
+doesn't buckle at the jam case's (:mod:`spiderpig.cradle_report`: a firm push at the grip;
+the 0.187 in held A's 6 L jam 0.83)."""
 
 
 def link_sheets(config) -> dict[str, str]:
@@ -177,6 +231,10 @@ WASHERS: dict[float, tuple[str, str]] = {
     3.0: ("ptfe_washer_3x6x0p5", "shim_din988_3x6"),
     4.0: ("ptfe_washer_4x8x0p5", "shim_din988_4x8"),
     6.0: ("ptfe_washer_6x12x0p5", "shim_din988_6x12"),
+    8.0: ("ptfe_washer_8x14x0p5", "shim_din988_8x14"),     # a cradle's M6 Chicago barrel
+    10.0: ("ptfe_washer_10x16x0p5", "shim_din988_10x16"),  # a cradle's 10 mm standoffs
+    12.0: ("ptfe_washer_12x18x0p5", "shim_din988_12x18"),  # a cradle's 12 mm crankpin
+    12.7: ("ptfe_washer_13x19x0p5", "shim_din988_13x19"),  # a cradle's 1/2 in pillar
 }
 
 

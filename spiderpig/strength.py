@@ -71,9 +71,10 @@ the Klann's the demo Klann quad's, which bounds the variants (``klann_lego`` qua
 0,0,180,180 measures 12 N walking, 80 N jammed in :mod:`sim.loads`)."""
 GENERIC_PIN_LOADS = (119.0, 155.0)
 """A family nobody measured: the most loaded family's (the demo Klann's)."""
-PER_JOINT = ("sim", "static")
+PER_JOINT = ("sim", "static", "statics")
 """The loads' sources that are per joint (``joints``): the sim's, the static model's (an
-arm's, :func:`arm_loads`; a cranked mechanism's, :func:`crank_loads`)."""
+arm's, :func:`arm_loads`; a cranked mechanism's, :func:`crank_loads`), a decanting cradle's
+quasi-static planar solve (``statics``: :func:`spiderpig.cradle_report.loads`)."""
 CRANK_POSES = 24
 """A cranked mechanism's static loads are solved at ``4 x`` this many crank angles a turn
 (:func:`linkage.constraints.sample_inputs`)."""
@@ -114,18 +115,24 @@ def uniform_loads(walk: float, jam: float, source: str, note: str) -> dict:
 def design_loads(config: BuildConfig, store=None, *, override: tuple[float, float] | None
                  = None, sim: bool | str = True, payload_g: float | None = None) -> dict:
     """The loads the strength check uses for ``config`` (see the module doc): ``source``
-    ``sim`` / ``override`` / ``static`` (a linkage with no floor: a ranged one's
-    :func:`arm_loads`, a cranked mechanism's :func:`crank_loads`) / ``fallback``, a
-    ``note`` saying where they came from, the largest walking and jam joint loads
-    (``walk_n``, ``jam_n``), the sim's (or the static model's) ``joints`` and the crank's
-    torques. ``sim="cached"``: the design's simulated loads only if the store has them.
-    ``payload_g``: the load at the output of a linkage with no floor (a ranged one's default
+    ``sim`` / ``override`` / ``statics`` (a decanting cradle's, :func:`cradle_report.loads`) /
+    ``static`` (a linkage with no floor: a ranged one's :func:`arm_loads`, a cranked
+    mechanism's :func:`crank_loads`) / ``fallback``, a ``note`` saying where they came from,
+    the largest walking and jam joint loads (``walk_n``, ``jam_n``), the sim's (or the static
+    model's, or the statics') ``joints`` and the crank's torques. ``sim="cached"``: the
+    design's simulated loads only if the store has them. ``payload_g``: the load at the
+    output of a linkage with no floor (a ranged one's default
     :data:`repeatability.PAYLOAD_G`; a cranked mechanism's none)."""
     from spiderpig import linkage as lk
     from spiderpig.config import torque_limit_nm
 
     if override is None and lk.get(config.linkage).ranged:
         return arm_loads(config, payload_g)
+    if override is None and lk.get(config.linkage).product:
+        # a decanting cradle: its bottle's and its gearbox's (no MuJoCo, no servo)
+        from spiderpig.cradle_report import loads as product_loads
+
+        return product_loads(config, store)
     if override is None and not lk.get(config.linkage).walks:
         return crank_loads(config, payload_g)
     limit = torque_limit_nm(config)
@@ -310,6 +317,8 @@ def _stem(name: str) -> str:
     return re.sub(r"_leg\d+$", "", name.split(":", 1)[-1])
 
 
+
+
 def joint_loads(name: str, note: dict, loads: dict) -> dict:
     """``name``'s walking and jam load and patterns: its own sim (or static model's) joint
     (same name stem, most links shared), else the uniform ones (``basis`` says which)."""
@@ -334,17 +343,57 @@ def joint_loads(name: str, note: dict, loads: dict) -> dict:
 
 
 def joint_strength(name: str, note: dict, loads: dict) -> dict:
-    """One pivot's walking and jam stresses (:func:`construction.wobble.stresses`)."""
+    """One pivot's walking and jam stresses (:func:`construction.wobble.stresses`); a
+    pillar the loads rated on its box (``loads["posts"]``: a decanting cradle's,
+    :func:`spiderpig.cradle_structure.posts`) at the moment and shear found there."""
     jl = joint_loads(name, note, loads)
+    post = (loads.get("posts") or {}).get(_stem(name)) if name.startswith("pillar:") else None
     row = {"joint": name, "kind": name.split(":", 1)[0],
-           "links": [e["link"] for e in note["links"]], "case": bending_case(note),
+           "links": [e["link"] for e in note["links"]],
+           "case": POST_CASE if post else bending_case(note),
            "span_mm": note["span_mm"], "section": note["section"]["name"],
            "basis": jl["basis"]}
     for tag in ("walk", "jam"):
         f = jl[f"{tag}_n"]
-        s = stresses(note, f, jl[f"{tag}_patterns"]) if f > 0 else None
+        if post and post.get(tag):
+            s = post_stresses(note, f, post[tag])
+        else:
+            s = stresses(note, f, jl[f"{tag}_patterns"]) if f > 0 else None
         row[tag] = dict(s, load_n=round(f, 2)) if s else None
     return row
+
+
+POST_CASE = "pillar on the box"
+"""A pillar rated with its frame plates (:func:`spiderpig.cradle_structure.posts`: clamped in
+the outer plate, its end on the inner plate as far as that plate is held)."""
+
+
+def post_stresses(note: dict, load_n: float, got: dict) -> dict:
+    """A pillar's stresses at the moment and shear its box gives it (``got``: ``moment_nmm``,
+    ``shear_n``; :func:`spiderpig.cradle_structure.posts`), as :func:`stresses` reports
+    them, and the moment at its foot (into the outer plate) and its end's force on the
+    inner plate."""
+    s = note["section"]
+    bend = got.get("bending_mpa", got["moment_nmm"] / s["z_bend_mm3"])
+    shear = got["shear_n"] / s["a_shear_mm2"]
+    bearing = load_n / (s["bearing_d"] * note["bearing_len_mm"])
+    vm = math.hypot(bend, math.sqrt(3) * shear)
+    return {"bending_mpa": round(bend, 1), "shear_mpa": round(shear, 1),
+            "bearing_mpa": round(bearing, 1), "moment_nmm": round(got["moment_nmm"], 1),
+            "case": POST_CASE, "governs": "shaft", "foot_nm": got.get("foot_nm"),
+            "end_n": got.get("end_n"),
+            "safety": round(s["yield_mpa"] / vm, 2) if vm > 0 else None}
+
+
+def cut_hole(note: dict, params=None) -> float:
+    """The hole a joint's links are cut with (mm): its shaft's (``section.bearing_d``) and
+    the links' running clearance on it as the construction cut it (``clearance_mm``: an
+    8 mm pin's 8.2 mm, a 12 mm pillar's 12.35); without one, ``params``' running fit."""
+    gaps = [float(e["clearance_mm"]) for e in note.get("links") or [] if "clearance_mm" in e]
+    d = float(note["section"]["bearing_d"])
+    if gaps:
+        return round(d + max(gaps), 4)
+    return params.hole(d) if params is not None else d
 
 
 def crank_strength(meta: dict, config: BuildConfig, loads: dict) -> dict | None:
@@ -371,8 +420,9 @@ def crank_strength(meta: dict, config: BuildConfig, loads: dict) -> dict | None:
         moment = factor * torque
         row[tag] = {"torque_nm": round(torque, 4), "moment_nm": round(moment, 4),
                     "safety": round(cap / moment, 2)}
-    row["basis"] = ("sim walking torque, the firmware torque limit jammed"
-                    if walk_t else "the firmware torque limit jammed (no walking sim)")
+    row["basis"] = loads.get("crank_basis") or (
+        "sim walking torque, the firmware torque limit jammed"
+        if walk_t else "the firmware torque limit jammed (no walking sim)")
     return row
 
 
@@ -403,7 +453,8 @@ def link_hole(config: BuildConfig, frame: bool) -> float:
     return float(seat.seat_d()) if seat is not None else LINK_HOLE
 
 
-def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
+def link_rows(config: BuildConfig, loads: dict, holes: dict[str, float] | None = None
+              ) -> list[dict]:
     """Every link plate's stress at the design's own pin loads (``loads["joints"]``, the
     sim's), against its sheet's allowable: the net section at the most loaded hole
     (``LINK_KT`` x the pin load over ``(w - d) t``) and, for a link of three or more pins,
@@ -412,10 +463,11 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
     load is a cantilever's); a foot link whose foot is off its pins, the foot's lever to its
     nearest pin. Conservative: the loads' directions aren't used. ``needs`` names the sheet
     that would hold it when the link's own doesn't (jam SF under 2): the user's rule,
-    aluminium only where acrylic can't take the load."""
+    aluminium only where acrylic can't take the load. ``holes``: each joint's own hole (mm,
+    by stem: a decanting cradle's pins and pillars are 8-12 mm), else :data:`LINK_HOLE`."""
     from spiderpig import linkage as lk_mod
     from spiderpig.construction.plates import RIDER_BOSS_T
-    from spiderpig.materials import FOOT_SHEET, link_sheets, sheet
+    from spiderpig.materials import FOOT_SHEET, allowable_mpa, link_sheets, sheet
 
     joints = loads.get("joints") or []
     if loads.get("source") not in PER_JOINT or not joints:
@@ -444,6 +496,7 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
         if not at:
             continue
         sh = sheet(sheets.get(key, config.sheet))
+        allow = allowable_mpa(config, sh.key)     # (a product's: its alloy's minimum)
         t = sh.thickness if sheets.get(key) else config.pitch
         d_max = max(hole[framed.get(pin, False)] for pin in at)
         zn = t * (w ** 3 - d_max ** 3) / (6 * w)
@@ -452,27 +505,43 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
         # plates.rider_bosses), else the pivot's hole (LINK_HOLE, a bearing's seat)
         boss_w = max(w, bore + 2 * (RIDER_BOSS_T * t + 0.1)) if sh.metal else w
         net = {pin: (boss_w - bore) * t if pin in crank_pins
+               else (w - holes[pin]) * t if holes and pin in holes
                else (w - hole[framed.get(pin, False)]) * t for pin in at}
         zg = t * w * w / 6
         pins = [n for n in at if n in pts]
         span = max((math.dist(pts[a], pts[b]) for a in pins for b in pins), default=0.0)
         bending = len(pins) >= 3
+        # a product's links rated in bending from its force vectors, chord by chord
+        # (cradle_report.structure: the moment about each joint, not F L / 4)
+        frames = {tag: (loads.get("link_frames") or {}).get(tag, {}).get(key)
+                  for tag in ("walk", "jam")}
         foot = feet.get(key)
         foot_lever = (min(math.dist(pts[foot], pts[n]) for n in pins)
                       if foot is not None and foot not in at and foot in pts and pins else 0.0)
 
         row = {"joint": f"link:{key}", "kind": "link", "links": [key],
-               "sheet": sh.key, "thickness_mm": t, "allowable_mpa": sh.yield_mpa,
-               "pins": sorted(at), "bending": bending}
+               "sheet": sh.key, "thickness_mm": t, "allowable_mpa": allow,
+               "pins": sorted(at), "bending": bending or any(frames.values())}
         for i, tag in enumerate(("walk", "jam")):
             F = max(f[i] for f in at.values())
             sig = max(LINK_KT * f[i] / net[pin] for pin, f in at.items())
-            if bending:
+            fr = frames[tag]
+            if fr is not None:
+                sig = max(sig, fr["worst"]["stress_mpa"])
+            elif bending:
                 sig = max(sig, F * span / 4 / zg)
-            if foot_lever:
+            if foot_lever and fr is None:
                 sig = max(sig, F * foot_lever / zn)
-            row[tag] = {"stress_mpa": round(sig, 2), "load_n": round(F, 2),
-                        "safety": round(sh.yield_mpa / sig, 2) if sig > 0 else None}
+            sf = allow / sig if sig > 0 else None
+            row[tag] = {"stress_mpa": round(sig, 2), "load_n": round(F, 2)}
+            if fr is not None:
+                row[tag]["chord"] = f"{fr['worst']['chord']} at {fr['worst']['at']}"
+                row[tag]["moment_nm"] = fr["worst"]["moment_nm"]
+                buck = (fr.get("buckling") or {}).get("safety")
+                if buck is not None and sf is not None and buck < sf:
+                    sf = buck
+                    row[tag]["governs"] = f"buckling of {fr['buckling']['chord']}"
+            row[tag]["safety"] = round(sf, 2) if sf is not None else None
         jam = (row.get("jam") or {}).get("safety")
         row["needs"] = None
         if jam is not None and jam < JAM_WARN and not sh.metal:
@@ -695,11 +764,14 @@ def level(row: dict) -> str | None:
 def _alt_sections(kind: str, note: dict) -> list[tuple[str, Section]]:
     """The other sections a pivot could have (each with the option that builds it): every
     registered axle construction of that role with a section of its own (the Chicago
-    screw's barrel for a pin, the goBILDA standoff for a pillar, ...)."""
+    screw's barrel for a pin, the goBILDA standoff for a pillar, ...), but a product's own
+    (``product_only``: a decanting cradle's pins, its product's choice)."""
     from spiderpig import construction
 
     out: dict[str, tuple[str, Section]] = {}     # one per section: the first that builds it
     for key, c in construction.AXLES.items():
+        if getattr(c, "product_only", False):
+            continue
         if kind in getattr(c, "roles", ()) and hasattr(c, "section"):
             s = c.section()
             out.setdefault(s.name, (f"--{kind} {key}", s))
@@ -732,6 +804,9 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         f = row["factor"]
         cap = min(row["capacity_nm"].values())
         lim = cap / (JAM_WARN * f)
+        if config.lk.product:       # a hand on a gearbox: its clutch's cap is the jam case
+            return [_hand_fix(row["jam"]["torque_nm"], lim, config) if row.get("jam") else
+                    f"never force the hand crank past {lim:.2f} N·m at the crank"]
         out.append(f"set the servo's torque limit to {lim:.2f} N·m or less (jam SF "
                    f"{JAM_WARN:g}; now {row['jam']['torque_nm']:g})" if row.get("jam") else
                    f"keep the servo's torque limit under {lim:.2f} N·m")
@@ -751,6 +826,15 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
     if row["kind"] == "chassis":
         return ["a thicker centre sheet, or more own plates per servo (more rear-screw "
                 "grip), or a lower servo torque limit"]
+    if row["kind"] == "column":
+        return ["another column or pillar holding the inner plate (off the line of its "
+                "posts), or a 12 mm column (NETRF12)"]
+    if row["kind"] == "frame":
+        return [f"a wider {(row.get('jam') or row.get('walk') or {}).get('governs')} "
+                "(construction.cradle.Stand.wide), or a member or column holding its node"]
+    if row["kind"] == "box":
+        return ["thicker tie rods across the bay (construction.cradle.TIE_D), their end "
+                "screws a stronger class, or the rear rods farther from the mouth"]
     if row["kind"] == "link":
         need = row.get("needs")
         if need:
@@ -759,8 +843,7 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         limit = loads.get("torque_limit_nm")
         jam_sf = _sf(row, "jam")
         if jam_sf is not None and jam_sf < JAM_WARN and limit:
-            out.append(f"a servo torque limit of {limit * jam_sf / JAM_WARN:.2f} N·m (now "
-                       f"{limit:g}) for jam SF {JAM_WARN:g}")
+            out.append(_limit_fix(limit, jam_sf, config))
         if jam_sf is not None and jam_sf < JAM_WARN and stepped(config):
             out.append("lower the drives' holding torque (their run current): a crash's load "
                        "scales with it")
@@ -782,13 +865,18 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         return f"jam SF {j:g}" + (f", walking {w:g}" if w is not None else "")
 
     kind = row["kind"]
+    if row.get("case") == POST_CASE:
+        return ["hold the inner plate in its plane: a column off the line of its posts (two "
+                "posts in a line hold a pillar only along it), or a stiffer pillar"]
     for opt, sec in _alt_sections(kind, note):
         j, w = sfs(dict(note, section=sec.as_dict()))
         if j is not None and j > (_sf(row, "jam") or 0):
             out.append(f"{opt} ({sec.name}): {fmt(j, w)}"
                        + ("" if good(j, w) else ", still short"))
     layers = note.get("layers") or {}
-    if kind == "pin" and len(set(layers.values())) > 1:
+    # (a product's plan is searched afresh, its spans the best it found: DECISIONS
+    # 2026-10-10 records no plan with a cradle's pin in adjacent layers)
+    if kind == "pin" and len(set(layers.values())) > 1 and not config.lk.product:
         order = sorted(set(layers.values()))
         tight = {m: order.index(k) for m, k in layers.items()}
         if order[-1] - order[0] > len(order) - 1:
@@ -810,8 +898,7 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
     jam_sf = _sf(row, "jam")
     limit = loads.get("torque_limit_nm")
     if jam_sf is not None and jam_sf < JAM_WARN and limit:
-        out.append(f"a servo torque limit of {limit * jam_sf / JAM_WARN:.2f} N·m (now "
-                   f"{limit:g}: the jam loads scale with it) for jam SF {JAM_WARN:g}")
+        out.append(_limit_fix(limit, jam_sf, config, ": the jam loads scale with it"))
     if jam_sf is not None and jam_sf < JAM_WARN and jl.get("crash_n") and stepped(config):
         # a crash's load scales with the drives' holding torque (their run current); the
         # payload's and the arm's weight stay: the share that leaves jam SF JAM_WARN
@@ -828,6 +915,28 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
     return out
 
 
+def _limit_fix(limit: float, jam_sf: float, config: BuildConfig, why: str = "") -> str:
+    """The jam torque that brings a row to jam SF :data:`JAM_WARN`: a servo's firmware limit,
+    or for a product (a hand on a gearbox, ``config.PRODUCT_JAM_NM``) how hard not to force
+    it."""
+    to = limit * jam_sf / JAM_WARN
+    if config.lk.product:
+        return _hand_fix(limit, to, config)
+    return f"a servo torque limit of {to:.2f} N·m (now {limit:g}{why}) for jam SF {JAM_WARN:g}"
+
+
+def _hand_fix(jam_nm: float, to: float, config: BuildConfig) -> str:
+    """A product's fix in the hand's terms: the push at its crank's grip under which the row
+    keeps jam SF :data:`JAM_WARN` (the jam case, ``jam_nm`` at the crank, is the most the
+    hand crank's slip clutch lets through: ``cradle_report.jam_nm``)."""
+    from spiderpig.construction.handcrank import handle_r
+    from spiderpig.cradle_report import JAM_HAND_N, push_nm
+
+    return (f"never force the hand crank against a blocked cradle: jam SF {JAM_WARN:g} holds "
+            f"up to about {JAM_HAND_N * to / push_nm(grip_r=handle_r(config)):.0f} N at the "
+            f"grip (the jam case is {jam_nm:g} N·m at the crank, its slip clutch's cap)")
+
+
 def findings(rows: list[dict], notes: dict, loads: dict, config: BuildConfig) -> list[dict]:
     """Every joint under a limit (see the module doc), worst first, with its fixes."""
     out = []
@@ -841,6 +950,7 @@ def findings(rows: list[dict], notes: dict, loads: dict, config: BuildConfig) ->
                                      f"{row['thickness_mm']:g} mm own plates; "
                                      f"{(jam or walk or {}).get('governs')})"
                                      if row["kind"] == "chassis" else
+                                     f" ({row['what']})" if "what" in row else
                                      f" ({row['sheet']}, {row['thickness_mm']:g} mm, "
                                      f"{row['allowable_mpa']:g} MPa allowable; pins "
                                      f"{', '.join(row['pins'])})"
@@ -880,12 +990,17 @@ def check(notes: dict, meta: dict, config: BuildConfig, loads: dict, design=None
     crank = crank_strength(meta, config, loads)
     if crank is not None:
         rows.append(crank)
-    rows += link_rows(config, loads)
+    holes = None
+    if getattr(config.lk, "product", ""):   # a product's own pins' and pillars' holes, as
+        holes = {_stem(name): cut_hole(note, config.params)     # cut (a walker's: LINK_HOLE)
+                 for name, note in notes.items() if note.get("section")}
+    rows += link_rows(config, loads, holes)
     plates = centre_plate_row(meta, config, loads)
     if plates is not None:
         rows.append(plates)
-    worst: dict[str, dict] = {}
-    for kind in ("pin", "pillar", "crank", "link", "chassis"):
+    rows += [dict(r) for r in loads.get("rated") or []]   # (the loads' own: a cradle's
+    worst: dict[str, dict] = {}                         # columns and frame plates)
+    for kind in ("pin", "pillar", "crank", "link", "chassis", "column", "frame", "box"):
         ks = [r for r in rows if r["kind"] == kind]
         for tag in ("walk", "jam"):
             have = [r for r in ks if r.get(tag)]

@@ -23,6 +23,7 @@ import type { LoadedScene } from '../loader';
 import { followScale, type Stage } from '../scene';
 import { isCompact } from '../layout';
 import { evaluate, parseDrive, straightWalk, type DriveData, type WalkJson } from './model';
+import { loadMode } from './mode';
 import { Input, Sim, type Sample, type Scheme } from './sim';
 import { PhysicsLink, type Steering } from './physics';
 import { DriveView, bodyMatrix, sideActions } from './view';
@@ -276,15 +277,20 @@ export function createDrive(host: DriveHost) {
       st.lastPred = null;
       const side = (st.side = sideActions(l.mixer, l.clip, l.walker));
       saved = { p: l.walker.position.clone(), q: l.walker.quaternion.clone() };
-      const wantPhysics = ph.on || ph.wanted;
+      // a product (a decanting cradle) is turned by hand, not driven: no drive panel or pad
+      const { product, panel, usable, wantPhysics } = loadMode(
+        l.root.userData, side.usable, ph.on, ph.wanted);
+      gui.show(panel);
+      if (pad) pad.style.display = panel ? '' : 'none';
       // The session, live or still building, is the previous glb's: off, through the one off path
       // (a connect in flight rejects with null and setPhysics's loop reconnects for this one).
       if (ph.on) ph.physicsOff();
-      else if (wantPhysics) physics.close();
-      if (!side.usable && opts.drive) await setDrive(false);
+      else if (ph.wanted) physics.close();
+      if (product) ph.wanted = false;
+      if (!usable && opts.drive) await setDrive(false);
       else if (opts.drive && !preview) await bindGlb();
       else if (preview) l.root.visible = false;
-      if (wantPhysics && side.usable && opts.drive) {
+      if (wantPhysics && usable && opts.drive) {
         ph.wanted = true;
         // Not awaited: the in-flight setPhysics may itself be waiting on this load (physics
         // asked while a mechanism was on screen loads the robot first).

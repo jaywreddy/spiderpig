@@ -45,6 +45,14 @@ Design parameters (the walking model's contract, see ``walk.py``):
     fit included), with the query's ``module``, ``phases`` and ``p.NAME`` applied
     on top (:func:`_config_from_query`). Its own glb is served from the store's
     export when that is there and fresh, else baked (``X-Spiderpig-Glb``).
+``GET /api/cradles`` and ``GET /api/cradle/{key}``
+    The decanting cradles (the cradle page, ``viewer/decant.html``): each one's key,
+    name, notes and standing; one cradle's swing over a crank turn
+    (:func:`spiderpig.cradle_report.motion`: the joints' paths, the bottle's tilt, the
+    handle's turns, the outlines its diagram draws). An unknown key or a walker: 404.
+``GET /api/cradle/{key}/pack`` and ``/room``
+    How it comes apart and stacks in a box (:func:`spiderpig.cradle_pack.flat_pack`); the
+    room a vessel has under the mouth (:func:`spiderpig.cradle_report.room`).
 ``GET /api/design/{id}``
     The design's card: linkage, module, sides and ``mode`` (``robot`` or ``side``),
     phases, proportions, materials, constructions, and its glb's URL.
@@ -531,6 +539,8 @@ def _rebake_all() -> None:
 
         mjcf.clear_caches()
         _walk_json.cache_clear()
+        _cradle_json.cache_clear()
+        _cradle_extras.cache_clear()
         _on_loop(_outdate_sims)
         for path, config in list(_BAKED.items()):
             if config.is_default and path.exists():
@@ -812,6 +822,83 @@ def list_linkages() -> dict:
             "linkages": [linkage_info(linkage.get(k)) for k in linkage.available()]}
 
 
+def _cradle_keys() -> list[str]:
+    """The decanting cradles, in :data:`cradle_report.VERDICT`'s order (B, the main one,
+    first), any other after in the registry's."""
+    from spiderpig.cradle_report import VERDICT
+
+    keys = [k for k in linkage.available() if linkage.get(k).product == "cradle"]
+    order = list(VERDICT)
+    return sorted(keys, key=lambda k: order.index(k) if k in order else len(order))
+
+
+@app.get("/api/cradles")
+def list_cradles() -> dict:
+    """The decanting cradles the cradle page offers, B first (``_cradle_keys``): key, name,
+    notes, its standing (``build`` or ``study``) and why (:data:`cradle_report.VERDICT`)."""
+    from spiderpig.cradle_report import VERDICT
+
+    out = []
+    for k in _cradle_keys():
+        lk = linkage.get(k)
+        kind, why = VERDICT.get(k, ("study", ""))
+        out.append({"key": k, "name": lk.name, "notes": lk.notes, "verdict": kind,
+                    "why": why})
+    return {"cradles": out}
+
+
+@lru_cache(maxsize=8)
+def _cradle_json(key: str, n: int) -> bytes:
+    from spiderpig.cradle_report import motion
+
+    cfg = BuildConfig(linkage=key, robot=False)
+    return json.dumps(motion(cfg, n), allow_nan=False, separators=(",", ":")).encode()
+
+
+@app.get("/api/cradle/{key}")
+def get_cradle(key: str, n: int = 360) -> Response:
+    """One cradle's swing over a crank turn, ``n`` (24-1440) crank angles as its bake's clip
+    samples them (:func:`spiderpig.cradle_report.motion`)."""
+    if key not in _cradle_keys():
+        raise HTTPException(status_code=404, detail=f"no decanting cradle {key!r}; have "
+                                                    f"{_cradle_keys()}")
+    return Response(_cradle_json(key, max(24, min(1440, n))), media_type="application/json")
+
+
+@lru_cache(maxsize=4)
+def _cradle_extras(key: str) -> dict[str, bytes]:
+    """The cradle's flat pack and room (:func:`spiderpig.cradle_report.payload`: one
+    fabrication, in a worker), each encoded once."""
+    from spiderpig import cradle_report
+
+    payload = workers.submit(cradle_report.payload, key, str(store().root)).result()
+    return {k: json.dumps(v, allow_nan=False, separators=(",", ":")).encode()
+            for k, v in payload.items()}
+
+
+def _cradle_extra(key: str, part: str) -> Response:
+    if key not in _cradle_keys():
+        raise HTTPException(status_code=404, detail=f"no decanting cradle {key!r}; have "
+                                                    f"{_cradle_keys()}")
+    return Response(_cradle_extras(key)[part], media_type="application/json")
+
+
+@app.get("/api/cradle/{key}/pack")
+def get_cradle_pack(key: str) -> Response:
+    """How the cradle comes apart and stacks in a box (:func:`spiderpig.cradle_pack.flat_pack`:
+    its modules, each one's transform from the assembled pose at its pack pose (``pose``: B
+    is cranked to it first; crank angle 0 for a flat pack) to the box, the box's size, the
+    steps). Fabrications: seconds once the store's cache has them."""
+    return _cradle_extra(key, "pack")
+
+
+@app.get("/api/cradle/{key}/room")
+def get_cradle_room(key: str) -> Response:
+    """The room a vessel has under the mouth, over the whole swing and from the pour on
+    (:func:`spiderpig.cradle_report.room`)."""
+    return _cradle_extra(key, "room")
+
+
 @app.get("/api/design/{design_id}")
 def get_design(design_id: str) -> dict:
     """A stored design's card for the page (``?design=<id>``, ``spiderpig view``): what
@@ -825,7 +912,9 @@ def get_design(design_id: str) -> dict:
     return {
         "design": d.id, "kind": d.kind, "linkage": design["linkage"], "module": design["module"],
         "sides": cfg.sides, "mode": mode, "phases_deg": design["phases_deg"],
-        "params": design["proportions"], "servo": cfg.servo, "sheet": cfg.sheet,
+        "product": cfg.lk.product or None,
+        "params": design["proportions"],
+        "servo": "none (a hand crank)" if cfg.lk.product else cfg.servo, "sheet": cfg.sheet,
         "thickness_mm": cfg.thickness,
         "constructions": {"pillar": cfg.pillar, "pin": cfg.pin, "crank": cfg.crank},
         "engine_version": d.engine_version, "store": str(store().root.resolve()),

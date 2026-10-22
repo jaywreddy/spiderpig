@@ -103,8 +103,10 @@ plain defaults (:func:`default_params`); a spec's ``fit`` starts from them
 
 
 def default_pin(lk: linkage.Linkage) -> str:
-    """The pin construction ``lk`` gets when the config names none (:data:`LINKAGE_PIVOTS`,
-    else :data:`DEFAULT_PIVOTS`)."""
+    """The pin construction ``lk`` gets when the config names none (a product's own,
+    :data:`PRODUCT_PINS`; else :data:`LINKAGE_PIVOTS`, else :data:`DEFAULT_PIVOTS`)."""
+    if lk.product in PRODUCT_PINS:
+        return PRODUCT_PINS[lk.product]
     return LINKAGE_PIVOTS.get(lk.key, DEFAULT_PIVOTS[lk.kind])[0]
 
 
@@ -260,8 +262,11 @@ def removed_construction(field: str, key) -> tuple[str, str] | None:
 
 
 def default_crank_sheet(lk: linkage.Linkage) -> str:
-    """The crank sheet ``lk`` gets when the config names none (:data:`LINKAGE_CRANK_SHEETS`,
-    else :data:`CRANK_SHEET`)."""
+    """The crank sheet ``lk`` gets when the config names none (a decanting cradle's: its
+    keyed arm's two 0.125 in 6061-T6 plates; :data:`LINKAGE_CRANK_SHEETS`, else
+    :data:`CRANK_SHEET`)."""
+    if lk.product == CRADLE:
+        return "al6061_3p2mm"
     return LINKAGE_CRANK_SHEETS.get(lk.key, CRANK_SHEET)
 
 
@@ -300,7 +305,10 @@ only below it (each with why): :func:`torque_limit_nm`."""
 def torque_limit_nm(config: BuildConfig) -> float | None:
     """The torque limit to set in the robot's servo firmware (N·m), the one the jam loads
     and the joints' ratings assume: :func:`servo_torque_limit_nm` of its servo and its
-    linkage; ``None`` for a servo with no stall torque."""
+    linkage, or a product's (:data:`PRODUCT_JAM_NM`: no servo, the hand through the
+    gearbox); ``None`` for a servo with no stall torque."""
+    if config.lk.product and config.linkage in PRODUCT_JAM_NM:   # no servo: the hand
+        return PRODUCT_JAM_NM[config.linkage]                   # through the gearbox
     return servo_torque_limit_nm(config.servo, config.linkage)
 
 
@@ -330,7 +338,7 @@ def torque_limit_note(config: BuildConfig) -> str | None:
     limit = torque_limit_nm(config)
     spec = servos.get(config.servo)
     stall = spec.stall_torque_nm
-    if limit is None or not stall:
+    if limit is None or not stall or config.lk.product:
         return None
     why = (" (lowered for this linkage: config.LINKAGE_TORQUE_LIMITS)"
            if config.linkage in LINKAGE_TORQUE_LIMITS else "")
@@ -346,14 +354,262 @@ def config_crank(config: BuildConfig) -> str:
     return default_crank(config.lk, config.module)
 
 
+LINKAGE_OBJECTIVES: dict[str, str] = {
+    # none yet: a walker on "height" (its true lowest stack) searches every taller size
+    # with no route-cost pruning; the Strider double's proof doesn't end in minutes
+    # (DECISIONS.md 2026-10-14)
+}
+"""Per linkage: the planner's objective where its kind's isn't wanted (each with why):
+:func:`plan_objective`."""
+
+
+def plan_objective(lk: linkage.Linkage) -> str:
+    """The planner's objective (:attr:`stack.StackSpec.objective`,
+    :data:`stack.plan.OBJECTIVES`) for ``lk``: its own (:data:`LINKAGE_OBJECTIVES`), else a
+    product's (a decanting cradle's) "height", the lowest stack (then the route, the stock
+    parts' cost, the prints), proven in seconds; else, with no crank (an arm),
+    "layers_height", the fewest layers, then the lowest stack in them, then the shortest
+    axle spans (2026-10-21: with no crank router there is no route cost to prune, so
+    "layers" kept the first plan its search found: the merged search's was taller than
+    master's and the arm's elbow pin's span longer; on "height" the turret's proof doesn't
+    end in its budget); else a walker's or a mechanism's "layers", the fewest layers, then
+    the cheapest crank route (equal plans found rank by their height; 2026-10-14: on
+    "height" a walker's crank router can't prune on its route's cost, and its taller sizes,
+    which may be lower, are searched without end)."""
+    if lk.key in LINKAGE_OBJECTIVES:
+        return LINKAGE_OBJECTIVES[lk.key]
+    if lk.product:
+        return "height"
+    return "layers" if lk.crank else "layers_height"
+
+
 def default_crank(lk: linkage.Linkage, module: str = "") -> str:
-    """The crank construction ``lk`` (in ``module``) gets when the config names none: its
-    module's (:data:`MODULE_CRANKS`), else its own (:data:`LINKAGE_CRANKS`), else its kind's
+    """The crank construction ``lk`` (in ``module``) gets when the config names none: a
+    product's (:data:`PRODUCT_CRANKS`: a decanting cradle's hand crank), its module's
+    (:data:`MODULE_CRANKS`), else its own (:data:`LINKAGE_CRANKS`), else its kind's
     (:data:`DEFAULT_CRANKS`)."""
+    if lk.product in PRODUCT_CRANKS:
+        return PRODUCT_CRANKS[lk.product]
     return MODULE_CRANKS.get((lk.key, module),
                              LINKAGE_CRANKS.get(lk.key, DEFAULT_CRANKS[lk.kind]))
 
 
+CRADLE = "cradle"
+SHEET = "acrylic_3mm"
+PRODUCT_CRANKS: dict[str, str] = {CRADLE: "hand"}
+"""Per product (:attr:`linkage.Linkage.product`): the crank it is built with, the only one
+(a decanting cradle: the hand-cranked worm drive, :mod:`construction.handcrank`)."""
+
+FRAME_SHEET = "al5052_2mm"
+PRODUCT_FRAME_SHEETS: dict[str, str] = {CRADLE: "al5052_4p8mm"}
+"""Per product: the frame plates' sheet when the config names the default
+(:data:`FRAME_SHEET`). A decanting cradle's frame plates are its stand (2026-10-10): 0.187 in
+5052, 3.4 x as stiff across as 0.125 in (the side's sway under the hand and a bumped bottle)
+and still cut with the M5 screws' 5.5 mm holes (SendCutSend: a hole at least the
+thickness; 0.250 in would need 6.35)."""
+
+PRODUCT_PARAMS: dict[str, dict[str, float]] = {
+    CRADLE: {"link_radius": 12.0, "frame_radius": 12.0, "spacer_d": 12.5},
+}
+"""Per product: the shared dimensions (:class:`fit.Params`) a design gets when it names
+the defaults. A decanting cradle's links are 22 mm wide (two plate thicknesses of web round
+its pins' 8.2 mm holes, the 8 mm pivot pin's or the M6 Chicago barrel's: SendCutSend's rule)
+and its frame arms 24 mm; its pins' spacer rings 12.5 mm (the 8 mm pin and a wall)."""
+
+PRODUCT_PINS: dict[str, str] = {CRADLE: "rod516"}
+"""Per product: the link pin a design gets when it names the default (``chicago``): a
+decanting cradle's 5/16 in 6061-T6 rod pins, cut to their stacks, an M3 button head and a
+washer on each tapped end (:data:`construction.pivots.rod_pin.ROD516`, simplification round
+1, 2026-10-21: the user's materials rule, no steel in a structural part; the 8 mm hardened
+steel pivot pins of 2026-10-13, ``pivot8``, and ``chicago6`` are still there, ``--pin``), but
+at :data:`PRODUCT_PIN_JOINTS`."""
+
+PRODUCT_PIN_JOINTS: dict[str, dict[str, str]] = {
+    "decanter_rcm": {"X": "rodclip516", "Y": "rodclip516", "P": "rod38"},
+    "decanter_hinge": {"E": "rod38"},
+}
+"""Per product linkage, with its product's own pin (:data:`PRODUCT_PINS`): the joints that take
+another pin instead. B's X and Y, where its cradle link meets each side, take a
+quick-release pin (``rodclip516``: a hairpin cotter through the rod's drilled hole; the
+clevis pins' since 2026-10-13: the passive side panel slides off its cradle link once their
+two clips are out, ``cradle_pack``). The rod pins P (B) and E (A) are 3/8 in (``rod38``): in
+5/16 in 6061 they hold the clutch's cap at about 1.0 (the hardened 8 mm pin had held 2.75).
+K, J2 and J take the 5/16 in screw-ended pin (simplification round 1: K and J2 had been
+18-8 clevis pins for their strength alone, design review round 1; a clip at J stands in the
+cradle link's layer under b6's rear arm, no plan)."""
+
+PRODUCT_CHORD_R: dict[str, dict[str, dict[tuple[str, str], float]]] = {
+    "decanter_rcm": {"b1": {("M", "P"): 13.0}, "b3": {("O1", "J"): 12.5, ("O1", "J2"): 12.5},
+                     "b4": {("X", "K"): 14.0}, "b5": {("Y", "J2"): 13.0},
+                     "b6": {("X", "Tr1"): 32.0, ("X", "Y"): 16.0, ("Tr1", "Tr2"): 32.0,
+                            ("Tr2", "Br"): 38.0}},
+    "decanter_hinge": {"b1": {("M", "E"): 13.0}, "b2": {("E", "Tr1"): 16.0}},
+}
+"""Per product linkage, per link: a chord (a pair of its joints, either way round) cut wider
+than ``Params.link_radius``, its own half-width (mm), each from the cradle's links rated
+in bending (design review round 1, 2026-10-14; ``cradle_report.structure``):
+- B's cradle link b6: its rear arm X-Tr1, a cantilever off X carrying the rear saddle, 64
+  mm wide (24 held the jam's couple at SF 0.3 in 0.125 in; 40 held the clutch's cap at 1.15
+  on 5052's minimum, design review round 3; 48 until simplification round 2, 2026-10-21, when
+  the racking brace's couple came in at its socket Br, behind the rear tie: the arm and the
+  rear chords Tr1-Tr2 (64) and Tr2-Br (76, the socket's pad) carry it to X in bending, the
+  arm's boss at X, :data:`PRODUCT_BOSS_R`, spreading it into the front); its chord X-Y, 284
+  mm in compression under the jam, 32 mm wide against buckling out of its plane.
+- A's cradle link b2: its chord E-Tr1, in compression from the rod's pin to the rear tie
+  under the jam, 32 mm wide against buckling (A has no racking brace: its hand crank sweeps
+  the bay's drive end behind the rear saddle, where B's goes; ``decanters.BRACE``).
+- B's bar b4 (simplification round 1, 2026-10-21: in 0.187 in 5052): its chord X-K, in
+  compression under the jam, 28 mm wide against buckling out of its plane, its bosses'
+  width already (the blank unchanged); 24 mm in 5052 held the cap at 1.42 nominal.
+- B's cradle link b5, 26 mm wide (the same round; design review round 3's laser-cut parts
+  minor 3): at 24 mm it came as cut, not deburred.
+- B's arm b3 (simplification round 2, 2026-10-21: in 6061-T6 0.187 in, out of 7075): its
+  chords O1-J and O1-J2 25 mm wide, its bending at O1 at the clutch's cap SF 1.37 on
+  6061's minimum (1.27 at 24 mm); 26 mm and wider met b2 or pin K's clevis in their shared
+  layer (round 1), 25 plans in B's 15 layers, proven optimal.
+- Each rod b1 (0.250 in), 26 mm wide (design review round 2, 2026-10-15, laser-cut parts
+  M3): SendCutSend deburrs a part of at least 1 x 3 in; at 25.2 mm (24 and its crank
+  bore's boss) it came as cut, its exit face's dross on its crankpin's spacer.
+The planner claims each at its width (:class:`construction.plates.LinkPlates`)."""
+
+PRODUCT_BOSS_R: dict[str, dict[str, dict[str, float]]] = {
+    "decanter_rcm": {"b1": {"M": 16.2}, "b2": {"O2": 17.0},
+                     "b3": {"O1": 17.0, "J": 14.0, "J2": 14.0}, "b6": {"X": 50.0, "Br": 38.0}},
+    "decanter_hinge": {"b1": {"M": 16.2}, "b2": {"G": 17.0}},
+}
+"""Per product linkage, per link: a boss (a disc, its radius in mm) round the hole at a
+joint, where the link's width left the hole's edge in the cut rules' warning band (design
+review round 2, 2026-10-15, laser-cut parts minor 1; SendCutSend: two thicknesses of
+material from a hole to an edge, in 7075 "to prevent microcracks"):
+- each rod b1 at its crank bore M (13.05 mm since simplification round 1's 1/2 in crankpin,
+  r 16.2; 12.35 and r 15.8 before): 9.7 mm of web, 1.5 x its 0.250 in (6.45 at 26 mm wide);
+- B's arms b2 at O2 and b3 at O1, A's cradle link b2 at G, each a pillar's 12.35 mm bore
+  in 0.187-0.190 in: 10.8 mm, 2.2 x (5.8 at 24 mm).
+- B's 7075 links b3 and b4 at every 8.2 mm pin hole, r 14 (design review round 3,
+  2026-10-20, laser-cut parts M3: 9.9 mm, 2.05 x the 0.190 in; at 24 mm wide 7.9, 1.64 x,
+  under SendCutSend's 7075 rule; b4's blank then 28 mm, over the 25.27 mm it deburrs). b4
+  needs none since simplification round 1 (2026-10-21): in 5052, its whole chord X-K is 28
+  mm wide (:data:`PRODUCT_CHORD_R`), the bosses' width. b3 is 6061 since round 2, whose
+  2 t is 7075's rule only: its J and J2 bosses stay (they don't set its 312 x 34 blank,
+  O1's does, and its plan was proven with them).
+- B's cradle link b6 at X, r 50 (simplification round 2, 2026-10-21): the racking brace's
+  couple reaches the front of the link only through X (the rear arm hangs off it alone: no
+  chord from the front ties to the rear clears pillar O1), and the boss spreads it into the
+  chord Tf2-X, the one that passes pillar O1 by the planner's margin and can't grow
+  (:func:`cradle_structure.link_bending` and the box's rows rate its end past the boss; the
+  arm's 48 mm end had been the boss there: 1.22 at the clutch's cap with the brace).
+- B's racking brace's socket at Br (the same round), r 38: 11.4 mm of web round the 53.2 mm
+  toothed socket (the chord Tr2-Br's own end, 76 mm wide, until the way back cut b6 to its
+  band, :data:`PRODUCT_BAND`, which keeps this disc whole).
+Each outline is closed round its boss and the planner claims the boss as a disc
+(:func:`construction.plates.product_bosses`)."""
+
+
+PRODUCT_BAND: dict[str, dict[str, tuple[str, str, float, float]]] = {
+    "decanter_rcm": {"b6": ("Lc", "Ax", -162.5, 49.0)},
+}
+"""Per product linkage, per link: the band its outline is cut to, ``(o, x, lo, hi)``: between
+the lines ``y = lo`` and ``y = hi`` (mm) in the frame with its origin at joint ``o`` and its x
+toward joint ``x``. B's cradle link b6 in the cradle's frame (the mouth Lc at the origin, x
+along the bottle's axis: ``decanters.TIES``'), simplification round 2's way back (2026-10-21):
+the racking brace's boss at X (r 50) and its wider rear chords (X-Tr1 and Tr1-Tr2 64 mm,
+Tr2-Br 76) had stood the cradle box 249 mm tall in the pack (178 before them). Cut to the
+band, b6 keeps all it needs inward: the band's bottom 0.5 mm under Br's pad (r 38 round the
+socket, :data:`PRODUCT_BOSS_R`: the socket's web whole), its top 1 mm under the front saddle's
+lip gauge's top, the box's highest part but b6; the cut takes X's boss's top, the rear arm's
+round ends and Tr1-Tr2's and Tr2-Br's lower edges near Tr2. ``cradle_structure`` rates every
+section on what the cut leaves (:class:`cradle_structure.Band`)."""
+
+
+def band(config, link: str) -> tuple[str, str, float, float] | None:
+    """The band ``config`` cuts link ``link``'s outline to (:data:`PRODUCT_BAND`; none for a
+    walker)."""
+    from spiderpig.stack import body_class
+
+    return PRODUCT_BAND.get(config.linkage, {}).get(body_class(link))
+
+
+def boss_r(config, link: str) -> dict[str, float]:
+    """The bosses ``config`` grows on link ``link``: joint -> radius (mm)
+    (:data:`PRODUCT_BOSS_R`; none for a walker)."""
+    from spiderpig.stack import body_class
+
+    return dict(PRODUCT_BOSS_R.get(config.linkage, {}).get(body_class(link), {}))
+
+
+def chord_r(config, link: str, a: str, b: str) -> float:
+    """The half-width (mm) ``config`` cuts link ``link``'s chord ``a``-``b`` (joint or
+    topology point names: a lone point is ``link.joint``): :data:`PRODUCT_CHORD_R`'s, else
+    ``Params.link_radius``."""
+    from spiderpig.stack import body_class
+
+    own = PRODUCT_CHORD_R.get(config.linkage, {}).get(body_class(link), {})
+    if own:
+        a, b = a.rsplit(".", 1)[-1], b.rsplit(".", 1)[-1]
+        r = own.get((a, b), own.get((b, a)))
+        if r is not None:
+            return r
+    return config.params.link_radius
+
+PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
+"""Per product: the default sheet (the layer pitch, the printed rings' and the order's
+material) when the config names the default (:data:`SHEET`): a decanting cradle is all
+aluminium, its links' 0.125 in 5052 (:data:`materials.CRADLE_LINK_SHEET`)."""
+
+PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 64.9, "decanter_rcm": 63.7}
+"""Per product linkage: the crank torque its joints are rated at in a jam, in place of a
+servo's firmware limit (:func:`torque_limit_nm`): a decanting cradle's, the most its hand
+crank's slip clutch lets through, however hard the push (:data:`PRODUCT_CLUTCH_NM`, since
+design review round 1; a firm 40 N push at the grip had been the case:
+:func:`spiderpig.cradle_report.jam_nm`, which a test holds these to)."""
+
+PRODUCT_CLUTCH_NM: dict[str, float] = {"decanter_hinge": 64.9, "decanter_rcm": 63.7}
+"""Per product linkage: the most its hand crank's slip clutch lets onto the crank, however
+hard the push (design review round 2's B-1, 2026-10-14): set to slip at
+``construction.handcrank.CLUTCH_SET`` x the start the user measures (a full 6 L's, drawn:
+``handcrank.DESIGN_START_NM``), its check's pulls never over the ceiling
+(``handcrank.clutch_ceiling``, design review round 3's M1, 2026-10-20: so a gearbox set new
+and run in after, or a start read high, can't take it over this), checked within
+``CLUTCH_CHECK`` on its stub at every set-up, monthly and after greasing, through the NRV050's
+30:1 worm at the hand's 100 rpm (``handcrank.HAND_RPM``: ``handcrank.clutch``, which a test
+holds these to; spun at 200 rpm, 68.1 and 69.1: ``cradle_drive``'s ``fast_cap_nm``, the use
+limits' "turn it, don't spin it"). Under the gearbox's 85 N·m maximum with margin
+(``cradle_drive.GEARBOX_CAP_FLOOR``). The crank torque to re-run a strength check at: a bound,
+unlike the push (``cradle_report``'s ``jam_capped`` rates it over the whole turn, the
+toggles included), while the check is kept (unchecked, the friction can carry it to the
+gearbox's maximum: ``handcrank.clutch_drift``). 67.2 and 63.9 until simplification round 1:
+the lighter cradle, its aluminium posts, tie rods, rear post and pins
+(``handcrank.DESIGN_START_NM``); B's 61.8 until round 2's racking brace (its tube and its
+cradle links' wider rear, 0.46 kg on the box: 63.9), then its way back (b6 cut to its band:
+63.7)."""
+
+
+def product_defaults(product: str) -> dict:
+    """The fields a product sets where the config names the default (the sheets, the pin,
+    the shared dimensions): what :class:`BuildConfig` fills in, and what a design moved to
+    another linkage drops (:func:`own_constructions`)."""
+    out: dict = {}
+    if product in PRODUCT_SHEETS:
+        out["sheet"] = PRODUCT_SHEETS[product]
+    if product in PRODUCT_FRAME_SHEETS:
+        out["frame_sheet"] = PRODUCT_FRAME_SHEETS[product]
+    if product in PRODUCT_PINS:
+        out["pin"] = PRODUCT_PINS[product]
+    return out
+
+
+def merged_params(params: Params, product: str) -> Params:
+    """``params`` with a product's dimensions (:data:`PRODUCT_PARAMS`) in every field it
+    leaves at the default: one fit override keeps the rest of the product's."""
+    mine = PRODUCT_PARAMS.get(product, {})
+    base = Params()
+    return replace(params, **{k: v for k, v in mine.items()
+                              if getattr(params, k) == getattr(base, k)})
+
+
+def is_cradle(config) -> bool:
+    """Whether ``config`` builds a decanting cradle (:mod:`construction.cradle`)."""
+    return config.lk.product == CRADLE
 ROLE_FIELDS: dict[str, str] = {"servo": "servo", "crank_sheet": "crank"}
 """:class:`BuildConfig` fields that belong to a role (:mod:`spiderpig.roles`): the drive
 servo and the crank's sheet, a walker's and a mechanism's. Where the role isn't a slot of
@@ -414,10 +670,10 @@ class BuildConfig:
     #                                   mechanism is one side), resolved before any key
     phases: tuple[float, ...] | None = None          # crank phase per leg (rad); None = module's
     proportions: tuple[tuple[str, float], ...] = ()  # overrides of the linkage's params
-    sheet: str = "acrylic_3mm"        # the default sheet (the links, rings, deck): it sets
+    sheet: str = SHEET                # the default sheet (the links, rings, deck): it sets
     #                                   the layer pitch (spiderpig.materials)
     thickness: float | None = None    # override the sheet's nominal thickness
-    frame_sheet: str = "al5052_2mm"     # the frame and centre plates (aluminium: acrylic
+    frame_sheet: str = FRAME_SHEET      # the frame and centre plates (aluminium: acrylic
     #                                     can't take their load; the user's call 2026-10-04):
     #                                     0.080 in 5052, the thinnest stock that passes
     #                                     (materials.thinnest_sheet("frame"); tests pin it)
@@ -465,6 +721,7 @@ class BuildConfig:
         if self.robot is None:
             object.__setattr__(self, "robot", lk.kind in ROBOT_LAYOUTS)   # (default_robot)
         if self.robot and lk.kind not in ROBOT_LAYOUTS:
+            # a cradle is one side too (robot=False): construction.cradle builds both from it
             raise ParamError(f"{lk.key} is a {lk.kind}, not a walker or an arm: no robot is made "
                              f"of it (a walker's two sides, an arm on its turntable), so it "
                              f"builds one side (robot=False; --side-only on the command line) "
@@ -476,12 +733,25 @@ class BuildConfig:
             object.__setattr__(self, "crank", default_crank(lk, self.module))
         if not self.crank_sheet:
             object.__setattr__(self, "crank_sheet", default_crank_sheet(lk))
+        if lk.product:          # a product's own sheets where the config names the plain ones
+            plain = {"sheet": SHEET, "frame_sheet": FRAME_SHEET}
+            for what, value in product_defaults(lk.product).items():
+                if what in plain and getattr(self, what) == plain[what]:
+                    object.__setattr__(self, what, value)
         if not self.pin:
             object.__setattr__(self, "pin", default_pin(lk))
         if not self.pillar:
             object.__setattr__(self, "pillar", default_pillar(lk))
         if self.params == Params() and lk.kind in KIND_FIT:
             object.__setattr__(self, "params", default_params(lk))
+        if lk.product:          # ... and its shared dimensions where the config names none
+            object.__setattr__(self, "params", merged_params(self.params, lk.product))
+        hand = PRODUCT_CRANKS.get(lk.product)
+        if (self.crank == "hand") != (hand == "hand"):
+            cradles = [k for k in linkage.available() if linkage.get(k).product]
+            raise ParamError(f"crank {self.crank!r}: the hand crank builds a decanting cradle "
+                             f"and a cradle only that ({lk.key} is "
+                             f"{'a cradle' if hand else 'not'}; cradles: {', '.join(cradles)})")
         for what in ("crank", "pin", "pillar"):
             if (gone := removed_construction(what, getattr(self, what))) is not None:
                 raise ParamError(gone[0])
@@ -951,19 +1221,29 @@ def query_proportions(query: Mapping) -> list[tuple[str, float]]:
     return [parse_proportion(f"{k[2:]}={v}") for k, v in items if k.startswith("p.")]
 
 
-def own_constructions(base: BuildConfig) -> dict[str, str]:
+def own_constructions(base: BuildConfig) -> dict:
     """``crank``, ``crank_sheet``, ``pin`` and ``pillar`` as ``base`` *chose* them: each one
     its linkage and module would get anyway (:func:`default_crank`,
     :func:`default_crank_sheet`, :func:`default_pin`, :func:`default_pillar`, filled in by
     the config) is ``""``, so a design moved to another linkage or module gets that
     one's own default instead of carrying the old one's (TrotBot heel's ``bolt_round``,
-    the Hoecken pantograph's 0.080 in crank sheet)."""
+    the Hoecken pantograph's 0.080 in crank sheet); a product's (a decanting cradle's)
+    sheets, pin and dimensions, where they are its defaults, the plain ones."""
     lk = linkage.get(base.linkage)
-    return {"crank": "" if base.crank == default_crank(lk, base.module) else base.crank,
-            "crank_sheet": ("" if base.crank_sheet == default_crank_sheet(lk)
-                            else base.crank_sheet),
-            "pin": "" if base.pin == default_pin(lk) else base.pin,
-            "pillar": "" if base.pillar == default_pillar(lk) else base.pillar}
+    out: dict = {"crank": "" if base.crank == default_crank(lk, base.module) else base.crank,
+                 "crank_sheet": ("" if base.crank_sheet == default_crank_sheet(lk)
+                                 else base.crank_sheet),
+                 "pin": "" if base.pin == default_pin(lk) else base.pin,
+                 "pillar": "" if base.pillar == default_pillar(lk) else base.pillar}
+    if lk.product:      # a product's own sheets and dimensions: back to the plain ones
+        plain = {"sheet": SHEET, "frame_sheet": FRAME_SHEET}
+        for what, value in product_defaults(lk.product).items():
+            if what in plain and getattr(base, what) == value:
+                out[what] = plain[what]
+        mine = PRODUCT_PARAMS.get(lk.product, {})
+        out["params"] = replace(base.params, **{
+            k: getattr(Params(), k) for k, v in mine.items() if getattr(base.params, k) == v})
+    return out
 
 
 def design_from_query(query: Mapping, base: BuildConfig | None = None,

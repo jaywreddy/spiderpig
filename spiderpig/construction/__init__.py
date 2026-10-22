@@ -26,6 +26,7 @@ from spiderpig.construction.axle import AxleGroup as AxleGroup
 from spiderpig.construction.base import ConstructionError, Context, Group
 from spiderpig.construction.crank import BOLT_ROUND, BoltCrank
 from spiderpig.construction.crank import CrankGroup as CrankGroup
+from spiderpig.construction.handcrank import HAND_CRANK, HandCrank
 from spiderpig.construction.pivots import PIVOTS
 from spiderpig.construction.plates import FramePlates, LinkPlates
 from spiderpig.construction.transmissions import TRANSMISSIONS as TRANSMISSIONS
@@ -35,7 +36,10 @@ AXLES = {c.key: c for c in PIVOTS}
 # ``bolt`` (the default, config.DEFAULT_CRANKS): hex standoff crankpins on single aluminium
 # web plates; ``bolt_round`` the same with the friction-clamped round standoff (TrotBot's heel
 # and toe, config.LINKAGE_CRANKS)
-CRANKS = {c.key: c for c in (BoltCrank(), BOLT_ROUND)}
+# ``hand``: a decanting cradle's hand-cranked worm drive (construction.handcrank), its only
+# crank (config.PRODUCT_CRANKS) and nothing else's
+CRANKS = {c.key: c for c in (BoltCrank(), BOLT_ROUND, HAND_CRANK)}
+HAND = HAND_CRANK.key
 
 
 def _pick(registry: dict, key: str, what: str):
@@ -92,9 +96,12 @@ drive get theirs too (:func:`_joint_drives`)."""
 
 def _drive_groups(ctx: Context, config) -> list[Group]:
     """The drives of the design's motor role (:data:`DRIVES`), and a cranked linkage's
-    declared joint drives beside its servo."""
+    declared joint drives beside its servo; none for a hand-cranked product (a decanting
+    cradle: its hand crank, the crank group, drives it)."""
     from spiderpig import roles as rolemod
 
+    if config.crank == HAND:
+        return []
     role = rolemod.motor_role(config.lk)
     groups = DRIVES[role](ctx, config)
     if role != "actuator" and config.lk.drives:
@@ -105,26 +112,72 @@ def _drive_groups(ctx: Context, config) -> list[Group]:
 def _crank_groups(ctx: Context, config) -> list[Group]:
     if ctx.topo.center is None:
         return []
+    if config.crank == HAND:
+        return [HandCrank()]
     return [CrankGroup(crank(config.crank).resolve(ctx))]
 
 
 def _axle_groups(ctx: Context, config) -> list[Group]:
-    """One axle per pillar (``config.pillar``) and per link pin (``config.pin``)."""
+    """One axle per pillar (``config.pillar``) and per link pin (``config.pin``; a product's
+    joints with a pin of their own: ``config.PRODUCT_PIN_JOINTS``)."""
     kinds = {"frame": config.pillar, "pin": config.pin}
     made = {}
     for kind, key in kinds.items():
-        a = axle(key)
-        made[kind] = a.resolve(ctx) if hasattr(a, "resolve") else a   # per design (a rule)
-    return [AxleGroup(ax, made[ax.kind]) for ax in ctx.topo.axes if ax.kind in kinds]
+        made[kind] = _resolved(key, ctx)
+        if kind == "frame" and _cradle(config) and hasattr(made[kind], "cradle_shaft"):
+            # a decanting cradle's pillars carry its bottle: always a steel shaft, never the
+            # aluminium goBILDA standoff (cradle_report's strength rows)
+            made[kind] = made[kind].cradle_shaft()
+    own: dict[str, str] = {}
+    steel: tuple[str, ...] = ()
+    if _cradle(config):
+        from spiderpig.config import PRODUCT_PIN_JOINTS, PRODUCT_PINS
+        from spiderpig.construction.cradle import STEEL_FEET
+
+        if config.pin == PRODUCT_PINS.get(config.lk.product):    # (a pin asked for: all)
+            own = PRODUCT_PIN_JOINTS.get(config.linkage, {})
+        if hasattr(made["frame"], "steel_foot"):    # (a pillar's foot on a 10.9 screw)
+            steel = STEEL_FEET.get(config.linkage, ())
+
+    def of(ax):
+        if ax.kind == "pin" and ax.name in own:
+            return _resolved(own[ax.name], ctx)
+        if ax.kind == "frame" and ax.name in steel:
+            return made["frame"].steel_foot()
+        return made[ax.kind]
+
+    return [AxleGroup(ax, of(ax)) for ax in ctx.topo.axes if ax.kind in kinds]
+
+
+def _resolved(key: str, ctx: Context):
+    a = axle(key)
+    return a.resolve(ctx) if hasattr(a, "resolve") else a   # per design (a rule)
+
+
+def _cradle(config) -> bool:
+    return getattr(getattr(config, "lk", None), "product", "") == "cradle"
+
+
+def _cradle_groups(ctx: Context, config) -> list[Group]:
+    """A decanting cradle's stand and tie rods in this side (construction.cradle)."""
+    if not _cradle(config):
+        return []
+    from spiderpig.construction.cradle import CradleStand, CradleTies
+
+    return [CradleStand(), CradleTies()]
 
 
 def _plate_groups(ctx: Context, config) -> list[Group]:
+    if _cradle(config):
+        from spiderpig.construction.cradle import CradlePlates
+
+        return [LinkPlates(), CradlePlates()]
     return [LinkPlates(), FramePlates()]
 
 
 # The groups of a side, in dependency order (``config`` is the :class:`config.BuildConfig`).
 GROUP_FACTORIES: list[Callable[[Context, object], list[Group]]] = [
-    _drive_groups, _crank_groups, _axle_groups, _plate_groups,
+    _drive_groups, _crank_groups, _axle_groups, _cradle_groups, _plate_groups,
 ]
 
 

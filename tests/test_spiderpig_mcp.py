@@ -216,15 +216,19 @@ def test_cards(server):
     assert sheet["price_usd"] is None        # SendCutSend's upload quotes it (2026-10-08)
     axles = {a["key"]: a for a in cat["constructions"]["axles"]}
     # (the rest removed on 2026-10-07; the ball-bearing pivots added on 2026-10-11, the
-    # preloaded pairs on 2026-10-12)
+    # preloaded pairs on 2026-10-12; chicago6, pivot8, clevis8 and the rod pins decanting
+    # cradles')
     assert set(axles) == {"chicago", "standoff", "ball", "ball_pillar", "ball_pair",
-                          "ball_pair_pillar"}
+                          "ball_pair_pillar", "chicago6", "pivot8", "clevis8", "rod516",
+                          "rod38", "rodclip516"}
     assert axles["ball"]["roles"] == ["pin"]
     assert axles["ball_pillar"]["roles"] == ["pillar"]
     assert axles["standoff"]["roles"] == ["pillar"]
     assert axles["chicago"]["roles"] == ["pin"]          # a head would leave the frame plates
     assert axles["standoff"]["hardware"]["washer_key"]["key"] == "m4_washer"
-    assert [c["key"] for c in cat["constructions"]["cranks"]] == ["bolt", "bolt_round"]
+    assert [c["key"] for c in cat["constructions"]["cranks"]] == ["bolt", "bolt_round", "hand"]
+    hand = next(c for c in cat["constructions"]["cranks"] if c["key"] == "hand")
+    assert hand["hardware"]["gearbox"]["key"] == "nrv050_30"     # a decanting cradle's
     bolt = next(c for c in cat["constructions"]["cranks"] if c["key"] == "bolt")
     assert bolt["roles"] == ["crank"]
     assert bolt["hardware"]["lock_key"]["key"] == "threadlocker_243"
@@ -246,10 +250,10 @@ def test_check_plan_walk_and_verify_quick_return_json_reports(server, single):
     _no_solids(cr)
     pr = call(server, "plan", design=single)
     assert pr["ok"]
-    # the default constructions' 10 layers, 37.639 mm (the keyed crank's, removed: 8)
-    assert pr["n_layers"] == 10
-    assert pr["layers"]["b1"] == 6
-    assert pr["route"]["runs"] == [{"at": "M", "lo": 6, "hi": 6}]
+    # the default constructions' 8 layers, 35.039 mm (the planner of 2026-10-14; 10 before)
+    assert pr["n_layers"] == 8
+    assert pr["layers"]["b1"] == 4
+    assert pr["route"]["runs"] == [{"at": "M", "lo": 4, "hi": 4}]
     assert pr["optimal"] is True
     assert "inner frame plate" in pr["table"]
     _no_solids(pr)
@@ -266,9 +270,9 @@ def test_check_plan_walk_and_verify_quick_return_json_reports(server, single):
     rows = {r["requirement"]: r for r in vr["rows"]}
     assert rows["program.loops_close"]["tier"] == "proven"
     assert rows["program.loops_close"]["pass"] is True
-    # 10 layers: 0.080 in frame plates, the 6061 foot link's 3.175 mm layer, the hex crank's
-    # clearance gaps (the keyed crank's 8 layers, removed: 22.239)
-    assert rows["size.stack_mm"]["value"] == pytest.approx(37.639)
+    # 8 layers (10 before 2026-10-14): 0.080 in frame plates, the 6061 foot link's 3.175 mm
+    # layer, the hex crank's clearance gaps (the keyed crank's 8 layers, removed: 22.239)
+    assert rows["size.stack_mm"]["value"] == pytest.approx(35.039)
     assert rows["motion.speed_mm_s"]["tier"] == "estimated"
     _no_solids(vr)
     recs = call(server, "recommend", design=single)
@@ -388,30 +392,31 @@ def _the_build_job_returns_a_manifest_of_files_in_the_store(server, single, stor
     assert manifest["ok"]
     assert manifest["design"] == single
     assert manifest["t"] == 1.0
-    # the default constructions' 54 (test_spiderpig_api's test_export_writes_what_the_cli_
-    # writes counts the same build's parts; 64 before the stock tubes of 2026-10-14, each
-    # replacing a span's printed rings; 63 before W8 D2, the cantilever pillar B's gap
-    # ring); the keyed crank and printed pillars, removed 2026-10-07: 30
-    assert manifest["n_parts"] == len(manifest["parts"]) == 54
+    # the default constructions' 55 (test_spiderpig_api's test_export_writes_what_the_cli_
+    # writes counts the same build's parts; 54 on the 10-layer plan before the merge of
+    # 2026-10-21, the lowest-stack planner's 8 layers; 64 before the stock tubes of
+    # 2026-10-14, each replacing a span's printed rings; 63 before W8 D2, the cantilever
+    # pillar B's gap ring); the keyed crank and printed pillars, removed 2026-10-07: 30
+    assert manifest["n_parts"] == len(manifest["parts"]) == 55
     assert manifest["mass_g"] > 0
     assert len(manifest["envelope_mm"]) == 3
     assert manifest["dir"] == str(store.dir(single) / "build")
     files = [p for p in manifest["parts"] if p["path"]]
-    assert manifest["files"] == len(files) == 54                     # one side: no mirrors
+    assert manifest["files"] == len(files) == 55                     # one side: no mirrors
     assert all(Path(p["path"]).is_file() and p["path"].endswith(".step") for p in files)
     b1 = next(p for p in manifest["parts"] if p["name"] == "b1")
-    assert (b1["group"], b1["fab"], b1["layers"]) == ("links", "laser", [6])   # the plan's
+    assert (b1["group"], b1["fab"], b1["layers"]) == ("links", "laser", [4])   # the plan's
     _no_solids(manifest)
     assert call(server, "get_job", job=job["job"])["job"]["state"] == "done"
     stored = call(server, "get_design", design=single, stage="build")["report"]
-    assert stored["n_parts"] == 54
+    assert stored["n_parts"] == 55
     assert stored["cut_rules"]["parts"] > 0          # the build's cut-rule review, stored
     assert stored["parts"][0]["path"] == manifest["parts"][0]["path"]
     # the same build again: served from the store's STEP files within the grace period
     again = call(server, "build", design=single, wait_seconds=120)
     assert again["ok"]
     assert again["job"]["state"] == "done"
-    assert again["n_parts"] == 54
+    assert again["n_parts"] == 55
     assert again["cut_rules"] == stored["cut_rules"]   # reloaded from the store: checked again
     assert "result" not in again["job"]
 
@@ -430,7 +435,7 @@ def test_export_as_a_job_writes_the_files(server, single, tmp_path):
     assert {"klann.step", "bom.csv", "bom.md", "bom.json", "manifest.json"} <= names
     assert all(Path(f).is_file() for f in rep["files"])
     assert rep["manifest"]["design"] == single
-    assert rep["manifest"]["plan"]["layers"] == 10   # the default Klann single's
+    assert rep["manifest"]["plan"]["layers"] == 8    # the default Klann single's
     bad = run(_call(server, "export", design=single, formats=["pdf"]))   # the input schema
     assert bad.is_error
     assert "pdf" in bad.content[0].text
@@ -477,7 +482,7 @@ def test_resources_and_prompts_read(server, single):
     assert reads["spiderpig://schema/spec"].mime_type == "application/json"
     assert json.loads(reads["spiderpig://linkages/klann"].text)["key"] == "klann"
     assert json.loads(reads["spiderpig://catalog/servos"].text)["servos"][0]["key"] == "sts3215"
-    assert json.loads(reads[f"spiderpig://designs/{single}/plan"].text)["n_layers"] == 10
+    assert json.loads(reads[f"spiderpig://designs/{single}/plan"].text)["n_layers"] == 8
     assert json.loads(reads[f"spiderpig://designs/{single}/summary"].text)["id"] == single
     assert missing is not None
     assert "unknown stage" in missing
@@ -619,8 +624,8 @@ def test_a_thin_sheet_warns_at_resolve_and_recommend_hands_out_the_thickness(fre
     assert recs["stage"] == "construction"
     (rec,) = recs["recommendations"]
     assert rec["patch"] == {"materials": {"thickness_mm": 3.0}}
-    # the default Klann single's 10 layers
-    assert rec["verified"].startswith("checked: the static stage passes, and it plans in 10 ")
+    # the default Klann single's 8 layers
+    assert rec["verified"].startswith("checked: the static stage passes, and it plans in 8 ")
     vr = call(fresh, "verify", design=thin["design"], level="quick")
     rows = {r["requirement"]: r for r in vr["rows"]}
     assert rows["drive.one_servo"]["pass"]
@@ -699,8 +704,8 @@ def test_a_stack_that_is_proven_the_floor_is_explained_by_recommend(fresh):
     recs = call(fresh, "recommend", design=r["design"])                       # entry 11
     assert recs["stage"] == "target"
     assert recs["recommendations"] == []
-    # the default quad's 13 layers, 72.989 mm, proven
-    assert recs["notes"][0].startswith("size.stack_mm 72.989 vs <= 30: 72.989 mm is proven "
+    # the default quad's 13 layers, 67.964 mm, proven
+    assert recs["notes"][0].startswith("size.stack_mm 67.964 vs <= 30: 67.964 mm is proven "
                                        "the thinnest for klann's quad module")
 
 

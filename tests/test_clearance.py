@@ -215,12 +215,14 @@ def test_the_services_cut_rules():
     al = Body("frame", _plate(40, 20, 3.175, [(10, 10, 2.4), (35, 10, 6.0)]), fab="laser",
               sheet="al5052_3p2mm")
     rules = {i["rule"] for i in part_issues(al, "al5052_3p2mm")}
-    assert rules == {"min_hole", "edge"}             # a 2.4 mm hole; 2 mm to the edge
+    # a 2.4 mm hole; 2 mm to the edge; 40 x 20 mm, under SendCutSend's 1 x 3 in deburring
+    # (a warning on a sheet that checks it: hardware.sheet_catalog.DEBURR_CHECKED)
+    assert rules == {"min_hole", "edge", "deburr"}
     acrylic = replace(al, part=_plate(40, 20, 3.0, [(10, 10, 2.4), (35, 10, 6.0)]),
                       sheet=None)
     assert part_issues(acrylic, "acrylic_3mm") == []
     tiny = replace(al, part=_plate(5, 8, 3.175, []))
-    assert {i["rule"] for i in part_issues(tiny, "al5052_3p2mm")} == {"min_part"}
+    assert {i["rule"] for i in part_issues(tiny, "al5052_3p2mm")} == {"min_part", "deburr"}
 
 
 def test_cut_rule_levels_and_messages():
@@ -232,13 +234,16 @@ def test_cut_rule_levels_and_messages():
 
     t = 3.175
     near = Body("near", _plate(40, 20, t, [(4.0, 10, 4.0)]), fab="laser", sheet="al5052_3p2mm")
-    (e,) = part_issues(near, "al5052_3p2mm")          # 2.0 mm of web: under 1 x t
+    def issues_of(body):        # (each plate is under the deburring minimum too: a warning)
+        return [i for i in part_issues(body, "al5052_3p2mm") if i["rule"] != "deburr"]
+
+    (e,) = issues_of(near)          # 2.0 mm of web: under 1 x t
     assert (e["rule"], e["level"]) == ("edge", "error")
     assert e["value"] == pytest.approx(2.0, abs=0.01)
     assert "1 x the thickness" in e["why"]
     assert e["fix"]
     mid = Body("mid", _plate(40, 20, t, [(7.0, 10, 4.0)]), fab="laser", sheet="al5052_3p2mm")
-    (w,) = part_issues(mid, "al5052_3p2mm")           # 5.0 mm: over 1 x t, under 2 x t
+    (w,) = issues_of(mid)           # 5.0 mm: over 1 x t, under 2 x t
     assert (w["rule"], w["level"]) == ("edge", "warning")
     assert "2 x the thickness" in w["why"]
     issues = [dict(i, sheet="al5052_3p2mm") for i in (e, w)]

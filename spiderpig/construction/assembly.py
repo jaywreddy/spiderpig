@@ -38,9 +38,13 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 
+from spiderpig.hardware.sheet_catalog import SCS_DEBURR_MM
+
 STACK, UNIT, JOIN = "stack", "unit", "join"
 CHASSIS, WIRING, DECK, OTHER = "chassis", "wiring", "deck", "other"
 TURRET, MOUNT = "turret", "mount"
+CRADLE, FINISH, USE = "cradle", "finish", "use"     # a decanting cradle's own stages
+SHOP = "shop"           # ... and its shop work before the first part goes on
 SIDES = ("L", "R")
 EPS = 0.05
 
@@ -53,6 +57,28 @@ class Piece:
     name: str
     portion: str = ""
     z: tuple[float, float] | None = None
+
+
+@dataclass(frozen=True)
+class Scene:
+    """How a step's picture poses what it shows, where the assembled pose won't do (a
+    decanting cradle's use, its trip apart and back, its passive side lowered on lying down:
+    :mod:`spiderpig.guide.scenes` draws it). ``pose``: the crank angle (``"built"`` the
+    fabricated one, ``"rest"``, ``"level"``, ``"full"``, ``"pack"``); ``lay``: ``""``
+    standing, ``"drive"`` laid on its drive side on the riser's blocks
+    (``construction.cradle.LAY_BLOCKS``), ``"passive"`` on its passive side's outer plate;
+    ``show``: the pieces drawn (``cradle_pack``'s keys: ``board``, ``drive``, ``passive``,
+    ``box``, ``hand_crank``, ``risers``, ``blocks``, and ``bottle``, ``decanter``; ``()``
+    every part the step has, as an assembly step's picture does); ``moves``: a piece moved
+    ``(dx, dy, dz)`` mm after the lay (y up); ``marks``: regexes of the bodies highlighted
+    (what the step handles); ``views``: the cameras to choose among (``guide.render.VIEWS``)."""
+
+    pose: str = "built"
+    lay: str = ""
+    show: tuple[str, ...] = ()
+    moves: tuple[tuple[str, float, float, float], ...] = ()
+    marks: tuple[str, ...] = ()
+    views: tuple[str, ...] = ("robot", "robot-", "robot^")
 
 
 @dataclass(frozen=True)
@@ -71,6 +97,8 @@ class Op:
     #                              of a body counted already: False)
     extras: tuple[str, ...] = ()  # the BOM's lines of these catalog keys that are no body's
     #                               (a harness's resistors, a strap): bought for this step
+    scene: Scene | None = None   # its step's picture's pose (a cradle's use; else assembled)
+    lines: tuple[str, ...] = ()  # more sentences after ``text``, each its own item (a list)
 
 
 def whole(*names: str) -> tuple[Piece, ...]:
@@ -137,7 +165,9 @@ class Stage:
     another stage's op; ``()``: by layer for the stack, one step per tag else), ``text`` a
     sentence in place of the hooks' for a tag, ``intro`` the stage's first sentence,
     ``where`` "bench" or "robot" (the picture: the stage alone, or everything so far),
-    ``outro`` a sentence after its hooks' in each of its steps."""
+    ``strict``: only its ``tags`` (else the stage's other ops follow them, a step a tag),
+    ``titles`` a step's title by its first op's tag, ``outro`` a sentence after its hooks'
+    in each of its steps."""
 
     stage: str
     side: str | None
@@ -146,6 +176,8 @@ class Stage:
     text: tuple[tuple[str, str], ...] = ()
     intro: str = ""
     where: str = "bench"
+    strict: bool = False
+    titles: tuple[tuple[str, str], ...] = ()
     outro: str = ""
 
 
@@ -196,6 +228,264 @@ ROBOT_ORDER: tuple[Stage, ...] = (
 bolt crank, the frame ties): what the pivots', the crank's, the chassis' and the deck's
 docstrings defer to."""
 
+USE_TAGS: tuple[tuple[str, ...], ...] = (("where",), ("setting",), ("riser",), ("decant",),
+                                          ("limits",))
+"""A cradle's use steps, in this order (design review round 2's M4: untagged they had sorted
+alphabetically, the trip apart before the setting); the trip's own (``pack_01`` ...,
+``unpack_01`` ...: ``construction.cradle.module_steps``) follow, by tag."""
+
+def _inch(mm: float) -> str:
+    return f"{mm / 25.4:g}"
+
+
+AS_CUT = "<the parts that arrive as cut>"
+"""Where :data:`CRADLE_ARRIVAL` names the parts that arrive as cut: :func:`as_cut_words`, from
+the fabrication (:func:`assembly_steps`)."""
+THICK_PINS = "<the pins whose links may outgrow their play>"
+"""Where :data:`CRADLE_ARRIVAL` names the pins whose links, both at their sheets' thickest,
+come out over the pin's play: :func:`thick_pins_words`."""
+
+CRADLE_ARRIVAL = (
+    "First the cut parts, as they arrive. Write each one's label on it with the paint pen "
+    "(the first word of its file's name in ORDER.md's upload list): some differ only by a "
+    "hole, the crank block's plates among them (the seat plate's small hole for the end "
+    "screw; the seven bored ones are one cut, filed together on the gearbox's key later). "
+    f"SendCutSend deburrs only parts of at least {_inch(SCS_DEBURR_MM[0])} x "
+    f"{_inch(SCS_DEBURR_MM[1])} in: {AS_CUT} come as cut (ORDER.md's upload list marks them "
+    "\"as cut: by hand\"). Deburr each by hand before it is stacked, both faces and each "
+    "pin hole's edges (a deburring tool, then fine sandpaper on a flat block); the dross is "
+    "on the laser's exit face. The clutch's seat ring: mark its entry face (the clean one) "
+    "with the paint pen and break each of its six holes' edges on that face alike, two "
+    "turns of a countersink by hand (the deburring tool's countersink blade): those edges "
+    "are the clutch's ball seats, and it goes on that face out, to the balls. Caliper every "
+    "link at its pin holes and note it: a sheet may run thick (SendCutSend's tables: up to "
+    "+0.69 mm at 0.250 in, +0.23 mm at 0.187 in), and the pins are cut from these figures "
+    f"(the pins' step: each pin's stack + 0.3 mm). {THICK_PINS}Each pin, once cut, must "
+    "slide through its "
+    "links' holes by hand before it goes on: the 0.250 in rod's can come out up to 0.05 mm "
+    "under (SendCutSend's +/-0.005 in and its taper on thick sheet, the hole narrowest at "
+    "the exit face); open a tight one from that face, fine sandpaper rolled round a drill "
+    "bit's shank a size under the pin, a few twists at a time, until the pin slides.")
+"""What a cradle's guide says of the cut parts before the first one goes on (design review
+round 2's M3 and M5: the links SendCutSend can't deburr, the sheets' thickness against the
+pins' take-up; round 3's laser-cut parts minors 2, 3, 4 and 6: the clutch's seats broken
+alike on the clean face, the as-cut parts named, the 0.250 in rod's 8.2 mm holes against a
+g6 pin, a label on every part). The parts that arrive as cut: :func:`as_cut_words` (and
+ORDER.md, :func:`hardware.bom.hand_deburred`)."""
+
+
+def as_cut_words(mech) -> str:
+    """The laser-cut parts of ``mech`` whose blank is under their service's deburring
+    minimum (:func:`hardware.bom.deburr_least`, the rule of
+    :func:`manufacture.deburr_issue`), by name and once each, for :data:`AS_CUT`: ``"b4
+    and b5"``; ``"the narrower links"`` when none or not known."""
+    from spiderpig.hardware.bom import deburr_least
+    from spiderpig.layout import laser_bodies, sheet_key
+    from spiderpig.manufacture import blank_of
+
+    default = str(mech.meta.get("sheet") or "")
+    names: list[str] = []
+    for b in laser_bodies(mech):
+        name = bare(b.name)
+        least = deburr_least(sheet_key(b, default)) if default or b.sheet else None
+        if name in names or least is None:
+            continue
+        w, h = blank_of(b)
+        if w < least[0] - 1e-3 or h < least[1] - 1e-3:
+            names.append(name)
+    if not names:
+        return "the narrower links"
+    names.sort()
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def thick_pins_words(mech) -> str:
+    """For :data:`THICK_PINS`: the pins (``mech.meta["wobble"]``'s ``pin:`` notes) whose
+    links, each at its sheet's published most (``thickness_tol``), outgrow the pin's play as
+    drawn (``cradle_report.take_up``'s worst case, simplification round 2: b3 in 6061 0.187
+    in put J and J2 there beside K and P), named with a sentence of what to do; empty when
+    none."""
+    from spiderpig.hardware.catalog import get
+    from spiderpig.layout import laser_bodies, sheet_key
+
+    default = str(mech.meta.get("sheet") or "")
+    sheets = {bare(b.name): sheet_key(b, default) for b in laser_bodies(mech)}
+    short: dict[str, float] = {}
+    for name, note in (mech.meta.get("wobble") or {}).items():
+        if not name.startswith("pin:") or not note.get("links"):
+            continue
+        over = 0.0
+        for ln in note["links"]:
+            key = sheets.get(bare(str(ln.get("link", ""))))
+            if key:
+                over += float((get(key).dims.get("thickness_tol") or (0.0, 0.0))[0])
+        margin = float(note.get("play_mm") or 0.0) - over
+        if margin < 0:
+            short[name[4:]] = margin
+    if not short:
+        return ""
+    pins = sorted(short)
+    words = pins[0] if len(pins) == 1 else ", ".join(pins[:-1]) + " and " + pins[-1]
+    lo, hi = min(short.values()), max(short.values())
+    span = f"{-hi:.2f} mm" if abs(hi - lo) < 0.005 else f"{-hi:.2f} to {-lo:.2f} mm"
+    many = len(pins) > 1
+    return (f"{'Pins' if many else 'Pin'} {words} {'each carry' if many else 'carries'} "
+            "links that, all at their sheets' thickest, outgrow the pin's play as drawn (by "
+            f"{span}): caliper those links first, and where a pin's links bind once its end "
+            "is on, sand the printed ring or spacer between them by the excess. ")
+
+
+CRADLE_FLAT = (
+    "Lay the base board on the flat table first: SendCutSend's sheet is flat to +/- 0.030 in "
+    "a foot before cutting (about 1.7 mm over the board). If it bows, its concave face goes "
+    "down (the cradle's weight then flattens it), and its cleats are glued on that way.")
+"""A cradle's board flatness check (design review round 2's minor 9), before the drive side
+stands on it and before its cleats are glued."""
+
+FIRST_POUR = Stage(FINISH, None, "Before the first pour", where="robot",
+                   tags=(("clutch",),), strict=True,
+                   intro="The cradle stands built on its board: only now can a bottle go in.")
+"""A cradle's last build step (``construction.handcrank.HandCrank.first_pour``): the clutch
+set on a start measured with a bottle in the cradle, the worm's hold, the toggle zones'
+marks; the trip's way back sends the user here (design review round 3's stand and use M2: the
+clutch had been set at the hand crank's step, before the cradle box existed)."""
+
+SHOP_STAGE = Stage(SHOP, None, "Shop work, before the build",
+                   tags=(("arrival",), ("rods",), ("brace",), ("pins",), ("taps",),
+                         ("carvera",)),
+                   strict=True, intro=CRADLE_ARRIVAL)
+"""A cradle's first stage (simplification round 1, 2026-10-21: its posts, tie rods, pins and
+crankpin are 6061 rod made at home, its cleats and riser locator cut on the user's Carvera;
+``construction.cradle.shop_ops``): the parts as they arrive, the rods cut and faced, B's
+racking brace's tube notched (simplification round 2), the pins cut to their stacks, every
+rod end drilled and tapped, the birch."""
+
+CRADLE_ORDER: tuple[Stage, ...] = (
+    # a decanting cradle (construction.cradle): the shop work first, then the drive side
+    # bottom up with its tie rods, bolted to the base plate (it can't stand alone: the
+    # gearbox outboard, the rods and saddles inboard), the box on the rods, then the passive
+    # side: its cradle link onto the rods, its stack slid in from outside, what goes over
+    # the link, its inner plate last (2026-10-10 review round 2: the plate had gone on a bay
+    # tie A doesn't have)
+    SHOP_STAGE,
+    Stage(STACK, "L", "Drive side: stack",
+          intro="The drive side (the crank's) is built bottom up on its outer frame plate, "
+                "in the plan's layer order, the gearbox under the plate first: it stands "
+                "the plate up off the bench while the stack goes on. The posts (pillars "
+                "and columns) and tie rods are the 6061 rod faced and tapped in the shop "
+                "steps; a link turns on each pivot post's, each pin's and the crankpin's "
+                "hard coat: wipe each of those with a thin film of the food-grade grease "
+                "(a rag) as it goes in (the bare columns and tie rods take none). Break the "
+                "laser-cut edges where hands go (a file or fine sandpaper): the bay side and "
+                "the frame plates' tops."),
+    Stage(UNIT, "L", "Drive side: inner plate",
+          tags=(("plate", "bay_tie"),),
+          text=(("plate", "Lay the drive side's inner plate down, its bay face down."),),
+          intro="On the bench."),
+    Stage(JOIN, "L", "Drive side: inner plate onto the stack", where="robot",
+          tags=(("pillar_screws", "column_screws"),),
+          intro="The inner plate onto its stack: the tops of the posts that reach it into "
+                "it. Once their screws are tight the cradle link must still swing freely on "
+                "the post it rides (its printed parts stop 0.3 mm short of the post's "
+                "length): turn the gearbox's input shaft by hand (the worm can't be "
+                "turned from the link) and feel for a bind; if it binds, sand the spacer "
+                "under the inner plate."),
+    Stage(FINISH, None, "Drive side onto the base board", where="robot",
+          tags=(("studs_L",), ("base",)), strict=True,       # (B's studs on the bench first:
+          #                                                   it drops into its brackets)
+          intro=CRADLE_FLAT + " The drive side stands on the base board from here on, the "
+                "board bare: its cleats and its finish go on once both sides stand on it."),
+    Stage(FINISH, None, "Hand crank", where="robot", tags=(("handle",),), strict=True,
+          intro="On now, to turn the crank for the checks to come."),
+    Stage(CRADLE, None, "The cradle box", where="robot",
+          tags=(("saddles",), ("light",), ("base_stop",)),
+          intro="The tie rods stand across the bay from the drive side's cradle link."),
+    Stage(UNIT, "R", "Passive side: cradle link, on the cradle", where="robot",
+          tags=(("R.stack.cradle_link", "tie_screws"),), strict=True,
+          text=(("cradle_link", "The passive side's cradle link onto the tie rods' free "
+                                "ends."),),
+          intro="On the cradle, not on the bench: the tie rods hold the passive side's "
+                "cradle link."),
+    Stage(STACK, "R", "Passive side: stack",
+          intro="The passive side's stack, on the bench, bottom up on its outer plate: the "
+                "drive side's mirror image without the gearbox, the crank and the rod, and "
+                "without its cradle link (on the cradle already) and what goes over it."),
+    Stage(JOIN, "R", "Passive side: stack onto the cradle", where="robot",
+          tags=(("over_link",), ("R.unit.plate", "R.unit.bay_tie"),
+                ("pillar_screws", "column_screws")),
+          titles=(("pillar_screws", "Inner plate's screws"),
+                  ("column_screws", "Inner plate's screws")),
+          text=(("plate", "The passive side's inner plate over the posts' tops, "
+                          "its bay face to the bay."),),
+          intro="The passive stack set down on the base board 7-15 mm out from its place "
+                "(inside its carriage bolts) and pushed home, the post the cradle link "
+                "rides up through the link; then what goes over the link, and the "
+                "inner plate. With its screws tight, turn the crank "
+                "through a whole pour: both cradle links must swing freely."),
+    Stage(FINISH, None, "Passive side onto the base board", where="robot",
+          tags=(("base_R",),), strict=True),
+    Stage(FINISH, None, "The board's cleats and finish", where="robot",
+          tags=(("board",),), strict=True),
+    FIRST_POUR,
+    Stage(USE, None, "Using it", where="robot", tags=USE_TAGS),
+    Stage(OTHER, None, "Remaining parts", where="robot"),
+)
+"""A decanting cradle's order (:mod:`construction.cradle`): what the drive's, the stand's
+and the cradle box's hooks defer to. The passive side's parts over its cradle link go on
+with the join (``over_link``: :func:`assembly_steps`). A's: its cradle link rides pillar
+G between the passive side's plates, so that side's stack goes on standing, onto the
+cradle. B's is :data:`CRADLE_MODULE_ORDER`."""
+
+CRADLE_MODULE_ORDER: tuple[Stage, ...] = (
+    # a cradle that comes apart in modules (construction.cradle.PACK_POSES: B): the first
+    # build puts the passive side on as the trip's way back does, its panel built flat on
+    # the bench and lowered onto its cradle link, the cradle lying on its drive side (design
+    # review round 2's M1, 2026-10-14: standing, its stack had to be pushed onto two hidden
+    # pins, its inner plate screwed on inside the bay, and its cleats couldn't be glued)
+    *CRADLE_ORDER[:next(i for i, st in enumerate(CRADLE_ORDER)       # to the cradle box
+                        if st.title == "The cradle box") + 1],
+    Stage(FINISH, None, "Laid on its drive side", where="robot", tags=(("lay",),),
+          strict=True),
+    Stage(UNIT, "R", "Passive side: cradle link, on the cradle", where="robot",
+          tags=(("R.stack.cradle_link", "tie_screws"),), strict=True,
+          text=(("cradle_link", "The passive side's cradle link onto the tie rods' free "
+                                "ends and the racking brace's tube's, which stand up from "
+                                "the cradle lying on its drive side: the link lowered level "
+                                "onto them, its socket's teeth into the tube's notches as its "
+                                "holes go over the rods' ends."),),
+          intro="On the cradle, not on the bench: the tie rods hold the passive side's "
+                "cradle link."),
+    Stage(STACK, "R", "Passive side panel: stack",
+          intro="The passive side panel is built whole on the bench, lying on its outer "
+                "plate, as the drive side was: its stack bottom up (the drive side's mirror "
+                "image without the gearbox, the crank and the rod), its inner plate and its "
+                "brackets; all but its cradle link, which is on the cradle already."),
+    Stage(UNIT, "R", "Passive side panel: inner plate", tags=(("plate", "bay_tie"),),
+          strict=True,
+          text=(("plate", "Lay the passive side's inner plate down, its bay face down."),),
+          intro="On the bench."),
+    Stage(JOIN, "R", "Passive side panel: inner plate onto the stack",
+          tags=(("pillar_screws", "column_screws"),), strict=True,
+          intro="The inner plate onto its stack, on the bench: the tops of the posts "
+                "that reach it into it. Once their screws are tight the links must "
+                "swing freely."),
+    Stage(FINISH, None, "Passive side panel: brackets", tags=(("brackets_R",),),
+          strict=True),
+    Stage(JOIN, "R", "Passive side panel onto the cradle link", where="robot",
+          tags=(("over_link",),), strict=True),
+    Stage(FINISH, None, "Onto the base board: its cleats and finish", where="robot",
+          tags=(("board",),), strict=True),
+    FIRST_POUR,
+    Stage(USE, None, "Using it", where="robot", tags=USE_TAGS),
+    Stage(OTHER, None, "Remaining parts", where="robot"),
+)
+"""A cradle that packs as modules (B, ``construction.cradle.PACK_POSES``): A's order to the
+cradle box, then the cradle laid on its drive side on the riser's blocks, the passive cradle
+link onto the tie rods' tops, the passive side panel built whole on the bench (its stack,
+inner plate and brackets) and lowered onto its cradle link as the trip's way back does
+(``over_link``: its pins' clips), and the cradle stood on its board: the cleats glued, the
+board finished, the knobs snugged."""
+
 SIDE_ORDER: tuple[Stage, ...] = (
     Stage(STACK, "", "Leg stack",
           intro="The leg stack is built bottom up on the outer frame plate, in the plan's "
@@ -239,6 +529,12 @@ LAYOUT_ORDERS: dict[str, tuple[Stage, ...]] = {"mirrored_pair": ROBOT_ORDER,
 """Each robot layout's order (:data:`config.ROBOT_LAYOUTS`; a robot's mechanism says its
 layout in ``meta["layout"]``)."""
 
+CRADLE_LAYOUT = "cradle"
+"""A decanting cradle's mechanism (``meta["cradle"]``: both sides and the cradle box, a
+product, no robot layout of :data:`config.ROBOT_LAYOUTS`): its hooks :func:`layout_hooks`'s,
+its order :data:`CRADLE_ORDER` (:data:`CRADLE_MODULE_ORDER` for one that comes apart in
+modules)."""
+
 
 # ---------------------------------------------------------------------------
 # steps
@@ -265,6 +561,7 @@ class Step:
     clip: dict[str, tuple[float, float]] = field(default_factory=dict)
     layer: int | None = None    # a stack step's layer
     extras: list[str] = field(default_factory=list)    # its ops' ``extras``
+    scene: Scene | None = None  # its picture's pose (its first op's with one)
 
 
 def body_of(piece_id: str) -> str:
@@ -319,7 +616,7 @@ def side_ops(view: SideView, groups) -> list[Op]:
     for g in groups:
         hook = getattr(g, "assembly", None)
         if hook is not None:
-            ops += hook(view)
+            ops.extend(hook(view))
     claimed = _claimed(ops)
     by_slot: dict[int, list[str]] = defaultdict(list)
     for n in view.z:
@@ -340,7 +637,12 @@ def _claimed(ops: list[Op]) -> set[str]:
 
 def layout_hooks(layout: str) -> tuple:
     """The robot-level hooks of a layout (each ``RobotView -> [Op]``): a mirrored pair's
-    chassis and deck, a turret's base."""
+    chassis and deck, a turret's base, a decanting cradle's box, stand and use
+    (:data:`CRADLE_LAYOUT`)."""
+    if layout == CRADLE_LAYOUT:
+        from spiderpig.construction import cradle
+
+        return (cradle.assembly,)
     from spiderpig.construction import chassis, deck
     from spiderpig.construction.rotary import base_pair
 
@@ -385,9 +687,11 @@ def assembly_steps(mech, design, robot: bool | None = None, config=None) -> list
     from spiderpig.actuators.controllers import of as controller_of
     from spiderpig.config import robot_layout
 
-    robot = bool(mech.meta.get("robot")) if robot is None else robot
-    layout = str(mech.meta.get("layout") or "") if robot or mech.meta.get("turret") else ""
-    if robot and layout not in LAYOUT_ORDERS:
+    cradle = bool(mech.meta.get("cradle"))      # both sides and the cradle box
+    robot = bool(mech.meta.get("robot") or cradle) if robot is None else robot
+    layout = (CRADLE_LAYOUT if cradle else str(mech.meta.get("layout") or "")) \
+        if robot or mech.meta.get("turret") else ""
+    if robot and layout not in (*LAYOUT_ORDERS, CRADLE_LAYOUT):
         raise ValueError(f"{mech.name}: a robot's mechanism names its layout (meta "
                          f"'layout', one of {sorted(LAYOUT_ORDERS)}), got {layout!r}")
     cfg = config if config is not None else getattr(design.ctx, "config", None)
@@ -415,8 +719,7 @@ def assembly_steps(mech, design, robot: bool | None = None, config=None) -> list
             pieces = tuple(Piece(prefix + p.name, p.portion,
                                  None if p.z is None else _to_robot(p.z, s, mid))
                            for p in op.pieces)
-            ops.append(Op(op.stage, op.key, pieces, op.title, op.text, op.tag, op.sub, s,
-                          op.count))
+            ops.append(replace(op, pieces=pieces, side=s, extras=()))
     whole_robot = robot or bool(own_rows)       # (an arm's side on its turret: a robot)
     if whole_robot:
         level = rows if robot else own_rows      # what the robot-level hooks put on
@@ -451,10 +754,26 @@ def assembly_steps(mech, design, robot: bool | None = None, config=None) -> list
         if left:
             ops.append(Op(OTHER, (), whole(*left), "Remaining parts",
                           "The remaining parts, where they are drawn.", tag="other"))
+    if cradle:
+        # the passive side's parts over its cradle link (which goes on the tie rods, on the
+        # cradle) go on once its stack has met the link there
+        k_link = mech.meta.get("cradle_layer")
+        ops = [replace(op, stage=JOIN, tag="over_link")
+               if k_link is not None and op.side == "R" and op.stage == STACK and op.key
+               and isinstance(op.key[0], (int, float)) and op.key[0] > k_link else op
+               for op in ops]
     _check(ops, {r["name"] for r in rows + own_rows})
     lk = getattr(cfg, "lk", None)
     side_order = ARM_ORDER if lk is not None and lk.ranged else SIDE_ORDER
-    order = LAYOUT_ORDERS.get(layout, side_order) if whole_robot else side_order
+    if layout == CRADLE_LAYOUT:
+        order = CRADLE_MODULE_ORDER if mech.meta.get("cradle_modules") else CRADLE_ORDER
+        words, thick = as_cut_words(mech), thick_pins_words(mech)
+        order = tuple(replace(st, intro=st.intro.replace(AS_CUT, words)
+                              .replace(THICK_PINS, thick))
+                      if AS_CUT in st.intro or THICK_PINS in st.intro
+                      else st for st in order)
+    else:
+        order = LAYOUT_ORDERS.get(layout, side_order) if whole_robot else side_order
     return _order(ops, order)
 
 
@@ -503,10 +822,13 @@ def _order(ops: list[Op], order: tuple[Stage, ...]) -> list[Step]:
                 group = sorted(slots[sk], key=lambda i: (ops[i].key, i))
                 groups.append((st, [ops[i] for i in group], sk[0]))
                 used.update(slots[sk])
+                if sk[1] == 0 and (sk[0], 1, (), "") not in slots:
+                    groups.append((st, [], sk[0]))   # a sub-assembly onto its own layer
             continue
         specs = list(st.tags)
         tags = {t for spec in specs for t in spec if "." not in t}
-        extra = sorted({ops[i].tag for i in mine if ops[i].tag not in tags})
+        extra = [] if st.strict else sorted({ops[i].tag for i in mine
+                                             if ops[i].tag not in tags})
         specs += [(t,) for t in extra]
         for spec in specs:
             chosen = []
@@ -568,20 +890,24 @@ def _numbered(groups) -> list[Step]:
         override = dict(st.text)
         for op in gops:
             t = override.get(op.tag, op.text)
-            if t and t not in texts:
-                texts.append(t)
+            for line in (t, *op.lines):
+                if line and line not in texts:
+                    texts.append(line)
         if st.outro and st.outro not in texts:
             texts.append(st.outro)
         count = [body_of(_pid(p)) for op in gops if op.count for p in op.pieces
                  if body_of(_pid(p)) not in counted]
         counted.update(count)
-        title = _title(st, gops, layer)
+        title = (dict(st.titles).get(gops[0].tag) if gops else None) or _title(st, gops, layer)
+        if not gops and places and out and st.stage == STACK:
+            title = f"Layer {layer}: {out[-1].title[0].lower()}{out[-1].title[1:]}"
         clip = {_pid(p): p.z for p in pieces if p.portion and p.z is not None}
         if places and st.stage == STACK and out:
             texts.insert(0, f"Put on the sub-assembly from step {out[-1].number}.")
         out.append(Step(len(out) + 1, title, st.stage, st.title, st.side or None, adds,
                         context, places, texts, st.where, sub, count, clip, layer,
-                        [k for op in gops for k in op.extras]))
+                        [k for op in gops for k in op.extras],
+                        next((op.scene for op in gops if op.scene is not None), None)))
         placed += list(adds)
         stage_of.update(dict.fromkeys(adds, key))
         if sub:

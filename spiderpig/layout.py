@@ -93,6 +93,21 @@ def sheet_service(key: str) -> str:
         return ""
 
 
+def sheet_route(key: str) -> str:
+    """Who cuts sheet ``key``: its service (:func:`sheet_service`), else the machine its item
+    names to cut it at home (``dims["home"]``: a decanting cradle's cleats and riser locator
+    on the user's Carvera, simplification round 1), else ``""``. Its files' folder and
+    ORDER.md's cut list go by it; only a service's sheet is its cutting line's, a home
+    machine's is bought like any part."""
+    from spiderpig.hardware.catalog import get
+
+    try:
+        d = get(key).dims
+    except KeyError:
+        return ""
+    return str(d.get("service") or d.get("home") or "")
+
+
 # ---------------------------------------------------------------------------
 # Exact contours
 # ---------------------------------------------------------------------------
@@ -176,6 +191,92 @@ def _bbox_2d(shape):
 
 
 def _long_axis_degrees(body) -> float:
+    """The direction its file lies along (the turn every per-part DXF, sheet and blank takes,
+    ``-`` this about Z): a link's outline (first segment), else the part's principal axis;
+    a body whose ``turn`` is ``"least"`` (a decanting cradle's) its least-area box's long
+    side instead (:func:`least_box_degrees`)."""
+    axis = _axis_degrees(body)
+    if getattr(body, "turn", "") == "least":
+        return least_box_degrees(section_of(body), axis)
+    return axis
+
+
+LEAST_BOX_TOL = 0.005
+"""mm: the chords :func:`least_box_degrees` samples an outline's curves by (its box within
+twice this of the curve's)."""
+
+
+def _hull(pts: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """The convex hull of ``pts``, counter-clockwise (Andrew's monotone chain)."""
+    pts = sorted(set(pts))
+    if len(pts) < 3:
+        return pts
+
+    def cross(o, a, b) -> float:
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower: list[tuple[float, float]] = []
+    upper: list[tuple[float, float]] = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
+def box_at(pts, deg: float) -> tuple[float, float]:
+    """``pts``' bounding box (x, y size, mm) turned by ``-deg`` about Z."""
+    a = math.radians(-deg)
+    c, s = math.cos(a), math.sin(a)
+    xs = [x * c - y * s for x, y in pts]
+    ys = [x * s + y * c for x, y in pts]
+    return max(xs) - min(xs), max(ys) - min(ys)
+
+
+def outline_points(sketch, tol: float = LEAST_BOX_TOL) -> list[tuple[float, float]]:
+    """The outer wire of a laid-flat section, as points: every edge's ends, its curves
+    chorded within ``tol``."""
+    out: list[tuple[float, float]] = []
+    for c, u0, u1 in _ordered_edges(_outer(list(sketch.wires()))):
+        out += [_xy(c, u) for u in _params(c, u0, u1, tol)]
+    return out
+
+
+def least_box_degrees(sketch, prefer: float = 0.0) -> float:
+    """The turn (deg, the long side along X once turned by ``-`` it) that lays ``sketch``'s
+    outline in its least-area bounding box (simplification round 2's C1: SendCutSend prices
+    a part by its box, and b6's turned file of 2026-10-21 quoted USD 5.24 less the pair):
+    the least box has a side on an edge of the outline's convex hull, so each hull edge's
+    direction is tried. ``prefer`` (the part's long axis) is kept where its box is as small
+    (to 1e-9), so a part that lies in its least box already doesn't turn."""
+    hull = _hull(outline_points(sketch))
+    if len(hull) < 3:
+        return prefer
+
+    def area(deg: float) -> float:
+        w, h = box_at(hull, deg)
+        return w * h
+
+    best, best_a = None, area(prefer)
+    for (x0, y0), (x1, y1) in zip(hull, hull[1:] + hull[:1], strict=True):
+        deg = math.degrees(math.atan2(y1 - y0, x1 - x0))
+        a = area(deg)
+        if a < best_a * (1 - 1e-9):
+            best, best_a = deg, a
+    if best is None:
+        return prefer
+    w, h = box_at(hull, best)
+    if h > w:                                       # the long side along X
+        best += 90.0
+    # of the two turns a half turn apart (the same box), the one nearer the part's own axis
+    return prefer + ((best - prefer + 90.0) % 180.0 - 90.0)
+
+
+def _axis_degrees(body) -> float:
     """Direction of a link's outline (first segment), else of the part's principal axis."""
     if body.outline and body.joints:
         p, q = body.outline[0]
@@ -587,8 +688,8 @@ def save_sheets(
     written: list[Path] = []
     rows = []
     packed = pack_sheets(mech, default, sheet_size, margin)
-    for key in sorted(packed, key=lambda k: (sheet_service(k), k != default, k)):
-        service = sheet_service(key)
+    for key in sorted(packed, key=lambda k: (sheet_route(k), k != default, k)):
+        service = sheet_route(key)
         k = sheet_kerf(key) if kerf is None else kerf
         written += _write_sheets(packed[key], Path(f"{prefix}_{_slug(service)}_{key}"), k,
                                  key, service, rows)
@@ -657,10 +758,10 @@ def save_parts(groups, out_dir, default: str, kerf: float | None = None,
 
     out_dir = Path(out_dir)
     rows: list[dict] = []
-    for g in sorted(groups, key=lambda g: (sheet_service(sheet_key(g.ref, default)),
+    for g in sorted(groups, key=lambda g: (sheet_route(sheet_key(g.ref, default)),
                                            sheet_key(g.ref, default), g.ref.name)):
         key = sheet_key(g.ref, default)
-        service = sheet_service(key)
+        service = sheet_route(key)
         k = sheet_kerf(key) if kerf is None else kerf
         sketch = _profile(g.ref, blank(key), margin)
         x0, y0, x1, y1 = _bbox_2d(sketch)

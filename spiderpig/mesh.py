@@ -215,6 +215,22 @@ def _accessor(gltf: dict, blob: bytes, i: int) -> np.ndarray:
     return rows.copy()
 
 
+def write_stl(path, pos: np.ndarray, tri: np.ndarray) -> None:
+    """A binary STL of a triangle mesh (``pos`` (n, 3) mm, ``tri`` (m, 3), outward): each
+    facet's normal from its winding."""
+    pos = np.asarray(pos, np.float32)
+    tri = np.asarray(tri, np.int64).reshape(-1, 3)
+    a, b, c = (pos[tri[:, k]] for k in range(3))
+    n = np.cross(b - a, c - a)
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-30)
+    rec = np.zeros(len(tri), dtype=[("n", "<f4", 3), ("v", "<f4", (3, 3)), ("attr", "<u2")])
+    rec["n"], rec["v"] = n, np.stack([a, b, c], axis=1)
+    with open(path, "wb") as f:
+        f.write(b"spiderpig".ljust(80, b" "))
+        f.write(np.uint32(len(tri)).tobytes())
+        f.write(rec.tobytes())
+
+
 def export_stl(shape, path, tolerance: float = 1e-3, angular: float = 0.1) -> bool:
     """A binary STL of ``shape``: build123d's ``export_stl`` (the same mesher parameters and
     writer), meshing once. build123d constructs ``BRepMesh_IncrementalMesh``, which meshes,

@@ -5,12 +5,13 @@ hex standoff crankpins (``bolt``, the default since 2026-10-04) or round standof
 from __future__ import annotations
 
 import math
+from typing import Any, cast
 
 import pytest
 
 from spiderpig.config import BuildConfig
 from spiderpig.construction import CRANKS
-from spiderpig.construction.base import ConstructionError
+from spiderpig.construction.base import ConstructionError, Context
 from spiderpig.construction.contract import bad_solids, check_side, clashes
 from spiderpig.construction.crank import BoltCrank, CrankRoute, HexJoint, Run
 from spiderpig.hardware.catalog import get
@@ -19,18 +20,24 @@ from spiderpig.stack import Layout, Unbuildable
 from spiderpig.strength import crank_capacity
 
 PITCH = 3.0
+NO_CTX = cast(Context, None)    # the methods that don't read their context
+
+
+def _bolt(key: str = "bolt") -> BoltCrank:
+    """:data:`CRANKS`' ``key``, a :class:`BoltCrank` (the registry's type is the union)."""
+    return cast(BoltCrank, CRANKS[key])
 
 
 def test_registered_and_selectable():
-    assert set(CRANKS) == {"bolt", "bolt_round"}
+    assert set(CRANKS) == {"bolt", "bolt_round", "hand"}   # hand: a decanting cradle's
     assert isinstance(CRANKS["bolt"], BoltCrank)
     # the hex standoff crankpin is the default; the friction-clamped round one selectable
-    assert CRANKS["bolt"].for_sheet(BuildConfig().crank_sheet).hex
-    round_ = CRANKS["bolt_round"].for_sheet(BuildConfig().crank_sheet)
+    assert _bolt().for_sheet(BuildConfig().crank_sheet).hex
+    round_ = _bolt("bolt_round").for_sheet(BuildConfig().crank_sheet)
     assert isinstance(round_, BoltCrank)
     assert not round_.hex
     # the crankpins' screws are threadlocked
-    assert get(CRANKS["bolt"].lock_key).category == "adhesive"
+    assert get(cast(str, _bolt().lock_key)).category == "adhesive"
 
 
 def test_the_single_plates_need_a_metal_crank_sheet():
@@ -38,13 +45,13 @@ def test_the_single_plates_need_a_metal_crank_sheet():
     sheet (the removed acrylic two-plate crank's) raises."""
     from spiderpig.materials import sheet
 
-    c = CRANKS["bolt"].for_sheet("al6061_2mm")
+    c = _bolt().for_sheet("al6061_2mm")
     assert (c.web_t, c.web_yield) == (sheet("al6061_2mm").thickness,
                                       sheet("al6061_2mm").yield_mpa)
-    assert CRANKS["bolt"].for_sheet(None) is CRANKS["bolt"]
+    assert _bolt().for_sheet(None) is CRANKS["bolt"]
     for key in ("bolt", "bolt_round"):
         with pytest.raises(ConstructionError, match="need a metal crank sheet"):
-            CRANKS[key].for_sheet("acrylic_3mm")
+            _bolt(key).for_sheet("acrylic_3mm")
 
 
 def test_the_hub_chain_is_capped_by_default():
@@ -54,27 +61,29 @@ def test_the_hub_chain_is_capped_by_default():
     both. The capped standoff is carried by its pressed sleeve and the crank body stopped by
     the stub's thrust sleeve, rated in what the crank body's float leaves of the hub's
     pocket."""
-    bolt = CRANKS["bolt"].for_sheet(BuildConfig().crank_sheet)
-    round_ = CRANKS["bolt_round"].for_sheet(BuildConfig().crank_sheet)
-    assert bolt.hub_capped(None, "M")
-    assert not round_.hub_capped(None, "M")
+    bolt = _bolt().for_sheet(BuildConfig().crank_sheet)
+    round_ = _bolt("bolt_round").for_sheet(BuildConfig().crank_sheet)
+    assert bolt.hub_capped(NO_CTX, "M")
+    assert not round_.hub_capped(NO_CTX, "M")
     assert bolt.capped_press > 0
     span, t = 29.9, bolt.web_t
-    assert bolt.fit_hex(span, t, t, capped=True).engaged_hi == pytest.approx(
-        t - bolt.thrust_play)
-    assert bolt.fit_hex(span, t, t).engaged_hi == pytest.approx(t)
+    capped, plain = bolt.fit_hex(span, t, t, capped=True), bolt.fit_hex(span, t, t)
+    assert capped is not None
+    assert plain is not None
+    assert capped.engaged_hi == pytest.approx(t - bolt.thrust_play)
+    assert plain.engaged_hi == pytest.approx(t)
 
 
 def test_the_stub_thrust_sleeve_comes_with_a_capped_chain():
     """:meth:`BoltCrank.stub_thrust_r`: the thrust sleeve's radius when a chain ends capped
     in the hub plate's layer; none when no chain reaches the hub, for the round standoff
     (screwed over the hub plate), or with no journal stub (no bearing)."""
-    bolt = CRANKS["bolt"]
+    bolt = _bolt()
     route = CrankRoute((Run("M", 2, 4),))
-    assert bolt.stub_thrust_r(None, route, 5) == pytest.approx(bolt.thrust_od / 2)
-    assert bolt.stub_thrust_r(None, route, 7) == 0.0
-    assert CRANKS["bolt_round"].stub_thrust_r(None, route, 5) == 0.0
-    assert bolt.stub_thrust_r(None, CrankRoute(route.runs, bearing=False), 5) == 0.0
+    assert bolt.stub_thrust_r(NO_CTX, route, 5) == pytest.approx(bolt.thrust_od / 2)
+    assert bolt.stub_thrust_r(NO_CTX, route, 7) == 0.0
+    assert _bolt("bolt_round").stub_thrust_r(NO_CTX, route, 5) == 0.0
+    assert bolt.stub_thrust_r(NO_CTX, CrankRoute(route.runs, bearing=False), 5) == 0.0
 
 
 def test_the_stub_must_reach_the_outer_plate_at_the_plans_z():
@@ -82,9 +91,11 @@ def test_the_stub_must_reach_the_outer_plate_at_the_plans_z():
     6-30 mm) runs from the lowest web down into the outer frame plate; a lowest web 30 mm
     over the outer plate's bottom (layer 10 of 3 mm layers) has a stock 30 mm standoff, one
     33 mm over it (layer 11) none, and the route is refused."""
-    c = CRANKS["bolt"].for_sheet(BuildConfig().crank_sheet)
+    c = _bolt().for_sheet(BuildConfig().crank_sheet)
     L = Layout({}, 20, PITCH, final=True)
-    assert c.stub_z(30.0, PITCH, c.web_t)[1] == 30
+    stub = c.stub_z(30.0, PITCH, c.web_t)
+    assert stub is not None
+    assert stub[1] == 30
     assert c.stub_z(33.0, PITCH, c.web_t) is None
     c.check_route(L, CrankRoute((Run("M", 11, 12),)), {}, {10, 13})
     with pytest.raises(Unbuildable, match="no stock stub standoff reaches"):
@@ -108,7 +119,7 @@ def test_single_web_rules_for_the_router():
     joins them, never a journal plate; its screw heads are gap pieces the router keeps clear
     (one per crank point, the horn screws', one at O); a span is buildable whatever the
     riders' faces (no end play to set back), and the first web sits where a stock stub
-    reaches the outer plate."""
+    reaches the outer plate at some plan's z (the gaps under it in a plan's range)."""
     from spiderpig.construction.route import joint_rules
     from spiderpig.fabricate import side_problem, template_for
 
@@ -122,7 +133,8 @@ def test_single_web_rules_for_the_router():
     assert rules.horn_heads
     assert problem.spec.heads == "gap_sink"     # in gaps, else the pivots' heads sunk
     assert rules.gap_washer == c.washer_r > 0      # its run washers: the leaf routes round
-    assert len(problem.router.gap_pieces) == problem.router.n + len(rules.horn_heads) + 1
+    router = cast(Any, problem.router)          # the crank's CrankRouter
+    assert len(router.gap_pieces) == router.n + len(rules.horn_heads) + 1
     t, frame = ctx.sheet_t("crank"), ctx.sheet_t("frame")
     for n, m in rules.spans.items():
         assert m in (0, (1 << 32) - 1), n          # every set of faces alike
@@ -131,8 +143,12 @@ def test_single_web_rules_for_the_router():
     assert dict(rules.j_spans) == {n: c._web_span_ok(n, 0, ctx.pitch, t) for n in range(64)}
     assert rules.bottom_layers
     assert min(rules.bottom_layers) >= 2
-    for a in rules.bottom_layers:
-        assert c.stub_z(frame + (a - 1) * ctx.pitch, frame, t) is not None, a
+    from spiderpig.stack import GAP_MAX, GAP_STEP
+
+    for a in rules.bottom_layers:       # (at some z of a plan: its gaps under the web)
+        assert any(c.stub_z(frame + (a - 1) * ctx.pitch + i * GAP_STEP, frame, t) is not None
+                   for i in range(round(a * GAP_MAX / GAP_STEP) + 1)), a
+    assert 2 in rules.bottom_layers     # (no gap under it: the pitch alone)
 
 
 def test_the_round_standoffs_capacity_is_its_friction_clamp():
@@ -208,7 +224,7 @@ def test_the_klann_single_builds_clean_with_the_bolt_crank(design, side):
 @pytest.mark.slow
 def test_the_bolt_crank_plates_pack_onto_dxf_sheets(side, tmp_path):
     """Each plate is cut on the sheets, its hex pockets among its holes."""
-    import ezdxf
+    from ezdxf.filemanagement import readfile
 
     from spiderpig.layout import save_sheets
 
@@ -218,7 +234,7 @@ def test_the_bolt_crank_plates_pack_onto_dxf_sheets(side, tmp_path):
     parts = (tmp_path / "sheet_parts.csv").read_text()
     plates = [b.name for b in mech.bodies if b.name.startswith("crank_plate")]
     assert all(n in parts for n in plates)
-    polys = sum(len(ezdxf.readfile(str(f)).modelspace().query("LWPOLYLINE")) for f in files)
+    polys = sum(len(readfile(str(f)).modelspace().query("LWPOLYLINE")) for f in files)
     assert polys > len(plates)        # outlines, and the pockets' (non-circular) holes
 
 
@@ -282,6 +298,7 @@ def test_the_crank_sheet_holds_the_hex_at_sf_2():
     thin = BoltCrank().for_sheet("al5052_1p6mm")
     assert min(thin.capacity().values()) < 2 * 2 * 0.85
     nominal = crank_capacity({}, BuildConfig())
+    assert nominal is not None
     assert min(nominal.values()) == pytest.approx(min(caps.values()))
 
 
@@ -291,7 +308,7 @@ def test_the_hex_pocket_has_dogbones_at_the_service_radius():
     from spiderpig.materials import sheet
 
     assert HEX.dogbone_r >= sheet("al6061_2p5mm").corner_r
-    cut = HEX.hex_cut((0.0, 0.0), 0.0, 1.0, 0.0)
+    cut = cast(Any, HEX.hex_cut((0.0, 0.0), 0.0, 1.0, 0.0))     # a Part
     assert len(cut.solids()) == 1
     af = HEX.hex_pocket_af()
     plain = math.sqrt(3) / 2 * af ** 2
@@ -314,7 +331,7 @@ def test_horn_screws_take_shims_where_the_hub_plate_is_thin():
         assert 1.5 - 1e-9 <= e <= 2.0 + 1e-9
         assert length == pytest.approx(seg + 3.032 + shim + e)
         assert 0 <= shim <= c.horn_shim_max
-    assert c.horn_hole(ctx) >= get(ctx.sheet("crank")).dims["min_hole"]
+    assert c.horn_hole(ctx) >= get(cast(str, ctx.sheet("crank"))).dims["min_hole"]
 
 
 def test_the_crank_defaults_per_module_and_linkage():

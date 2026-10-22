@@ -169,6 +169,11 @@ def rank_candidates(task: Task | dict, store: Store | str | Path | None = PROJEC
     scales = scale_params_table(st)        # (the store's per-code cache, else computed)
     for key in linkage.available():
         lk = linkage.get(key)
+        if lk.product:          # (a decanting cradle: a hand-cranked product, its own design)
+            rep.excluded.append({"linkage": key, "kind": lk.kind,
+                                 "why": f"{key} is a product ({lk.product}): a design of its "
+                                        "own, hand-cranked, not a candidate for a task"})
+            continue
         got = _SCREENS[task.do](lk, task, st)
         if isinstance(got, str):
             rep.excluded.append({"linkage": key, "kind": lk.kind, "why": got})

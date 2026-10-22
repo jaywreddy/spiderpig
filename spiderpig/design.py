@@ -60,9 +60,13 @@ def package_version() -> str:
         return "0.0.0"
 
 
-ENGINE_EXCLUDE = ("server", "mcp", "tools", "guide", "cli.py", "view.py", "__main__.py")
+ENGINE_EXCLUDE = ("server", "mcp", "tools", "guide", "cli.py", "view.py", "__main__.py",
+                  "voxpack.py")
 """Package sources that never change a design's result (the viewer's server, the MCP layer,
-the assembly guide, the command lines): left out of :func:`engine_version`."""
+the assembly guide, the command lines, the real-shape packer that stacks a cradle's pieces
+in a box: a report on the parts, nothing stored by the engine's version): left out of
+:func:`engine_version`, and of :mod:`spiderpig.keys`' members matched by name (an engine
+module reaches one only through an explicit import)."""
 _ENGINE_VERSION: list[str] = []
 
 

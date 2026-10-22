@@ -1,45 +1,48 @@
 {
  "data": {
   "gaps": {
-   "1": 3.9,
-   "2": 2.5,
-   "6": 3.0
+   "0": 3.4,
+   "1": 3.3,
+   "2": 3.3,
+   "3": 2.7,
+   "5": 2.6,
+   "7": 2.6
   },
   "heads": "gap",
-  "height": 37.81399999999999,
+  "height": 43.31399999999999,
   "layers": {
-   "b1_leg0": 3,
-   "b1_leg1": 6,
-   "b2_leg0": 5,
-   "b2_leg1": 4,
-   "b3_leg0": 2,
-   "b3_leg1": 5,
-   "b4_leg0": 2,
-   "b4_leg1": 3
+   "b1_leg0": 4,
+   "b1_leg1": 5,
+   "b2_leg0": 2,
+   "b2_leg1": 2,
+   "b3_leg0": 3,
+   "b3_leg1": 1,
+   "b4_leg0": 3,
+   "b4_leg1": 7
   },
   "route": {
    "bearing": true,
    "runs": [
     {
      "at": "M_leg0",
-     "hi": 6,
-     "lo": 3
+     "hi": 5,
+     "lo": 4
     }
    ]
   },
   "thick": {
    "0": 2.032,
-   "2": 3.175,
    "3": 3.175,
-   "9": 2.032
+   "7": 3.175,
+   "8": 2.032
   },
-  "top": 9
+  "top": 8
  },
- "engine_version": "0.1.0+e2cf649bc7a2",
+ "engine_version": "0.1.0+a5f3a622f0cf",
  "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[klann-double]",
  "source": {
   "file": "tests/test_stack.py",
   "name": null
  },
- "source_key": "gen-351bffe2f0d948d6"
+ "source_key": "gen-f3dbf419a8d3db53"
 }

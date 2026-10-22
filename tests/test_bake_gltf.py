@@ -24,6 +24,8 @@ import pytest
 from spiderpig import linkage, walk
 from spiderpig.bake import _MATERIALS, _congruent, _Planar
 from spiderpig.config import BuildConfig, ParamError
+from spiderpig.hardware.bom import printed_filaments
+from spiderpig.hardware.catalog import finish as catalog_finish
 from spiderpig.hardware.mass import part_props
 from tests import _sim, cache
 
@@ -156,6 +158,7 @@ def test_nodes_meshes_and_channels(baked):
     assert [n.name for n in children] == [b.name for b in mech.bodies]
 
     parts = {b.name: b for b in mech.bodies}
+    filaments = printed_filaments(mech, mech.meta.get("filament", "pla_filament"))
     for node in children:
         body = parts[node.name]
         assert (node.mesh is not None) == (body.part is not None), node.name
@@ -164,6 +167,11 @@ def test_nodes_meshes_and_channels(baked):
         assert node.extras.get("rigid_with") == body.rigid_with
         assert node.extras.get("bom") == body.bom_key
         assert node.extras["body"] == body.name
+        # the surface the viewer draws: a print's filament, a bought part's finish
+        assert node.extras.get("filament") == (
+            filaments.get(body.name) if body.fab == "printed" else None)
+        assert node.extras.get("finish") == (
+            catalog_finish(body.bom_key) if body.fab == "purchased" else None)
 
     anim = gltf.animations[0]
     targets = {(ch.target.node, ch.target.path) for ch in anim.channels}

@@ -11,6 +11,7 @@ realize_groups`), and the contract's fast cases check the crank and the drive
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import numpy as np
 import pytest
@@ -21,6 +22,7 @@ from spiderpig.construction import CRANKS as CRANK_REGISTRY
 from spiderpig.construction.base import FRAME_OUTER, Build
 from spiderpig.construction.contract import bad_solids, check_side, clashes
 from spiderpig.construction.crank import (
+    BoltCrank,
     CrankRoute,
     Run,
     chains_of,
@@ -63,6 +65,11 @@ def _offline(tmp_path_factory):
 
 
 CRANKS = ["bolt", "bolt_round"]
+
+
+def _bolt(key: str = "bolt") -> BoltCrank:
+    """The registry's ``key`` crank, a :class:`BoltCrank` (the registry's type is the union)."""
+    return cast(BoltCrank, CRANK_REGISTRY[key])
 
 
 def _cfg(mode="single", servo=servos.DEFAULT, crank="bolt") -> BuildConfig:
@@ -211,8 +218,11 @@ def test_horn_screws_land_in_the_horn_holes(servo):
         assert np.linalg.norm(holes[k] - c) < 1e-3
         used.add(k)
         engage = bb.max.Z - horn_face
-        assert engage >= min(pat.thread_depth, 1.5) - 1e-6
-        assert engage <= min(pat.reach, spec.horn_face_depth) + 1e-6
+        depth, reach = pat.thread_depth, pat.reach
+        assert depth is not None
+        assert reach is not None
+        assert engage >= min(depth, 1.5) - 1e-6
+        assert engage <= min(reach, spec.horn_face_depth) + 1e-6
         assert plate_top + 1e-6 >= bb.max.Z
         # the shank is in the hole, not in the horn's metal
         hole = disc(tuple(holes[k]), pat.thread_d / 2, horn_face, bb.max.Z)
@@ -271,7 +281,7 @@ def test_crankpins_are_standoffs_screwed_into_their_webs(mode, crank):
     end unless the hub plate caps it (the hex's hub chain); the riders turn on its sleeve
     (the hex's) between the plates."""
     design, mech = _side(1.0, crank=crank, mode=mode)
-    c = CRANK_REGISTRY[crank].resolve(design.ctx)
+    c = _bolt(crank).resolve(design.ctx)
     hub = _hub_layer(design.plan)
     by_at = {n["at"]: n for n in mech.meta["crank_bolt"]["chains"]}
     chains = chains_of(sorted(_runs(design), key=lambda r: (r.lo, r.at)))
@@ -321,7 +331,7 @@ def test_hex_play_of_a_standoff_in_its_pockets():
     assert hex_play(5.0, 5.65) == pytest.approx(18.13, abs=0.01)
     assert hex_play(5.0, 5.0) == hex_play(5.0, 4.9) == 0.0
     design, mech = _side(1.0)
-    c = CRANK_REGISTRY["bolt"].resolve(design.ctx)
+    c = _bolt().resolve(design.ctx)
     note = mech.meta["crank_bolt"]
     assert note["pocket_af_mm"] == pytest.approx(c.hex_af + c.hex_fit)
     assert note["play_deg"] == pytest.approx(2 * hex_play(c.hex_af, c.hex_pocket_af()), abs=0.01)
@@ -428,7 +438,7 @@ def test_a_run_past_its_rider_carries_the_sleeve_through_the_bare_layer(case, ri
         assert z(k)[0] >= pin.min.Z
         assert z(k)[1] <= pin.max.Z
     # the sleeve fills the webs' gap but for the riders' end play (none: pressed, capped)
-    c = CRANK_REGISTRY["bolt"].resolve(design.ctx)
+    c = _bolt().resolve(design.ctx)
     length = sleeve.max.Z - sleeve.min.Z
     assert hi.min.Z - lo.max.Z - c.sleeve_play - 1e-3 <= length
 
@@ -507,6 +517,8 @@ def test_the_upper_end_of_a_hex_pin_uses_the_air_over_its_plate():
     span = 3.0 + 2 * 3.0 + t + 0.5                    # a 12 mm standoff stands ~0.46 past
     plain = c.fit_hex(span, t, t)
     air = c.fit_hex(span, t, t, air_hi=3.0 - t)
+    assert plain is not None
+    assert air is not None
     extra = plain.length - span
     assert plain.out_lo + plain.out_hi == pytest.approx(extra)
     assert air.out_lo + air.out_hi == pytest.approx(extra)
@@ -553,7 +565,9 @@ def test_a_screw_key_reads_back_as_its_kind_and_length():
     from spiderpig.hardware.fasteners import parse as screw_from_key
 
     for key, kind in (("m3_shcs_10", SCREWS["shcs", "3"]), ("m3_bhcs_8", SCREWS["bhcs", "3"])):
-        sk, length = screw_from_key(key)
+        got = screw_from_key(key)
+        assert got is not None
+        sk, length = got
         assert (sk, length) == (kind, float(key.rsplit("_", 1)[1]))
         assert sk.key(length) == key
     assert screw_from_key("m3_nut") is None

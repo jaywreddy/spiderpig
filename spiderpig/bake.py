@@ -67,9 +67,12 @@ from spiderpig.config import (
     add_build_args,
     add_design_args,
     config_from_args,
+    is_cradle,
 )
 from spiderpig.construction.robot import layout_of
 from spiderpig.fabricate import design_side, fabricate, template_for
+from spiderpig.hardware.bom import printed_filaments
+from spiderpig.hardware.catalog import finish as catalog_finish
 from spiderpig.hardware.catalog import get as catalog_get
 from spiderpig.hardware.mass import PartProps, part_props
 from spiderpig.kinematics import RobotTree, planar_matrix, quat_from_matrix
@@ -104,9 +107,19 @@ T_REF = 0.0
 _ROOT_ROTATION = (math.sqrt(0.5), 0.0, 0.0, math.sqrt(0.5))   # xyzw
 
 
+PRODUCT_SECONDS = 8.0
+"""A decanting cradle's clip: one decant (a crank turn) in 8 s, near the pace of a pour (the
+handle's 30 turns take about 30 s)."""
+
+
 def _build_template(config: BuildConfig) -> MechanismTemplate:
-    """The kinematics the animation samples: one side, or both sides of the robot."""
+    """The kinematics the animation samples: one side, or both sides of the robot (or of a
+    decanting cradle: :mod:`construction.cradle`)."""
     tmpl = template_for(config)
+    if is_cradle(config):           # both sides, as a walker's two (construction.robot)
+        from spiderpig.construction.robot import robot_template
+
+        return robot_template(tmpl)
     return layout_of(config).template(tmpl) if config.robot else tmpl
 
 
@@ -134,6 +147,17 @@ _MATERIALS: dict[str, _Material] = {
     "metal": _Material((0.78, 0.79, 0.81, 1.0), 0.85, 0.30),
     # the deck's electronics (boards, battery, switch: simple boxes)
     "electronics": _Material((0.12, 0.42, 0.23, 1.0), 0.1, 0.5),
+    # laser-cut aluminium: links bare, the frame plates a touch darker (a decanting cradle)
+    "aluminium": _Material((0.80, 0.82, 0.85, 1.0), 0.9, 0.35),
+    "aluminium_frame": _Material((0.62, 0.64, 0.68, 1.0), 0.9, 0.4),
+    # routed Baltic birch plywood (a decanting cradle's base board), oiled
+    "plywood": _Material((0.85, 0.70, 0.50, 1.0), 0.0, 0.65),
+    # a worm gearbox (bare die-cast aluminium), an LED's face
+    "gearbox": _Material((0.70, 0.72, 0.74, 1.0), 0.8, 0.55),
+    "led": _Material((1.0, 0.98, 0.85, 1.0), 0.0, 0.2),
+    # display only (a cradle's bottle and decanter): drawn, never made
+    "glass_bottle": _Material((0.10, 0.25, 0.14, 0.82), 0.1, 0.05),
+    "glass_clear": _Material((0.80, 0.90, 0.97, 0.25), 0.1, 0.05),
     # anything without a ``fab`` (shouldn't happen)
     "other": _Material((0.55, 0.55, 0.55, 1.0), 0.0, 0.7),
 }
@@ -146,18 +170,28 @@ def _catalog_category(bom_key: str | None) -> str | None:
         return None
 
 
-def _material_of(body: Body) -> str:
-    """Material key for a body: by ``fab``, then by role."""
+def _material_of(body: Body, metal: bool = False) -> str:
+    """Material key for a body: by ``fab``, then by role. ``metal``: aluminium sheets are drawn
+    as aluminium (a decanting cradle; a walker's plates all draw as acrylic)."""
     cls = body_class(body.name)
     made_of = fabmethods.stock(body.fab)
     if made_of == "sheet":
-        return "acrylic" if is_link(body.name) else "acrylic_frame"
+        if (body.sheet or "").startswith("birch"):
+            return "plywood"
+        metal = metal and (body.sheet or "").startswith("al")
+        if is_link(body.name):
+            return "aluminium" if metal else "acrylic"
+        return "aluminium_frame" if metal else "acrylic_frame"
     if made_of == "filament":
         return "printed"
+    if body.fab == fabmethods.DISPLAY:
+        return "glass_bottle" if cls == "bottle" else "glass_clear"
     if body.fab == fabmethods.PURCHASED:
         category = _catalog_category(body.bom_key)
         if category == "electronics":
-            return "electronics"
+            return "led" if cls == "led" else "electronics"
+        if category == "gearbox":
+            return "gearbox"
         servo = category == "servo" or cls == "servo"
         return "servo" if servo else "metal"
     return "other"
@@ -452,6 +486,7 @@ class _Meshes:
     plan: _MeshPlan
     class_mesh: dict[str, tuple[np.ndarray, np.ndarray]]   # mesh key -> (positions, indices)
     mass_props: dict[str, PartProps]
+    metal: bool = False                                    # aluminium drawn as aluminium
 
 
 @dataclass
@@ -501,7 +536,8 @@ def _reference(config: BuildConfig, prof: Profiler, fabricated: Mechanism | None
     feet = linkage_mod.feet_of(mech)
     if not feet:
         assert lk.output is not None  # no feet: a mechanism, which has an output
-        feet = [(lk.output.link, lk.output.point)]
+        link = f"L.{lk.output.link}" if is_cradle(config) else lk.output.link
+        feet = [(link, lk.output.point)]
     prof.set_metric("n_bodies", len(mech.bodies))
     prof.set_metric("n_legs", len(feet) // max(len(lk.feet), 1))
     logger.debug("reference mech: %d bodies", len(mech.bodies))
@@ -520,11 +556,12 @@ def _share_and_tessellate(ref: _Reference, prof: Profiler,
         plan = _plan_meshes(ref.bodies, ref.anchors, ref.owner, prof, mass_props)
     logger.debug("%d bodies with parts -> %d meshes", len(plan.key_of), len(plan.rep_of))
     class_mesh: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    metal = bool(ref.mech.meta.get("cradle"))
     with prof.timed("2_tessellate_total"):
         # each part meshed on its own (its kind timed), then every mesh read out at once
         # (OCCT's glTF writer, not node by node: :func:`spiderpig.mesh.read_meshes`)
         for rep in plan.rep_of.values():
-            with prof.timed(f"2_tessellate.{_material_of(rep)}"):
+            with prof.timed(f"2_tessellate.{_material_of(rep, metal)}"):
                 mesh_part(rep.part)
         reps = list(plan.rep_of.items())
         for (key, rep), (positions, tris, skipped) in zip(
@@ -537,7 +574,7 @@ def _share_and_tessellate(ref: _Reference, prof: Profiler,
             prof.set_metric(f"tris.{key}", nt)
             logger.debug("  %s: %d verts, %d tris", key, nv, nt)
     prof.set_metric("n_meshes", len(class_mesh))
-    return _Meshes(plan, class_mesh, mass_props)
+    return _Meshes(plan, class_mesh, mass_props, metal)
 
 
 def _pack_geometry(meshes: _Meshes, prof: Profiler) -> _Geometry:
@@ -546,7 +583,7 @@ def _pack_geometry(meshes: _Meshes, prof: Profiler) -> _Geometry:
     material_idx: dict[str, int] = {}
     with prof.timed("3_gltf_pack_geometry"):
         for key, (positions, indices) in meshes.class_mesh.items():
-            mat = _material_of(meshes.plan.rep_of[key])
+            mat = _material_of(meshes.plan.rep_of[key], meshes.metal)
             if mat not in material_idx:
                 material_idx[mat] = len(geom.materials)
                 geom.materials.append(_gltf_material(mat))
@@ -617,6 +654,19 @@ def _animate(config: BuildConfig, ref: _Reference, meshes: _Meshes, n_frames: in
     return anim
 
 
+def _surfaces(mech: Mechanism) -> dict[str, dict[str, str]]:
+    """What each body's surface is, for the viewer's materials (a node's extras): a printed
+    body's ``filament`` (:func:`hardware.bom.printed_filaments`: PETG, TPU or the design's
+    own), a bought one's ``finish`` (:func:`hardware.catalog.finish`: hard-anodized,
+    stainless, black oxide...; none for plain steel)."""
+    filaments = printed_filaments(mech, mech.meta.get("filament", "pla_filament"))
+    out: dict[str, dict[str, str]] = {}
+    for body in mech.bodies:
+        if body.fab == "printed" and filaments.get(body.name):
+            out[body.name] = {"filament": str(filaments[body.name])}
+        elif body.fab == "purchased" and (f := catalog_finish(body.bom_key)):
+            out[body.name] = {"finish": f}
+    return out
 def _spatial(tree: RobotTree, ref: _Reference, meshes: _Meshes, anim: _Animation,
              ts: np.ndarray) -> None:
     """The bodies a spatial joint carries (:mod:`spiderpig.kinematics`): each joint's
@@ -653,6 +703,7 @@ def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim:
     samplers: list[pygltflib.AnimationSampler] = []
     channels: list[pygltflib.AnimationChannel] = []
     with prof.timed("5_gltf_nodes_channels"):
+        surfaces = _surfaces(ref.mech)
         root = pygltflib.Node(name="walker", rotation=list(_ROOT_ROTATION))
         nodes.append(root)
         ground = math.inf       # lowest model Y any mesh reaches over the cycle
@@ -678,7 +729,7 @@ def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim:
                                            .min()))
             node.extras = {
                 "fab": body.fab, "rigid_with": body.rigid_with, "bom": body.bom_key,
-                "body": body.name,
+                "body": body.name, **surfaces.get(body.name, {}),
             }
             node_idx = len(nodes)
             nodes.append(node)
@@ -738,6 +789,8 @@ def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animati
     }
     if lk.output:
         scene.extras["output"] = asdict(lk.output)
+    if lk.product:                  # a product (a decanting cradle): the viewer drives nothing
+        scene.extras["product"] = lk.product
     if ref.mech.meta.get("tree"):      # an arm's spatial joints (the viewer's joint sliders)
         scene.extras["tree"] = ref.mech.meta["tree"]
     if lk.ranged:                      # its inputs at the clip's first frame (the sliders')
@@ -777,7 +830,7 @@ def bake_gltf(
     config: BuildConfig | None = None,
     *,
     n_frames: int = 120,
-    duration_s: float = 1.0,
+    duration_s: float | None = None,
     profile: bool = True,
     fabricated: Mechanism | None = None,
     side=None,
@@ -813,6 +866,8 @@ def bake_gltf(
     level.
     """
     config = config or BuildConfig()
+    if duration_s is None:          # a walker's crank turn a second; a cradle's decant slower
+        duration_s = PRODUCT_SECONDS if is_cradle(config) else 1.0
     prof = _profiler(profile)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -855,7 +910,9 @@ def _parse_args(argv=None) -> argparse.Namespace:
                    help="output .glb path (default: <store>/bakes/<linkage>_<module>_<robot|side>"
                         "[_<hash>].glb)")
     p.add_argument("--frames", type=int, default=120, help="animation frame count")
-    p.add_argument("--duration", type=float, default=1.0, help="animation duration in seconds")
+    p.add_argument("--duration", type=float, default=None,
+                   help="animation duration in seconds (default: 1, a decanting cradle's "
+                        f"{PRODUCT_SECONDS:g})")
     p.add_argument("--profile", action=argparse.BooleanOptionalAction, default=True,
                    help="emit the per-stage wall-clock profile summary (default: on)")
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],

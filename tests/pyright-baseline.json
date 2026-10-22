@@ -1,23 +1,23 @@
 {
-  "errors": 21,
+  "errors": 19,
   "by_rule": {
-    "reportReturnType": 10,
-    "reportAttributeAccessIssue": 7,
-    "reportArgumentType": 3,
+    "reportReturnType": 11,
+    "reportArgumentType": 4,
+    "reportAttributeAccessIssue": 3,
     "reportGeneralTypeIssues": 1
   },
   "tests": {
-    "errors": 734,
+    "errors": 673,
     "by_rule": {
-      "reportOptionalMemberAccess": 265,
-      "reportArgumentType": 174,
-      "reportAttributeAccessIssue": 126,
-      "reportOptionalSubscript": 73,
-      "reportOperatorIssue": 39,
+      "reportOptionalMemberAccess": 237,
+      "reportArgumentType": 163,
+      "reportAttributeAccessIssue": 114,
+      "reportOptionalSubscript": 69,
+      "reportOperatorIssue": 35,
       "reportCallIssue": 24,
-      "reportGeneralTypeIssues": 15,
-      "reportPrivateImportUsage": 5,
+      "reportGeneralTypeIssues": 14,
       "reportIndexIssue": 4,
+      "reportPrivateImportUsage": 4,
       "reportReturnType": 4,
       "reportPossiblyUnboundVariable": 3,
       "reportOptionalOperand": 2

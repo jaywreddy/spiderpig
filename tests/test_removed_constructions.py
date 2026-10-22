@@ -25,6 +25,8 @@ from spiderpig.store import Store
 
 KEPT = {"crank": {"bolt", "bolt_round"}, "pin": {"chicago", "ball", "ball_pair"},
         "pillar": {"standoff", "ball_pillar", "ball_pair_pillar"}}
+CRADLE = {"crank": {"hand"},                                           # cradles only
+          "pin": {"chicago6", "pivot8", "clevis8", "rod516", "rod38", "rodclip516"}}
 
 REMOVED = [(field, key) for field, table in REMOVED_CONSTRUCTIONS.items() for key in table
            if field in KEPT]
@@ -34,9 +36,10 @@ REMOVED = [(field, key) for field, table in REMOVED_CONSTRUCTIONS.items() for ke
 def test_the_registries_are_the_kept_constructions():
     """D1: the cranks ``bolt`` and ``bolt_round``, the ``chicago`` pin, the one-piece
     ``standoff`` pillar, and since 2026-10-11 the ball-bearing pivots (the removed MF63ZZ
-    ``bearing``'s replacement); no removed key is registered, every replacement is."""
-    assert set(construction.CRANKS) == KEPT["crank"]
-    assert set(construction.AXLES) == KEPT["pin"] | KEPT["pillar"]
+    ``bearing``'s replacement), and a decanting cradle's own; no removed key is registered,
+    every replacement is."""
+    assert set(construction.CRANKS) == KEPT["crank"] | CRADLE["crank"]
+    assert set(construction.AXLES) == KEPT["pin"] | KEPT["pillar"] | CRADLE["pin"]
     for field, table in REMOVED_CONSTRUCTIONS.items():
         if field not in KEPT:
             continue
@@ -235,7 +238,7 @@ def test_an_unknown_construction_names_the_registry():
     from spiderpig.construction.base import ConstructionError
 
     with pytest.raises(ConstructionError, match=r"no crank construction 'nope'; have \['bolt', "
-                                                r"'bolt_round'\]"):
+                                                r"'bolt_round', 'hand'\]"):
         construction.crank("nope")
     with pytest.raises(ConstructionError, match=r"no axle construction 'nope'"):
         construction.axle("nope")

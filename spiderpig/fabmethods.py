@@ -13,6 +13,8 @@ key             title       made  flat   stock     what
                                                    cut rules: :mod:`manufacture`)
 ``printed``     3D printed  yes   no     filament  FDM printed (STL, filament mass)
 ``purchased``   Purchased   no    no               bought; ``bom_key`` names the catalog item
+``display``     Display     no    no               drawn only (a decanting cradle's bottle and
+                only                               decanter): nothing bought, cut or printed
 ==============  ==========  ====  =====  ========  ==========================================
 
 ``flat``: the DXF and sheet-label path. ``stock``: what a made part's mass and look come
@@ -55,6 +57,9 @@ LASER = register(FabMethod("laser", "Laser-cut", made=True, order=1, flat=True, 
 PRINTED = register(FabMethod("printed", "3D printed", made=True, order=0, stock="filament",
                              folder="print")).key
 PURCHASED = register(FabMethod("purchased", "Purchased", made=False, order=9)).key
+DISPLAY = register(FabMethod("display", "Display only", made=False, order=10)).key
+"""Drawn, never bought, cut or printed: a decanting cradle's bottle and decanter
+(:mod:`construction.cradle`): no mass, no BOM line, a glass material in the bake."""
 
 
 def get(key: str | None) -> FabMethod:

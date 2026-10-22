@@ -102,7 +102,8 @@ FILES = {"servo": ("servos.json", HOMING), "actuator": ("printer.cfg", HOMING)}
 
 
 def motors(config) -> str:
-    """What drives ``config``'s design: a key of :data:`WRITERS`."""
+    """What drives ``config``'s design: a key of :data:`WRITERS`, or ``""`` (a hand crank:
+    no files)."""
     from spiderpig.actuators.controllers import motors_of
 
     return motors_of(config)
@@ -116,4 +117,7 @@ def write(config, out: Path, side=None) -> list[Path]:
     out.mkdir(parents=True, exist_ok=True)
     for name in {f for fs in FILES.values() for f in fs}:   # no other design's files left
         (out / name).unlink(missing_ok=True)
-    return WRITERS[motors(config)](config, out, side)
+    drive = motors(config)
+    if not drive:                   # a hand crank (a decanting cradle): nothing to set up
+        return []
+    return WRITERS[drive](config, out, side)

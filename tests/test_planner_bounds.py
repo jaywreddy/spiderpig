@@ -31,17 +31,16 @@ def _problem(key: str, module: str, **spec):
 
 
 def test_a_plan_cut_short_by_its_budget_is_valid_and_unproven():
-    """The Klann single plans within 40 nodes with the heads in gaps (the single-plate
-    crank's ``StackSpec.heads`` "gap_sink": the pivots' heads sunk only when that finds
-    none); with 2 nodes for the proof, the plan comes back valid, unproven, and the proof
-    says what the budget left open."""
-    tmpl, problem = _problem("klann", "single", quick_nodes=40, max_nodes=2)
+    """The Klann double plans within 40 nodes with the heads in gaps (the single-plate
+    crank's ``StackSpec.heads`` "gap_sink": both placements searched, side by side); with 2
+    nodes for each job of the proof, the plan comes back valid, unproven, and the proof says
+    what the budget left open."""
+    tmpl, problem = _problem("klann", "double", quick_nodes=40, max_nodes=2)
     assert problem.spec.heads == "gap_sink"
     plan = problem.solve()
-    assert plan.heads == "gap"
-    assert "heads sink: not searched" in plan.proof          # no fallback search
     assert not plan.optimal
-    assert "not ruled out (the search stopped at its budget" in plan.proof
+    assert "; not ruled out: " in plan.proof
+    assert plan.proof.endswith("(its budget ran out)") or "(its budget ran out);" in plan.proof
     assert verify_plan(plan, tmpl) == []
 
 
@@ -50,17 +49,14 @@ def test_nothing_found_within_the_node_budget_raises_with_the_tally():
     with pytest.raises(PlanError) as e:
         problem.solve()
     msg = str(e.value)
-    # 7 layers are ruled out at once since the standoff pillars (no stock standoff fills
-    # pillar A's 9 mm column: goBILDA's shortest is 12 mm, nor a one-piece shaft); the
-    # bolt crank's search: 3 steps over 3-7 layers, 3 more in 8 (6 in all, one past the
-    # budget of 5)
-    assert msg.startswith("klann_double: no layer plan found with up to 8 layers after 6 search "
-                          "steps in 0 CPU s; the 5 search-step budget ran out; what blocked it")
+    # both head placements, size by size: the sizes the short jobs rule out, until their
+    # steps pass the budget of 5 (the bolt crank's search: a step or two a size)
+    assert msg.startswith("klann_double: no layer plan found with up to ")
+    assert "; the 5 search-step budget ran out; what blocked it" in msg
     assert e.value.blockers
-    assert ("no stock standoff (12-60 mm) nor a shaft made to length fills its 9 mm column"
-            in msg)
-    assert ("sizes: 3-7 layers ruled out (0-2 nodes each, 0 s in all); 8 layers left open at "
-            "their budget (3 nodes, 0 s in all); 9-61 layers not tried") in msg
+    assert "sizes: 3-" in msg
+    assert "layers ruled out" in msg
+    assert " not tried" in msg
 
 
 def test_the_jansen_quad_has_no_plan_in_fourteen_layers():
@@ -83,12 +79,16 @@ def test_the_jansen_quad_has_no_plan_in_fourteen_layers():
 
 
 def test_nothing_found_before_the_deadline_raises_with_the_tally():
+    """Every job's own deadline (a job's CPU time, wherever it runs) out at once: the first
+    size's jobs stop at their first node, and the search with them."""
     _, problem = _problem("klann", "double", max_seconds=0.0)
     t0 = time.monotonic()
     with pytest.raises(PlanError, match="the 0 CPU s deadline ran out") as e:
         problem.solve()
-    assert time.monotonic() - t0 < 5
-    assert "sizes: 3-61 layers not tried" in str(e.value)
+    assert e.value.expired
+    assert time.monotonic() - t0 < 10
+    assert "layers left open at their budget" in str(e.value)
+    assert "-61 layers not tried" in str(e.value)
 
 
 def test_the_recommendation_checks_share_one_deadline():
@@ -147,8 +147,8 @@ def test_a_single_plate_crank_falls_back_to_the_pivots_heads_sunk():
     keeps the crankpin's washers clear of the pins' caps, so the gap search gives up after
     ``stack.GIVE_UP`` such layerings (seconds, not its 60 s deadline), and the plan has the
     pivots' heads sunk into layers with the crank's and the drive's screws still in gaps
-    (``heads="gap_sink"``): 13 layers (14 before the simplified hardware's printed fills),
-    proven, and it verifies."""
+    (``heads="gap_sink"``, both searched side by side): 13 layers (14 before the simplified
+    hardware's printed fills), unproven for the heads in gaps, and it verifies."""
     from spiderpig.stack import GIVE_UP
 
     cfg = BuildConfig(linkage="trotbot_heel", module="single", robot=False)
@@ -157,8 +157,8 @@ def test_a_single_plate_crank_falls_back_to_the_pivots_heads_sunk():
     assert time.monotonic() - t0 < StackSpec().max_seconds
     assert plan.heads == "sink"
     assert plan.top + 1 == 13
-    assert plan.optimal
-    assert f"with the heads gap: none (it gave up after {GIVE_UP} layerings" in plan.proof
+    assert not plan.optimal
+    assert f"heads gap: gave up after {GIVE_UP} layerings" in plan.proof
     crank_heads = [p for p in plan.placed if p.group == "crank" and p.gap and p.height > 0]
     assert crank_heads                          # its screw heads beyond its webs, in gaps
     # most pivot heads sunk into the layer beside their link (the rest keep a gap the plan

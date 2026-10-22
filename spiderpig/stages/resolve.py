@@ -103,8 +103,9 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
         raise SpecErrors([SpecError("", str(e))]) from None
     resolved = _resolved(spec, config, module, sides)
     engine = engine_version()
+    warnings = _warnings(lk, config, sides) + _product_warnings(spec, config)
     design = Design(design_id(resolved, engine), spec, resolved, config, engine,
-                    _warnings(lk, config, sides), derived_from=derived_from, patch=patch)
+                    warnings, derived_from=derived_from, patch=patch)
     _attach_store(design, Store.of(store))
     return design
 
@@ -141,6 +142,20 @@ def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
     return warnings
 
 
+def _product_warnings(spec, config: BuildConfig) -> list[str]:
+    """A product's own defaults replace the walkers' (``config.PRODUCT_*``): a spec that
+    names a walker's default for one of them is told it was replaced (name another to
+    override it)."""
+    if not config.lk.product:
+        return []
+    asked = (("materials.sheet", spec.materials.sheet, config.sheet),
+             ("materials.frame_sheet", spec.materials.frame_sheet, config.frame_sheet),
+             ("constructions.pin", spec.constructions.pin, config.pin))
+    return [f"{path} {given} is the walkers' default: a {config.lk.product} uses {used} "
+            f"(its own; name another to override it)"
+            for path, given, used in asked if given and given != used]
+
+
 THICKNESS_TOLERANCE = 0.12     # a measured thickness this far from the sheet's nominal warns
 
 
@@ -160,8 +175,8 @@ def second_input_note(lk) -> str:
     the five-bar's ``t2``) gets told, at ``resolve`` and at the ``drive`` stage: it can be
     resolved, checked for its program and its output, and drawn, but not planned or built
     until the linkage declares that input's drive; which one-input mechanisms can."""
-    others = [k for k in linkage.available("mechanism")
-              if len(linkage.get(k).inputs) == 1]
+    others = [k for k in linkage.available("mechanism")       # a product's crank is a hand's
+              if len(linkage.get(k).inputs) == 1 and not linkage.get(k).product]
     free = undriven_inputs(lk)
     return (f"{lk.key} has {len(lk.inputs)} inputs ({', '.join(lk.inputs)}) and "
             f"{', '.join(free)} declare{'s' if len(free) == 1 else ''} no drive (the crank's "
@@ -329,9 +344,10 @@ def load(id: str, store: Store | str | Path | None = PROJECT) -> Design:
                     derived_from=rec.get("derived_from"), patch=rec.get("patch"),
                     created_at=rec.get("created_at") or "")
     if rec.get("engine_version") != engine:
+        plan = ("a product is re-planned" if config.lk.product else
+                "the stored plan is re-verified before use")
         design.warnings.append(f"recorded under engine {rec.get('engine_version')}, now "
-                               f"{engine}: the stored plan is re-verified before use, the other "
-                               "stages recomputed")
+                               f"{engine}: {plan}, the other stages recomputed")
     design.store = store
     return design
 

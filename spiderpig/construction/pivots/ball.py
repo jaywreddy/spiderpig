@@ -64,13 +64,12 @@ from spiderpig.construction.joints import ErrorTerms
 from spiderpig.construction.pivots.chicago import ChicagoAxle, _hw_tol, chicago_section
 from spiderpig.construction.pivots.common import (
     EPS,
-    SLEEVE_COLOR,
     STEEL,
     Column,
-    gap_washers,
+    build_sleeves,
+    column_slots,
     host_of,
     link_z,
-    ring_z,
     stem_of,
     xy_of,
 )
@@ -242,7 +241,7 @@ class BallAxle(ChicagoAxle):
 
     key: str = "ball"
     label: str = ("MR84ZZ ball bearings bonded into the links, on an M3 Chicago screw's 4 mm "
-                  "barrel; printed rings and head spacers; host link bonded (pins only)")
+                  "barrel; stock tubes and shims; host link bonded (pins only)")
     seat: BearingSeat = field(default_factory=lambda: BearingSeat("bearing_mr84zz", 0.05))
     cad_keys: ClassVar[tuple[str, ...]] = ("bearing_mr84zz",)
 
@@ -262,16 +261,15 @@ class BallAxle(ChicagoAxle):
         bearing's on the barrel."""
         out = Realized()
         col = Column.of(build, group)
-        xy, host, stem = xy_of(build, group), host_of(build, group), stem_of(group)
+        host, stem = host_of(build, group), stem_of(group)
         for k in col.between:
-            role, r = col.roles[k]
-            if role == "neck":
+            if col.roles[k][0] == "neck":
                 raise ConstructionError(f"{group.name}: a barrel can't neck down (layer {k})")
-            z0, z1 = ring_z(build, k)
-            out.bodies.append(hardware(f"{stem}_ring{k}", ring(xy, 2 * r, self.hole(), z0, z1),
-                                       host, fab="printed", color=SLEEVE_COLOR))
+        # its rings and gap rings as the Chicago pin's (the sleeve rule), stock tubes and
+        # shims once the axle group applies its ``spacers``
+        build_sleeves(build, group, column_slots(build, group, col, skip=self.sleeve_skip(col)),
+                      out, self.hole(), host, stem, shaft_d=self.shaft.d)
         f = self.shaft.realize(build, group, col, out)
-        gap_washers(build, group, col, out, self.shaft.d, host, stem)
         riders = [m for m in group.axis.members if m != host]
         self.seat.seat_bearings(build, group, out, riders, stem)
         out.notes["wobble"] = {group.name: column_wobble(

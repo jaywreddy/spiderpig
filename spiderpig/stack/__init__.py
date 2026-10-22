@@ -26,16 +26,22 @@ along a crankpin (or a detour point), where its webs go, whether it keeps
 its bottom bearing. It is a :class:`Router`: for any layering it finds the
 cheapest route whose pieces clear everything else in their layers.
 
-:meth:`StackProblem.solve` finds the thinnest stack, trying stack sizes from
-the smallest up. For each it searches link layers (the assembly tree from
-the crank outwards, fewest open layers first) with forward checking: every
-placed shape removes the layers it rules out for unplaced links. Every node
-asks the router for a route through what is placed so far; a dead end, a
-collision or a claim that can't be built is explained by the links whose
-layers caused it, the search jumps back to the latest of them and remembers
-the combination (a nogood). In the thinnest size it keeps searching for a
-cheaper route (branch and bound). :attr:`StackPlan.optimal` says whether the
-search ran to the end, :attr:`StackPlan.proof` how far it went.
+:meth:`StackProblem.solve` finds the lowest stack (:meth:`StackProblem.key`: its
+height in mm, then the crank route's cost, the stock parts' cost and the parts printed;
+a walker's objective "layers": the fewest layers, then the route; an arm's
+"layers_height": the fewest layers, then the lowest in them, then the axles' spans), as
+jobs of one stack
+size and one head placement each (:mod:`.drive`), here or in forked workers
+(:mod:`stack_pool`), with the same answer. A job searches link layers (the assembly
+tree from the crank outwards, fewest open layers first) with forward checking: every
+placed shape removes the layers it rules out for unplaced links. Every node asks the
+router for a route through what is placed so far; a dead end, a collision or a claim
+that can't be built is explained by the links whose layers caused it, the search jumps
+back to the latest of them and remembers the combination (a nogood); a node whose least
+height is over the best plan's is cut (branch and bound). The search's z is a bound of
+every plan its layering can become (:class:`Layout`): a claim refuses a layout only on
+a bound valid for every completion. :attr:`StackPlan.optimal` says whether every job
+the objective needs ran to the end, :attr:`StackPlan.proof` how far they went.
 :func:`verify_plan` re-checks a plan exhaustively on a fresh, denser sampling.
 
 
@@ -44,7 +50,8 @@ shapes, claims, :class:`Layout`), :mod:`.topology` (:class:`Topology`, static cl
 :class:`PlanError`, the :class:`Router` protocol), :mod:`.plan` (:class:`StackSpec`,
 :class:`StackPlan`), :mod:`.search` (:class:`StackProblem`), :mod:`.plan_z` (the plan's z,
 :func:`finalize`; not ``finalize.py``, which the function's re-export would shadow) and
-:mod:`.verify` (:func:`verify_plan`). Every name keeps its old import path here, for
+:mod:`.verify` (:func:`verify_plan`), and :mod:`.drive` (the jobs, 2026-10-14). Every name
+keeps its old import path here, for
 reading; a patch goes on the submodule that reads the name (``stack.plan.MAX_SECONDS``,
 ``stack.plan_z._make_all``).
 """
@@ -94,14 +101,17 @@ from spiderpig.stack.plan_z import (
     _sinkable,
     _thicker_gaps,
     _thicknesses,
+    bound_layout,
     bridges,
     finalize,
+    gap_most,
     heads_claims,
     plate_bridged,
     settle,
     sunk_key,
 )
 from spiderpig.stack.search import (
+    HEIGHT_TOL,
     StackProblem,
     _Budget,
     _Done,
@@ -142,6 +152,7 @@ __all__ = [
     "GAP_TRIES",
     "GIVE_UP",
     "HEADS_ORDER",
+    "HEIGHT_TOL",
     "MAX_SECONDS",
     "MEMO_MAKES",
     "SAMPLED_MAX",
@@ -191,8 +202,10 @@ __all__ = [
     "_thicker_gaps",
     "_thicknesses",
     "body_class",
+    "bound_layout",
     "bridges",
     "finalize",
+    "gap_most",
     "group_axes",
     "heads_claims",
     "is_crank",

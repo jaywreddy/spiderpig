@@ -150,7 +150,9 @@ class Output:
     tol_mm)``: over that crank range the output point stays within a band
     ``tol_mm`` wide about one straight line (a ``line`` must promise it);
     ``dwell = (tol_deg, crank_deg)``: a rotation stands still to ``±tol_deg``
-    for at least ``crank_deg`` of the turn.
+    for at least ``crank_deg`` of the turn; ``still = (point, tol_mm)``: that joint of the
+    output body stays within ``tol_mm`` of where it is at t = 0 over the whole turn (a
+    rotation about a remote centre: a decanting cradle's bottle mouth).
     """
 
     kind: str
@@ -160,6 +162,7 @@ class Output:
     body: str = ""
     straight: tuple[float, float, float] | None = None
     dwell: tuple[float, float] | None = None
+    still: tuple[str, float] | None = None
 
     def __post_init__(self):
         if (self.kind, bool(self.body)) not in (("point", True), ("body", False)):
@@ -224,6 +227,9 @@ class Linkage:
     labels: Mapping[str, str] = field(default_factory=dict)
     modules: Mapping[str, Module | LegList] = field(default_factory=dict)
     default_module: str = ""        # the module a design gets when none is asked for ("": quad)
+    # what a mechanism is built into ("": its one side; "cradle": a decanting cradle, two
+    # sides tied by the cradle, hand-cranked: construction.cradle)
+    product: str = ""
     family: str = ""
     source: str = ""
     notes: str = ""
@@ -246,9 +252,14 @@ class Linkage:
         if self.default_module and self.default_module not in self.modules_of:
             raise ValueError(f"{self.key}: default module {self.default_module!r} is not one of "
                              f"its modules {list(self.modules_of)}")
+        if self.product not in ("", "cradle") or (self.product and (self.feet or
+                                                                    not self.crank)):
+            raise ValueError(f"{self.key}: product is '' or 'cradle' (a cranked mechanism's), "
+                             f"got {self.product!r}")
         self._check_inputs(joints)
         o = self.output
-        if o is not None and not {o.point, *o.frame} <= set(self.links.get(o.link, ((),))[0]):
+        if o is not None and not {o.point, *o.frame, *(o.still[:1] if o.still else ())} <= set(
+            self.links.get(o.link, ((),))[0]):
             raise ValueError(f"{self.key}: output {o.name} and its frame {o.frame} must be joints "
                              f"of its link {o.link!r}")
 
@@ -549,7 +560,7 @@ class Linkage:
             key=key, name=name, params={**self.params, **params}, program=self.program,
             links=self.links, frame=self.frame, feet=self.feet, crank=self.crank,
             output=self.output, inputs=self.inputs, ranges=self.ranges, drives=self.drives,
-            angles=self.angles, labels=self.labels, modules=self.modules,
+            angles=self.angles, labels=self.labels, modules=self.modules, product=self.product,
             family=self.family or self.key, source=source or self.source, notes=notes,
         )
 

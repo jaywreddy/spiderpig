@@ -29,7 +29,10 @@ records. Each `Op` gives:
 - a tag that the robot's order can move;
 - a sentence;
 - whether the bodies are built on the bench first (`sub`: drawn alone, then put on in the
-  next step).
+  next step);
+- more sentences (`lines`), each its own item in the step (a list, not a paragraph);
+- a `Scene` for a picture in a pose of its own: a decanting cradle's use steps and its
+  trip apart and back (the crank angle, laid on a side, pieces moved; see §3).
 
 Each hook reads a `SideView`: the side's bodies by bare name, their z in side coordinates,
 host, fab, catalog key, the plan's layers and `slot`. `slot` gives the layer a part goes on
@@ -146,6 +149,13 @@ The renderer is numpy plus Pillow, with no GPU and no display:
 - A piece of a body (a Chicago pin's barrel) is drawn from its triangles inside the
   piece's z interval.
 
+**Posed pictures** (`spiderpig/guide/scenes.py`, a decanting cradle's: design review round
+2 of 2026-10-14). A step whose op has a `Scene` is drawn from the guide's one fabrication
+with each body moved: its planar motion to the scene's crank angle (its anchor's joints
+fitted as the bake fits them), the whole laid on a side (the riser's blocks moved under the
+outer plate), then each piece's shift; the renderer's rows carry a 4 x 4 each
+(`render.items_of`). A scene's highlights that aren't the step's new parts get no tags.
+
 **Label tags.** `render` reports where each new part shows. Once the labels are known,
 `bubbles` puts one tag per type on a leader: a rounded box as wide as its label. Each tag
 takes the free spot, at three distances round the part, that overlaps no other tag nor
@@ -176,7 +186,8 @@ on every run.
 
 The pages, in order:
 
-- the cover;
+- the cover (the shop supplies and, for a design that lists them, its tools: a cradle's
+  `construction.cradle.TOOLS`, also at the top of `ASSEMBLY.md`);
 - the parts, 24 to a page;
 - the prints, 26 rows to a page, with a total;
 - the bag labels, 24 to a page;

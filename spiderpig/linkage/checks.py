@@ -201,6 +201,7 @@ class OutputCheck:
     rotation_deg: float | None = None
     swing_deg: float | None = None
     dwell_deg: float | None = None
+    wander_mm: float | None = None
     broken: str | None = None
 
     def describe(self) -> str:
@@ -221,6 +222,9 @@ class OutputCheck:
         if self.dwell_deg is not None:
             assert o.dwell is not None  # the dwell is measured only when promised
             out.append(f"stands still (±{o.dwell[0]:g}°) for {self.dwell_deg:.1f}° of the turn")
+        if self.wander_mm is not None:
+            assert o.still is not None  # the wander is measured only when promised
+            out.append(f"its point {o.still[0]} wanders {self.wander_mm:.3g} mm")
         if self.broken:
             out.append(f"BROKEN: {self.broken}")
         return f"{self.key}: " + ", ".join(out)
@@ -284,6 +288,13 @@ def check_output(key: str, values: tuple[float, ...], n: int = 720) -> OutputChe
             if dwell < need:
                 broken.append(f"output {o.name} stands still (±{tol:g}°) for only {dwell:.1f}° of "
                               f"the turn, less than the {need:g}° it promises")
+    if o.still:
+        name, tol = o.still
+        q = pts[name]
+        got["wander_mm"] = wander = float(np.linalg.norm(q - q[0], axis=-1).max())
+        if wander > tol:
+            broken.append(f"output {o.name}'s point {name} wanders {wander:.3g} mm over the "
+                          f"cycle, more than the {tol:g} mm it promises to stand still")
     return OutputCheck(key, o, **got, broken="; ".join(broken) or None)
 
 

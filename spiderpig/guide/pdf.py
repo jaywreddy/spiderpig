@@ -145,6 +145,14 @@ def _cover(doc: Doc, images: _Images) -> Page:
                 for line in _wrap(f"• {s}", REG, 9.5, col - M):
                     _text(c, M, y, line, REG, 9.5, GREY)
                     y -= 12.5
+        if doc.tools:           # the tools the steps name (a cradle's: design review round 2)
+            y -= 10
+            _text(c, M, y, "Tools", BOLD, 11)
+            y -= 16
+            for s in doc.tools:
+                for line in _wrap(f"• {s}", REG, 9.5, col - M):
+                    _text(c, M, y, line, REG, 9.5, GREY)
+                    y -= 12.5
         images.draw(c, doc.cover, col + 10, FOOT + 10, W - M - col - 10, H - 2 * M - FOOT)
     return draw
 

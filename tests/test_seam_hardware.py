@@ -15,7 +15,7 @@ from build123d import Box, Cylinder, Location
 from spiderpig import manufacture, materials
 from spiderpig.construction.crank import BoltCrank
 from spiderpig.hardware import bom
-from spiderpig.hardware.catalog import get
+from spiderpig.hardware.catalog import finish, get
 from spiderpig.mechanism import Body
 
 pytestmark = pytest.mark.no_fabricate
@@ -72,7 +72,8 @@ def test_a_role_no_stock_sheet_passes_is_an_error():
 
 def test_the_aluminium_sheets_come_thinnest_first():
     keys = materials.aluminium_sheets("6061")
-    assert keys == ["al6061_1p6mm", "al6061_2mm", "al6061_2p5mm", "al6061_3p2mm"]
+    assert keys == ["al6061_1p6mm", "al6061_2mm", "al6061_2p5mm", "al6061_3p2mm",
+                    "al6061_4p8mm", "al6061_6p35mm"]   # the last two a decanting cradle's
     ts = [materials.sheet(k).thickness for k in materials.aluminium_sheets("")]
     assert ts == sorted(ts)
 
@@ -82,7 +83,7 @@ def test_the_thinnest_sheet_doesnt_depend_on_the_catalog_being_loaded_first():
             "print(materials.thinnest_sheet('frame'), len(materials.role_report('frame')))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                          timeout=60)
-    assert out.stdout.split() == ["al5052_2mm", "6"], out.stderr[-500:]
+    assert out.stdout.split() == ["al5052_2mm", "8"], out.stderr[-500:]
 
 
 def test_a_gap_on_a_pin_is_one_ptfe_washer_then_shims_thickest_first():
@@ -116,6 +117,21 @@ def test_the_m3_and_m4_families_stack_in_whole_mm_and_half_steps():
     assert bom.stack_steps("shim_din988_3x6") == (1.0, 0.5)
     assert bom.stack_steps("shim_din988_4x8") == (1.0, 0.5)
     assert bom.stack_steps("shim_din988_6x12") == (0.1, 0.2, 0.3, 0.5, 1.0)
+
+
+def test_a_bought_parts_finish_is_the_first_its_name_or_offer_names():
+    """The surface the viewer draws a bought part with (``catalog.finish``, the bake's node
+    extras): the first of ``FINISHES`` its name names, else its offer's note; none for plain
+    steel or an unknown key."""
+    assert finish("rod6061ha_516_305") == "hard_anodized"       # not bare 6061
+    assert finish("rod6061_12p7_m6_68.2") == "aluminium"
+    assert finish("spring_plunger_half13") == "black_oxide"     # (its 440C ball's stainless after)
+    assert finish("hairpin_cotter_2x50") == "zinc"              # its offer's note
+    assert finish("m3_bhcs_6") == "stainless"                   # its offer's note: 18-8
+    assert finish("m6_carriage_25") == "zinc"
+    assert finish("nrv050_output_shaft_25") is None
+    assert finish(None) is None
+    assert finish("no_such_part") is None
 
 
 def test_each_shim_thickness_is_its_own_catalog_item():
@@ -174,6 +190,49 @@ def test_the_crank_s_dog_boned_hex_pocket_passes_the_corner_rule():
     assert issues == []
 
 
+def _keyway(t: float, slot: float):
+    """A 25.25 mm bore with a key's slot out of it (the cradle's crank plate's), as a
+    cutter: the slot 5.6 mm long from 11.2 mm out, ``slot`` wide."""
+    bore = Cylinder(25.25 / 2, 3 * t).moved(Location((30, 30, t / 2)))
+    return bore + Box(5.6, slot, 3 * t).moved(Location((30 + 14.0, 30, t / 2)))
+
+
+def test_a_cradle_s_keyway_corners_are_seen_corner_by_corner():
+    """A keyway's square end on its round bore: read by its arcs the bore's 12.6 mm passes
+    it; read corner by corner (a decanting cradle's, ``kerf_corners``) its two sharp inside
+    corners are seen against the laser's published radius (about its kerf, 0.3 mm), a
+    warning. Its mouth on the bore (corners of the part pointing in) isn't one."""
+    t = 3.175
+    plate = _body(_plate(60, 60, t, pockets=[_keyway(t, 7.75)]), sheet="al6061_3p2mm")
+    assert not [i for i in manufacture.part_issues(plate, "al6061_3p2mm")
+                if i["rule"] == "corner"]
+    (c,) = [i for i in manufacture.part_issues(plate, "al6061_3p2mm", kerf_corners=True)
+            if i["rule"] == "corner"]
+    assert (c["level"], c["value"], c["limit"]) == ("warning", 0.0, 0.3)
+    assert "2 inside corners sharp" in c["detail"]
+    wires = sorted(manufacture._profile(plate).wires(), key=lambda w: w.length)
+    pocket = wires[0]                                   # (the outline the longer)
+    assert sorted(manufacture.inside_corners(pocket)) == pytest.approx([0.0, 0.0, 12.625])
+
+
+def test_corner_by_corner_a_hex_is_six_corners_and_a_dog_bone_none():
+    """Corner by corner: a hex pocket's six sharp corners (the clutch's seat ring's, on a
+    printed hex whose corners the nozzle rounds: a warning, harmless); the walker's
+    dog-boned hex pocket has only its reliefs' 0.8 mm arcs, over the 0.3 mm."""
+    from build123d import RegularPolygon, extrude
+
+    t = 2.54
+    hexagon = extrude(RegularPolygon(10.0, 6), 3 * t).moved(Location((15, 15, -t)))
+    plate = _body(_plate(30, 30, t, pockets=[hexagon]))
+    (c,) = [i for i in manufacture.part_issues(plate, "al6061_2p5mm", kerf_corners=True)
+            if i["rule"] == "corner"]
+    assert "6 inside corners sharp" in c["detail"]
+    cut = BoltCrank().for_sheet("al6061_2p5mm").hex_cut((15.0, 15.0), -t, 2 * t, 0.0)
+    dog = _body(_plate(30, 30, t, pockets=[cut]))
+    assert not [i for i in manufacture.part_issues(dog, "al6061_2p5mm", kerf_corners=True)
+                if i["rule"] == "corner"]
+
+
 def test_a_hole_under_the_minimum_is_an_error_in_metal_and_a_warning_in_acrylic():
     """SendCutSend won't cut a hole under the thickness in metal (the part comes back
     without it); Ponoko's 1 mm minimum in acrylic is a warning."""
@@ -222,6 +281,41 @@ def test_the_check_counts_the_rules_and_errors_over_every_laser_part():
     assert not s["ok"]
     assert s["messages"][0].startswith("manufacture: 1 part(s) break the minimum hole rule; "
                                        "worst bad (al6061_2p5mm)")
+
+
+def test_a_part_under_the_deburring_minimum_arrives_as_cut():
+    """SendCutSend deburrs a part only from 0.995 x 3 in (its quoting app's limit, 2026-10-20;
+    its spec tables say "1 x 3 in"): a 24 mm
+    link on a cradle's 0.187 in 5052 is a warning (deburr it by hand), a 26 mm one passes,
+    and a walker's sheet doesn't carry the rule (its audit is the identity gate's)."""
+    t = 4.75
+    narrow = _body(_plate(120, 24, t, [(12, 12, 8.2), (108, 12, 8.2)]), sheet="al5052_4p8mm")
+    (d,) = [i for i in manufacture.part_issues(narrow, "al5052_4p8mm") if i["rule"] == "deburr"]
+    assert (d["level"], d["value"], d["limit"]) == ("warning", [24.0, 120.0], [25.27, 76.2])
+    assert "arrives as cut" in d["fix"]
+    wide = _body(_plate(120, 26, t, [(13, 13, 8.2)]), sheet="al5052_4p8mm")
+    assert not [i for i in manufacture.part_issues(wide, "al5052_4p8mm")
+                if i["rule"] == "deburr"]
+    walker = _body(_plate(120, 24, 2.54, [(12, 12, 3.0)]))
+    assert not [i for i in manufacture.part_issues(walker, "al6061_2p5mm")
+                if i["rule"] == "deburr"]
+    assert manufacture.blank_of(narrow) == pytest.approx((24.0, 120.0), abs=1e-6)
+
+
+def test_the_thick_sheets_take_their_own_smallest_part():
+    """The spec tables' smallest part per thickness (2026-10-15): 0.50 x 0.75 in in 0.187
+    and 0.250 in 5052, 0.50 x 0.50 in in 7075 0.190 in; the thin sheets keep 0.25 x 0.375
+    in; every SendCutSend sheet carries its published thickness tolerance."""
+    assert materials.sheet("al5052_4p8mm").min_part == pytest.approx((12.7, 19.05))
+    assert materials.sheet("al5052_6p35mm").min_part == pytest.approx((12.7, 19.05))
+    assert materials.sheet("al7075_4p8mm").min_part == pytest.approx((12.7, 12.7))
+    assert materials.sheet("al5052_2mm").min_part == (0.25 * 25.4, 0.375 * 25.4)
+    assert get("al5052_6p35mm").dims["thickness_tol"] == (0.686, 0.686)
+    assert get("al7075_4p8mm").dims["thickness_tol"] == (0.178, 0.178)
+    assert get("birch_9mm").dims["thickness_tol"] == (0.406, 0.61)
+    small = _body(_plate(18, 12, 4.75), sheet="al5052_4p8mm")
+    (m,) = [i for i in manufacture.part_issues(small, "al5052_4p8mm") if i["rule"] == "min_part"]
+    assert m["limit"] == pytest.approx([12.7, 19.05])
 
 
 # -- the catalog's on-demand families ----------------------------------------------------------

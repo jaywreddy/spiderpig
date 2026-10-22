@@ -343,6 +343,12 @@ def strength_lines(st: dict) -> list[str]:
                 f"| {w.get('load_n', '-')} | {w.get('safety', '-')} "
                 f"| {j.get('load_n', '-')} | {j.get('safety', '-')} |")
             continue
+        if "what" in r:         # a row the loads rated (a cradle's columns, frame plates)
+            lines.append(
+                f"| {r['joint']} | - | {(j or w).get('governs') or r['kind']} | - "
+                f"| {r['what']} | {w.get('load_n', '-')} | {w.get('safety', '-')} "
+                f"| {j.get('load_n', '-')} | {j.get('safety', '-')} |")
+            continue
         lines.append(f"| {r['joint']} | {', '.join(r['links'])} | {r['case']} "
                      f"| {r['span_mm']:g} | {r['section']} | {w.get('load_n', '-')} "
                      f"| {w.get('safety', '-')} | {j.get('load_n', '-')} "
