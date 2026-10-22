@@ -6,6 +6,7 @@ per bay."""
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import numpy as np
 import pytest
@@ -19,6 +20,12 @@ from spiderpig.hardware.catalog import get
 from spiderpig.hardware.crank_catalog import gobilda_1501
 
 PITCH = 3.0
+
+
+def _head(screw: tuple[str, float, float, float] | None) -> tuple[str, float]:
+    """An end screw's (key, length)."""
+    assert screw is not None
+    return screw[:2]
 
 
 def test_registered_as_a_pillar_only():
@@ -44,6 +51,7 @@ def test_a_short_column_no_stock_length_fills():
     assert s.segment(33.0) is None
     assert s._spliceable({11}, 12, PITCH, 0, None)            # e.g. 12 + 18 at layer 5
     one = s.column_axle({11}, 12, PITCH)
+    assert one is not None
     assert (one.stock, one.size) == ("shaft", "M3")
     # every layer a link: nowhere to have spliced it, so the short column stays refused
     every = set(range(1, 12))
@@ -69,9 +77,9 @@ def test_end_screws():
     thread up to the end's depth (half the shortest standoff, 6 mm): an M4 x 8 through the
     0.080 in frame plate, an M4 x 6 straight into a cantilever's free end; the shaft's M3."""
     s = StandoffAxle()
-    assert s.end_screw(2.032)[:2] == ("m4_bhcs_8", 8)
-    assert s.end_screw(PITCH, plate=False)[:2] == ("m4_bhcs_6", 6)
-    assert s.one_piece().end_screw(2.032)[:2] == ("m3_bhcs_8", 8)
+    assert _head(s.end_screw(2.032)) == ("m4_bhcs_8", 8)
+    assert _head(s.end_screw(PITCH, plate=False)) == ("m4_bhcs_6", 6)
+    assert _head(s.one_piece().end_screw(2.032)) == ("m3_bhcs_8", 8)
     assert s.end_screw(30.0) is None                    # no stock screw grips 30 mm
 
 
@@ -90,9 +98,10 @@ def test_a_long_column_is_one_shaft_made_to_its_length():
     (a splice is a joint mid-span: at the plan's own z the Strider's hand-tight splices
     opened at jam SF 0.5-1.4) but one 6 mm round steel standoff tapped M3 both ends, made to
     its length (MISUMI NETRF6: 0.1 mm steps)."""
-    s = AXLES["standoff"]
+    s = cast(StandoffAxle, AXLES["standoff"])
     links = {2, 5, 9, 14, 20, 21, 25, 30}
     one = s.column_axle(links, 34, PITCH)                      # 99 mm
+    assert one is not None
     assert (one.stock, one.size) == ("shaft", "M3")
     length = one.segment(99.0, True)
     assert length is not None
@@ -105,9 +114,13 @@ def test_a_long_column_is_one_shaft_made_to_its_length():
     steel, alu = one.section(), s.section()
     assert steel.z_bend * steel.yield_mpa == pytest.approx(alu.z_bend * alu.yield_mpa, rel=0.05)
     # a column one stock length fills stays a goBILDA standoff
-    assert s.column_axle({3, 5}, 17, PITCH).stock == ""
+    short = s.column_axle({3, 5}, 17, PITCH)
+    assert short is not None
+    assert short.stock == ""
     # even every layer a link: one shaft, nothing to splice
-    assert s.column_axle(set(range(1, 34)), 34, PITCH).stock == "shaft"
+    every = s.column_axle(set(range(1, 34)), 34, PITCH)
+    assert every is not None
+    assert every.stock == "shaft"
 
 
 def test_pins_are_refused(design):

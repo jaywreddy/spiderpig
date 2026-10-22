@@ -382,6 +382,9 @@ class _Drive:
             if any(r["best"] is not None for r in rs.values()):
                 found = top
                 break
+            if spec.escalate and not all(r["done"] for r in rs.values()) and self._full(top):
+                found = top
+                break
             if top >= spec.max_top or stop(rs):
                 break
             if all(r["done"] for r in rs.values()):
@@ -413,7 +416,31 @@ class _Drive:
                 return top
             if stop(rs):
                 break
+        return self._fallback()
+
+    def _fallback(self) -> int | None:
+        """No short job found a plan: the thinnest sizes they left open get a full job each
+        (``max_nodes``, stopping at its first plan), :data:`WAVE` of them at most, every head
+        placement side by side, as the planner before 2026-10-14 gave its open sizes (the
+        plain palletizer's 16 layers take some 20000 nodes, its short jobs 3000 each:
+        2026-10-21). ``None``: none plans."""
+        opened = sorted({t for m in self.modes for t, r in self.tried[m].items()
+                         if r["best"] is None and not r["done"]})
+        for top in opened[:WAVE]:
+            if self._full(top):
+                return top
         return None
+
+    def _full(self, top: int) -> bool:
+        """A full job (``max_nodes``, stopping at its first plan) at stack size ``top`` for
+        every head placement still searched, side by side: whether one plans
+        (``StackSpec.escalate``, :meth:`_fallback`)."""
+        modes = [m for m in self.modes if m not in self.gave_up]
+        jobs = {m: Job(m, top, self.spec.max_nodes, None, True) for m in modes}
+        for job in jobs.values():
+            self.runner.submit(job, front=True)
+        rs = {m: self._take(m, top, self.runner.result(job)) for m, job in jobs.items()}
+        return any(r["best"] is not None for r in rs.values())
 
     # -- the answer -------------------------------------------------------------------
 

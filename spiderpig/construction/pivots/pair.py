@@ -302,17 +302,20 @@ def _terms(seat: PairSeat, preload: Preload, base: ErrorTerms, key: str) -> Erro
 
 
 def hub_layers(riders: list[int], occupied: set[int], lo: int, hi: int,
-               room: dict[int, float], spacer: float) -> dict[int, int]:
+               room: dict[int, float], spacer: float,
+               thick: set[int] | frozenset[int] = frozenset()) -> dict[int, int]:
     """Each rider's layer -> the layer beside it its hub takes: one not ``occupied`` (the
     axle's links, a drive's hub), strictly between ``lo`` and ``hi`` (a spacer layer of the
-    column), with ``spacer`` of ``room`` (no link passing closer), one hub a layer; the
-    lower side first (on a line, that greedy matching is the largest). :class:`Unbuildable`
-    names the first rider with none: the planner's rule (:meth:`BallPairAxle.column`)."""
+    column), with ``spacer`` of ``room`` (no link passing closer), not ``thick`` (a layer a
+    thicker link makes taller than the pitch: the hub, a ring a pitch tall, would stand off
+    its link's face, :meth:`PairSeat.hubs`), one hub a layer; the lower side first (on a
+    line, that greedy matching is the largest). :class:`Unbuildable` names the first rider
+    with none: the planner's rule (:meth:`BallPairAxle.column`)."""
     taken: dict[int, int] = {}
     used: set[int] = set()
     for k in sorted(riders):
         for kn in (k - 1, k + 1):
-            if (lo < kn < hi and kn not in occupied and kn not in used
+            if (lo < kn < hi and kn not in occupied and kn not in used and kn not in thick
                     and room.get(kn, math.inf) + EPS >= spacer):
                 taken[k] = kn
                 used.add(kn)
@@ -367,8 +370,24 @@ def _hubless(seat: PairSeat, ctx: Context) -> frozenset[str]:
     return frozenset(m for m in ctx.topo.links if seat.pair(ctx.sheet_t("link", m)))
 
 
-def _inside_layers(hubless: frozenset[str], layout) -> set[int]:
-    """The layers of ``hubless`` links placed so far."""
+def _thick_layers(layout) -> set[int]:
+    """The layers ``layout`` makes thicker than its pitch (a thick link there; a search's
+    layout: at the least, so in every plan of it). No hub's ring fills one
+    (:func:`hub_layers`; 2026-10-21: the lowest-stack planner's arm put b3, 5.4 mm, in the
+    layer pin E's hub needed beside b4, and the hub, a 3 mm ring, fell away)."""
+    if layout is None:
+        return set()
+    return {k for k in range(1, layout.top) if layout.t(k) > layout.pitch + EPS}
+
+
+def _inside_layers(hubless: frozenset[str], layout, member_links=None) -> set[int]:
+    """The layers of the column's own ``hubless`` links (``member_links``: its members by
+    layer, as :meth:`construction.axle.AxleGroup.claims` passes them), else of every
+    ``hubless`` link placed so far. (By layer alone, another axle's thick link sharing a
+    rider's layer passed for the rider: the arm's b2 beside b4 in layer 9, b4's hub then
+    never asked for, 2026-10-21.)"""
+    if member_links is not None:
+        return {k for k, m in member_links.items() if m in hubless}
     placed = getattr(layout, "layers", {}) or {}
     return {placed[m] for m in hubless if m in placed}
 
@@ -482,28 +501,29 @@ class BallPairAxle(BallAxle):
         return _dims(self.seat, super().dims(ctx, pillar), ctx)
 
     def column(self, pillar: bool, links, top: int, anchored, pitch: float, layout=None,
-               air=None, hi=None, *, members=None, room=None, spacer=0.0) -> None:
+               air=None, hi=None, *, members=None, room=None, spacer=0.0,
+               member_links=None) -> None:
         """The ground pin's rule (its length), and a hub's layer beside every rider (all but
         the bonded host, the lowest): :func:`hub_layers`."""
         super().column(pillar, links, top, anchored, pitch, layout, air, hi=hi)
         if pillar or not members:
             return
         ms = sorted(members)
-        inside = _inside_layers(self.hubless, layout)
+        inside = _inside_layers(self.hubless, layout, member_links)
         hub_layers([k for k in ms[1:] if k not in inside], set(links), ms[0], ms[-1],
-                   room or {}, spacer)
+                   room or {}, spacer, _thick_layers(layout))
 
     def lands(self, pillar: bool, links, top: int, anchored, *, members=None, layout=None,
-              room=None, spacer=0.0) -> dict[int, float]:
+              room=None, spacer=0.0, member_links=None) -> dict[int, float]:
         """The planner's clearance gaps for the inner-ring lands (:func:`land_gaps`): between
         every two neighbouring members, the host included, or a hub and the next member
         (the hubs :meth:`column` placed)."""
         if pillar or not members:
             return {}
         ms = sorted(members)
-        inside = _inside_layers(self.hubless, layout)
+        inside = _inside_layers(self.hubless, layout, member_links)
         hubs = hub_layers([k for k in ms[1:] if k not in inside], set(links), ms[0], ms[-1],
-                          room or {}, spacer)
+                          room or {}, spacer, _thick_layers(layout))
         return land_gaps([*((k, k) for k in ms), *((kn, k) for k, kn in hubs.items())],
                          float(get(PIN_LAND).dims["t"]))
 
@@ -567,25 +587,26 @@ class BallPairPillar(BallPillar):
         return replace(self, hubless=_hubless(self.seat, ctx))
 
     def column(self, pillar: bool, links, top: int, anchored, pitch: float, layout=None,
-               air=None, hi=None, *, members=None, room=None, spacer=0.0) -> None:
+               air=None, hi=None, *, members=None, room=None, spacer=0.0,
+               member_links=None) -> None:
         """The standoff's rule, and a hub's layer beside every link on it that seats one
         bearing, between the frame plates: :func:`hub_layers`."""
         super().column(pillar, links, top, anchored, pitch, layout, air, hi=hi)
         if members:
-            inside = _inside_layers(self.hubless, layout)
+            inside = _inside_layers(self.hubless, layout, member_links)
             hub_layers([k for k in sorted(members) if k not in inside], set(links), 0, top,
-                       room or {}, spacer)
+                       room or {}, spacer, _thick_layers(layout))
 
     def lands(self, pillar: bool, links, top: int, anchored, *, members=None, layout=None,
-              room=None, spacer=0.0) -> dict[int, float]:
+              room=None, spacer=0.0, member_links=None) -> dict[int, float]:
         """As the pin's (:func:`land_gaps`): between neighbouring links and hubs, and a link
         and the frame plate it's next to."""
         if not members:
             return {}
         ms = sorted(members)
-        inside = _inside_layers(self.hubless, layout)
+        inside = _inside_layers(self.hubless, layout, member_links)
         hubs = hub_layers([k for k in ms if k not in inside], set(links), 0, top,
-                          room or {}, spacer)
+                          room or {}, spacer, _thick_layers(layout))
         plates = [(k, -1 - k) for k, on in ((0, anchored[0]), (top, anchored[1])) if on]
         return land_gaps([*((k, k) for k in ms), *((kn, k) for k, kn in hubs.items()),
                           *plates], float(get(PILLAR_LAND).dims["t"]))

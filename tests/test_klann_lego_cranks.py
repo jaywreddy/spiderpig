@@ -7,6 +7,8 @@ hole, under 1 x t), ``dwell_rocker`` on the defaults."""
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from spiderpig import manufacture, servos
@@ -18,6 +20,7 @@ from spiderpig.config import (
     default_crank_sheet,
 )
 from spiderpig.construction.base import Context
+from spiderpig.construction.crank import BoltCrank
 from spiderpig.construction.plates import RIDER_BOSS_T, rider_bosses
 from spiderpig.linkage import build_module_template, get
 from spiderpig.stack import topology_from_template
@@ -76,7 +79,7 @@ def test_a_metal_rider_grows_round_the_resolved_cranks_bore(crank):
     ctx = _ctx(cfg)
     from spiderpig import construction
 
-    c = construction.CRANKS[crank].resolve(ctx)
+    c = cast(BoltCrank, construction.CRANKS[crank]).resolve(ctx)
     hole = cfg.params.hole(c.rider_d())
     at, r = rider_bosses(ctx)["b1"]
     assert at == "M"
@@ -120,11 +123,13 @@ def test_klann_lego_sets_a_lower_servo_torque_limit():
     assert torque_limit_nm(kl) == pytest.approx(0.60) == LINKAGE_TORQUE_LIMITS["klann_lego"]
     assert torque_limit_nm(BuildConfig()) == pytest.approx(0.85)
     assert torque_limit_nm(BuildConfig(linkage="klann", module="quad")) == pytest.approx(0.85)
-    note = torque_limit_note(kl)
+    note, default = torque_limit_note(kl), torque_limit_note(BuildConfig())
+    assert note is not None
+    assert default is not None
     assert "0.6 N·m" in note
     assert "31 %" in note
     assert "LINKAGE_TORQUE_LIMITS" in note
-    assert "LINKAGE_TORQUE_LIMITS" not in torque_limit_note(BuildConfig())
+    assert "LINKAGE_TORQUE_LIMITS" not in default
 
 
 def _klann_lego_quad_side():

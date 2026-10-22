@@ -113,7 +113,7 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
         # else the pivots' heads sunk with the crank's in gaps (stack.HEADS_ORDER)
         heads = "gap_sink"
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin, heads=heads,
-                     objective=plan_objective(config.lk),
+                     objective=plan_objective(config.lk), escalate=config.lk.ranged,
                      adjacent=adjacent_pins(groups, config), **plate_z(ctx))
     if deadline is not None:
         spec = replace(spec, max_seconds=min(spec.max_seconds, deadline.remaining))

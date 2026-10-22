@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import itertools
 import math
+from collections.abc import Sequence
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -19,6 +21,7 @@ from spiderpig.config import BuildConfig, ParamError, design_from_query, is_crad
 from spiderpig.construction import cradle as cr
 from spiderpig.construction.handcrank import HandCrank
 from spiderpig.linkages.decanters import TIES
+from spiderpig.shapes import Cut
 from tests import cache
 from tests.tiers import quick
 
@@ -32,6 +35,7 @@ HEIGHT = {"decanter_hinge": 70.0, "decanter_rcm": 85.0}         # a side's stack
 def _tilt(key: str, ts) -> np.ndarray:
     lk = linkage.get(key)
     pts = lk.solve().evaluate(ts)
+    assert lk.output is not None
     o, ax = lk.output.frame
     d = pts[ax] - pts[o]
     return np.degrees(np.unwrap(np.arctan2(d[:, 1], d[:, 0])))
@@ -44,6 +48,7 @@ def test_the_mouth_stands_still_while_the_bottle_tips(key):
     assert lk.product == "cradle"
     assert lk.kind == "mechanism"
     got = lk.assert_output()
+    assert got is not None
     assert got.wander_mm is not None
     assert got.wander_mm < 1e-6
     tilt = _tilt(key, np.linspace(0, 2 * math.pi, 1441))
@@ -64,6 +69,8 @@ def test_the_ties_ride_the_cradle_about_the_mouth(key):
     lk = linkage.get(key)
     ts = np.linspace(0, 2 * math.pi, 73)
     pts = lk.solve().evaluate(ts)
+    assert lk.output is not None
+    assert lk.output.still is not None
     lip = pts[lk.output.still[0]]
     a = np.radians(_tilt(key, ts))
     for name, (cx, cy) in TIES.items():
@@ -90,6 +97,8 @@ def test_a_still_point_is_a_promise(monkeypatch):
     corner = moved("x_still", ("X", 1e-6))
     monkeypatch.setitem(engine.REGISTRY, corner.key, corner)
     c = corner.output_check()
+    assert c.wander_mm is not None
+    assert c.broken is not None
     assert c.wander_mm > 50.0
     assert "X" in c.broken
     with pytest.raises(ValueError, match="must be joints"):
@@ -246,7 +255,9 @@ def test_a_cradles_cutting_estimate_is_the_same_grouped_or_not():
     for key, fit in CRADLE_CUT_FITS.items():
         grouped = cut_estimate(key, [a._replace(qty=2), b._replace(qty=3), c], fit)
         assert cut_estimate(key, [a, b, c, a, b, b], fit) == grouped
-        assert cut_estimate(key, [(0.0, 1)], fit) > 0
+        least = cut_estimate(key, [(0.0, 1)], fit)
+        assert least is not None
+        assert least > 0
         assert fit.factor(1) == 1.0
         assert fit.factor(2) < 1.0
         assert fit.factor(3) <= fit.factor(2)
@@ -267,7 +278,10 @@ def test_a_cradles_cutting_fit_charges_the_deburring_and_caps_the_blank():
     wide = narrow._replace(short_mm=25.3)
     bare = 2 * round(fit.one(wide) * fit.factor(2), 2)
     assert cut_estimate(key, [wide], fit) == pytest.approx(bare + 2 * 1.47, abs=0.02)
-    assert cut_estimate(key, [narrow], fit) < cut_estimate(key, [wide], fit) - 2.8
+    as_cut, deburred = cut_estimate(key, [narrow], fit), cut_estimate(key, [wide], fit)
+    assert as_cut is not None
+    assert deburred is not None
+    assert as_cut < deburred - 2.8
     big = CutPart(1300.0, 2, 3560.0, 16, 576.0, 476.8)
     assert fit.blank_cap < 576.0 * 476.8 / 100.0
     turned = big._replace(long_mm=566.0, short_mm=463.7)
@@ -319,6 +333,7 @@ def test_a_cradles_cutting_fit_holds_to_the_live_quotes():
     totals: dict[str, list[float]] = {}
     for cradle, key, part, q, area, cut, n, long_, short, usd in QUOTED:
         got = cut_estimate(key, [CutPart(area, q, cut, n, long_, short)], CRADLE_CUT_FITS[key])
+        assert got is not None
         assert got == pytest.approx(usd, rel=0.11), (cradle, part)
         t = totals.setdefault(cradle, [0.0, 0.0])
         t[0] += usd
@@ -426,7 +441,7 @@ def test_a_cradle_pin_is_a_6061_rod_pin_made_to_its_stack():
     got = pin.realize(build, Realized())
     assert set(got.cuts) == set(pin.axis.members)
     for m in pin.axis.members:
-        assert [x.d for x in got.cuts[m]] == [pytest.approx(ROD38.hole())]
+        assert [cast(Cut, x).d for x in got.cuts[m]] == [pytest.approx(ROD38.hole())]
     assert [x.key for x in got.extras] == [LOCK]        # no epoxy; threadlocker 222
     note = got.notes["rod_pin"][pin.name]
     shaft = pin.construction.shaft
@@ -434,9 +449,12 @@ def test_a_cradle_pin_is_a_6061_rod_pin_made_to_its_stack():
     assert note["length_mm"] == pytest.approx(note["stack_mm"] + note["play_mm"])
     (body,) = [b for b in got.bodies if b.name.endswith("_pin")]
     assert body.bom_key == note["item"] == "rod6061ha_38_305"
-    assert get(body.bom_key).offer.vendor
+    offer = get(cast(str, body.bom_key)).offer
+    assert offer is not None
+    assert offer.vendor
     ends = [b for b in got.bodies if "_screw_" in b.name or "_washer_" in b.name]
-    assert sorted(b.bom_key for b in ends) == sorted([END_SCREW[2]] * 2 + [END_WASHER] * 2)
+    assert sorted(cast(str, b.bom_key) for b in ends) == sorted([END_SCREW[2]] * 2
+                                                                + [END_WASHER] * 2)
     section = got.notes["wobble"][pin.name]["section"]
     assert section["yield_mpa"] == 241.3
     assert section["z_bend_mm3"] == pytest.approx(math.pi * (3 / 8 * 25.4) ** 3 / 32,
@@ -483,7 +501,7 @@ def test_a_clevis_pin_takes_up_its_stack_and_its_clip_a_gap():
 
     from spiderpig.config import PRODUCT_PIN_JOINTS
     from spiderpig.construction import ConstructionError
-    from spiderpig.construction.pivots.clevis import CLEVIS8
+    from spiderpig.construction.pivots.clevis import CLEVIS8, ClevisPinShaft
     from spiderpig.construction.pivots.rod_pin import CLIP_STEP, RODCLIP516
     from spiderpig.hardware.catalog import get
     from spiderpig.stack import GAP_MAX
@@ -499,7 +517,7 @@ def test_a_clevis_pin_takes_up_its_stack_and_its_clip_a_gap():
     assert rod.outer(13.1) == pytest.approx(13.5 - 13.1 + rod.item()["head_h"])
     assert rod.section().yield_mpa == 241.3
     assert rod.key(13.5) == "rod6061ha_516_305"
-    shaft = CLEVIS8.shaft
+    shaft = cast(ClevisPinShaft, CLEVIS8.shaft)
     f = shaft.take_up(11.2)
     assert (f.length, f.shims_lo) == (15.0, pytest.approx(3.5))
     assert shaft.min_play - 1e-9 <= f.play < shaft.min_play + 0.1
@@ -515,8 +533,11 @@ def test_a_clevis_pin_takes_up_its_stack_and_its_clip_a_gap():
     assert sec.yield_mpa == 205.0
     assert sec.z_bend == pytest.approx(math.pi * 8 ** 3 / 32)
     pin, clip = get("clevis_pin8_15"), get("hairpin_cotter_2x50")
-    assert (pin.offer.sku, pin.offer.price_usd, pin.offer.verified) == ("90378A701", 5.47, True)
-    assert (clip.offer.sku, clip.offer.pack_qty, clip.offer.verified) == ("98350A131", 5, True)
+    po, co = pin.offer, clip.offer
+    assert po is not None
+    assert co is not None
+    assert (po.sku, po.price_usd, po.verified) == ("90378A701", 5.47, True)
+    assert (co.sku, co.pack_qty, co.verified) == ("98350A131", 5, True)
     assert pin.dims["hole_d"] <= clip.dims["wire"] + 0.01
 
 
@@ -564,7 +585,7 @@ def test_bs_x_and_y_are_clip_pins_its_clips_over_the_cradle_link():
         assert keys[f"{stem}_clip"] == "hairpin_cotter_2x50"
         assert [x.key for x in got.extras] == [LOCK]
         for m in g.axis.members:
-            assert [x.d for x in got.cuts[m]] == [pytest.approx(8.2)]
+            assert [cast(Cut, x).d for x in got.cuts[m]] == [pytest.approx(8.2)]
         note = got.notes["rod_clip_pin"][g.name]
         assert note["spacer_mm"] + note["stack_mm"] + note["play_mm"] == pytest.approx(
             note["usable_mm"])
@@ -605,7 +626,7 @@ def test_a_quick_release_pins_gap_ring_is_its_keeper():
     assert vol(gap) < 1e-6
     lk = linkage.get("decanter_rcm")
 
-    def side(*names):
+    def side(*names) -> Any:            # a Mechanism's stand-in
         return SimpleNamespace(bodies=[SimpleNamespace(name=n) for n in names])
 
     got = cr.keeper_names(side("pin_X_pin", "pin_X_clip", "pin_X_gap14_spacer",
@@ -1182,7 +1203,9 @@ def test_b_packs_at_a_mark_inside_its_clear_range():
     lay it on its drive side before the clips come out and the passive panel lifts off; the
     way back sets the links by the paint marks and snugs the passive side last."""
     lk = linkage.get("decanter_rcm")
-    t, tilt, turns = cr.pack_pose(lk)
+    pose = cr.pack_pose(lk)
+    assert pose is not None
+    t, tilt, turns = pose
     assert -44.0 < tilt < -20.0
     assert 5.0 < abs(turns) < 6.5
     pts = lk.solve().evaluate(np.array([t]))
@@ -1271,7 +1294,10 @@ def test_a_cradles_bom_says_what_its_total_leaves_out():
                CutRow("SendCutSend", "birch_9mm", "Baltic birch 9 mm", 1, 3000.0, None)]
     ranges = cut_ranges(cutting, made, proxies)
     base = cut_estimate("al5052_4p8mm", [(40.0, 2)], CRADLE_CUT_FITS["al5052_4p8mm"])
-    assert ranges["al7075_4p8mm"][:2] == pytest.approx((base, 2 * base), abs=0.02)
+    r7075 = ranges["al7075_4p8mm"]
+    assert r7075 is not None
+    assert base is not None
+    assert r7075[:2] == pytest.approx((base, 2 * base), abs=0.02)
     assert ranges["birch_9mm"] is None
     bom = Bom([], made, cutting=cutting, cut_source=CRADLE_CUT_SOURCE, cut_ranges=ranges)
     md = bom.markdown()
@@ -1295,23 +1321,26 @@ def test_the_cradles_angle_free_parts_are_memoized_by_all_that_shapes_them(monke
     exact key (a shape) is built afresh."""
     from build123d import Location
 
+    def partner(a: Any, b: Any) -> bool:      # one B-rep (OCCT's IsPartner)
+        return a.wrapped.IsPartner(b.wrapped)
+
     foot = cr._tpu_foot(10.0, 20.0, 30.0)
     again = cr._tpu_foot(10.0, 20.0, 30.0)
     assert again is not foot
-    assert again.wrapped.IsPartner(foot.wrapped)
+    assert partner(again, foot)
     c = foot.center()
     again.move(Location((5.0, 0.0, 0.0)))
     assert cr._tpu_foot(10.0, 20.0, 30.0).center() == c
     assert foot.center() == c
     monkeypatch.setattr(cr, "FOOT_BORE", cr.FOOT_BORE + 2.0)
     wider = cr._tpu_foot(10.0, 20.0, 30.0)
-    assert not wider.wrapped.IsPartner(foot.wrapped)
+    assert not partner(wider, foot)
     assert wider.volume < foot.volume - 1.0
     monkeypatch.undo()              # (a store too: built afresh, as it was)
     back = cr._tpu_foot(10.0, 20.0, 30.0)
-    assert not back.wrapped.IsPartner(wider.wrapped)
+    assert not partner(back, wider)
     assert back.volume == pytest.approx(foot.volume, rel=1e-12)
-    assert cr._tpu_foot(10.0, 20.0, 30.0).wrapped.IsPartner(back.wrapped)
+    assert partner(cr._tpu_foot(10.0, 20.0, 30.0), back)
     assert cr._exact(-0.0) != cr._exact(0.0)
     assert cr._exact(np.float64(1.5)) == cr._exact(1.5)
     assert cr._exact({"a": 1, "b": 2}) != cr._exact({"b": 2, "a": 1})     # (in order)
@@ -1447,10 +1476,10 @@ def test_the_cradle_passes_the_cut_rules(key):
 def _dxf_box_areas(path, degs) -> list[float]:
     """A DXF's every entity flattened to points, its bounding box's area (mm^2) turned by
     each of ``degs``."""
-    import ezdxf
     from ezdxf import path as dxf_path
+    from ezdxf.filemanagement import readfile
 
-    pts = np.array([(v.x, v.y) for e in ezdxf.readfile(str(path)).modelspace()
+    pts = np.array([(v.x, v.y) for e in readfile(str(path)).modelspace()
                     for v in dxf_path.make_path(e).flattening(0.01)])
     out = []
     for d in degs:
@@ -1634,7 +1663,7 @@ def test_a_crank_block_plate_has_no_cusp_at_its_neck():
 
     t = 3.175
     hc = HandCrank(NRV050)
-    ctx = type("C", (), {"sheet_t": staticmethod(lambda role: t)})()
+    ctx = cast(Any, type("C", (), {"sheet_t": staticmethod(lambda role: t)})())
     hub, web, throw = hc.hub_r(ctx), hc.web_r(ctx), 105.0
     part = plates.arm_plate(hub, web, throw, (0.0, 0.0), (0.0, throw), 0.0, t, ())
     breaks, _ = _outline_turns(part)
@@ -2233,6 +2262,7 @@ def test_the_cradle_has_an_assembly_order(key):
         # lowered onto its cradle link, the cradle lying on its drive side
         (lay,) = [s for s in steps if s.title == "Laid on its drive side"]
         assert steps.index(saddles) < steps.index(lay) < steps.index(passive)
+        assert clips is not None
         assert steps.index(inner) < steps.index(clips)
         assert clips.stage == JOIN
         assert clips.scene is not None
@@ -2493,7 +2523,7 @@ def test_a_side_frame_holds_its_posts_only_as_its_plates_do():
     xy = {"A": np.array([0.0, 0.0]), "B": np.array([100.0, 0.0]),
           "F1": np.array([0.0, -100.0]), "F2": np.array([100.0, -100.0])}
 
-    def run(t: float, w: float, d) -> dict:
+    def run(t: float, w: float, d) -> tuple[dict, dict]:
         outer = [(("A", "B"), w), (("A", "F1"), w), (("B", "F2"), w)]
         plates = SidePlates(xy, outer, [(("A", "B"), w)], t, ("F1", "F2"))
         side = [Post("A", xy["A"], ei, [(0, 1.0, L / 2)]), Post("B", xy["B"], ei, [])]
@@ -2635,6 +2665,8 @@ def test_the_geometric_stiffness_buckles_a_column_at_euler():
     one = side_frame_solve(side, 60.0, vecs, plates, axial=axial, second_order=False)
     axial2 = {"outer": {k: 2 * v for k, v in axial["outer"].items()}}
     two = side_frame_solve(side, 60.0, vecs, plates, axial=axial2, second_order=False)
+    assert one.buckling is not None
+    assert two.buckling is not None
     assert 1.0 < float(one.buckling[0]) < math.inf
     assert float(two.buckling[0]) == pytest.approx(float(one.buckling[0]) / 2, rel=1e-6)
 
@@ -3196,7 +3228,8 @@ def _item(key: str, role: str, boxes, mass: float = 1.0, pre=None):
     vols = [vp.mesh_volume(*m) for m in meshes]
     vol = sum(v for v, _ in vols)
     com = sum(v * c for v, c in vols) / vol
-    return vp.Item(key, key, role, meshes, mass, com, vol, np.eye(3) if pre is None else pre)
+    return vp.Item(key, key, role, meshes, mass, cast(np.ndarray, com), vol,
+                   np.eye(3) if pre is None else pre)
 
 
 def _placed(items, layout):
@@ -3354,7 +3387,8 @@ def test_a_piece_drops_into_an_open_frame():
     assert np.allclose(vp.ROTATIONS[blk.shape.ri] @ [1, 0, 0], [0, -1, 0])
     assert "frame" in blk.rest.on
     assert vp.Plan.from_json(plan.to_json()) == plan
-    turn = tuple(tuple(float(v) for v in row) for row in vp.ROTATIONS[7])
+    turn = cast("tuple[tuple[float, float, float], ...]",
+                tuple(tuple(float(v) for v in row) for row in vp.ROTATIONS[7]))
     plan = vp.Plan("turned", (vp.Step("block", rot=turn),))
     layout, _ = vp.pack(items, plan)
     assert layout.by_key()["block"].shape.ri == 7
@@ -3520,7 +3554,8 @@ def test_the_metrics_measure_pads_and_free_travel():
         vols = [vp.mesh_volume(*m) for m in ms]
         vol = sum(v for v, _ in vols)
         com = sum(v * c for v, c in vols) / vol
-        return vp.Packed(key, key, ms, mass, com, vol, [f"{key}{i}" for i in range(len(ms))])
+        return vp.Packed(key, key, ms, mass, cast(np.ndarray, com), vol,
+                         [f"{key}{i}" for i in range(len(ms))])
 
     low = slab("low", [((0, 0, 0), (300, 10, 300))], 3.0)
     up = slab("up", [((0, 47.3, 0), (300, 52.3, 300)), ((0, 13, 0), (20, 47.3, 20))])
@@ -3875,7 +3910,7 @@ def test_tape_holds_nothing_up_and_a_far_lid_gets_a_corrugated_column():
     assert by["block"]["slide_mm"] > vp.CELL
 
 
-def _box_of(sp, g) -> tuple[slice, slice, slice]:
+def _box_of(sp, g) -> tuple[slice, ...]:
     """A spacer's cells' place on its grid ``g`` (its ``vox`` there)."""
     v = sp.vox()
     lo = np.rint((v.org - g.lo) / g.cell).astype(int)
@@ -4012,13 +4047,16 @@ def test_the_carton_fits_the_pack_and_is_rated_for_it():
     from spiderpig.hardware import shipping as sh
 
     got = sh.carton_for((735.0, 300.0, 590.0), 17.3)
+    assert got is not None
     assert got["carton"].item == "S-12613"
     assert got["cut_to_in"] is None
     assert got["postage"]["usd"][5] == pytest.approx(165.70)
     assert got["postage"]["dim_lb"] == 73
     got = sh.carton_for((735.0, 350.0, 590.0), 17.3)
+    assert got is not None
     assert (got["carton"].item, got["cut_to_in"]) == ("S-4509", 14)
     got = sh.carton_for((690.0, 250.0, 597.0), 15.0)
+    assert got is not None
     assert got["carton"].item == "S-13330"
     assert sh.carton_for((800.0, 300.0, 590.0), 17.3) is None       # (longer than 30 in)
     lines = sh.ship_lines("B", {"box": {"inside_mm": [735.0, 300.0, 590.0]}}, 17.3)
@@ -4040,7 +4078,9 @@ def test_the_carton_fits_the_pack_and_is_rated_for_it():
                and "one flat sheet" in ln for ln in tall)
     assert any("1.5 in of foam" in ln and "128 in of length and girth" in ln
                and "NOT FOR A CARRIER" in ln for ln in tall)
-    assert sh.carrier_option((30.5, 24.5, 14.75), 0.25)["foam_in"] == 1.5
+    carrier = sh.carrier_option((30.5, 24.5, 14.75), 0.25)
+    assert carrier is not None
+    assert carrier["foam_in"] == 1.5
     # A in S-12613 (67 mm over its top: review 3's M5): layers to the lid
     a_lines = sh.ship_lines("A", {"box": {"inside_mm": [690.0, 241.6, 597.0]},
                                   "packed_mm": [684.0, 235.6, 591.0]}, 17.1)
@@ -4098,7 +4138,7 @@ def test_a_split_keeps_each_pieces_orientation():
     assert cp.level(bar) == pytest.approx(-25.0)
     assert cp.level(both) != pytest.approx(cp.level(bar))       # (the post turns it)
     assert np.allclose(whole["tie_T1"].pre, vp.rot_about("z", cp.level(both)))
-    splits = {"post": ["tie_T1_screw*"]}
+    splits: dict[str, Sequence[str]] = {"post": ["tie_T1_screw*"]}
     _, _, items, _ = cp.pack_items(inp, splits)
     by = {it.key: it for it in items}
     assert by["tie_T1"].parts == ["tie_T1"]
@@ -4270,7 +4310,9 @@ def test_the_riser_rule_gives_each_listed_vessel_its_stack():
     most = riser_for(drawn, rows)
     assert most is not None
     assert most >= cr.DECANTER_RISER
-    assert riser_stack(most)[0] == cr.DECANTER_RISER
+    stack = riser_stack(most)
+    assert stack is not None
+    assert stack[0] == cr.DECANTER_RISER
     rim = cr.DECANTER_RISER + cr.DECANTER_PROFILE[-1][0]
     assert ref["lowest"]["part"] == "led_clip"
     assert ref["lowest"]["mm"] - rim >= cr.RISER_CLEAR[0]
@@ -4485,8 +4527,9 @@ def test_the_cradle_packs_in_one_box(key):
         for n in m["parts"]:
             mat = np.array(m.get("part_matrix", {}).get(n, m["matrix"]), float)
             assert np.allclose(mat[:3, :3] @ mat[:3, :3].T, np.eye(3), atol=1e-5)
-            sh = moved(stub if n == STUB else shipped[n].placed_part(),
-                       Pose(mat).to_location())
+            part = stub if n == STUB else shipped[n].placed_part()
+            assert part is not None
+            sh = moved(part, Pose(mat).to_location())
             bb = sh.bounding_box()
             assert (np.array([bb.min.X, bb.min.Y, bb.min.Z]) >= lo - 0.05).all(), (n, lo)
             assert (np.array([bb.max.X, bb.max.Y, bb.max.Z]) <= hi + 0.05).all(), (n, hi)
@@ -4541,7 +4584,9 @@ def test_the_cradle_packs_in_one_box(key):
     if key in PACK_BOX:
         assert all(out <= PACK_BOX[key]), p["box"]
     else:                               # modules: the bound follows the base board
-        board = shipped["base_plate"].placed_part().bounding_box()
+        plate = shipped["base_plate"].placed_part()
+        assert plate is not None
+        board = plate.bounding_box()
         over, tall, plane, length, litres = MODULE_BOX
         assert out[0] <= max(board.size.X, length) + over, (p["box"], board.size)
         assert out[1] <= tall, p["box"]
@@ -4643,7 +4688,12 @@ def test_the_cradle_packs_in_one_box(key):
     studs = {n for n in shipped if n.startswith("foot_bracket")
              and n.endswith(("_screw0", "_nut0", "_knob0", "_nut2"))}
     assert len(studs) == 16
-    side = {n: re.fullmatch(r"foot_bracket_[A-Za-z0-9]+([LR])_\w+", n).group(1) for n in studs}
+    def side_of(n: str) -> str:
+        m = re.fullmatch(r"foot_bracket_[A-Za-z0-9]+([LR])_\w+", n)
+        assert m is not None, n
+        return m.group(1)
+
+    side = {n: side_of(n) for n in studs}
     assert {n for n in studs if side[n] == "R"} <= passive
     assert {n for n in studs if side[n] == "L"} <= drive
     assert back.index("Lower the cradle box onto it") < back.index("paint marks")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import pytest
 
@@ -21,6 +22,7 @@ from spiderpig.construction.robot import FrameTies
 from spiderpig.hardware import fasteners
 from spiderpig.hardware.catalog import CATALOG, _load, get
 from spiderpig.servos.model import UNKNOWN_HOLE_DEPTH
+from spiderpig.shapes import Cut
 from tests.tiers import quick
 
 TS = (1.0, 4.38)
@@ -174,7 +176,7 @@ def test_frame_ties_only_touch_the_inner_plate(design):
     build = Build(d.ctx, d.plan, tmpl.freeze_at(1.0))
     deck = spigot_points(build, d.drive)
     assert len(deck) == 2                                    # the deck fits the Strider
-    holes = sorted(c.d for c in got.cuts[FRAME_INNER])
+    holes = sorted(cast(Cut, c).d for c in got.cuts[FRAME_INNER])
     assert len(holes) == 4 + len(deck)
     assert holes.count(RAIL_HOLE) == len(deck) + 4           # the rails' and the 4 M3 ties'
     heads = {s.label for s in d.plan.shapes("drive")}
@@ -362,6 +364,7 @@ def test_the_sts3215_keeps_both_rear_screws():
         rel = ch._relief_volumes(spec, frames, half)
         slots = ch._port_slots(spec, frames, half)
         rs = ch.rear_screws(spec, n, t, 2 if key == "al5052_1p6mm" else 1)
+        assert rs is not None
         kept[key] = [(h.x, h.y) for h in ch._clear_holes(rs, frames, rel, half, t, slots,
                                                         sheet(key).min_hole)]
         if key == "al5052_1p6mm":
@@ -375,6 +378,7 @@ def test_the_sts3215_keeps_both_rear_screws():
     assert (pad.x1, pad.y1, pad.grow) == (29.7, 9.2, 0.2)
     rect = next(r for _, r, _ in ch._relief_volumes(spec, frames, 4.0) if r[1] > 29)
     assert ch._cut_distance((32.75, 10.25), rect) - 1.2 == pytest.approx(1.617, abs=1e-3)
+    assert spec.bus_ports is not None
     window = ch.PortCut(spec.bus_ports.slot()[0])
     assert ch._cut_distance((8.3, 10.25), window) - 1.2 == pytest.approx(2.165, abs=1e-3)
 

@@ -162,6 +162,7 @@ class AxleGroup(Group):
         def make(L: Layout):
             ms = sorted(L.layers[m] for m in members)
             mset = set(ms)
+            at = {L.layers[m]: m for m in members}      # its links by layer
             nested = nested_of(L)
             own: dict[int, float] = {}
             for m in members:
@@ -226,13 +227,13 @@ class AxleGroup(Group):
                 # hubs, construction.pivots.pair)
                 column(self.pillar, sorted(mset | nested), L.top, (down, up), L.pitch,
                        layout=L, air=air, hi=stack_hi, members=ms, room=dict(free),
-                       spacer=d.spacer)
+                       spacer=d.spacer, member_links=at)
             lands = getattr(self.construction, "lands", None)    # a construction's own
             # clearance gaps inside its column (a ball pair's inner-ring lands between two
             # neighbours: construction.pivots.pair.land_gaps), as layer -> height
             land_h = ({} if lands is None else
                       lands(self.pillar, sorted(mset | nested), L.top, (down, up), members=ms,
-                            layout=L, room=dict(free), spacer=d.spacer))
+                            layout=L, room=dict(free), spacer=d.spacer, member_links=at))
             k0 = 0 if down else lo              # the retained stack: outer anchor or lowest link
             k1 = L.top if up else hi            # ... to inner anchor or highest link
             out = [Placed(k, Disc(ax, seat), g, f"{g} axle", seat=True) for k in ms]

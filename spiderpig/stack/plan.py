@@ -79,6 +79,9 @@ class StackSpec:
     prove: bool = True
     quick_first: bool = True
     symmetry: bool = False
+    # a size its short jobs leave open gets a full job (``max_nodes``) before the search
+    # moves on (an arm's: its plan is hard to find rather than far thicker, :mod:`drive`)
+    escalate: bool = False
     # z of the plan (:meth:`StackProblem.plan`): the frame plates' thickness (``None``: the
     # pitch), each link's sheet thickness (a link not named: the pitch; a layer is as thick
     # as the thickest plate in it), and the thicknesses a clearance gap may have (the thin
