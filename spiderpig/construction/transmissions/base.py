@@ -501,6 +501,10 @@ class JointDrive(Group):
                            g, f"{g} motor") for i in range(body_layers)]
             out += [Placed(k, Disc(b, SCREW_HOLE / 2), g, f"{g} bolt", seat=True)
                     for b in bolts]
+            # ... and through the clearance gap between the link and its hub where the plan
+            # puts one (2026-10-21: the lowest-stack planner's palletizer has gaps there)
+            out += [Placed(min(k, near), Disc(b, SCREW_HOLE / 2), g, f"{g} bolt", gap=True)
+                    for b in bolts]
             if nuts:            # heads on the hub's far face; nuts and tips past the link
                 out += [Placed(far + s, Disc(b, sk.head_d / 2), g, f"{g} bolt head")
                         for b in bolts]
