@@ -472,12 +472,13 @@ table to lose it); with an identity difference too, `compare` exits 4 (order dif
 `tests/test_gate_audits.py` runs the eight audits (a known failure a strict `xfail`).
 
 **Current baseline** (the decanting cradles merged onto the platform, 2026-10-21):
-`~/.cache/spiderpig/gate/merge-4f26b63/`, from which DESIGNS.md is generated; compare against
-it: `mise run gate -- compare ~/.cache/spiderpig/gate/merge-4f26b63`. Its walkers and arms
-are the platform's (`platform-814096d`, below) planned by the cradle branch's planner of
-2026-10-14 (the lowest stack, both head placements searched: DECISIONS.md 2026-10-14 and
-2026-10-21; every such diff's source in `PLANNER-gate-diffs.md`), the cradles the cradle
-branch's.
+`~/.cache/spiderpig/gate/merge-b52b88c/`, from which DESIGNS.md is generated; compare against
+it: `mise run gate -- compare ~/.cache/spiderpig/gate/merge-b52b88c`. Its walkers and
+mechanisms are the platform's (`platform-814096d`, below) planned by the cradle branch's
+planner of 2026-10-14: each plan the cradle branch's (`planner-f667d6b`) layer for layer,
+the parts master's on it (every such diff's source in `PLANNER-gate-diffs.md`); its two
+arms planned anew by that planner (other layerings, their hubs and drives' rules made whole
+on the way: DECISIONS.md 2026-10-21); the cradles the cradle branch's.
 
 **The cradle branch's baseline before the merge** (`planner-f667d6b`, 2026-10-14: the
 planner's lowest stack merged with the cradles' design review round 1): its walkers differ
