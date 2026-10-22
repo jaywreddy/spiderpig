@@ -268,7 +268,7 @@ class BallAxle(ChicagoAxle):
         # its rings and gap rings as the Chicago pin's (the sleeve rule), stock tubes and
         # shims once the axle group applies its ``spacers``
         build_sleeves(build, group, column_slots(build, group, col, skip=self.sleeve_skip(col)),
-                      out, self.hole(), host, stem)
+                      out, self.hole(), host, stem, shaft_d=self.shaft.d)
         f = self.shaft.realize(build, group, col, out)
         riders = [m for m in group.axis.members if m != host]
         self.seat.seat_bearings(build, group, out, riders, stem)

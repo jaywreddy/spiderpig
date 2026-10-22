@@ -642,7 +642,7 @@ class ChicagoAxle:
             if col.roles[k][0] == "neck":
                 raise ConstructionError(f"{group.name}: a barrel can't neck down (layer {k})")
         build_sleeves(build, group, column_slots(build, group, col, skip=self.sleeve_skip(col)),
-                      out, self.hole(), host, stem)
+                      out, self.hole(), host, stem, shaft_d=self.shaft.d)
         f = self.shaft.realize(build, group, col, out)
         bonded = self.shaft.bonded
         for m in group.axis.members:

@@ -779,7 +779,8 @@ class StandoffAxle:
         slots = [replace(sl, z0=max(sl.z0, z0), z1=min(sl.z1, z1)) for sl in
                  column_slots(build, group, col, fill=fill, trim=trim)
                  if sl.z0 < z1 - EPS and sl.z1 > z0 + EPS]
-        long += build_sleeves(build, group, slots, out, self.od + self.ring_fit, host, stem)[0]
+        long += build_sleeves(build, group, slots, out, self.od + self.ring_fit, host, stem,
+                              shaft_d=self.od)[0]
         bore = max(2.0, self.screw_d / 2)       # (its tapped ends, drawn through)
         seg = disc(xy, self.od / 2 - 0.01, z0, z1) - disc(xy, bore, z0 - 1, z1 + 1)
         out.bodies.append(hardware(f"{stem}_standoff{a}", seg, host, fab="purchased",

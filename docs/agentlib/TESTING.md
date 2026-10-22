@@ -59,8 +59,9 @@ chunk of its own. Pack turn 4, the same day: the fourth ran out at 4 minutes wit
 test last, 130 s on its own: that one is a chunk of its own too.)
 
 The clash test is one test per crank angle and the verify test one per cradle (each under
-5 min, the checks as before). The identity gate likewise: `compare DIR --designs
-strider_quad`, then the other five.
+5 min, the checks as before). The identity gate likewise: `snapshot DIR --designs
+strider_quad`, then the other seven a few at a time (`palletizer_turret` alone), then `diff
+BASELINE DIR`.
 
 A scratch script that fabricates a cradle: `SPIDERPIG_OCCT_THREADS=2` (B's first
 fabrication 29 s at 1.4 cores, against 28 s at 1.7 on 3 and 33 s on 1; a second one in the
@@ -471,8 +472,8 @@ table to lose it); with an identity difference too, `compare` exits 4 (order dif
 `tests/test_gate_audits.py` runs the eight audits (a known failure a strict `xfail`).
 
 **Current baseline** (the decanting cradles merged onto the platform, 2026-10-21):
-`~/.cache/spiderpig/gate/MERGEBASELINE/`, from which DESIGNS.md is generated; compare against
-it: `mise run gate -- compare ~/.cache/spiderpig/gate/MERGEBASELINE`. Its walkers and arms
+`~/.cache/spiderpig/gate/merge-4f26b63/`, from which DESIGNS.md is generated; compare against
+it: `mise run gate -- compare ~/.cache/spiderpig/gate/merge-4f26b63`. Its walkers and arms
 are the platform's (`platform-814096d`, below) planned by the cradle branch's planner of
 2026-10-14 (the lowest stack, both head placements searched: DECISIONS.md 2026-10-14 and
 2026-10-21; every such diff's source in `PLANNER-gate-diffs.md`), the cradles the cradle

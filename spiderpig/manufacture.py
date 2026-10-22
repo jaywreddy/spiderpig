@@ -267,11 +267,13 @@ def _corner_issue(body, sh, pockets, kerf_corners: bool) -> dict | None:
     return None
 
 
-def part_issues(body, key: str, sketch=None, kerf_corners: bool = False) -> list[dict]:
+def part_issues(body, key: str, sketch=None, kerf_corners: bool = False,
+                deburr: bool = True) -> list[dict]:
     """The rules ``body`` breaks on sheet ``key``: ``{"rule", "part", "value", "limit",
     "detail"}`` each (empty: none). ``sketch``: its section when the caller has it.
     ``kerf_corners``: the ``corner`` rule corner by corner on the laser's published radius
-    (a decanting cradle's: :func:`check`)."""
+    (a decanting cradle's: :func:`check`). ``deburr``: the ``deburr`` rule where the sheet
+    carries it (:func:`check`: a decanting cradle's only)."""
     sh = sheet(key)
     out: list[dict] = []
     if sketch is None:
@@ -301,7 +303,7 @@ def part_issues(body, key: str, sketch=None, kerf_corners: bool = False) -> list
                            f"({lo:g} x {hi:g} mm in {sh.material})",
                     "fix": "print it, or grow it (or merge it with a neighbour) past the "
                            "service's smallest part"})
-    if (rough := deburr_issue(body, key, sketch)) is not None:
+    if deburr and (rough := deburr_issue(body, key, sketch)) is not None:
         out.append(rough)
     holes, pockets = [], []
     for wire in wires:
@@ -381,8 +383,10 @@ def check(mech, default: str, dxf: bool = True) -> dict:
     the smallest hole or part, the DXF farthest off). ``dxf``: also read each part's
     emitted contours back against its solid (:func:`layout.fidelity`, the ``dxf`` rule).
     A decanting cradle (``mech.meta["cradle_linkage"]``) has its inside corners read corner
-    by corner (``kerf_corners``: :func:`part_issues`); a walker's audit, the identity gate's
-    baseline, keeps the arcs-only reading."""
+    by corner (``kerf_corners``: :func:`part_issues`) and its parts held to the deburring
+    minimum (``deburr``); a walker's or an arm's audit, the identity gate's baseline, keeps
+    the arcs-only reading and no deburring rule (the arm's 1/8 in 5052 b4 shares a cradle's
+    sheet, :data:`hardware.sheet_catalog.DEBURR_CHECKED`)."""
     from spiderpig.layout import sheet_kerf
 
     kerf_corners = bool((getattr(mech, "meta", None) or {}).get("cradle_linkage"))
@@ -400,7 +404,7 @@ def check(mech, default: str, dxf: bool = True) -> dict:
             sketch = _profile(b)
         except Exception:   # noqa: BLE001 - a part that won't section: nothing to check here
             continue
-        found = part_issues(b, key, sketch, kerf_corners)
+        found = part_issues(b, key, sketch, kerf_corners, deburr=kerf_corners)
         if dxf:
             fid = fidelity(sketch)
             fids[b.name] = {k: (rounded(v, 5) if isinstance(v, float) else v)

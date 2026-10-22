@@ -245,23 +245,45 @@ def column_slots(build: Build, group: AxleGroup, col: Column, *,
     return out
 
 
+def stock_spaced(build: Build, group: AxleGroup) -> bool:
+    """Whether ``group``'s printed spacers become stock once it is built (its construction's
+    ``spacers``, :meth:`construction.axle.AxleGroup.realize`: a walker's, an arm's; never a
+    product's, whose rings fill their layers, :func:`construction.axle.full_rings`)."""
+    return (getattr(group.construction, "spacers", None) is not None
+            and not full_rings(build.ctx))
+
+
 def build_sleeves(build: Build, group: AxleGroup, slots: Sequence[Slot], out: Realized,
-                  bore: float, host: str, stem: str) -> tuple[float, dict[str, str]]:
+                  bore: float, host: str, stem: str, shaft_d: float | None = None
+                  ) -> tuple[float, dict[str, str]]:
     """The printed sleeves of ``slots`` (:func:`sleeve_runs`), bored ``bore`` mm, into
     ``out``: each named after its lowest slot (``{stem}_ring{k}``, ``{stem}_gap{k}_spacer``);
     one under :data:`PRINT_MIN` tall is left as play. Returns (the play left, mm; each
-    slot's sleeve by the slot's name)."""
+    slot's sleeve by the slot's name). A column whose spacers become stock
+    (:func:`stock_spaced`) keeps one piece a slot, a ring a layer and a washer a gap (a
+    ``shaft_d`` shaft's: :func:`materials.washer_od`, bored 0.3 mm over it), as printed
+    before the sleeve rule: :func:`stock_tubes` takes those in its spans whole, and a
+    bearing pair's hub a whole ring's layer (:meth:`pivots.pair.PairSeat.hubs`)."""
+    from spiderpig.materials import washer_od
+
     xy = xy_of(build, group)
     play = 0.0
     of: dict[str, str] = {}
-    for piece in sleeve_runs(slots):
+    each = stock_spaced(build, group)
+    pieces = ([[(s, s.r)] for s in sorted(slots, key=lambda s: (s.z0, s.z1))] if each
+              else sleeve_runs(slots))
+    for piece in pieces:
         z0, z1 = piece[0][0].z0, piece[-1][0].z1
         if z1 - z0 < PRINT_MIN - 1e-6:
             play += z1 - z0
             continue
         name = f"{stem}_{piece[0][0].name}"
-        part = union([ring(xy, 2 * r, bore, s.z0, s.z1) for s, r in piece]) \
-            if len(piece) > 1 else ring(xy, 2 * piece[0][1], bore, z0, z1)
+        if each and shaft_d is not None and piece[0][0].name.startswith("gap"):
+            part = bored(disc(xy, washer_od(shaft_d) / 2, z0, z1), xy, shaft_d + 0.3, z0, z1)
+        elif len(piece) > 1:
+            part = union([ring(xy, 2 * r, bore, s.z0, s.z1) for s, r in piece])
+        else:
+            part = ring(xy, 2 * piece[0][1], bore, z0, z1)
         out.bodies.append(hardware(name, part, host, fab="printed", color=SLEEVE_COLOR))
         of.update(dict.fromkeys((s.name for s, _ in piece), name))
     return play, of
