@@ -2,7 +2,8 @@
 # tests against the built viewer, and the identity gate as a determinism check. CI has no
 # gate baseline (it is a snapshot on a developer's disk, docs/agentlib/TESTING.md), so the
 # gate job snapshots the tree twice, each in a fresh store, and compares them: a design
-# that builds differently from one run to the next fails it.
+# that builds differently from one run to the next fails it. On ubuntu-24.04, as ci.yml
+# (its header says why), and the caches keyed by the image as there.
 name: Nightly
 
 on:
@@ -26,7 +27,7 @@ env:
 
 jobs:
   slow:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
@@ -49,14 +50,16 @@ jobs:
       # Its own key (the quick job's is immutable once saved); it starts from the quick
       # job's entries for the same engine when it has none of its own
       - id: engine
-        run: echo "version=$(uv run --locked python -m spiderpig.tools.engine_version)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(uv run --locked python -m spiderpig.tools.engine_version)" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
       - id: restore
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/spiderpig/test-cache
-          key: test-cache-nightly-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+          key: test-cache-nightly-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
           restore-keys: |
-            test-cache-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+            test-cache-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
       - name: slow tests
         env:
           SPIDERPIG_REQUIRE_VIEWER_TESTS: "1"
@@ -65,10 +68,10 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/spiderpig/test-cache
-          key: test-cache-nightly-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+          key: test-cache-nightly-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
@@ -85,14 +88,16 @@ jobs:
       # Playwright's Chromium and the system libraries it needs (apt: the runner's sudo)
       - run: uv run --locked playwright install --with-deps chromium
       - id: engine
-        run: echo "version=$(uv run --locked python -m spiderpig.tools.engine_version)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(uv run --locked python -m spiderpig.tools.engine_version)" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
       - id: restore
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/spiderpig/test-cache
-          key: test-cache-e2e-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+          key: test-cache-e2e-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
           restore-keys: |
-            test-cache-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+            test-cache-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
       # one browser at a time: each test bakes its mode on first request into one store
       - name: browser tests
         env:
@@ -108,7 +113,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/spiderpig/test-cache
-          key: test-cache-e2e-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+          key: test-cache-e2e-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
 
   # the identity gate (tests/gate/identity_gate.py) as a determinism check: no baseline
   # here, so two snapshots of this tree, each from a fresh store, must be identical
@@ -120,7 +125,7 @@ jobs:
   # in the first snapshot (exit 3: the snapshot itself is whole) doesn't skip the compare:
   # the night's determinism verdict is still had, and the job fails after it
   gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4

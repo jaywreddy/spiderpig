@@ -98,6 +98,13 @@ new engine starts empty), `lint-imports`, and the doc check with `--strict` (blo
 since W7). `.pre-commit-config.yaml` runs ruff and
 `uv lock --check` (opt-in: `uvx pre-commit install`).
 
+Every CI and nightly job runs on `ubuntu-24.04`, not `ubuntu-latest`: the recorded fixtures
+(masses, MJCF, bakes) are byte-exact, and the system libm's last bits move them. When
+`ubuntu-latest` became 26.04 (2026-11-07) three recorded MJCFs stopped matching and the
+locked Playwright had no build for it. The runner image (`ImageOS`) is in every test-cache
+key as well, so no job restores entries another image built. To move the image, re-record
+the fixtures on it (`mise run test-fixtures`) in the same PR.
+
 **The slow tier on a PR** (opt-in, the `slow` job of `ci.yml`): `-m "slow and not e2e" -n 4`,
 set up as the nightly's (node, `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, the fabrication cache
 under its own key, starting from the nightly's or the quick job's entries for the same
