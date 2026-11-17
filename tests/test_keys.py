@@ -66,7 +66,8 @@ EDITS = [
     ("a servo's dimensions", "spiderpig.servos.catalog",
      "body=(45.22, 24.72, 32.0)", "body=(45.22, 24.72, 32.5)", True, True),
     ("the shopping list", "spiderpig.hardware.order",
-     '"""The shopping list of a build: carts per vendor, uploads per service, prints."""',
+     '"""The shopping list of a build: carts per vendor, uploads per service, prints, and\n'
+     "    ``shipping``'s lines (a cradle's carton: ``hardware.shipping.ship_lines``).\"\"\"",
      '"""The shopping list."""\n    _ = 1', False, False),
     ("the parts' grouping (BOM)", "spiderpig.hardware.bom",
      "def group_made(bodies, method: str) -> list[MadeGroup]:",
