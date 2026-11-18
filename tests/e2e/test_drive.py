@@ -663,10 +663,13 @@ def test_a_reset_mid_drive_starts_the_hud_over(page: Page, viewer_server: str) -
     page.keyboard.down("KeyW")
     page.keyboard.down("ArrowUp")
     page.wait_for_timeout(2500)
+    before = _js(page, "window.__viewer.drive.physics.frame.t")
     _js(page, "window.__viewer.drive.opts.reset()")
-    # the clock back on screen: a frame shows on an animation frame, which software GL
-    # draws under 2 a second, so wait for it rather than a fixed time
-    page.wait_for_function("() => window.__viewer.drive.physics.frame.t < 1.0", timeout=10_000)
+    # the clock back on screen, under what it showed before (it only grows otherwise): a
+    # frame shows on an animation frame, about one a second in software GL (llvmpipe), so
+    # the first after the reset can read over 1 s; wait for it, not a fixed time
+    page.wait_for_function(f"() => window.__viewer.drive.physics.frame.t < {before}",
+                           timeout=10_000)
     a = page.evaluate(PHYS_JS)
     page.wait_for_timeout(1500)
     b = page.evaluate(PHYS_JS)
