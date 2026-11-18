@@ -130,7 +130,9 @@ def _parametric_servos() -> bool:
 
 def env_tag() -> str:
     """What else shapes a cached part than the engine's sources: this cache's format, the
-    Python, build123d and OCP versions."""
+    Python, build123d, OCP and numpy versions, OpenBLAS's kernels (``OPENBLAS_CORETYPE``) and
+    numpy's SIMD loops (``NPY_DISABLE_CPU_FEATURES``), both pinned on x86 by
+    tests/conftest.py: another CPU's give other last bits."""
     from importlib import metadata
 
     def version(dist: str) -> str:
@@ -140,7 +142,8 @@ def env_tag() -> str:
             return "-"
 
     text = repr((FORMAT, sys.version_info[:2], version("build123d"), version("cadquery-ocp"),
-                 version("numpy")))
+                 version("numpy"), os.environ.get("OPENBLAS_CORETYPE", "-"),
+                 os.environ.get("NPY_DISABLE_CPU_FEATURES", "-")))
     return hashlib.sha256(text.encode()).hexdigest()[:8]
 
 

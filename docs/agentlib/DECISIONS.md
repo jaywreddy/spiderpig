@@ -5272,3 +5272,20 @@ On the old fit 0d9449b was B 1,007.55 and A 847.47.
     - two master tests that took a cradle for a servo-driven mechanism (the first
       mechanism with an output, and every mechanism's jam at its torque limit);
     - the reach's and the Klann single's recorded MJCFs, re-recorded.
+
+### 2026-11-17: CI runs every check on every PR and push to master, nothing on a schedule (the user's "why not only run it on new commits?")
+
+- **What:** the slow tests, the browser tests and the identity gate's determinism check
+  moved from the Nightly (06:17 UTC on master, removed) into `ci.yml`, beside the cheap jobs,
+  on every pull request, every push to master and a manual run. The `slow` label is gone.
+- **Why:** master moves only by merged PRs, and weeks go by with none: since October 1
+  the Nightly ran about 40 times against 5 pushes to master, and a failure it found was
+  already on master. The slow tier was opt-in on a PR because 2026-10-14 put it at up to four
+  runner-hours. Measured over 43 runs (2026-10-09 to 11-17), the slow tests took 9-28 min
+  (median 19, a cold cache 17), the browser tests 15 (at most 31) and the gate 9, in
+  parallel. So a PR now waits about half an hour for every check, and no time is spent while
+  nothing changes. Timeouts: 90, 60 and 45 min.
+- **What it gives up:** a break that comes with no commit (a new `npm audit` advisory, a
+  runner image's update: two of the five causes of November's red runs) shows on the next PR, not
+  the next morning. Run `gh workflow run ci.yml --ref master` to check before a PR.
+- **Where:** `.github/workflows/ci.yml`; `docs/agentlib/TESTING.md` ("The heavy jobs").

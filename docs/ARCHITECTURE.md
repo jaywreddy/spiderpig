@@ -2369,10 +2369,10 @@ and then a wheel; a build hook refuses a wheel without the built viewer, or with
 sources or `node_modules` in it.
 
 **Continuous integration** (`.github/workflows/ci.yml`, on pushes to master and every pull
-request): ruff and the import layers, the lock, the viewer's typecheck and vitest, the
-quick tier on a cached fabrication cache, and the doc check, blocking. Nightly
-(`.github/workflows/nightly.yml`): the slow tests, the browser tests and the identity gate
-compared with itself (a determinism check: CI holds no baseline). The audits and the gate
+request; nothing on a schedule): ruff and the import layers, the lock, the viewer's
+typecheck and vitest, the quick tier on a cached fabrication cache, the doc check, the slow
+tests, the browser tests and the identity gate compared with itself (a determinism check:
+CI holds no baseline), all blocking. The audits and the gate
 against a baseline run on request (`mise run remote-audit`, `gate`).
 
 **Gaps.** The planner's opt-in speed-ups and the workers' failure paths have few tests of

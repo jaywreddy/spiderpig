@@ -20,6 +20,19 @@ behind a ``pytestmark`` in those modules and keep everything else plain-pytest.
 from __future__ import annotations
 
 import os
+import platform
+
+# numpy picks its code by the CPU, twice: OpenBLAS's kernels, and numpy's own SIMD loops
+# (its dispatch). An AVX-512 machine's (SkylakeX kernels, the X86_V4 loops: an Intel CI
+# runner, a Zen 4/5 desktop) give other last bits than an AVX2 machine's (Haswell or Zen,
+# X86_V3), enough to move a recorded MJCF's masses (the kernels) and a bake's signed zeros
+# (the loops): a fresh bake differed from the cache another runner built. Every x86 machine
+# runs the AVX2 code here, which the fixtures match (before numpy is imported; subprocesses
+# inherit it; the test cache's env tag names it, cache.env_tag).
+# The dispatch names are numpy 2.4's (`numpy._core._multiarray_umath.__cpu_dispatch__`).
+if platform.machine() in ("x86_64", "AMD64"):
+    os.environ.setdefault("OPENBLAS_CORETYPE", "Haswell")
+    os.environ.setdefault("NPY_DISABLE_CPU_FEATURES", "X86_V4 AVX512_ICL AVX512_SPR")
 
 # Under pytest-xdist every worker is its own process: one BLAS / OpenMP thread each, or
 # N workers x N cores of threads fight over the machine (set before numpy is imported).
