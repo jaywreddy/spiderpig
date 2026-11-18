@@ -1,4 +1,5 @@
-# What ci.yml leaves out, nightly on master (and on request): the slow tests, the browser
+# What ci.yml leaves out, nightly on master when master has moved since its last Nightly
+# (the `changed` job), and on request whatever it holds: the slow tests, the browser
 # tests against the built viewer, and the identity gate as a determinism check. CI has no
 # gate baseline (it is a snapshot on a developer's disk, docs/agentlib/TESTING.md), so the
 # gate job snapshots the tree twice, each in a fresh store, and compares them: a design
@@ -26,7 +27,37 @@ env:
   SPIDERPIG_PLAN_SECONDS: "3600"
 
 jobs:
+  # A scheduled night with nothing new on master runs nothing: the commit it would test has
+  # had a Nightly already (any that finished, not a cancelled one; a red one stays red until
+  # the next commit or a manual run). A manual run (workflow_dispatch) always runs
+  changed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prior=0
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            # the API unreachable: run (a night tested twice, never a commit untested)
+            prior=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/nightly.yml/runs?head_sha=$GITHUB_SHA&status=completed&per_page=100" \
+              -q "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID and .conclusion != \"cancelled\")] | length") || prior=0
+          fi
+          if [ "$prior" -gt 0 ]; then
+            echo "::notice::nothing new on master: $GITHUB_SHA has had $prior Nightly run(s) already"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   slow:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
@@ -73,6 +104,8 @@ jobs:
           key: test-cache-nightly-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
 
   e2e:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -131,6 +164,8 @@ jobs:
   # in the first snapshot (exit 3: the snapshot itself is whole) doesn't skip the compare:
   # the night's determinism verdict is still had, and the job fails after it
   gate:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:

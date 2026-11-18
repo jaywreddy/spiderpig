@@ -131,8 +131,9 @@ engine). It runs when
 It takes about as long as the nightly's (up to 4 h on a cold cache; its timeout). The
 browser tests and the gate's determinism check stay nightly-only.
 
-Nightly (`.github/workflows/nightly.yml`: 06:17 UTC on master, and `workflow_dispatch`):
-the slow tests (`-m "slow and not e2e" -n 4`, with node and
+Nightly (`.github/workflows/nightly.yml`: 06:17 UTC on master, and `workflow_dispatch`;
+a scheduled night whose master commit has had a Nightly already runs nothing, a manual run
+always runs): the slow tests (`-m "slow and not e2e" -n 4`, with node and
 `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`), the browser tests (`mise run viewer-build`, Playwright's
 Chromium, `-m e2e`; `SPIDERPIG_SHOTS` screenshots kept as an artifact) and the identity
 gate as a determinism check: CI has no baseline, so it snapshots the tree twice, each in a
