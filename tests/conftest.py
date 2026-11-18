@@ -20,6 +20,16 @@ behind a ``pytestmark`` in those modules and keep everything else plain-pytest.
 from __future__ import annotations
 
 import os
+import platform
+
+# numpy's OpenBLAS picks its kernels by the CPU: an AVX-512 machine's (SkylakeX: an Intel CI
+# runner, a Zen 4/5 desktop) give other last bits than an AVX2 machine's (Haswell, Zen: the
+# AMD runners), enough to move a recorded MJCF's masses and make a bake differ from the
+# cached one. Every x86 machine runs the Haswell kernels here, the ones the fixtures were
+# recorded under (before numpy is imported; subprocesses inherit it; the test cache's env
+# tag names it, cache.env_tag)
+if platform.machine() in ("x86_64", "AMD64"):
+    os.environ.setdefault("OPENBLAS_CORETYPE", "Haswell")
 
 # Under pytest-xdist every worker is its own process: one BLAS / OpenMP thread each, or
 # N workers x N cores of threads fight over the machine (set before numpy is imported).

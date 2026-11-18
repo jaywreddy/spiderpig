@@ -60,6 +60,8 @@ jobs:
           key: test-cache-nightly-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
           restore-keys: |
             test-cache-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+      # which CPU this runner has (AMD or Intel: its BLAS kernels, which tests/conftest.py pins)
+      - run: grep -m1 'model name' /proc/cpuinfo
       - name: slow tests
         env:
           SPIDERPIG_REQUIRE_VIEWER_TESTS: "1"

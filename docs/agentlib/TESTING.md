@@ -105,6 +105,13 @@ locked Playwright had no build for it. The runner image (`ImageOS`) is in every 
 key as well, so no job restores entries another image built. To move the image, re-record
 the fixtures on it (`mise run test-fixtures`) in the same PR.
 
+The CPU moves them too: numpy's OpenBLAS picks its kernels by the CPU, and an AVX-512
+machine's (an Intel runner, a Zen 4/5 desktop) give other last bits than an AVX2 one's (the
+AMD runners): `klann_single`'s recorded masses, and a fresh bake against a cache another
+runner built. `tests/conftest.py` pins every x86 machine to the Haswell kernels
+(`OPENBLAS_CORETYPE`, the ones the fixtures were recorded under; the test cache's env tag
+names it), so any runner and any desktop record and compare the same bits.
+
 **The slow tier on a PR** (opt-in, the `slow` job of `ci.yml`): `-m "slow and not e2e" -n 4`,
 set up as the nightly's (node, `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, the fabrication cache
 under its own key, starting from the nightly's or the quick job's entries for the same

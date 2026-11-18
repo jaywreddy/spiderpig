@@ -7,6 +7,7 @@
 # are byte-exact, and the system libm's last bits move them. ubuntu-latest became 26.04 on
 # 2026-11-07 and three recorded MJCFs stopped matching (docs/agentlib/TESTING.md, "CI").
 # Moving the image means re-recording them there (`mise run test-fixtures`) in one PR.
+# The runner's CPU moves them too (numpy's BLAS kernels): tests/conftest.py pins those.
 name: CI
 
 on:
@@ -204,6 +205,8 @@ jobs:
           restore-keys: |
             test-cache-nightly-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
             test-cache-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+      # which CPU this runner has (AMD or Intel: its BLAS kernels, which tests/conftest.py pins)
+      - run: grep -m1 'model name' /proc/cpuinfo
       - name: slow tests
         env:
           SPIDERPIG_REQUIRE_VIEWER_TESTS: "1"
