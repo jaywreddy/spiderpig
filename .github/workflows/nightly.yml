@@ -87,6 +87,10 @@ jobs:
       - run: mise run viewer-build
       # Playwright's Chromium and the system libraries it needs (apt: the runner's sudo)
       - run: uv run --locked playwright install --with-deps chromium
+      # the system EGL that Chromium's GL flags load (tests/e2e/conftest.py): without it
+      # WebGL falls back to SwiftShader, too slow for the drive tests; no GPU here, so mesa
+      # renders with llvmpipe
+      - run: sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0
       - id: engine
         run: |
           echo "version=$(uv run --locked python -m spiderpig.tools.engine_version)" >> "$GITHUB_OUTPUT"
