@@ -1,8 +1,10 @@
-# The cheap checks on pushes to master and every PR (docs/agentlib/ROADMAP.md, W0): ruff,
-# the lock, the viewer's typecheck + vitest, the quick tier on the fabrication cache, and the doc
-# check (blocking, --strict, since W7). The full suite stays on `mise run remote-test`.
-# Opt-in: the slow tier (`slow`, below) on a PR labelled `slow` (every push while the label
-# stays) and on a manual run (workflow_dispatch); nightly.yml runs it on master.
+# Every check on every PR and every push to master, and on a manual run (Actions > CI > Run
+# workflow, or `gh workflow run ci.yml --ref BRANCH`): ruff, pyright, the lock, the viewer's
+# typecheck, vitest and audit, the quick tier, the doc check, the slow tier, the browser
+# tests and the identity gate's determinism check. Nothing on a schedule: a night with no new
+# commit has nothing new to test (docs/agentlib/DECISIONS.md, 2026-11-17). Over 43 runs the
+# slow tier took 9-28 min, a cold cache included, the browser tests 15 and the gate 9.
+# The full suite stays on `mise run remote-test`.
 # Every job on ubuntu-24.04, not ubuntu-latest: the recorded fixtures (masses, MJCF, bakes)
 # are byte-exact, and the system libm's last bits move them. ubuntu-latest became 26.04 on
 # 2026-11-07 and three recorded MJCFs stopped matching (docs/agentlib/TESTING.md, "CI").
@@ -14,24 +16,14 @@ on:
   push:
     branches: [master]          # a PR's branch runs once, as the PR
   pull_request:
-    # the defaults, and `labeled`: adding the `slow` label starts the slow tier at once
-    # (any label re-runs the cheap jobs too: none is skipped, so a skipped check can never
-    # stand in for a failed one). Removing a label triggers nothing (`unlabeled` isn't
-    # listed): an in-flight slow run goes on until cancelled (`gh run cancel`)
-    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A newer push to a ref cancels its older run (the slow tier's with it). A label other than
-# `slow` runs in a group of its own (`-label-NAME`), so adding one never cancels the
-# in-flight run, and the slow tier isn't started again by it (the `slow` job's `if`)
+# A newer push to a PR (or to master) cancels its older run: the newer commit holds it
 concurrency:
-  group: >-
-    ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{
-    (github.event.action == 'labeled' && github.event.label.name != 'slow')
-    && format('-label-{0}', github.event.label.name) || '' }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -164,19 +156,12 @@ jobs:
       # the code doesn't have fails the run (tests/doc_check_allow.txt for what isn't code)
       - run: uv run --locked python -m tests.doc_check --strict
 
-  # The slow tier (`-m 'slow and not e2e'`), opt-in: a PR labelled `slow`, or a manual run
-  # (Actions > CI > Run workflow, or `gh workflow run ci.yml --ref BRANCH`). Set up as
-  # nightly.yml's `slow` job; its fabrication cache under its own key, starting from the
-  # nightly's or the quick job's entries for the same engine. Not on another label's run
-  # (the run it would duplicate goes on: the concurrency group above)
+  # The slow tier (`-m 'slow and not e2e'`). Its fabrication cache under its own key (the
+  # quick job's is immutable once saved), starting from the quick job's entries for the
+  # same engine when it has none of its own
   slow:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' &&
-      contains(github.event.pull_request.labels.*.name, 'slow') &&
-      (github.event.action != 'labeled' || github.event.label.name == 'slow'))
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -203,7 +188,6 @@ jobs:
           path: ~/.cache/spiderpig/test-cache
           key: test-cache-slow-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
           restore-keys: |
-            test-cache-nightly-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
             test-cache-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
       # which CPU this runner has (AMD or Intel: its BLAS kernels, which tests/conftest.py pins)
       - run: grep -m1 'model name' /proc/cpuinfo
@@ -216,3 +200,101 @@ jobs:
         with:
           path: ~/.cache/spiderpig/test-cache
           key: test-cache-slow-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+
+  # The browser tests against the built viewer (`-m e2e`)
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+      SPIDERPIG_REQUIRE_VIEWER_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      # mise.toml's tools (python, uv, node 22) and its tasks: `mise run viewer-build`
+      # writes spiderpig/viewer/dist, which the e2e server mounts (tests/conftest.py)
+      - uses: jdx/mise-action@v2
+        with:
+          cache: true
+      - run: uv sync --locked
+      - run: mise run viewer-build
+      # Playwright's Chromium and the system libraries it needs (apt: the runner's sudo)
+      - run: uv run --locked playwright install --with-deps chromium
+      # the system EGL that Chromium's GL flags load (tests/e2e/conftest.py): without it
+      # WebGL falls back to SwiftShader, too slow for the drive tests; no GPU here, so mesa
+      # renders with llvmpipe
+      - run: sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0
+      - id: engine
+        run: |
+          echo "version=$(uv run --locked python -m spiderpig.tools.engine_version)" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+      - id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/spiderpig/test-cache
+          key: test-cache-e2e-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+          restore-keys: |
+            test-cache-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+      # one browser at a time: each test bakes its mode on first request into one store
+      - name: browser tests
+        env:
+          SPIDERPIG_SHOTS: ${{ runner.temp }}/shots
+        run: uv run --locked pytest -p no:warnings -m e2e tests/e2e --browser chromium
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
+      - if: always() && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/spiderpig/test-cache
+          key: test-cache-e2e-${{ runner.os }}-${{ steps.engine.outputs.image }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+
+  # the identity gate (tests/gate/identity_gate.py) as a determinism check: no baseline
+  # here (it is a snapshot on a developer's disk, docs/agentlib/TESTING.md), so two
+  # snapshots of this tree, each from a fresh store, must be identical (compare exits 0; 1 is
+  # "order differs", 2 "DIFFERENT"; 3 a design failing its own audit that
+  # KNOWN_AUDIT_FAILURES doesn't explain, the snapshots identical; 4 and 5 are 1 and 2 with
+  # such an audit failure too); the second checks the contract exactly at every angle
+  # (GATE_EXACT_CONTRACT: check_side, not the audit's check_sides), so the fast and the exact
+  # contract are compared on the gate's designs on every run. An audit failure in the first
+  # snapshot (exit 3: the snapshot itself is whole) doesn't skip the compare: the run's
+  # determinism verdict is still had, and the job fails after it
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      - id: snapshot
+        name: snapshot
+        run: |
+          rc=0
+          uv run --locked python tests/gate/identity_gate.py snapshot "$RUNNER_TEMP/gate-a" -j 2 || rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -eq 3 ]; then
+            echo "::error::a design fails its own audit (exit 3): the compare runs, the job fails after it"
+          fi
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
+      - name: snapshot again (the contract exactly) and compare
+        env:
+          GATE_EXACT_CONTRACT: "1"
+        run: uv run --locked python tests/gate/identity_gate.py compare "$RUNNER_TEMP/gate-a" -j 2 --out "$RUNNER_TEMP/gate-b"
+      - name: the first snapshot's audits
+        if: steps.snapshot.outputs.rc == '3'
+        run: |
+          echo "::error::the first snapshot's audit failed (exit 3; its report is in the snapshot step's log)"
+          exit 3
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-snapshots
+          path: |
+            ${{ runner.temp }}/gate-a
+            ${{ runner.temp }}/gate-b
+          if-no-files-found: ignore

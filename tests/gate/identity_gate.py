@@ -294,7 +294,7 @@ def _plan(config, work: Path):
 def _contracts(design, tmpl, ts) -> list[list[str]]:
     """The contract at each of ``ts``: :func:`check_sides` (the audit's), or with
     ``GATE_EXACT_CONTRACT=1`` :func:`check_side` realizing the side at every angle (the
-    nightly workflow snapshots once each way and compares: the two must agree)."""
+    CI's gate job snapshots once each way and compares: the two must agree)."""
     from spiderpig.construction.contract import check_side, check_sides
 
     if os.environ.get("GATE_EXACT_CONTRACT") == "1":

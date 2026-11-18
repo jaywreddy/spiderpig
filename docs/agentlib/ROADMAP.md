@@ -106,7 +106,7 @@ The follow-ups after PR #28, each its own branch:
     a list the next boolean fails on, and `spiderpig build` stops on it,
     `fabricate.split_parts`; no design reaches it) and `chassis._port_slots`'
     possibly-`None` ports (unreachable: the XL servos have no `bus_ports`); pyright 28 -> 21;
-  - a nightly workflow (`.github/workflows/nightly.yml`): the slow tests, the browser tests,
+  - a nightly workflow (folded into `ci.yml` on 2026-11-17): the slow tests, the browser tests,
     the identity gate compared with itself; watch its first runs (the browser tests'
     timed drive on a runner with no GPU, the gate's two snapshots on 4 cores);
   - `lint-imports` with no exceptions: resolve, the stage records, check and plan moved

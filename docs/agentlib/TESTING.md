@@ -98,7 +98,7 @@ new engine starts empty), `lint-imports`, and the doc check with `--strict` (blo
 since W7). `.pre-commit-config.yaml` runs ruff and
 `uv lock --check` (opt-in: `uvx pre-commit install`).
 
-Every CI and nightly job runs on `ubuntu-24.04`, not `ubuntu-latest`: the recorded fixtures
+Every CI job runs on `ubuntu-24.04`, not `ubuntu-latest`: the recorded fixtures
 (masses, MJCF, bakes) are byte-exact, and the system libm's last bits move them. When
 `ubuntu-latest` became 26.04 (2026-11-07) three recorded MJCFs stopped matching and the
 locked Playwright had no build for it. The runner image (`ImageOS`) is in every test-cache
@@ -112,35 +112,21 @@ runner built. `tests/conftest.py` pins every x86 machine to the Haswell kernels
 (`OPENBLAS_CORETYPE`, the ones the fixtures were recorded under; the test cache's env tag
 names it), so any runner and any desktop record and compare the same bits.
 
-**The slow tier on a PR** (opt-in, the `slow` job of `ci.yml`): `-m "slow and not e2e" -n 4`,
-set up as the nightly's (node, `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, the fabrication cache
-under its own key, starting from the nightly's or the quick job's entries for the same
-engine). It runs when
+**The heavy jobs**, in the same workflow on every PR and every push to master: the slow
+tests (`-m "slow and not e2e" -n 4`, with node and `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`), the
+browser tests (`mise run viewer-build`, Playwright's Chromium, `-m e2e`; `SPIDERPIG_SHOTS`
+screenshots kept as an artifact) and the identity gate as a determinism check: CI has no
+baseline, so it snapshots the tree twice, each in a fresh store, and `compare` must say
+identical (and every design pass its audit: a first snapshot whose audit fails, exit 3,
+still goes on to the compare, then fails the job). Each job keeps the fabrication cache
+under its own key, starting from the quick job's entries for the same engine. Over 43 runs
+(2026-10-09 to 11-17) the slow tests took 9-28 min, a cold cache included, the browser tests
+15 and the gate 9; their timeouts are 90, 60 and 45 min.
 
-- the PR carries the label `slow`: adding it starts a run at once (the workflow listens
-  for `labeled`), and every push runs it again while the label stays (`gh pr edit N
-  --add-label slow`). Removing the label starts nothing (`unlabeled` isn't a trigger): the
-  later pushes skip the slow tier, and a run already going goes on until it ends or is
-  cancelled (`gh run cancel RUN`). Adding any other label re-runs the cheap jobs too
-  (none of them is ever skipped, so a skipped check can't stand in for a failed one), in a
-  concurrency group of its own: it never cancels the in-flight run, slow tier and all, nor
-  starts the slow tier again;
-- or on a manual run of the workflow: Actions > CI > Run workflow on a branch, or
-  `gh workflow run ci.yml --ref BRANCH` (every job, the slow tier among them).
-
-It takes about as long as the nightly's (up to 4 h on a cold cache; its timeout). The
-browser tests and the gate's determinism check stay nightly-only.
-
-Nightly (`.github/workflows/nightly.yml`: 06:17 UTC on master, and `workflow_dispatch`;
-a scheduled night whose master commit has had a Nightly already runs nothing, a manual run
-always runs): the slow tests (`-m "slow and not e2e" -n 4`, with node and
-`SPIDERPIG_REQUIRE_VIEWER_TESTS=1`), the browser tests (`mise run viewer-build`, Playwright's
-Chromium, `-m e2e`; `SPIDERPIG_SHOTS` screenshots kept as an artifact) and the identity
-gate as a determinism check: CI has no baseline, so it snapshots the tree twice, each in a
-fresh store, and `compare` must say identical (and every design pass its audit: a first
-snapshot whose audit fails, exit 3, still goes on to the compare, then fails the job).
-Each job keeps the fabrication cache under
-its own key, starting from the quick job's entries for the same engine.
+Nothing runs on a schedule: with no new commit there is nothing new to test. What breaks
+without one (a new advisory for `npm audit`, a runner image's update) shows on the next PR,
+or on a manual run: Actions > CI > Run workflow on a branch, or `gh workflow run ci.yml
+--ref BRANCH`.
 
 `mise run doc-check` (`tests/doc_check.py`) resolves every backticked dotted name, path,
 task, `spiderpig` command, command-line flag and environment variable in CLAUDE.md,
@@ -470,8 +456,8 @@ guard angle no caller asks for (`GUARD_TURN`; a mismatch is a `DeclaredMotionWar
 that group is checked exactly at every angle). Its limit: a part, or a
 `ConstructionError`, that a construction makes at one of the other checked angles alone,
 and at neither the first nor the guard's, isn't seen. `GATE_EXACT_CONTRACT=1` checks with
-`check_side` at every angle instead; the nightly workflow snapshots once each way and
-compares, so the two are held equal on the gate's designs every night.
+`check_side` at every angle instead; CI's gate job snapshots once each way and compares,
+so the two are held equal on the gate's designs on every PR.
 
 Verdicts per design, and the exit status: **identical** (0); **geometry identical, order
 differs** (1: a DXF's entities in another order or a closed outline from another start
