@@ -101,8 +101,9 @@ jobs:
       - run: npm run typecheck && npm test
         working-directory: viewer
       # what ships in the bundle (three) at any severity; the dev tooling (vite's dev server
-      # answers behind `tailscale serve`) at high or critical
-      - run: npm audit --omit=dev && npm audit --audit-level=high
+      # answers behind `tailscale serve`) at high or critical, less the dated exceptions in
+      # audit-dev.mjs (an advisory with no fixed release that can't reach this repo)
+      - run: npm audit --omit=dev && node audit-dev.mjs
         working-directory: viewer
 
   quick:
