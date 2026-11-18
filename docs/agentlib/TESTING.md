@@ -105,12 +105,14 @@ locked Playwright had no build for it. The runner image (`ImageOS`) is in every 
 key as well, so no job restores entries another image built. To move the image, re-record
 the fixtures on it (`mise run test-fixtures`) in the same PR.
 
-The CPU moves them too: numpy's OpenBLAS picks its kernels by the CPU, and an AVX-512
-machine's (an Intel runner, a Zen 4/5 desktop) give other last bits than an AVX2 one's (the
-AMD runners): `klann_single`'s recorded masses, and a fresh bake against a cache another
-runner built. `tests/conftest.py` pins every x86 machine to the Haswell kernels
-(`OPENBLAS_CORETYPE`, the ones the fixtures were recorded under; the test cache's env tag
-names it), so any runner and any desktop record and compare the same bits.
+The CPU moves them too: numpy picks OpenBLAS's kernels and its own SIMD loops by the CPU,
+and an AVX-512 machine's (an Intel runner, a Zen 4/5 desktop) give other last bits than an
+AVX2 one's: `klann_single`'s recorded masses (the kernels), and a fresh bake's signed zeros
+against a cache another runner built (the loops). `tests/conftest.py` pins every x86
+machine to the AVX2 code (`OPENBLAS_CORETYPE=Haswell`, and `NPY_DISABLE_CPU_FEATURES` off
+the AVX-512 loops; the fixtures match it; the test cache's env tag names both), so any runner and any desktop record and compare the same bits. The loops' names are
+numpy's own and move with its version: after a numpy upgrade, check them against
+`numpy._core._multiarray_umath.__cpu_dispatch__`.
 
 **The heavy jobs**, in the same workflow on every PR and every push to master: the slow
 tests (`-m "slow and not e2e" -n 4`, with node and `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`), the
