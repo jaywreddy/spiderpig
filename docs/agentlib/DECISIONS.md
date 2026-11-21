@@ -3203,7 +3203,8 @@ a first-time user with the generated guide. What changed:
   seat (0 to 0.7 mm, the go/no-go).
 - **The clutch on plungers** (B-1; `handcrank.clutch`, `clutch_slip`, `clutch_drift`):
   three McMaster 5901A17 ball-nose spring plungers (1/2"-13, a 7.14 mm 440C ball, 6-12 lbf,
-  USD 4.59; the listing rendered 2026-10-14) through hex nuts in the arm's boss, a jam nut
+  USD 4.59; the listing rendered 2026-10-14) through nuts in the arm's boss (hex nuts then,
+  jam nuts since 2026-11-20), a jam nut
   on each, on a 0.125 in 6061 seat ring cut with the crank plates: six 3.57 mm holes on a 40
   mm circle, each ball on its hole's edge, a 30° seat. Not the reviewer's 3408A81: a 30°
   seat for its 4.8 mm ball is a 2.4 mm hole, under SendCutSend's least hole in 0.125 in
@@ -3673,7 +3674,8 @@ their numbers.
     -0.49 mm at worst, its Y -0.06; A's E -0.52.
 - **The BOM's laser size** is the flat blank for a product (minor 8).
 - **The links' shapes (parts M3, M4, minor 1, minor 4).**
-  - The rods b1 are 26 mm wide (`config.PRODUCT_CHORD_R`): SendCutSend's free deburr.
+  - The rods b1 are 26 mm wide (`config.PRODUCT_CHORD_R`): SendCutSend's free deburr
+    (ordered as cut since 2026-11-20, the width kept).
   - **Fillets.** Each product link's chords and bosses are closed: grown by a radius and
     shrunk back (`plates.product_outline`). So every inside corner, elbow, boss cusp and
     window corner is rounded to that radius, and a window narrower than twice it is filled.
@@ -5289,3 +5291,21 @@ On the old fit 0d9449b was B 1,007.55 and A 847.47.
   runner image's update: two of the five causes of November's red runs) shows on the next PR, not
   the next morning. Run `gh workflow run ci.yml --ref master` to check before a PR.
 - **Where:** `.github/workflows/ci.yml`; `docs/agentlib/TESTING.md` ("The heavy jobs").
+
+### 2026-11-20: The cradles' small aluminium parts are ordered as cut, and two hardware lines go
+
+- **What:** SendCutSend's deburring is unticked on the cradles' files on 0.125 and 0.187 in
+  6061 and 0.250 in 5052 (`bom.CRADLE_AS_CUT_SHEETS`); the crankpin's end screws are M6 x 12
+  A2-70 (`handcrank.CRANKPIN_SCREW`) and the plungers' pressed nuts are jam nuts
+  (`handcrank.NUT_HALF`); the print note covers the riser and the solid rings
+  (`bom.CRADLE_PRINT_NOTE`).
+- **Why:** the user asked for parts cheap to make and easy to put together. Those sheets'
+  parts are worked at the bench in the guide whatever the service does, and its pass is
+  priced per part (USD 1.47 in the fit). The two fasteners were each the only use of their
+  line, beside a line that does the job: the longer screw has 10.4 mm in the 12 mm tap, the
+  jam nut leaves the pocket's floor 3.17 mm thicker.
+- **What it costs:** B USD 969.62 -> 950.75, 56 lines -> 54; A 797.67 -> 781.74.
+- **Not done:** PETG for every print (the clutch's cap margins), spiral-point taps (blind
+  holes), a bought riser stud. The gate and the audit were not run.
+- **Where:** `spiderpig/hardware/bom.py`, `spiderpig/construction/handcrank.py`;
+  `docs/agentlib/DECANTER.md` ("Simplification round 3").

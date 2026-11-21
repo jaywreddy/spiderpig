@@ -326,6 +326,7 @@ PIN_WASHER = "m6_washer_wide"   # over the crankpin's end, holding the rod on
 PIN_WASHER_T = 1.6
 M5 = screw("bhcs", "5")         # ISO 7380 M5 button heads (the stand's)
 M6 = screw("bhcs", "6")         # ISO 7380 M6 button heads: the crankpin's, the tie
+CRANKPIN_SCREW = 12.0          # the crankpin's end screws (M6 x 12, as the rear post's)
 SCREW_NM = 4.0                  # the drive's M6 A2-70 ISO 7380 button heads into steel (the tie,
 #                                 the crankpin): TR Fastenings' maximum for ISO 7380 in A2-70,
 #                                 4 N·m at M6 (its socket screws' torque table, rendered
@@ -569,7 +570,7 @@ THRUST = (17.0, 30.0, 3.0, "m16_washer")
 M16: bore, OD, thickness, catalog key), greased: the plungers' push on the cap runs on it, its
 friction a few per cent of the slip (:func:`clutch_slip`)."""
 JAM_NUT = (19.05, 7.94, "half13_jam_nut")   # each plunger's jam nut over the boss (AF, h, key)
-NUT_HALF = (19.05, 11.11, "half13_nut")     # its hex nut pressed into the boss (AF, h, key)
+NUT_HALF = JAM_NUT              # its nut pressed into the boss: a second jam nut (one line)
 NUT_POCKET = 0.15               # that nut's hex pocket over its across-flats: pressed in from the
 #                                 boss's inner face, its floor toward the boss's outer face takes
 #                                 the spring's push and the jam nut's clamp (design review round
@@ -1341,9 +1342,12 @@ class HandCrank(Group):
             return part, length
 
         def m6(grip: float) -> float:
-            """The shortest stock M6 through ``grip`` mm with 6 mm to the crankpin's 12 mm
-            thread."""
-            return next(L for L in M6.lengths if 6.0 <= L - grip <= NETRF12_THREAD)
+            """:data:`CRANKPIN_SCREW` through ``grip`` mm, 6 mm to the crankpin's 12 mm thread
+            (the rear post's M6 x 12 line: one SKU fewer than the shortest stock)."""
+            if not 6.0 <= CRANKPIN_SCREW - grip <= NETRF12_THREAD:
+                raise ConstructionError(f"an M6 x {CRANKPIN_SCREW:g} through {grip:g} mm "
+                                        "doesn't engage 6 to 12 mm of the crankpin's thread")
+            return CRANKPIN_SCREW
 
         r0 = build.z(build.layers[rider])[0]
         rod_top = r0 + ctx.sheet_t("link", rider)
@@ -1582,7 +1586,7 @@ class HandCrank(Group):
                "marked on arrival, its six seats broken alike: the balls ride it; the face "
                "with the dross down on the flange); grease its face, its six holes and the "
                "hub's journal (the food-grade grease). A 1/2\"-13 "
-               "hex nut pressed into each of the three hex pockets in the arm's boss from its "
+               "jam nut pressed into each of the three hex pockets in the arm's boss from its "
                "inner face, the face toward the ring (a vise): the pocket's floor takes the "
                "spring's push. A spring plunger threaded through each from outside, ball "
                "first, until its ball just stands out of the inner face, a jam nut on each, "
@@ -1763,7 +1767,7 @@ class HandCrank(Group):
         * The seat ring (laser-cut 6061: :data:`SEAT_RING`) on the flange's face, its hex
           bore on the hex boss, its six holes the seats.
         * The arm (PETG) turns on the journal: :data:`CLUTCH`'s plungers threaded through
-          hex nuts pressed into its boss, each locked by a jam nut, their balls on the ring's
+          jam nuts pressed into its boss, each locked by a jam nut, their balls on the ring's
           holes' edges; it slips round the tube past its setting (:func:`clutch`). A steel
           washer and the cap (keyed on the journal's flat, a knobbed M3 socket head into a nut
           captured in the journal's end, its slot under the washer) hold it on against the

@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from spiderpig.hardware.bom import (
+    CRADLE_AS_CUT_SHEETS,
     CRADLE_CUT_FITS,
     CUT_SOURCE,
     ON_HAND,
@@ -263,7 +264,9 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
                           "|---:|---|---|---:|---|---|"]
             for r in rows:
                 head = r["parts"].split()[0] if r["parts"] else ""
-                done = ("as cut: by hand" if head in rough else
+                done = ("as cut: by hand (untick deburring)" if head in rough
+                        and r["sheet"] in CRADLE_AS_CUT_SHEETS else
+                        "as cut: by hand" if head in rough else
                         "yes" if deburr_least(r["sheet"]) else "—")   # (wood: not offered)
                 more = f" {_money(fitted.get(head))} | {done} |" if fitted else ""
                 lines.append(f"| {r['qty']} | `{build_dir}/laser/parts/{r['file']}` | "

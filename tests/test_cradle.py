@@ -1611,7 +1611,9 @@ def test_a_frame_plate_s_steps_are_tapered_and_its_cut_corners_rounded():
 def test_the_guide_names_the_as_cut_parts_and_the_routed_birch():
     """Design review round 3, laser-cut parts minors 3 and 6: the arrival step names the
     parts under SendCutSend's deburring minimum (:func:`assembly.as_cut_words`, a 24 mm link
-    once whatever its sides; a 30 mm one is deburred), and the parts table calls the birch
+    once whatever its sides; a 30 mm one is deburred; simplification round 3: a part on a
+    sheet ordered as cut, ``bom.CRADLE_AS_CUT_SHEETS``, whatever its size), and the parts
+    table calls the birch
     routed and names the crank block's plates (their files keep their labels)."""
     from build123d import Box, Cylinder, Location
 
@@ -1629,7 +1631,7 @@ def test_the_guide_names_the_as_cut_parts_and_the_routed_birch():
                         plate(300, 200, 9.0, "birch_9mm", "base_plate"),
                         plate(128, 44, 3.175, "al6061_3p2mm", "L.conn_plate3")],
                      meta={"sheet": "al5052_3p2mm"})
-    assert as_cut_words(mech) == "b4"
+    assert as_cut_words(mech) == "b4 and conn_plate3"
     assert AS_CUT in CRADLE_ARRIVAL
     # and the pins whose links, at their sheets' thickest, outgrow the play (simplification
     # round 2: b3 in 6061 0.187 in took J and J2 there): 7075 0.190 in + 5052 0.187 in is
@@ -3119,6 +3121,8 @@ def test_the_parts_that_carry_the_bottle_print_solid_in_petg():
     assert part_filament(SimpleNamespace(name="rear_saddle_vee"), {},
                          "pla_filament") == "pla_filament"         # (a walker: no "petg")
     assert "PETG at 100 % infill" in CRADLE_PRINT_NOTE
+    assert "riser's pieces at 15 % gyroid with 3 walls, each upside down" in CRADLE_PRINT_NOTE
+    assert "not the TPU keepers" in CRADLE_PRINT_NOTE
     assert "runs dry" in CRADLE_GREASE_NOTE             # (the printed lead screw)
     assert "knob's teeth" in CRADLE_GREASE_NOTE
 
