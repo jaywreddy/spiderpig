@@ -142,9 +142,8 @@ def _host(b, by) -> str:
 
 def part_mass_kg(config: BuildConfig, b) -> float:
     """A part's mass (kg): :mod:`hardware.mass`'s (a bought part at its catalogued mass; a
-    printed one solid, in PETG if it's one of :data:`construction.cradle.PETG_PARTS`)."""
-    fil = "petg_filament" if b.name in cr.PETG_PARTS else "pla_filament"
-    _, dens, fixed = mass_mod.material_of(b, config.sheet, fil, None)
+    printed one solid, in PETG: the cradle's rigid prints are all PETG, simplification round 3)."""
+    _, dens, fixed = mass_mod.material_of(b, config.sheet, "petg_filament", None)
     if fixed is not None:
         return fixed / 1000.0
     return mass_mod.part_props(b.placed_part()).volume * dens / 1e6

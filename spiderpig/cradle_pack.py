@@ -864,7 +864,7 @@ def gather(mech, lk, t: float = 0.0, config=None) -> dict:
     cfg = config or BuildConfig(linkage=lk.key, robot=False)
 
     def part_mass_kg(b) -> float:          # (``cradle_report.part_mass_kg``'s)
-        _, dens, fixed = mass_mod.material_of(b, cfg.sheet, "pla_filament", None)
+        _, dens, fixed = mass_mod.material_of(b, cfg.sheet, "petg_filament", None)
         if fixed is not None:
             return fixed / 1000.0
         return mass_mod.part_props(b.placed_part()).volume * dens / 1e6

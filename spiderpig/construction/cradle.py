@@ -3782,7 +3782,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                     "rear_saddle_nut": _place(moved(_rear_nut_threaded(),
                                                     Location((0.0, at.rear, 0.0))),
                                               cf.lip, cf.tilt)}
-    meta = dict(side.meta, cradle=True, cradle_layer=plan.layers[cradle_link(lk)],
+    meta = dict(side.meta, cradle=True, filament="petg_filament", cradle_layer=plan.layers[cradle_link(lk)],
                 print_poses=print_poses([b.name for b in extras + bodies], cf.tilt),
                 print_shapes=print_shapes,
                 cradle_lip=[float(cf.lip[0]), float(cf.lip[1])], cradle_tilt=float(cf.tilt),

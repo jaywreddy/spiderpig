@@ -1350,14 +1350,15 @@ CRADLE_PRINT_NOTE = (
     "support under its tower's arm and under the rear V block's flats and bosses. The hand "
     "crank in PETG too, its hub solid and its arm, cap and grip at 40 % (its clutch's "
     "plungers push on them always; check the clutch after a hot trip: the guide). The rest "
-    "in PLA: the brackets at 20 % infill with 4 walls (B's in PETG: they stay on its "
-    "board, which rides in the car, clamped for good under their nuts), the other knobs (the "
-    "base board's thumb knobs, or B's studs' knobs, too) and the light's clip (on its tube's "
-    "foot, a brim) at 40 %; the TPU parts at 15-20 %. The pack's spacers (pack_spacer_*.stl) "
+    "in PETG too (two filaments, PETG and TPU; PLA softens in a hot car): the brackets at "
+    "20 % infill with 4 walls, the other knobs (the base board's thumb knobs, or B's studs' "
+    "knobs, too) and the light's clip (on its tube's foot, a brim) at 40 %; the decanter "
+    "riser's pieces each upside down (its boss on the bed), no support, 15 % gyroid with 3 walls; "
+    "the rings and spacers on the pins and pillars solid (a few grams each, they set each "
+    "column's length); the TPU parts at 15-20 %. The pack's spacers (pack_spacer_*.stl) "
     "in PETG at 15 % gyroid with two walls, each laid as it prints, its number and arrow "
     "engraved in the face that goes up in the box. Each STL is posed as "
-    "it should print. For a cradle that travels in a car in summer, print the knobs in PETG "
-    "too.")
+    "it should print.")
 """A decanting cradle's (:mod:`construction.cradle`; review round 2, N6 and m9; the drive's
 m7)."""
 CRADLE_GREASE_NOTE = (
