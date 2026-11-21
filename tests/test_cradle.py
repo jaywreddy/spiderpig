@@ -3119,6 +3119,8 @@ def test_the_parts_that_carry_the_bottle_print_solid_in_petg():
     assert part_filament(SimpleNamespace(name="rear_saddle_vee"), {},
                          "pla_filament") == "pla_filament"         # (a walker: no "petg")
     assert "PETG at 100 % infill" in CRADLE_PRINT_NOTE
+    assert "PLA" not in CRADLE_PRINT_NOTE.replace("PLA softens", "")    # two filaments
+    assert "riser's pieces each upside down" in CRADLE_PRINT_NOTE
     assert "runs dry" in CRADLE_GREASE_NOTE             # (the printed lead screw)
     assert "knob's teeth" in CRADLE_GREASE_NOTE
 
