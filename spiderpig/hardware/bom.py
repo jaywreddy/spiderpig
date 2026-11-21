@@ -257,6 +257,21 @@ tiers no quote pins are held near the 2026-10-14 tiers. The birch (CNC routed):
 ``0.010275 x long^0.9227 x short^0.5536``, its blank's sides in mm (``k`` +2.9 % on
 2026-10-14's, on today's two boards, -0.4 / +0.3 %). A sheet with no fit here takes the
 walkers' per-area rate."""
+CRADLE_AS_CUT_SHEETS = frozenset({"al6061_3p2mm", "al6061_4p8mm", "al5052_6p35mm"})
+"""A cradle's sheets ordered with SendCutSend's deburring off (its finish unticked): the
+small parts on them (the crank block's plates, the two rings, b1, b3) are filed, countersunk
+or calipered at the bench anyway, so they arrive as cut (:func:`hand_deburred`) and their
+files' estimates leave out the fit's ``deburr`` (:func:`cutting_rows`, :func:`file_estimates`;
+the fit itself, and :data:`CRADLE_LIVE_QUOTES`' check, keep it: those were quoted deburred).
+``sheet_catalog``'s deburring minimum stays (the walkers share 0.125 in 6061)."""
+
+
+def service_deburrs(key: str, fits: dict | None) -> bool:
+    """Whether a part cut from sheet ``key`` is ordered deburred: a cradle's (``fits``, its
+    :data:`CRADLE_CUT_FITS`) not on :data:`CRADLE_AS_CUT_SHEETS`."""
+    return not (fits and key in CRADLE_AS_CUT_SHEETS)
+
+
 CRADLE_LIVE_QUOTES = (
     ("B", "al5052_4p8mm", "b6", 1, 290.31, 1357, 7, 475.44, 221.89, 57.64),
     ("B", "al5052_4p8mm", "b6", 2, 290.31, 1357, 7, 475.44, 221.89, 76.62),
@@ -382,7 +397,8 @@ Part = tuple[float, ...]
 length cm)`` (without a length: none, the area alone)."""
 
 
-def cut_estimate(key: str, parts: list, fit: CutFit | None = None) -> float | None:
+def cut_estimate(key: str, parts: list, fit: CutFit | None = None,
+                 deburr: bool = True) -> float | None:
     """What a service charges to cut ``parts`` (``(area cm^2, qty, cut cm)`` each: a part's
     net area and its cut length, :func:`cut_length_cm`) from sheet ``key``, the material
     included: each part ``max(cut_min_usd, cut_fixed_usd + cut_usd_cm2 x area + cut_usd_cm x
@@ -424,7 +440,7 @@ def cut_estimate(key: str, parts: list, fit: CutFit | None = None) -> float | No
     quantity's discount: the parts (:class:`CutPart`) are merged into files by their features
     first, so a grouped and an ungrouped BOM (verify's, audit's) come to the same; each part
     the service deburrs (its blank at least :func:`deburr_least`'s) adds the fit's
-    ``deburr``.
+    ``deburr`` (``deburr=False``: ordered as cut, no fee).
     """
     if fit is not None:
         files: dict[tuple, int] = {}
@@ -434,7 +450,7 @@ def cut_estimate(key: str, parts: list, fit: CutFit | None = None) -> float | No
                  round(c.short_mm, 1))
             files[k] = files.get(k, 0) + c.qty
         least = _least(key)
-        deb = deburr_least(key) if fit.deburr else None
+        deb = deburr_least(key) if fit.deburr and deburr else None
 
         def fee(lng: float, sht: float) -> float:
             return fit.deburr if (deb is not None and sht >= deb[0] - 1e-3
@@ -481,7 +497,8 @@ def cutting_rows(made: list[MadeRow], fits: dict[str, CutFit] | None = None) -> 
                 else sum(p[0] * p[1] for p in parts))
         out.append(CutRow(cut_by(key), key, get(key).name, sum(m.qty for m in rows),
                           round(area, 1),
-                          cut_estimate(key, cut_parts(rows, key) if fit else parts, fit),
+                          cut_estimate(key, cut_parts(rows, key) if fit else parts, fit,
+                                       service_deburrs(key, fits)),
                           round(sum(m.cut_cm * m.qty for m in rows), 1)))
     return sorted(out, key=lambda c: (c.service, c.sheet))
 
@@ -525,7 +542,8 @@ def file_estimates(made: list[MadeRow], fits: dict[str, CutFit] | None = None
         fit = (fits or {}).get(m.sheet)
         if m.method != "laser" or fit is None:
             continue
-        got = cut_estimate(m.sheet, cut_parts([m], m.sheet), fit)
+        got = cut_estimate(m.sheet, cut_parts([m], m.sheet), fit,
+                           service_deburrs(m.sheet, fits))
         if got is not None:
             out[m.name] = got
     return out
@@ -567,13 +585,18 @@ def deburr_least(sheet: str) -> tuple[float, float] | None:
 def hand_deburred(made: list[MadeRow]) -> list[MadeRow]:
     """The laser-cut rows that arrive as cut: a metal part whose blank is under the
     service's deburring minimum (:func:`deburr_least`, the rule of
-    :func:`manufacture.deburr_issue`): to deburr by hand."""
+    :func:`manufacture.deburr_issue`), or on a sheet ordered as cut
+    (:data:`CRADLE_AS_CUT_SHEETS`; a cradle's only: this is called for one): to deburr by
+    hand."""
     out = []
     for m in made:
         if m.method != "laser" or not m.sheet or not m.blank_mm:
             continue
         least = deburr_least(m.sheet)
         if least is None:
+            continue
+        if m.sheet in CRADLE_AS_CUT_SHEETS:
+            out.append(m)
             continue
         lo, hi = least
         long_, short = m.blank_mm
@@ -588,8 +611,12 @@ def deburr_note(rows: list[MadeRow]) -> str:
     each = ", ".join(f"{m.name} x {m.qty} ({m.blank_mm[1]:.1f} mm wide)" for m in rows
                      if m.blank_mm)
     lo, hi = deburr_least(rows[0].sheet) or (25.4, 76.2)
-    return (f"Arrive as cut, not deburred (SendCutSend deburrs a part only from "
-            f"{lo / 25.4:g} x {hi / 25.4:g} in, {lo:g} x {hi:g} mm): {each}. Deburr each by "
+    off = any(m.sheet in CRADLE_AS_CUT_SHEETS for m in rows)
+    why = (f"SendCutSend deburrs a part only from {lo / 25.4:g} x {hi / 25.4:g} in, {lo:g} x "
+           f"{hi:g} mm" + ("; the 0.125 in and 0.187 in 6061 and the 0.250 in 5052 files are "
+                           "ordered with its deburring unticked, their parts worked at the "
+                           "bench anyway" if off else ""))
+    return (f"Arrive as cut, not deburred ({why}): {each}. Deburr each by "
             "hand before it goes on (a deburring tool or a file, then fine sandpaper on a flat "
             "block): both faces and each pin hole's edges; the dross is on the laser's exit "
             "face.")

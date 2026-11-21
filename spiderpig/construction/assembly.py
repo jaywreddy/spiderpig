@@ -277,9 +277,10 @@ ORDER.md, :func:`hardware.bom.hand_deburred`)."""
 def as_cut_words(mech) -> str:
     """The laser-cut parts of ``mech`` whose blank is under their service's deburring
     minimum (:func:`hardware.bom.deburr_least`, the rule of
-    :func:`manufacture.deburr_issue`), by name and once each, for :data:`AS_CUT`: ``"b4
+    :func:`manufacture.deburr_issue`) or on a sheet ordered as cut
+    (:data:`hardware.bom.CRADLE_AS_CUT_SHEETS`), by name and once each, for :data:`AS_CUT`: ``"b4
     and b5"``; ``"the narrower links"`` when none or not known."""
-    from spiderpig.hardware.bom import deburr_least
+    from spiderpig.hardware.bom import CRADLE_AS_CUT_SHEETS, deburr_least
     from spiderpig.layout import laser_bodies, sheet_key
     from spiderpig.manufacture import blank_of
 
@@ -287,11 +288,12 @@ def as_cut_words(mech) -> str:
     names: list[str] = []
     for b in laser_bodies(mech):
         name = bare(b.name)
-        least = deburr_least(sheet_key(b, default)) if default or b.sheet else None
+        key = sheet_key(b, default) if default or b.sheet else ""
+        least = deburr_least(key) if key else None
         if name in names or least is None:
             continue
         w, h = blank_of(b)
-        if w < least[0] - 1e-3 or h < least[1] - 1e-3:
+        if key in CRADLE_AS_CUT_SHEETS or w < least[0] - 1e-3 or h < least[1] - 1e-3:
             names.append(name)
     if not names:
         return "the narrower links"
