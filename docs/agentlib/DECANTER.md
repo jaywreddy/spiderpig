@@ -286,7 +286,9 @@ stops there:
       0.125 in 6061 seat ring (cut with the crank plates) sits on the flange, its hex bore
       on the hex boss, its laser entry face to the balls (its dross face on the flange);
       three steel ball-nose spring plungers (McMaster 5901A17: 1/2"-13, a 7.14 mm 440C ball,
-      6-12 lbf) threaded through hex nuts pressed into the arm's boss from its inner face
+      6-12 lbf) threaded through jam nuts pressed into the arm's boss from its inner face
+      (the lock nut's own SKU since 2026-11-20, 7.94 mm tall: one nut line, the pocket's
+      floor 3.17 mm thicker)
       (the pocket's floor takes the springs' push and the jam nut's clamp: round 3's m2), a
       jam nut on each, press their balls onto the edges of the ring's six 3.57 mm holes on a
       40 mm circle: a 30° seat (the ball on the hole's edge; a 3.57 mm hole is over
@@ -2887,6 +2889,53 @@ A unchanged: 700 x 252 x 607 mm, 106.9 L, 22 spacers (709 g), a piece out of ord
 - **The packs** (both open) and the pack spacers in PETG: the packing turn's.
 
 
+## Simplification round 3 (2026-11-20)
+
+An hour's pass for a cheaper order and an easier build, nothing in the mechanism touched.
+Six reviews of B's order, guide and parts (fasteners, cutting, prints, the guide's hand work,
+the carts, the pack) gave five changes to try; three were kept.
+
+**Kept:**
+- **Two hardware lines fewer** (`handcrank.CRANKPIN_SCREW`, `handcrank.NUT_HALF`): the
+  crankpin's two end screws are the M6 x 12 A2-70 button heads Fastenal's cart already had
+  (10.4 mm in the pin's 12 mm tap, 6.4 before), and the nut pressed into the arm's boss for
+  each plunger is a second jam nut, the lock nut's line. B buys 54 lines, 56 before; Bolt
+  Depot's cart 27, 29 before.
+- **The small aluminium parts are ordered as cut** (`bom.CRADLE_AS_CUT_SHEETS`,
+  `bom.service_deburrs`): the files on the 0.125 and 0.187 in 6061 and the 0.250 in 5052
+  have SendCutSend's deburring unticked. Their parts (the crank block's plates, the clutch's
+  seat ring, the riser's ring, b1, b3) are filed, countersunk or dressed at the bench in the
+  guide anyway, so the service's pass bought nothing. `ORDER.md` says which files to untick
+  and the arrival step names the parts (`assembly.as_cut_words`).
+- **Every print has its settings** (`bom.CRADLE_PRINT_NOTE`): the riser's pieces (15 %
+  gyroid, 3 walls, each upside down on its boss, no support) and the solid rings and spacers
+  had none. The riser's setting is a print setting, not a rated one.
+
+**The BOM** (`spiderpig build`): B USD 969.62 -> 950.75 (purchases 287.72 -> 287.96, cutting
+681.90 -> 662.79: 13 parts as cut). A 797.67 -> 781.74 (252.25 -> 252.49, 545.42 -> 529.25:
+11 parts).
+
+**Tried and dropped:**
+- PETG for every print (one filament): the clutch's cap moves with the handle's mass. B's
+  jam torque came within 0.1 N m of the cap and A's new-set cap passed its limit, so PLA
+  stays until the clutch is re-derived.
+- Spiral-point taps in the guide: wrong for these blind holes (the chips pack under the
+  tap); a spiral-flute tap would be right, and the priced tool list would change with it.
+- Left and right marks on the bay's pairs: each pair is one cut file, the parts
+  interchangeable.
+- The riser on bought screws and sleeves: a screw from above doesn't fit the 10 mm blind
+  tapped face over the sleeve's range, and a bought stud is still filed.
+
+**Open, from the reviews:** a printed saw guide for the brace's 24 notches (the longest hand
+job); the pins in length classes; the crank block as one Carvera-cut block in place of its
+plates; b1 off its own 0.250 in sheet; the Battery Junction, Fastenal and Woodcraft carts
+folded into the others.
+
+**Not run:** the identity gate and `mise run audit` (no baseline on the machine); the
+walkers read none of the changed code (`handcrank` is the cradles' alone, the BOM's change
+is behind a cradle's fit).
+
+
 ## Building one
 
 ```bash
@@ -3051,7 +3100,8 @@ Things to know before cutting and on the bench:
     clear one's slot). ORDER.md says so under its upload table; the guide's parts table
     names the crank block plates and calls the birch CNC-routed (`labels.part_types`).
   - Deburr by hand the parts that come as cut, which the step names from the fabrication
-    (`assembly.as_cut_words`: B's b4 and b5, 24 mm wide).
+    (`assembly.as_cut_words`: B's b4 and b5, 24 mm wide, and since 2026-11-20 the small
+    parts ordered with the deburring unticked, `bom.CRADLE_AS_CUT_SHEETS`).
   - The clutch's seat ring: its clean (entry) face marked, each of its six holes' edges
     broken alike there with a countersink, two turns by hand; it goes on that face out, to
     the balls (the seats are the holes' edges: a burr wears off and drifts the setting).
