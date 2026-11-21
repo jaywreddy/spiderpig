@@ -326,6 +326,7 @@ PIN_WASHER = "m6_washer_wide"   # over the crankpin's end, holding the rod on
 PIN_WASHER_T = 1.6
 M5 = screw("bhcs", "5")         # ISO 7380 M5 button heads (the stand's)
 M6 = screw("bhcs", "6")         # ISO 7380 M6 button heads: the crankpin's, the tie
+CRANKPIN_SCREW = 12.0          # the crankpin's end screws (M6 x 12, as the rear post's)
 SCREW_NM = 4.0                  # the drive's M6 A2-70 ISO 7380 button heads into steel (the tie,
 #                                 the crankpin): TR Fastenings' maximum for ISO 7380 in A2-70,
 #                                 4 N·m at M6 (its socket screws' torque table, rendered
@@ -1341,9 +1342,12 @@ class HandCrank(Group):
             return part, length
 
         def m6(grip: float) -> float:
-            """The shortest stock M6 through ``grip`` mm with 6 mm to the crankpin's 12 mm
-            thread."""
-            return next(L for L in M6.lengths if 6.0 <= L - grip <= NETRF12_THREAD)
+            """:data:`CRANKPIN_SCREW` through ``grip`` mm, 6 mm to the crankpin's 12 mm thread
+            (the rear post's M6 x 12 line: one SKU fewer than the shortest stock)."""
+            if not 6.0 <= CRANKPIN_SCREW - grip <= NETRF12_THREAD:
+                raise ConstructionError(f"an M6 x {CRANKPIN_SCREW:g} through {grip:g} mm "
+                                        "doesn't engage 6 to 12 mm of the crankpin's thread")
+            return CRANKPIN_SCREW
 
         r0 = build.z(build.layers[rider])[0]
         rod_top = r0 + ctx.sheet_t("link", rider)
