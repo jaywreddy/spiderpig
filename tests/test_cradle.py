@@ -3121,7 +3121,8 @@ def test_the_parts_that_carry_the_bottle_print_solid_in_petg():
     assert part_filament(SimpleNamespace(name="rear_saddle_vee"), {},
                          "pla_filament") == "pla_filament"         # (a walker: no "petg")
     assert "PETG at 100 % infill" in CRADLE_PRINT_NOTE
-    assert "riser's pieces too, each upside down" in CRADLE_PRINT_NOTE
+    assert "riser's pieces at 15 % gyroid with 3 walls, each upside down" in CRADLE_PRINT_NOTE
+    assert "not the TPU keepers" in CRADLE_PRINT_NOTE
     assert "runs dry" in CRADLE_GREASE_NOTE             # (the printed lead screw)
     assert "knob's teeth" in CRADLE_GREASE_NOTE
 

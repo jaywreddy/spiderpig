@@ -611,11 +611,11 @@ def deburr_note(rows: list[MadeRow]) -> str:
     each = ", ".join(f"{m.name} x {m.qty} ({m.blank_mm[1]:.1f} mm wide)" for m in rows
                      if m.blank_mm)
     lo, hi = deburr_least(rows[0].sheet) or (25.4, 76.2)
-    off = any(m.sheet in CRADLE_AS_CUT_SHEETS for m in rows)
+    off = sorted({get(m.sheet).name.split(",")[0] for m in rows
+                  if m.sheet in CRADLE_AS_CUT_SHEETS})
     why = (f"SendCutSend deburrs a part only from {lo / 25.4:g} x {hi / 25.4:g} in, {lo:g} x "
-           f"{hi:g} mm" + ("; the 0.125 in and 0.187 in 6061 and the 0.250 in 5052 files are "
-                           "ordered with its deburring unticked, their parts worked at the "
-                           "bench anyway" if off else ""))
+           f"{hi:g} mm" + (f"; the files on {'; '.join(off)} are ordered with its deburring "
+                           "unticked, their parts worked at the bench anyway" if off else ""))
     return (f"Arrive as cut, not deburred ({why}): {each}. Deburr each by "
             "hand before it goes on (a deburring tool or a file, then fine sandpaper on a flat "
             "block): both faces and each pin hole's edges; the dross is on the laser's exit "
@@ -1380,10 +1380,10 @@ CRADLE_PRINT_NOTE = (
     "in PLA: the brackets at 20 % infill with 4 walls (B's in PETG: they stay on its "
     "board, which rides in the car, clamped for good under their nuts), the other knobs (the "
     "base board's thumb knobs, or B's studs' knobs, too) and the light's clip (on its tube's "
-    "foot, a brim) at 40 %, the decanter riser's pieces too, each upside down (its boss on "
-    "the bed), no support, 15 % gyroid with 3 walls, and the rings and spacers on the pins "
-    "and pillars solid (a few grams each, they set each column's length); the TPU parts at "
-    "15-20 %. The pack's spacers (pack_spacer_*.stl) "
+    "foot, a brim) at 40 %; the decanter riser's pieces at 15 % gyroid with 3 walls, each "
+    "upside down (its boss on the bed), no support; the PLA rings and spacers on the pins "
+    "and pillars solid (a few grams each, they set each column's length; not the TPU "
+    "keepers); the TPU parts at 15-20 %. The pack's spacers (pack_spacer_*.stl) "
     "in PETG at 15 % gyroid with two walls, each laid as it prints, its number and arrow "
     "engraved in the face that goes up in the box. Each STL is posed as "
     "it should print. For a cradle that travels in a car in summer, print the knobs in PETG "
